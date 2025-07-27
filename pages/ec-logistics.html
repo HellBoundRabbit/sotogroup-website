@@ -305,7 +305,7 @@
             containers: [{
                 containerIdentifier: 'iCloud.com.soto.SOTO',
                 apiTokenAuth: {
-                    apiToken: '63678817f6f46e755b931bf62465b70ed2178189e7cdaf4a3c379aa68422dfc2',
+                    apiToken: '712aded6feaa40243f5ba7da1232737bbf3e01b9a487797ee7e24286498037f8',
                     persist: true
                 },
                 environment: 'production'
@@ -496,9 +496,96 @@
                 }
             } catch (error) {
                 console.error('CloudKit error:', error);
-                alert('Error validating client code. Please try again.');
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('getQuoteBtn').disabled = false;
+                
+                // If it's an authentication error, try to reinitialize CloudKit
+                if (error._ckErrorCode === 'AUTHENTICATION_FAILED') {
+                    console.log('Authentication failed, trying to reinitialize CloudKit...');
+                    
+                    // Wait a moment and try again
+                    setTimeout(async () => {
+                        try {
+                            // Reinitialize CloudKit
+                            const container = CloudKit.getDefaultContainer();
+                            const database = container.publicCloudDatabase;
+                            
+                            console.log('Retrying CloudKit query...');
+                            const retryResponse = await database.performQuery({
+                                recordType: 'SOTOGroupWebsite',
+                                filterBy: [{
+                                    fieldName: 'clientCode',
+                                    comparator: 'EQUALS',
+                                    fieldValue: {
+                                        value: clientCode,
+                                        type: 'STRING'
+                                    }
+                                }]
+                            });
+                            
+                            if (retryResponse.records && retryResponse.records.length > 0) {
+                                // Process the successful retry response
+                                const record = retryResponse.records[0];
+                                const clientData = {
+                                    valid: true,
+                                    clientCode: record.fields.clientCode.value,
+                                    pricingFormula: record.fields.pricingFormula.value,
+                                    companyName: record.fields.companyName ? record.fields.companyName.value : 'Unknown'
+                                };
+                                
+                                // Continue with the rest of the quote processing...
+                                const routeInfo = await calculateDistance(collectionAddress, deliveryAddress);
+                                const pricingFormula = clientData.pricingFormula;
+                                const companyName = clientData.companyName;
+                                
+                                let price;
+                                console.log('Using pricing formula from database:', pricingFormula);
+                                
+                                if (pricingFormula && pricingFormula.trim()) {
+                                    try {
+                                        const formulaWithDistance = pricingFormula.replace(/distance/gi, routeInfo.distance);
+                                        console.log('Formula with distance substituted:', formulaWithDistance);
+                                        
+                                        const calculatedPrice = eval(formulaWithDistance);
+                                        price = Math.round(calculatedPrice);
+                                        
+                                        console.log(`Distance: ${routeInfo.distance} miles, Formula: ${pricingFormula}, Calculated: ${calculatedPrice}, Final Price: £${price}`);
+                                    } catch (error) {
+                                        console.error('Error evaluating formula:', error);
+                                        price = Math.round(routeInfo.distance * 5);
+                                        console.log('Using default formula due to formula error');
+                                    }
+                                } else {
+                                    price = Math.round(routeInfo.distance * 5);
+                                    console.log('Using default formula: distance*5');
+                                }
+                                
+                                document.getElementById('quoteTitle').textContent = `An EC Logistics movement quote generated for "${companyName}"`;
+                                document.getElementById('distance').textContent = `${Math.round(routeInfo.distance)} miles`;
+                                document.getElementById('duration').textContent = routeInfo.duration;
+                                document.getElementById('price').textContent = `£${price}`;
+                                
+                                displayRouteOnMap(routeInfo.route, collectionAddress, deliveryAddress);
+                                
+                                document.getElementById('loading').style.display = 'none';
+                                document.getElementById('overlay').style.display = 'block';
+                                document.getElementById('result').style.display = 'block';
+                                document.getElementById('getQuoteBtn').disabled = false;
+                            } else {
+                                alert('Incorrect client code');
+                                document.getElementById('loading').style.display = 'none';
+                                document.getElementById('getQuoteBtn').disabled = false;
+                            }
+                        } catch (retryError) {
+                            console.error('Retry also failed:', retryError);
+                            alert('Error validating client code. Please try again.');
+                            document.getElementById('loading').style.display = 'none';
+                            document.getElementById('getQuoteBtn').disabled = false;
+                        }
+                    }, 1000); // Wait 1 second before retry
+                } else {
+                    alert('Error validating client code. Please try again.');
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('getQuoteBtn').disabled = false;
+                }
             }
         }
 
