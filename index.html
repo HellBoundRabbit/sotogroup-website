@@ -22,55 +22,83 @@
         }
 
         .container {
+            max-width: 500px;
+            width: 100%;
             text-align: center;
-            background: rgba(255, 255, 255, 0.05);
-            padding: 3rem;
+            padding: 2rem;
+            background: rgba(255, 255, 255, 0.02);
             border-radius: 20px;
             backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            max-width: 500px;
-            width: 90%;
-        }
-
-        h1 {
-            color: white;
-            margin-bottom: 2rem;
-            font-size: 2.5rem;
-            font-weight: 600;
+            border: 1px solid rgba(255, 255, 255, 0.05);
         }
 
         .logo {
-            width: 120px;
-            height: 120px;
-            border-radius: 50%;
+            width: 300px;
+            height: 300px;
             margin: 0 auto 2rem;
             display: flex;
             align-items: center;
             justify-content: center;
-            background: #000000;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            overflow: hidden;
-            position: relative;
         }
 
         .logo img {
             width: 100%;
             height: 100%;
             object-fit: contain;
-            padding: 15px;
-            display: block;
         }
 
         .logo-text {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #FF3B30;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            display: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            color: white;
+            font-weight: 600;
+            font-size: 1.2rem;
+        }
+
+        /* Software page specific logo styling */
+        .software-logo {
+            width: 200px;
+            height: 200px;
+            margin: 0 auto 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .software-logo:hover {
+            transform: translateY(-5px);
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .software-logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 20px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: white;
+            font-weight: 700;
+        }
+
+        p {
+            font-size: 1.1rem;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 2rem;
+            line-height: 1.6;
         }
 
         .button-grid {
@@ -84,24 +112,29 @@
             background: #007AFF;
             color: white;
             border: none;
-            padding: 1.5rem 3rem;
+            padding: 1rem 2rem;
             border-radius: 15px;
-            font-size: 1.2rem;
+            font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(0, 122, 255, 0.3);
-            text-decoration: none;
-            display: inline-block;
         }
 
         .main-button:hover {
+            background: #0056CC;
             transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0, 122, 255, 0.4);
         }
 
-        .main-button:active {
-            transform: translateY(0);
+        .main-button:disabled {
+            background: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.5);
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .main-button:disabled:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: none;
         }
 
         .main-button.disabled {
@@ -159,23 +192,18 @@
 
         .client-grid {
             display: grid;
-            grid-template-columns: 1fr;
-            gap: 1rem;
-            margin-top: 2rem;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-top: 1rem;
         }
 
         .client-card {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 15px;
             padding: 1.5rem;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .client-card:hover {
-            background: rgba(255, 255, 255, 0.15);
-            transform: translateY(-2px);
+            text-align: center;
+            backdrop-filter: blur(10px);
         }
 
         .client-card img {
@@ -184,14 +212,21 @@
             border-radius: 50%;
             margin: 0 auto 1rem;
             display: block;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .client-card img:hover {
+            transform: translateY(-8px) scale(1.1);
+            filter: brightness(1.5) drop-shadow(0 4px 8px rgba(255, 255, 255, 0.3));
         }
 
         .download-section {
             margin-bottom: 2rem;
             padding: 1.5rem;
-            background: rgba(0, 122, 255, 0.1);
+            background: rgba(255, 255, 255, 0.05);
             border-radius: 15px;
-            border: 1px solid rgba(0, 122, 255, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .download-buttons {
@@ -202,9 +237,9 @@
         }
 
         .download-button {
-            background: #007AFF;
+            background: rgba(255, 255, 255, 0.1);
             color: white;
-            border: none;
+            border: 1px solid rgba(255, 255, 255, 0.2);
             padding: 1rem 2rem;
             border-radius: 10px;
             font-size: 1rem;
@@ -214,24 +249,9 @@
         }
 
         .download-button:hover {
-            background: #0056CC;
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.3);
             transform: translateY(-2px);
-        }
-
-        .download-button.ios {
-            background: #000000;
-        }
-
-        .download-button.android {
-            background: #3DDC84;
-        }
-
-        .download-button.mac {
-            background: #007AFF;
-        }
-
-        .download-button.windows {
-            background: #00A4EF;
         }
 
         /* Hide pages by default */
@@ -277,7 +297,7 @@
             font-size: 1rem;
         }
 
-        input, textarea {
+        input, textarea, select {
             width: 100%;
             padding: 1rem;
             border: 2px solid rgba(255, 255, 255, 0.2);
@@ -293,10 +313,15 @@
             color: rgba(255, 255, 255, 0.6);
         }
 
-        input:focus, textarea:focus {
+        input:focus, textarea:focus, select:focus {
             outline: none;
             border-color: #007AFF;
             box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.2);
+        }
+
+        select option {
+            background: #000000;
+            color: white;
         }
 
         .loading {
@@ -376,7 +401,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.5);
+            background: rgba(0, 0, 0, 0.8);
             z-index: 999;
         }
 
@@ -412,6 +437,7 @@
             justify-content: center;
             min-height: 100vh;
             padding: 0;
+            width: 100%;
         }
 
         .service-buttons {
@@ -466,10 +492,25 @@
 
         /* Responsive design */
         @media (max-width: 768px) {
+            .main-content {
+                padding: 1rem;
+                justify-content: center;
+                align-items: center;
+            }
+
             .service-buttons {
                 flex-direction: column;
-                gap: 1rem;
-                padding: 0 0.5rem;
+                gap: 2rem;
+                padding: 0;
+                justify-content: center;
+                align-items: center;
+                width: 100%;
+                max-width: 300px;
+            }
+
+            .service-button {
+                width: 100%;
+                max-width: 200px;
             }
 
             .service-icon {
@@ -477,9 +518,62 @@
                 height: 150px;
             }
         }
+
+        @media (max-width: 480px) {
+            .service-icon {
+                width: 120px;
+                height: 120px;
+            }
+        }
+
+        /* Mobile responsive improvements */
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+                max-width: 100%;
+            }
+
+            .logo {
+                width: 150px;
+                height: 150px;
+                margin: 0 auto 1rem;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+
+            p {
+                font-size: 1rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .logo {
+                width: 120px;
+                height: 120px;
+            }
+        }
+
+        /* SOTO page specific logo styling */
+        .soto-logo {
+            width: 100px;
+            height: 100px;
+            margin: 0 auto 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .soto-logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
     </style>
 </head>
 <body>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDTbiSXo9tg1Tx8SlZCZKsR_R0zIQ4N1VA&libraries=places"></script>
     <script>
         // Ensure main page is shown by default and clear any URL hash
         window.addEventListener('load', function() {
@@ -513,13 +607,13 @@
                         <img src="assets/IconButtons/SOTO.png" alt="SOTO Software" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                         <div style="display: none; font-size: 2rem;">💻</div>
                     </div>
-                </button>
+            </button>
                 <button class="service-button" onclick="showPage('vending')">
                     <div class="service-icon">
                         <img src="assets/IconButtons/SOTO Vending.png" alt="SOTO Vending" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                         <div style="display: none; font-size: 2rem;">🛍️</div>
                     </div>
-                </button>
+            </button>
             </div>
         </div>
     </div>
@@ -529,15 +623,12 @@
         <button class="back-button" onclick="showPage('main')">← Back</button>
         
         <div class="container">
-            <div class="logo">
-                <img src="assets/logos/soto-logo.png" alt="SOTO Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                <div class="logo-text">SOTO</div>
+            <div class="software-logo" onclick="showPage('soto')">
+                <img src="assets/logos/soto-logo.png" alt="SOTO Group Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <div class="logo-text" style="display: none;">SOTO</div>
             </div>
-            <h1>SOTO Software</h1>
-            <p style="margin-bottom: 2rem; color: rgba(255, 255, 255, 0.8);">
-                Enterprise software solutions for modern businesses
-            </p>
-            <button class="main-button" onclick="showPage('soto')">Continue</button>
+            <h1>SOTO</h1>
+            <p>Software for Oversight of Transport Operations</p>
         </div>
     </div>
 
@@ -546,11 +637,9 @@
         <button class="back-button" onclick="showPage('software')">← Back</button>
         
         <div class="container">
-            <div class="logo">
+            <div class="soto-logo">
                 <img src="assets/logos/soto-logo.png" alt="SOTO Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                <div class="logo-text">SOTO</div>
             </div>
-            <h1>SOTO</h1>
             
             <div class="download-section">
                 <h3 style="margin-bottom: 1rem;">Download SOTO App</h3>
@@ -558,17 +647,17 @@
                     Get the latest version of SOTO for your business
                 </p>
                 <div class="download-buttons">
-                    <button class="download-button ios">iOS</button>
-                    <button class="download-button android">Android</button>
-                    <button class="download-button mac">Mac</button>
-                    <button class="download-button windows">Windows</button>
+                    <button class="download-button">iOS</button>
+                    <button class="download-button">Android</button>
+                    <button class="download-button">Mac</button>
+                    <button class="download-button">Windows</button>
                 </div>
             </div>
             
             <h3 style="margin-bottom: 1rem;">Our Clients</h3>
             <div class="client-grid">
-                <div class="client-card" onclick="showPage('ec-logistics')">
-                    <img src="assets/logos/EC-Logistics-logo.png" alt="EC Logistics Logo" onerror="this.style.display='none';">
+                <div class="client-card">
+                    <img src="assets/logos/EC-Logistics-logo.png" alt="EC Logistics Logo" onclick="showPage('ec-logistics')" onerror="this.style.display='none';">
                     <h4>EC Logistics</h4>
                     <p style="color: rgba(255, 255, 255, 0.7); font-size: 0.9rem;">Transportation & Logistics</p>
                 </div>
@@ -583,7 +672,7 @@
         <div class="container ec-logistics-container">
             <div class="logo">
                 <img src="assets/logos/EC-Logistics-logo.png" alt="EC Logistics Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                <div class="logo-text">EC</div>
+                <div class="logo-text" style="display: none;">EC</div>
             </div>
             <h1>Get Quote</h1>
             
@@ -626,8 +715,8 @@
                 <img src="assets/IconButtons/Soto Property.png" alt="Soto Property" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                 <div class="logo-text" style="display: none;">Property</div>
             </div>
-            <h1>Property</h1>
-            <p>Property services coming soon!</p>
+            <h1>SOTO Property</h1>
+            <p>This sister company will be linked soon.</p>
         </div>
     </div>
 
@@ -640,8 +729,8 @@
                 <img src="assets/IconButtons/SOTO Logistics.png" alt="SOTO Logistics" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                 <div class="logo-text" style="display: none;">Logistics</div>
             </div>
-            <h1>Logistics</h1>
-            <p>Logistics services coming soon!</p>
+            <h1>SOTO Logistics</h1>
+            <p>This sister company will be linked soon.</p>
         </div>
     </div>
 
@@ -654,8 +743,8 @@
                 <img src="assets/IconButtons/SOTO Vending.png" alt="SOTO Vending" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                 <div class="logo-text" style="display: none;">Vending</div>
             </div>
-            <h1>Vending</h1>
-            <p>Vending services coming soon!</p>
+            <h1>SOTO Vending</h1>
+            <p>This sister company will be linked soon.</p>
         </div>
     </div>
 
@@ -666,9 +755,11 @@
         <h3>Quote Generated</h3>
         <p><strong>Distance:</strong> <span id="distance"></span></p>
         <p><strong>Price:</strong> <span id="price"></span></p>
+        <p><strong>Duration:</strong> <span id="duration"></span></p>
+        <div id="routeMap" style="width: 100%; height: 200px; margin: 1rem 0; border-radius: 10px;"></div>
         <div class="result-buttons">
-            <button class="proceed-btn" onclick="proceedWithQuote()">Proceed</button>
             <button class="close-btn" onclick="closeQuote()">Close</button>
+            <button class="proceed-btn" onclick="proceedWithQuote()">Request Movement</button>
         </div>
     </div>
 
@@ -695,10 +786,65 @@
             alert('Download functionality coming soon!');
         }
 
+        // Initialize Google Maps Autocomplete
+        function initializeAutocomplete() {
+            const collectionAddress = document.getElementById('collectionAddress');
+            const deliveryAddress = document.getElementById('deliveryAddress');
+            
+            if (collectionAddress) {
+                new google.maps.places.Autocomplete(collectionAddress, {
+                    types: ['address'],
+                    componentRestrictions: { country: 'GB' }
+                });
+            }
+            
+            if (deliveryAddress) {
+                new google.maps.places.Autocomplete(deliveryAddress, {
+                    types: ['address'],
+                    componentRestrictions: { country: 'GB' }
+                });
+            }
+        }
+
         // Quote form functionality
         document.getElementById('quoteForm').addEventListener('submit', function(e) {
             e.preventDefault();
             getQuote();
+        });
+
+        // Check form fields and enable/disable button
+        function checkFormFields() {
+            const clientCode = document.getElementById('clientCode').value.trim();
+            const collectionAddress = document.getElementById('collectionAddress').value.trim();
+            const deliveryAddress = document.getElementById('deliveryAddress').value.trim();
+            const getQuoteBtn = document.getElementById('getQuoteBtn');
+            
+            if (clientCode && collectionAddress && deliveryAddress) {
+                getQuoteBtn.disabled = false;
+            } else {
+                getQuoteBtn.disabled = true;
+            }
+        }
+
+        // Add event listeners to form fields
+        document.addEventListener('DOMContentLoaded', function() {
+            const formFields = ['clientCode', 'collectionAddress', 'deliveryAddress'];
+            formFields.forEach(fieldId => {
+                const field = document.getElementById(fieldId);
+                if (field) {
+                    field.addEventListener('input', checkFormFields);
+                    field.addEventListener('change', checkFormFields);
+                }
+            });
+            
+            // Initially disable the button
+            const getQuoteBtn = document.getElementById('getQuoteBtn');
+            if (getQuoteBtn) {
+                getQuoteBtn.disabled = true;
+            }
+            
+            // Initialize autocomplete when page loads
+            initializeAutocomplete();
         });
 
         async function getQuote() {
@@ -716,18 +862,19 @@
             document.getElementById('getQuoteBtn').disabled = true;
 
             try {
-                // Simulate API call
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                
                 // Simulate validation
                 if (clientCode === '1001') {
-                    // Calculate distance (simulated)
-                    const distance = Math.floor(Math.random() * 250) + 50;
-                    const price = distance * 10; // £10 per mile
+                    // Calculate real distance using Google Maps Directions API - always longest route
+                    const routeInfo = await calculateDistance(collectionAddress, deliveryAddress);
+                    const price = Math.round(routeInfo.distance * 10); // £10 per mile
                     
                     // Display results
-                    document.getElementById('distance').textContent = `${distance} miles`;
+                    document.getElementById('distance').textContent = `${Math.round(routeInfo.distance)} miles`;
+                    document.getElementById('duration').textContent = routeInfo.duration;
                     document.getElementById('price').textContent = `£${price}`;
+                    
+                    // Display route on map
+                    displayRouteOnMap(routeInfo.route, collectionAddress, deliveryAddress);
                     
                     document.getElementById('loading').style.display = 'none';
                     document.getElementById('overlay').style.display = 'block';
@@ -740,10 +887,100 @@
                 }
                 
             } catch (error) {
-                alert('Error calculating quote. Please try again.');
+                alert('Error calculating route. Please try again.');
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('getQuoteBtn').disabled = false;
             }
+        }
+
+        // Calculate real distance using Google Maps Directions API - always longest route
+        async function calculateDistance(origin, destination) {
+            return new Promise((resolve, reject) => {
+                const directionsService = new google.maps.DirectionsService();
+                
+                // Always use longest route by avoiding highways and tolls
+                const routeOptions = {
+                    origin: origin,
+                    destination: destination,
+                    travelMode: google.maps.TravelMode.DRIVING,
+                    unitSystem: google.maps.UnitSystem.IMPERIAL,
+                    avoidHighways: true,
+                    avoidTolls: true
+                };
+                
+                directionsService.route(routeOptions, (response, status) => {
+                    if (status === 'OK') {
+                        const route = response.routes[0];
+                        const distance = route.legs[0].distance.text;
+                        const duration = route.legs[0].duration.text;
+                        // Convert "123.4 mi" to number
+                        const distanceInMiles = parseFloat(distance.replace(' mi', ''));
+                        resolve({
+                            distance: distanceInMiles,
+                            duration: duration,
+                            route: route
+                        });
+                    } else {
+                        reject(new Error('Could not calculate route'));
+                    }
+                });
+            });
+        }
+
+        // Display route on map
+        function displayRouteOnMap(route, origin, destination) {
+            const mapContainer = document.getElementById('routeMap');
+            mapContainer.innerHTML = ''; // Clear previous map
+            
+            const map = new google.maps.Map(mapContainer, {
+                zoom: 10,
+                center: route.legs[0].start_location,
+                mapTypeId: google.maps.MapTypeId.ROADMAP,
+                disableDefaultUI: true,
+                zoomControl: false,
+                mapTypeControl: false,
+                scaleControl: false,
+                streetViewControl: false,
+                rotateControl: false,
+                fullscreenControl: false,
+                styles: [
+                    {
+                        featureType: 'poi',
+                        elementType: 'labels',
+                        stylers: [{ visibility: 'off' }]
+                    },
+                    {
+                        featureType: 'transit',
+                        elementType: 'labels',
+                        stylers: [{ visibility: 'off' }]
+                    }
+                ]
+            });
+
+            const directionsRenderer = new google.maps.DirectionsRenderer({
+                map: map,
+                suppressMarkers: false,
+                polylineOptions: {
+                    strokeColor: '#007AFF',
+                    strokeWeight: 6,
+                    strokeOpacity: 0.8
+                }
+            });
+
+            // Create a new directions service request
+            const directionsService = new google.maps.DirectionsService();
+            directionsService.route({
+                origin: origin,
+                destination: destination,
+                travelMode: google.maps.TravelMode.DRIVING,
+                unitSystem: google.maps.UnitSystem.IMPERIAL,
+                avoidHighways: true,
+                avoidTolls: true
+            }, (response, status) => {
+                if (status === 'OK') {
+                    directionsRenderer.setDirections(response);
+                }
+            });
         }
 
         function proceedWithQuote() {
@@ -762,4 +999,4 @@
         });
     </script>
 </body>
-</html>
+</html> 
