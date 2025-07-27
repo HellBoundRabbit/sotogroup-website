@@ -4,11 +4,13 @@
     <meta charset="utf-8">
     <title>SOTO Group</title>
     <script>
-        // Redirect to main page and let the SPA handle routing
+        // Store the original path and redirect to main page
+        // The main page will then check this stored path and show correct content
+        sessionStorage.setItem('originalPath', window.location.pathname);
         window.location.href = '/';
     </script>
 </head>
 <body>
-    <p>Redirecting...</p>
+    <p>Loading...</p>
 </body>
 </html> 
