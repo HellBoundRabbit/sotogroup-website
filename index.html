@@ -590,25 +590,25 @@
     <div id="main" class="page active main-page">
         <div class="main-content">
             <div class="service-buttons">
-                <button class="service-button" onclick="showPage('property')">
+                <button class="service-button" onclick="window.location.href='/pages/property.html'">
                     <div class="service-icon">
                         <img src="assets/IconButtons/Soto Property.png" alt="Soto Property" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                         <div style="display: none; font-size: 2rem;">🏠</div>
                     </div>
                 </button>
-                <button class="service-button" onclick="showPage('logistics')">
+                <button class="service-button" onclick="window.location.href='/pages/logistics.html'">
                     <div class="service-icon">
                         <img src="assets/IconButtons/SOTO Logistics.png" alt="SOTO Logistics" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                         <div style="display: none; font-size: 2rem;">🚚</div>
                     </div>
                 </button>
-                <button class="service-button" onclick="showPage('software')">
+                <button class="service-button" onclick="window.location.href='/pages/software.html'">
                     <div class="service-icon">
                         <img src="assets/IconButtons/SOTO.png" alt="SOTO Software" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                         <div style="display: none; font-size: 2rem;">💻</div>
                     </div>
             </button>
-                <button class="service-button" onclick="showPage('vending')">
+                <button class="service-button" onclick="window.location.href='/pages/vending.html'">
                     <div class="service-icon">
                         <img src="assets/IconButtons/SOTO Vending.png" alt="SOTO Vending" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                         <div style="display: none; font-size: 2rem;">🛍️</div>
@@ -623,7 +623,7 @@
         <button class="back-button" onclick="showPage('main')">← Back</button>
         
         <div class="container">
-            <div class="software-logo" onclick="showPage('soto')">
+            <div class="software-logo" onclick="window.location.href='/soto'">
                 <img src="assets/logos/soto-logo.png" alt="SOTO Group Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                 <div class="logo-text" style="display: none;">SOTO</div>
             </div>
@@ -657,7 +657,7 @@
             <h3 style="margin-bottom: 1rem;">Our Clients</h3>
             <div class="client-grid">
                 <div class="client-card">
-                    <img src="assets/logos/EC-Logistics-logo.png" alt="EC Logistics Logo" onclick="showPage('ec-logistics')" onerror="this.style.display='none';">
+                    <img src="assets/logos/EC-Logistics-logo.png" alt="EC Logistics Logo" onclick="window.location.href='/ec-logistics'" onerror="this.style.display='none';">
                     <h4>EC Logistics</h4>
                     <p style="color: rgba(255, 255, 255, 0.7); font-size: 0.9rem;">Transportation & Logistics</p>
                 </div>
@@ -706,47 +706,7 @@
         </div>
     </div>
 
-    <!-- Property Page -->
-    <div id="property" class="page">
-        <button class="back-button" onclick="showPage('main')">← Back</button>
-        
-        <div class="container">
-            <div class="logo">
-                <img src="assets/IconButtons/Soto Property.png" alt="Soto Property" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                <div class="logo-text" style="display: none;">Property</div>
-            </div>
-            <h1>SOTO Property</h1>
-            <p>This sister company will be linked soon.</p>
-        </div>
-    </div>
 
-    <!-- Logistics Page -->
-    <div id="logistics" class="page">
-        <button class="back-button" onclick="showPage('main')">← Back</button>
-        
-        <div class="container">
-            <div class="logo">
-                <img src="assets/IconButtons/SOTO Logistics.png" alt="SOTO Logistics" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                <div class="logo-text" style="display: none;">Logistics</div>
-            </div>
-            <h1>SOTO Logistics</h1>
-            <p>This sister company will be linked soon.</p>
-        </div>
-    </div>
-
-    <!-- Vending Page -->
-    <div id="vending" class="page">
-        <button class="back-button" onclick="showPage('main')">← Back</button>
-        
-        <div class="container">
-            <div class="logo">
-                <img src="assets/IconButtons/SOTO Vending.png" alt="SOTO Vending" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                <div class="logo-text" style="display: none;">Vending</div>
-            </div>
-            <h1>SOTO Vending</h1>
-            <p>This sister company will be linked soon.</p>
-        </div>
-    </div>
 
     <!-- Overlay for quote result -->
     <div class="overlay" id="overlay"></div>
@@ -1038,4 +998,4 @@
         });
     </script>
 </body>
-</html>
+</html> 
