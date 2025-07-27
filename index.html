@@ -289,14 +289,29 @@
     </style>
 </head>
 <body>
+    <script>
+        // Ensure main page is shown by default and clear any URL hash
+        window.addEventListener('load', function() {
+            // Clear any URL hash
+            if (window.location.hash) {
+                history.replaceState(null, null, window.location.pathname);
+            }
+            // Ensure main page is active
+            document.querySelectorAll('.page').forEach(page => {
+                page.classList.remove('active');
+            });
+            document.getElementById('main-page').classList.add('active');
+        });
+    </script>
+    
     <!-- Main SOTO Group Page -->
     <div id="main-page" class="page active">
-        <div class="container">
+    <div class="container">
             <div class="logo">
                 <img src="assets/logos/soto-logo.png" alt="SOTO Group Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                 <div class="logo-text">SOTO</div>
             </div>
-            <h1>SOTO Group</h1>
+        <h1>SOTO Group</h1>
             <a href="#" class="main-button" onclick="showPage('ec-logistics')">EC Logistics</a>
         </div>
     </div>
@@ -335,7 +350,7 @@
                 
                 <button type="submit" class="main-button" id="getQuoteBtn">
                     Get Quote
-                </button>
+            </button>
             </form>
             
             <div class="loading" id="loading">
