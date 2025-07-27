@@ -618,96 +618,6 @@
         </div>
     </div>
 
-    <!-- Software Overview Page -->
-    <div id="software" class="page">
-        <button class="back-button" onclick="showPage('main')">← Back</button>
-        
-        <div class="container">
-            <div class="software-logo" onclick="window.location.href='/soto'">
-                <img src="assets/logos/soto-logo.png" alt="SOTO Group Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                <div class="logo-text" style="display: none;">SOTO</div>
-            </div>
-            <h1>SOTO</h1>
-            <p>Software for Oversight of Transport Operations</p>
-        </div>
-    </div>
-
-    <!-- SOTO Section Page -->
-    <div id="soto" class="page">
-        <button class="back-button" onclick="showPage('software')">← Back</button>
-        
-        <div class="container">
-            <div class="soto-logo">
-                <img src="assets/logos/soto-logo.png" alt="SOTO Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-            </div>
-            
-            <div class="download-section">
-                <h3 style="margin-bottom: 1rem;">Download SOTO App</h3>
-                <p style="color: rgba(255, 255, 255, 0.8); margin-bottom: 1rem;">
-                    Get the latest version of SOTO for your business
-                </p>
-                <div class="download-buttons">
-                    <button class="download-button">iOS</button>
-                    <button class="download-button">Android</button>
-                    <button class="download-button">Mac</button>
-                    <button class="download-button">Windows</button>
-                </div>
-            </div>
-            
-            <h3 style="margin-bottom: 1rem;">Our Clients</h3>
-            <div class="client-grid">
-                <div class="client-card">
-                    <img src="assets/logos/EC-Logistics-logo.png" alt="EC Logistics Logo" onclick="window.location.href='/ec-logistics'" onerror="this.style.display='none';">
-                    <h4>EC Logistics</h4>
-                    <p style="color: rgba(255, 255, 255, 0.7); font-size: 0.9rem;">Transportation & Logistics</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- EC Logistics Quotes Page -->
-    <div id="ec-logistics" class="page">
-        <button class="back-button" onclick="showPage('soto')">← Back</button>
-        
-        <div class="container ec-logistics-container">
-            <div class="logo">
-                <img src="assets/logos/EC-Logistics-logo.png" alt="EC Logistics Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                <div class="logo-text" style="display: none;">EC</div>
-            </div>
-            <h1>Get Quote</h1>
-            
-            <form id="quoteForm">
-                <div class="form-group">
-                    <label for="clientCode">Client Code:</label>
-                    <input type="text" id="clientCode" name="clientCode" required>
-                    <p style="margin-top: 0.5rem; color: rgba(255, 255, 255, 0.6); font-size: 0.9rem;">
-                        (if you do not have a client code please contact EC Logistics)
-                    </p>
-                </div>
-                
-                <div class="form-group">
-                    <label for="collectionAddress">Collection Address:</label>
-                    <input type="text" id="collectionAddress" name="collectionAddress" placeholder="Start typing address..." required>
-                </div>
-                
-                <div class="form-group">
-                    <label for="deliveryAddress">Delivery Address:</label>
-                    <input type="text" id="deliveryAddress" name="deliveryAddress" placeholder="Start typing address..." required>
-                </div>
-                
-                <button type="submit" class="main-button" id="getQuoteBtn">
-                    Get Quote
-                </button>
-            </form>
-            
-            <div class="loading" id="loading">
-                Calculating route and generating quote...
-            </div>
-        </div>
-    </div>
-
-
-
     <!-- Overlay for quote result -->
     <div class="overlay" id="overlay"></div>
     
@@ -805,45 +715,6 @@
             
             // Initialize autocomplete when page loads
             initializeAutocomplete();
-            
-            // Handle direct URL access for SPA routing
-            const storedPath = sessionStorage.getItem('originalPath');
-            if (storedPath) {
-                // Clear the stored path
-                sessionStorage.removeItem('originalPath');
-                
-                // Show the correct page based on the stored path
-                if (storedPath === '/soto') {
-                    showPage('soto');
-                } else if (storedPath === '/software') {
-                    showPage('software');
-                } else if (storedPath === '/software/soto') {
-                    showPage('soto');
-                } else if (storedPath === '/software/soto/ec-logistics') {
-                    showPage('ec-logistics');
-                } else if (storedPath === '/ec-logistics') {
-                    showPage('ec-logistics');
-                } else {
-                    showPage('main');
-                }
-            } else {
-                // Check current URL path (for direct access)
-                const path = window.location.pathname;
-                if (path === '/soto') {
-                    showPage('soto');
-                } else if (path === '/software') {
-                    showPage('software');
-                } else if (path === '/software/soto') {
-                    showPage('soto');
-                } else if (path === '/software/soto/ec-logistics') {
-                    showPage('ec-logistics');
-                } else if (path === '/ec-logistics') {
-                    showPage('ec-logistics');
-                } else {
-                    // Default to main page
-                    showPage('main');
-                }
-            }
         });
 
         async function getQuote() {
@@ -998,4 +869,4 @@
         });
     </script>
 </body>
-</html> 
+</html>
