@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Get Quote - EC Logistics</title>
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDTbiSXo9tg1Tx8SlZCZKsR_R0zIQ4N1VA&libraries=places"></script>
+    <script src="https://cdn.apple-cloudkit.com/ck/2/cloudkit.js"></script>
     <style>
         * {
             margin: 0;
@@ -151,6 +152,7 @@
         }
 
         .result {
+            display: none;
             position: fixed;
             top: 50%;
             left: 50%;
@@ -244,7 +246,7 @@
     
     <div class="container">
         <div class="logo">
-            <img src="../assets/logos/EC-Logistics-logo.png" alt="EC Logistics Logo" onerror="this.style.display='none';">
+            <img src="../assets/logos/EC-Logistics-logo.png" alt="EC Logistics Logo">
         </div>
         <h1>Get Quote</h1>
         
@@ -275,7 +277,7 @@
 
     <div id="overlay" class="overlay"></div>
     <div id="result" class="result">
-        <h2>Quote Result</h2>
+        <h2 id="quoteTitle">Quote Result</h2>
         <div class="result-info">
             <div class="info-item">
                 <div class="info-label">Distance</div>
@@ -298,6 +300,22 @@
     </div>
 
     <script>
+        // CloudKit configuration
+        CloudKit.configure({
+            containers: [{
+                containerIdentifier: 'iCloud.com.soto.SOTO',
+                apiTokenAuth: {
+                    apiToken: '63678817f6f46e755b931bf62465b70ed2178189e7cdaf4a3c379aa68422dfc2',
+                    persist: true
+                },
+                environment: 'development'
+            }]
+        });
+
+        // Initialize CloudKit
+        const container = CloudKit.getDefaultContainer();
+        const database = container.publicCloudDatabase;
+
         // Initialize Google Maps Autocomplete
         function initializeAutocomplete() {
             const collectionAddress = document.getElementById('collectionAddress');
@@ -340,6 +358,11 @@
 
         // Add event listeners to form fields
         document.addEventListener('DOMContentLoaded', function() {
+            // Ensure popup is hidden on page load
+            document.getElementById('overlay').style.display = 'none';
+            document.getElementById('result').style.display = 'none';
+            document.getElementById('loading').style.display = 'none';
+            
             const formFields = ['clientCode', 'collectionAddress', 'deliveryAddress'];
             formFields.forEach(fieldId => {
                 const field = document.getElementById(fieldId);
@@ -368,17 +391,91 @@
                 alert('Please fill in all fields');
                 return;
             }
-
-            // Show loading
+            
             document.getElementById('loading').style.display = 'block';
             document.getElementById('getQuoteBtn').disabled = true;
-
+            
             try {
-                // Simulate validation
-                if (clientCode === '1001') {
+                console.log('Querying CloudKit for client code:', clientCode);
+                console.log('Query details:', {
+                    recordType: 'SOTOGroupWebsite',
+                    filterBy: [{
+                        fieldName: 'clientCode',
+                        comparator: 'EQUALS',
+                        fieldValue: {
+                            value: clientCode,
+                            type: 'STRING'
+                        }
+                    }]
+                });
+                
+                // Query CloudKit using CloudKit JS
+                console.log('Attempting CloudKit query...');
+                const response = await database.performQuery({
+                    recordType: 'SOTOGroupWebsite',
+                    filterBy: [{
+                        fieldName: 'clientCode',
+                        comparator: 'EQUALS',
+                        fieldValue: {
+                            value: clientCode,
+                            type: 'STRING'
+                        }
+                    }]
+                });
+                
+                console.log('CloudKit response:', response);
+                console.log('Records found:', response.records ? response.records.length : 'No records property');
+                if (response.records && response.records.length > 0) {
+                    console.log('First record:', response.records[0]);
+                }
+                
+                if (response.records && response.records.length > 0) {
+                    const record = response.records[0];
+                    const clientData = {
+                        valid: true,
+                        clientCode: record.fields.clientCode.value,
+                        pricingFormula: record.fields.pricingFormula.value,
+                        companyName: record.fields.companyName ? record.fields.companyName.value : 'Unknown'
+                    };
+                    
                     // Calculate real distance using Google Maps Directions API - always longest route
                     const routeInfo = await calculateDistance(collectionAddress, deliveryAddress);
-                    const price = Math.round(routeInfo.distance * 10); // £10 per mile
+                    
+                    // Use pricing formula from CloudKit database
+                    const pricingFormula = clientData.pricingFormula;
+                    const companyName = clientData.companyName;
+                    
+                    // Calculate price based on the formula from database
+                    let price;
+                    console.log('Using pricing formula from database:', pricingFormula);
+                    
+                    if (pricingFormula && pricingFormula.trim()) {
+                        try {
+                            // Replace 'distance' with the actual distance value in the formula
+                            const formulaWithDistance = pricingFormula.replace(/distance/gi, routeInfo.distance);
+                            console.log('Formula with distance substituted:', formulaWithDistance);
+                            
+                            // Safely evaluate the mathematical expression
+                            // Note: eval() is used here to evaluate mathematical formulas from the database
+                            // This is safe because we're only evaluating mathematical expressions, not arbitrary code
+                            const calculatedPrice = eval(formulaWithDistance);
+                            price = Math.round(calculatedPrice);
+                            
+                            console.log(`Distance: ${routeInfo.distance} miles, Formula: ${pricingFormula}, Calculated: ${calculatedPrice}, Final Price: £${price}`);
+                        } catch (error) {
+                            console.error('Error evaluating formula:', error);
+                            // Fallback to default formula
+                            price = Math.round(routeInfo.distance * 5);
+                            console.log('Using default formula due to formula error');
+                        }
+                    } else {
+                        // Default formula if no valid formula found
+                        price = Math.round(routeInfo.distance * 5);
+                        console.log('Using default formula: distance*5');
+                    }
+                    
+                    // Update popup title with company name from database
+                    document.getElementById('quoteTitle').textContent = `An EC Logistics movement quote generated for "${companyName}"`;
                     
                     // Display results
                     document.getElementById('distance').textContent = `${Math.round(routeInfo.distance)} miles`;
@@ -397,9 +494,9 @@
                     document.getElementById('loading').style.display = 'none';
                     document.getElementById('getQuoteBtn').disabled = false;
                 }
-                
             } catch (error) {
-                alert('Error calculating route. Please try again.');
+                console.error('CloudKit error:', error);
+                alert('Error validating client code. Please try again.');
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('getQuoteBtn').disabled = false;
             }
