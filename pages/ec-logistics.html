@@ -391,10 +391,10 @@
                 alert('Please fill in all fields');
                 return;
             }
-            
+
             document.getElementById('loading').style.display = 'block';
             document.getElementById('getQuoteBtn').disabled = true;
-            
+
             try {
                 console.log('Querying CloudKit for client code:', clientCode);
                 console.log('Query details:', {
