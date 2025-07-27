@@ -845,6 +845,45 @@
             
             // Initialize autocomplete when page loads
             initializeAutocomplete();
+            
+            // Handle direct URL access for SPA routing
+            const storedPath = sessionStorage.getItem('originalPath');
+            if (storedPath) {
+                // Clear the stored path
+                sessionStorage.removeItem('originalPath');
+                
+                // Show the correct page based on the stored path
+                if (storedPath === '/soto') {
+                    showPage('soto');
+                } else if (storedPath === '/software') {
+                    showPage('software');
+                } else if (storedPath === '/software/soto') {
+                    showPage('soto');
+                } else if (storedPath === '/software/soto/ec-logistics') {
+                    showPage('ec-logistics');
+                } else if (storedPath === '/ec-logistics') {
+                    showPage('ec-logistics');
+                } else {
+                    showPage('main');
+                }
+            } else {
+                // Check current URL path (for direct access)
+                const path = window.location.pathname;
+                if (path === '/soto') {
+                    showPage('soto');
+                } else if (path === '/software') {
+                    showPage('software');
+                } else if (path === '/software/soto') {
+                    showPage('soto');
+                } else if (path === '/software/soto/ec-logistics') {
+                    showPage('ec-logistics');
+                } else if (path === '/ec-logistics') {
+                    showPage('ec-logistics');
+                } else {
+                    // Default to main page
+                    showPage('main');
+                }
+            }
         });
 
         async function getQuote() {
@@ -999,4 +1038,4 @@
         });
     </script>
 </body>
-</html> 
+</html>
