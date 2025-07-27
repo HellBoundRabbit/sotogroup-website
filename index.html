@@ -137,6 +137,346 @@
         .main-button.software:hover {
             box-shadow: 0 8px 25px rgba(255, 149, 0, 0.4);
         }
+
+        .back-button {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .back-button:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .client-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+
+        .client-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 1.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .client-card:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .client-card img {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            margin: 0 auto 1rem;
+            display: block;
+        }
+
+        .download-section {
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            background: rgba(0, 122, 255, 0.1);
+            border-radius: 15px;
+            border: 1px solid rgba(0, 122, 255, 0.3);
+        }
+
+        .download-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .download-button {
+            background: #007AFF;
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .download-button:hover {
+            background: #0056CC;
+            transform: translateY(-2px);
+        }
+
+        .download-button.ios {
+            background: #000000;
+        }
+
+        .download-button.android {
+            background: #3DDC84;
+        }
+
+        .download-button.mac {
+            background: #007AFF;
+        }
+
+        .download-button.windows {
+            background: #00A4EF;
+        }
+
+        /* Hide pages by default */
+        .page {
+            display: none;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        /* EC Logistics specific styles */
+        .ec-logistics-container {
+            max-width: 500px;
+            width: 100%;
+        }
+
+        .ec-logistics-container .logo {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 1rem;
+        }
+
+        .ec-logistics-container .logo img {
+            padding: 10px;
+        }
+
+        .ec-logistics-container h1 {
+            font-size: 2rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+            text-align: left;
+            position: relative;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        input, textarea {
+            width: 100%;
+            padding: 1rem;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 15px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            backdrop-filter: blur(10px);
+        }
+
+        input::placeholder, textarea::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #007AFF;
+            box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.2);
+        }
+
+        .loading {
+            display: none;
+            margin-top: 1rem;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .result {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95);
+            padding: 2rem;
+            border-radius: 20px;
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            z-index: 1000;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        .result h3 {
+            color: #34C759;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .result p {
+            margin-bottom: 0.5rem;
+            color: white;
+        }
+
+        .result-buttons {
+            margin-top: 1.5rem;
+            display: flex;
+            gap: 1rem;
+        }
+
+        .result-buttons button {
+            flex: 1;
+            padding: 1rem;
+            border: none;
+            border-radius: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 1rem;
+        }
+
+        .proceed-btn {
+            background: #34C759;
+            color: white;
+        }
+
+        .close-btn {
+            background: #FF3B30;
+            color: white;
+        }
+
+        .proceed-btn:hover {
+            background: #30D158;
+            transform: translateY(-2px);
+        }
+
+        .close-btn:hover {
+            background: #FF453A;
+            transform: translateY(-2px);
+        }
+
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+
+        /* Main page specific styles */
+        .main-page {
+            position: relative;
+            min-height: 100vh;
+        }
+
+        .soto-group-logo {
+            position: fixed;
+            top: 2rem;
+            left: 2rem;
+            font-size: 1.8rem;
+            font-weight: 700;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            letter-spacing: -0.5px;
+            z-index: 100;
+        }
+
+        .soto-group-logo .soto {
+            color: white;
+        }
+
+        .soto-group-logo .group {
+            color: white;
+        }
+
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 0;
+        }
+
+        .service-buttons {
+            display: flex;
+            flex-direction: row;
+            gap: 0.5rem;
+            width: 100%;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 0.5rem;
+        }
+
+        .service-button {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0;
+            padding: 0;
+            flex: 1;
+        }
+
+        .service-button:hover {
+            transform: translateY(-5px);
+        }
+
+        .service-button.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .service-button.disabled:hover {
+            transform: none;
+        }
+
+        .service-icon {
+            width: 300px;
+            height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .service-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .service-buttons {
+                flex-direction: column;
+                gap: 1rem;
+                padding: 0 0.5rem;
+            }
+
+            .service-icon {
+                width: 150px;
+                height: 150px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -147,27 +487,279 @@
             if (window.location.hash) {
                 history.replaceState(null, null, window.location.pathname);
             }
+            // Show main page by default
+            showPage('main');
         });
     </script>
     
-    <div class="container">
-        <div class="logo">
-            <img src="assets/logos/soto-logo.png" alt="SOTO Group Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-            <div class="logo-text">SOTO</div>
+    <!-- Main Page -->
+    <div id="main" class="page active main-page">
+        <div class="main-content">
+            <div class="service-buttons">
+                <button class="service-button" onclick="showPage('property')">
+                    <div class="service-icon">
+                        <img src="assets/IconButtons/Soto Property.png" alt="Soto Property" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div style="display: none; font-size: 2rem;">🏠</div>
+                    </div>
+                </button>
+                <button class="service-button" onclick="showPage('logistics')">
+                    <div class="service-icon">
+                        <img src="assets/IconButtons/SOTO Logistics.png" alt="SOTO Logistics" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div style="display: none; font-size: 2rem;">🚚</div>
+                    </div>
+                </button>
+                <button class="service-button" onclick="showPage('software')">
+                    <div class="service-icon">
+                        <img src="assets/IconButtons/SOTO.png" alt="SOTO Software" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div style="display: none; font-size: 2rem;">💻</div>
+                    </div>
+                </button>
+                <button class="service-button" onclick="showPage('vending')">
+                    <div class="service-icon">
+                        <img src="assets/IconButtons/SOTO Vending.png" alt="SOTO Vending" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div style="display: none; font-size: 2rem;">🛍️</div>
+                    </div>
+                </button>
+            </div>
         </div>
-        <h1>SOTO Group</h1>
+    </div>
+
+    <!-- Software Overview Page -->
+    <div id="software" class="page">
+        <button class="back-button" onclick="showPage('main')">← Back</button>
         
-        <div class="button-grid">
-            <button class="main-button property disabled" onclick="showComingSoon('Property')">Property</button>
-            <button class="main-button logistics disabled" onclick="showComingSoon('Logistics')">Logistics</button>
-            <a href="software/index.html" class="main-button software">Software</a>
+        <div class="container">
+            <div class="logo">
+                <img src="assets/logos/soto-logo.png" alt="SOTO Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <div class="logo-text">SOTO</div>
+            </div>
+            <h1>SOTO Software</h1>
+            <p style="margin-bottom: 2rem; color: rgba(255, 255, 255, 0.8);">
+                Enterprise software solutions for modern businesses
+            </p>
+            <button class="main-button" onclick="showPage('soto')">Continue</button>
+        </div>
+    </div>
+
+    <!-- SOTO Section Page -->
+    <div id="soto" class="page">
+        <button class="back-button" onclick="showPage('software')">← Back</button>
+        
+        <div class="container">
+            <div class="logo">
+                <img src="assets/logos/soto-logo.png" alt="SOTO Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <div class="logo-text">SOTO</div>
+            </div>
+            <h1>SOTO</h1>
+            
+            <div class="download-section">
+                <h3 style="margin-bottom: 1rem;">Download SOTO App</h3>
+                <p style="color: rgba(255, 255, 255, 0.8); margin-bottom: 1rem;">
+                    Get the latest version of SOTO for your business
+                </p>
+                <div class="download-buttons">
+                    <button class="download-button ios">iOS</button>
+                    <button class="download-button android">Android</button>
+                    <button class="download-button mac">Mac</button>
+                    <button class="download-button windows">Windows</button>
+                </div>
+            </div>
+            
+            <h3 style="margin-bottom: 1rem;">Our Clients</h3>
+            <div class="client-grid">
+                <div class="client-card" onclick="showPage('ec-logistics')">
+                    <img src="assets/logos/EC-Logistics-logo.png" alt="EC Logistics Logo" onerror="this.style.display='none';">
+                    <h4>EC Logistics</h4>
+                    <p style="color: rgba(255, 255, 255, 0.7); font-size: 0.9rem;">Transportation & Logistics</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- EC Logistics Quotes Page -->
+    <div id="ec-logistics" class="page">
+        <button class="back-button" onclick="showPage('soto')">← Back</button>
+        
+        <div class="container ec-logistics-container">
+            <div class="logo">
+                <img src="assets/logos/EC-Logistics-logo.png" alt="EC Logistics Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <div class="logo-text">EC</div>
+            </div>
+            <h1>Get Quote</h1>
+            
+            <form id="quoteForm">
+                <div class="form-group">
+                    <label for="clientCode">Client Code:</label>
+                    <input type="text" id="clientCode" name="clientCode" required>
+                    <p style="margin-top: 0.5rem; color: rgba(255, 255, 255, 0.6); font-size: 0.9rem;">
+                        (if you do not have a client code please contact EC Logistics)
+                    </p>
+                </div>
+                
+                <div class="form-group">
+                    <label for="collectionAddress">Collection Address:</label>
+                    <input type="text" id="collectionAddress" name="collectionAddress" placeholder="Start typing address..." required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="deliveryAddress">Delivery Address:</label>
+                    <input type="text" id="deliveryAddress" name="deliveryAddress" placeholder="Start typing address..." required>
+                </div>
+                
+                <button type="submit" class="main-button" id="getQuoteBtn">
+                    Get Quote
+                </button>
+            </form>
+            
+            <div class="loading" id="loading">
+                Calculating route and generating quote...
+            </div>
+        </div>
+    </div>
+
+    <!-- Property Page -->
+    <div id="property" class="page">
+        <button class="back-button" onclick="showPage('main')">← Back</button>
+        
+        <div class="container">
+            <div class="logo">
+                <img src="assets/IconButtons/Soto Property.png" alt="Soto Property" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <div class="logo-text" style="display: none;">Property</div>
+            </div>
+            <h1>Property</h1>
+            <p>Property services coming soon!</p>
+        </div>
+    </div>
+
+    <!-- Logistics Page -->
+    <div id="logistics" class="page">
+        <button class="back-button" onclick="showPage('main')">← Back</button>
+        
+        <div class="container">
+            <div class="logo">
+                <img src="assets/IconButtons/SOTO Logistics.png" alt="SOTO Logistics" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <div class="logo-text" style="display: none;">Logistics</div>
+            </div>
+            <h1>Logistics</h1>
+            <p>Logistics services coming soon!</p>
+        </div>
+    </div>
+
+    <!-- Vending Page -->
+    <div id="vending" class="page">
+        <button class="back-button" onclick="showPage('main')">← Back</button>
+        
+        <div class="container">
+            <div class="logo">
+                <img src="assets/IconButtons/SOTO Vending.png" alt="SOTO Vending" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <div class="logo-text" style="display: none;">Vending</div>
+            </div>
+            <h1>Vending</h1>
+            <p>Vending services coming soon!</p>
+        </div>
+    </div>
+
+    <!-- Overlay for quote result -->
+    <div class="overlay" id="overlay"></div>
+    
+    <div class="result" id="result">
+        <h3>Quote Generated</h3>
+        <p><strong>Distance:</strong> <span id="distance"></span></p>
+        <p><strong>Price:</strong> <span id="price"></span></p>
+        <div class="result-buttons">
+            <button class="proceed-btn" onclick="proceedWithQuote()">Proceed</button>
+            <button class="close-btn" onclick="closeQuote()">Close</button>
         </div>
     </div>
 
     <script>
+        // Navigation function
+        function showPage(pageId) {
+            // Hide all pages
+            document.querySelectorAll('.page').forEach(page => {
+                page.classList.remove('active');
+            });
+            
+            // Show the selected page
+            document.getElementById(pageId).classList.add('active');
+            
+            // Update URL without page reload
+            history.pushState(null, null, `/${pageId === 'main' ? '' : pageId}`);
+        }
+
         function showComingSoon(section) {
             alert(`${section} section coming soon!`);
         }
+
+        function downloadSOTO() {
+            alert('Download functionality coming soon!');
+        }
+
+        // Quote form functionality
+        document.getElementById('quoteForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            getQuote();
+        });
+
+        async function getQuote() {
+            const clientCode = document.getElementById('clientCode').value;
+            const collectionAddress = document.getElementById('collectionAddress').value;
+            const deliveryAddress = document.getElementById('deliveryAddress').value;
+            
+            if (!clientCode || !collectionAddress || !deliveryAddress) {
+                alert('Please fill in all fields');
+                return;
+            }
+
+            // Show loading
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('getQuoteBtn').disabled = true;
+
+            try {
+                // Simulate API call
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                // Simulate validation
+                if (clientCode === '1001') {
+                    // Calculate distance (simulated)
+                    const distance = Math.floor(Math.random() * 250) + 50;
+                    const price = distance * 10; // £10 per mile
+                    
+                    // Display results
+                    document.getElementById('distance').textContent = `${distance} miles`;
+                    document.getElementById('price').textContent = `£${price}`;
+                    
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('overlay').style.display = 'block';
+                    document.getElementById('result').style.display = 'block';
+                    document.getElementById('getQuoteBtn').disabled = false;
+                } else {
+                    alert('Incorrect client code');
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('getQuoteBtn').disabled = false;
+                }
+                
+            } catch (error) {
+                alert('Error calculating quote. Please try again.');
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('getQuoteBtn').disabled = false;
+            }
+        }
+
+        function proceedWithQuote() {
+            alert('Proceed functionality coming soon!');
+        }
+
+        function closeQuote() {
+            document.getElementById('result').style.display = 'none';
+            document.getElementById('overlay').style.display = 'none';
+            document.getElementById('quoteForm').reset();
+        }
+
+        // Close overlay when clicking outside
+        document.getElementById('overlay').addEventListener('click', function() {
+            closeQuote();
+        });
     </script>
 </body>
 </html> 
