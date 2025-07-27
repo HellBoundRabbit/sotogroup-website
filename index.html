@@ -634,6 +634,22 @@
     </div>
 
     <script>
+        // CloudKit configuration
+        CloudKit.configure({
+            containers: [{
+                containerIdentifier: 'iCloud.com.soto.SOTO',
+                apiTokenAuth: {
+                    apiToken: '712aded6feaa40243f5ba7da1232737bbf3e01b9a487797ee7e24286498037f8',
+                    persist: true
+                },
+                environment: 'production'
+            }]
+        });
+
+        // Initialize CloudKit
+        const container = CloudKit.getDefaultContainer();
+        const database = container.publicCloudDatabase;
+
         // Navigation function
         function showPage(pageId) {
             // Hide all pages
@@ -853,8 +869,68 @@
             });
         }
 
-        function proceedWithQuote() {
-            alert('Proceed functionality coming soon!');
+        async function proceedWithQuote() {
+            try {
+                // Get the current quote data
+                const clientCode = document.getElementById('clientCode').value;
+                const collectionAddress = document.getElementById('collectionAddress').value;
+                const deliveryAddress = document.getElementById('deliveryAddress').value;
+                const distance = parseFloat(document.getElementById('distance').textContent.replace(' miles', ''));
+                const price = parseFloat(document.getElementById('price').textContent.replace('£', ''));
+                
+                // Show loading state
+                const proceedBtn = document.querySelector('.proceed-btn');
+                const originalText = proceedBtn.textContent;
+                proceedBtn.textContent = 'Submitting booking...';
+                proceedBtn.disabled = true;
+                
+                // Create booking record in CloudKit
+                const bookingRecord = {
+                    recordType: 'SOTOWebsiteBookings',
+                    fields: {
+                        companyNameString: {
+                            value: clientCode,
+                            type: 'STRING'
+                        },
+                        distanceDouble: {
+                            value: distance,
+                            type: 'DOUBLE'
+                        },
+                        locationALocation: {
+                            value: collectionAddress,
+                            type: 'STRING'
+                        },
+                        locationBLocation: {
+                            value: deliveryAddress,
+                            type: 'STRING'
+                        },
+                        priceDouble: {
+                            value: price,
+                            type: 'DOUBLE'
+                        }
+                    }
+                };
+                
+                console.log('Creating booking record:', bookingRecord);
+                
+                // Save the booking to CloudKit
+                const saveResponse = await database.saveRecords([bookingRecord]);
+                
+                console.log('Booking saved successfully:', saveResponse);
+                
+                // Show success message
+                alert('Booking request submitted successfully! Your movement request has been recorded and will be processed by our team.');
+                closeQuote();
+                
+            } catch (error) {
+                console.error('Error submitting booking:', error);
+                alert('Error submitting booking. Please try again or contact EC Logistics directly.');
+            } finally {
+                // Reset button state
+                const proceedBtn = document.querySelector('.proceed-btn');
+                proceedBtn.textContent = 'Request Movement';
+                proceedBtn.disabled = false;
+            }
         }
 
         function closeQuote() {
