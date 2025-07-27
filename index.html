@@ -28,7 +28,7 @@
             border-radius: 20px;
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            max-width: 400px;
+            max-width: 500px;
             width: 90%;
         }
 
@@ -73,8 +73,15 @@
             display: none;
         }
 
+        .button-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+
         .main-button {
-            background: #FF3B30;
+            background: #007AFF;
             color: white;
             border: none;
             padding: 1.5rem 3rem;
@@ -83,208 +90,52 @@
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(255, 59, 48, 0.3);
-            margin: 0.5rem;
+            box-shadow: 0 4px 15px rgba(0, 122, 255, 0.3);
             text-decoration: none;
             display: inline-block;
         }
 
         .main-button:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(255, 59, 48, 0.4);
+            box-shadow: 0 8px 25px rgba(0, 122, 255, 0.4);
         }
 
         .main-button:active {
             transform: translateY(0);
         }
 
-        .back-button {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 10px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
+        .main-button.disabled {
+            background: #666666;
+            color: #999999;
+            cursor: not-allowed;
+            box-shadow: none;
         }
 
-        .back-button:hover {
-            background: rgba(255, 255, 255, 0.2);
+        .main-button.disabled:hover {
+            transform: none;
+            box-shadow: none;
         }
 
-        /* EC Logistics specific styles */
-        .ec-logistics-container {
-            max-width: 500px;
-            width: 100%;
+        .main-button.property {
+            background: #007AFF;
         }
 
-        .ec-logistics-container .logo {
-            width: 80px;
-            height: 80px;
-            margin: 0 auto 1rem;
-        }
-
-        .ec-logistics-container .logo img {
-            padding: 10px;
-        }
-
-        .ec-logistics-container h1 {
-            font-size: 2rem;
-        }
-
-        .form-group {
-            margin-bottom: 1.5rem;
-            text-align: left;
-            position: relative;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 0.5rem;
-            color: white;
-            font-weight: 600;
-            font-size: 1rem;
-        }
-
-        input, textarea {
-            width: 100%;
-            padding: 1rem;
-            border: 2px solid rgba(255, 255, 255, 0.2);
-            border-radius: 15px;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            backdrop-filter: blur(10px);
-        }
-
-        input::placeholder, textarea::placeholder {
-            color: rgba(255, 255, 255, 0.6);
-        }
-
-        input:focus, textarea:focus {
-            outline: none;
-            border-color: #007AFF;
-            box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.2);
-        }
-
-        .loading {
-            display: none;
-            margin-top: 1rem;
-            color: rgba(255, 255, 255, 0.7);
-        }
-
-        .result {
-            display: none;
-            margin-top: 2rem;
-            padding: 1.5rem;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 15px;
-            border-left: 4px solid #34C759;
-            backdrop-filter: blur(10px);
-        }
-
-        .result h3 {
-            color: #34C759;
-            margin-bottom: 1rem;
-            font-weight: 600;
-        }
-
-        .result p {
-            margin-bottom: 0.5rem;
-            color: white;
-        }
-
-        .result-buttons {
-            margin-top: 1.5rem;
-            display: flex;
-            gap: 1rem;
-        }
-
-        .result-buttons button {
-            flex: 1;
-            padding: 1rem;
-            border: none;
-            border-radius: 15px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-size: 1rem;
-        }
-
-        .proceed-btn {
+        .main-button.logistics {
             background: #34C759;
-            color: white;
+            box-shadow: 0 4px 15px rgba(52, 199, 89, 0.3);
         }
 
-        .close-btn {
-            background: #FF3B30;
-            color: white;
+        .main-button.logistics:hover {
+            box-shadow: 0 8px 25px rgba(52, 199, 89, 0.4);
         }
 
-        .proceed-btn:hover {
-            background: #30D158;
-            transform: translateY(-2px);
+        .main-button.software {
+            background: #FF9500;
+            box-shadow: 0 4px 15px rgba(255, 149, 0, 0.3);
         }
 
-        .close-btn:hover {
-            background: #FF453A;
-            transform: translateY(-2px);
-        }
-
-        .autocomplete-dropdown {
-            position: absolute;
-            top: 100%;
-            left: 0;
-            right: 0;
-            background: rgba(0, 0, 0, 0.9);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 10px;
-            max-height: 200px;
-            overflow-y: auto;
-            z-index: 1000;
-            backdrop-filter: blur(10px);
-            display: none;
-        }
-
-        .autocomplete-item {
-            padding: 12px 16px;
-            cursor: pointer;
-            color: white;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            transition: background-color 0.2s ease;
-        }
-
-        .autocomplete-item:hover {
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        .autocomplete-item:last-child {
-            border-bottom: none;
-        }
-
-        .autocomplete-item .main-text {
-            font-weight: 600;
-            margin-bottom: 2px;
-        }
-
-        .autocomplete-item .secondary-text {
-            font-size: 0.9rem;
-            color: rgba(255, 255, 255, 0.7);
-        }
-
-        /* Hide pages by default */
-        .page {
-            display: none;
-        }
-
-        .page.active {
-            display: block;
+        .main-button.software:hover {
+            box-shadow: 0 8px 25px rgba(255, 149, 0, 0.4);
         }
     </style>
 </head>
@@ -296,334 +147,27 @@
             if (window.location.hash) {
                 history.replaceState(null, null, window.location.pathname);
             }
-            // Ensure main page is active
-            document.querySelectorAll('.page').forEach(page => {
-                page.classList.remove('active');
-            });
-            document.getElementById('main-page').classList.add('active');
         });
     </script>
     
-    <!-- Main SOTO Group Page -->
-    <div id="main-page" class="page active">
     <div class="container">
-            <div class="logo">
-                <img src="assets/logos/soto-logo.png" alt="SOTO Group Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                <div class="logo-text">SOTO</div>
-            </div>
-        <h1>SOTO Group</h1>
-            <a href="#" class="main-button" onclick="showPage('ec-logistics')">EC Logistics</a>
+        <div class="logo">
+            <img src="assets/logos/soto-logo.png" alt="SOTO Group Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+            <div class="logo-text">SOTO</div>
         </div>
-    </div>
-
-    <!-- EC Logistics Page -->
-    <div id="ec-logistics" class="page">
-        <button class="back-button" onclick="showPage('main-page')">← Back</button>
+        <h1>SOTO Group</h1>
         
-        <div class="container ec-logistics-container">
-            <div class="logo">
-                <img src="assets/logos/EC-Logistics-logo.png" alt="EC Logistics Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                <div class="logo-text">EC</div>
-            </div>
-            <h1>Get Quote</h1>
-            
-            <form id="quoteForm">
-                <div class="form-group">
-                    <label for="clientCode">Client Code:</label>
-                    <input type="text" id="clientCode" name="clientCode" required>
-                    <p style="margin-top: 0.5rem; color: rgba(255, 255, 255, 0.6); font-size: 0.9rem;">
-                        (if you do not have a client code please contact EC Logistics)
-                    </p>
-                </div>
-                
-                <div class="form-group">
-                    <label for="collectionAddress">Collection Address:</label>
-                    <input type="text" id="collectionAddress" name="collectionAddress" placeholder="Start typing address..." required autocomplete="off">
-                    <div class="autocomplete-dropdown" id="collectionDropdown"></div>
-                </div>
-                
-                <div class="form-group">
-                    <label for="deliveryAddress">Delivery Address:</label>
-                    <input type="text" id="deliveryAddress" name="deliveryAddress" placeholder="Start typing address..." required autocomplete="off">
-                    <div class="autocomplete-dropdown" id="deliveryDropdown"></div>
-                </div>
-                
-                <button type="submit" class="main-button" id="getQuoteBtn">
-                    Get Quote
-            </button>
-            </form>
-            
-            <div class="loading" id="loading">
-                Calculating route and generating quote...
-            </div>
-            
-            <div class="result" id="result">
-                <h3>Quote Generated</h3>
-                <p><strong>Distance:</strong> <span id="distance"></span></p>
-                <p><strong>Price:</strong> <span id="price"></span></p>
-                <div class="result-buttons">
-                    <button class="proceed-btn" onclick="proceedWithQuote()">Proceed</button>
-                    <button class="close-btn" onclick="closeQuote()">Close</button>
-                </div>
-            </div>
+        <div class="button-grid">
+            <button class="main-button property disabled" onclick="showComingSoon('Property')">Property</button>
+            <button class="main-button logistics disabled" onclick="showComingSoon('Logistics')">Logistics</button>
+            <a href="software/index.html" class="main-button software">Software</a>
         </div>
     </div>
 
     <script>
-        // Navigation function
-        function showPage(pageId) {
-            // Hide all pages
-            document.querySelectorAll('.page').forEach(page => {
-                page.classList.remove('active');
-            });
-            
-            // Show the selected page
-            document.getElementById(pageId).classList.add('active');
+        function showComingSoon(section) {
+            alert(`${section} section coming soon!`);
         }
-
-        // Google Maps API Key - You'll need to replace this with your actual API key
-        const GOOGLE_MAPS_API_KEY = 'YOUR_GOOGLE_MAPS_API_KEY';
-        
-        // Store validated client data
-        let validatedClientData = null;
-        
-        // Initialize Google Places Autocomplete
-        let collectionAutocomplete;
-        let deliveryAutocomplete;
-        
-        function initAutocomplete() {
-            // Initialize for collection address
-            const collectionInput = document.getElementById('collectionAddress');
-            const collectionDropdown = document.getElementById('collectionDropdown');
-            
-            // Initialize for delivery address
-            const deliveryInput = document.getElementById('deliveryAddress');
-            const deliveryDropdown = document.getElementById('deliveryDropdown');
-            
-            // Create custom autocomplete for collection
-            collectionInput.addEventListener('input', function() {
-                if (this.value.length > 2) {
-                    searchPlaces(this.value, collectionDropdown, this);
-                } else {
-                    collectionDropdown.style.display = 'none';
-                }
-            });
-            
-            // Create custom autocomplete for delivery
-            deliveryInput.addEventListener('input', function() {
-                if (this.value.length > 2) {
-                    searchPlaces(this.value, deliveryDropdown, this);
-                } else {
-                    deliveryDropdown.style.display = 'none';
-                }
-            });
-            
-            // Hide dropdowns when clicking outside
-            document.addEventListener('click', function(e) {
-                if (!e.target.closest('.form-group')) {
-                    collectionDropdown.style.display = 'none';
-                    deliveryDropdown.style.display = 'none';
-                }
-            });
-        }
-        
-        async function searchPlaces(query, dropdown, input) {
-            try {
-                // For demo purposes, we'll simulate the API call
-                // In production, you would use the actual Google Places API
-                const response = await simulatePlacesAPI(query);
-                
-                dropdown.innerHTML = '';
-                
-                if (response.predictions && response.predictions.length > 0) {
-                    response.predictions.forEach(prediction => {
-                        const item = document.createElement('div');
-                        item.className = 'autocomplete-item';
-                        item.innerHTML = `
-                            <div class="main-text">${prediction.structured_formatting.main_text}</div>
-                            <div class="secondary-text">${prediction.structured_formatting.secondary_text}</div>
-                        `;
-                        
-                        item.addEventListener('click', function() {
-                            input.value = prediction.description;
-                            dropdown.style.display = 'none';
-                        });
-                        
-                        dropdown.appendChild(item);
-                    });
-                    
-                    dropdown.style.display = 'block';
-                } else {
-                    dropdown.style.display = 'none';
-                }
-            } catch (error) {
-                console.error('Error fetching places:', error);
-                dropdown.style.display = 'none';
-            }
-        }
-        
-        // Simulate Google Places API response
-        async function simulatePlacesAPI(query) {
-            // Simulate API delay
-            await new Promise(resolve => setTimeout(resolve, 300));
-            
-            // Mock data based on query
-            const mockPredictions = [
-                {
-                    description: `${query}, London, UK`,
-                    structured_formatting: {
-                        main_text: query,
-                        secondary_text: 'London, UK'
-                    }
-                },
-                {
-                    description: `${query} Street, Manchester, UK`,
-                    structured_formatting: {
-                        main_text: `${query} Street`,
-                        secondary_text: 'Manchester, UK'
-                    }
-                },
-                {
-                    description: `${query} Road, Birmingham, UK`,
-                    structured_formatting: {
-                        main_text: `${query} Road`,
-                        secondary_text: 'Birmingham, UK'
-                    }
-                },
-                {
-                    description: `${query} Lane, Liverpool, UK`,
-                    structured_formatting: {
-                        main_text: `${query} Lane`,
-                        secondary_text: 'Liverpool, UK'
-                    }
-                }
-            ];
-            
-            return {
-                predictions: mockPredictions
-            };
-        }
-
-        document.getElementById('quoteForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            getQuote();
-        });
-
-        async function getQuote() {
-            const clientCode = document.getElementById('clientCode').value;
-            const collectionAddress = document.getElementById('collectionAddress').value;
-            const deliveryAddress = document.getElementById('deliveryAddress').value;
-            
-            if (!clientCode || !collectionAddress || !deliveryAddress) {
-                alert('Please fill in all fields');
-                return;
-            }
-
-            // Show loading
-            document.getElementById('loading').style.display = 'block';
-            document.getElementById('getQuoteBtn').disabled = true;
-            document.getElementById('result').style.display = 'none';
-
-            try {
-                // For now, we'll simulate the CloudKit validation
-                // In production, you would integrate with your CloudKit setup
-                const clientValidation = await simulateCloudKitValidation(clientCode);
-                
-                if (!clientValidation.valid) {
-                    alert(clientValidation.message);
-                    document.getElementById('loading').style.display = 'none';
-                    document.getElementById('getQuoteBtn').disabled = false;
-                    return;
-                }
-
-                // Store the validated client data
-                validatedClientData = clientValidation;
-
-                // Calculate distance
-                const distance = await calculateDistance(collectionAddress, deliveryAddress);
-                
-                // Calculate price using the formula from CloudKit
-                const price = calculatePrice(distance, validatedClientData);
-                
-                // Display results
-                document.getElementById('distance').textContent = `${distance} miles`;
-                document.getElementById('price').textContent = `£${price}`;
-                
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('result').style.display = 'block';
-                document.getElementById('getQuoteBtn').disabled = false;
-                
-            } catch (error) {
-                alert('Error calculating quote. Please try again.');
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('getQuoteBtn').disabled = false;
-            }
-        }
-
-        // Simulate CloudKit validation
-        async function simulateCloudKitValidation(clientCode) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // Simulate validation logic
-            if (clientCode === '1001') {
-                return {
-                    valid: true,
-                    clientCode: '1001',
-                    pricingFormula: 'distance*10',
-                    companyName: 'EPO'
-                };
-            } else {
-                return {
-                    valid: false,
-                    message: 'Incorrect client code'
-                };
-            }
-        }
-
-        function calculatePrice(distance, clientData) {
-            try {
-                const formula = clientData.pricingFormula;
-                
-                if (formula.includes('*')) {
-                    const multiplier = parseFloat(formula.split('*')[1]);
-                    return distance * multiplier;
-                } else if (formula.includes('+')) {
-                    const parts = formula.split('+');
-                    const basePrice = parseFloat(parts[0]);
-                    const perMile = parseFloat(parts[1]);
-                    return basePrice + (distance * perMile);
-                } else {
-                    return distance * 2;
-                }
-            } catch (error) {
-                console.error('Price calculation error:', error);
-                return distance * 2;
-            }
-        }
-
-        async function calculateDistance(origin, destination) {
-            // This is a simulation for demo purposes
-            // In production, you would use Google Maps Distance Matrix API
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
-            // For demo, return a random distance between 50-300 miles
-            return Math.floor(Math.random() * 250) + 50;
-        }
-
-        function proceedWithQuote() {
-            alert('Proceed functionality coming soon!');
-        }
-
-        function closeQuote() {
-            document.getElementById('result').style.display = 'none';
-            document.getElementById('quoteForm').reset();
-            validatedClientData = null;
-        }
-
-        // Initialize autocomplete when page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            initAutocomplete();
-        });
     </script>
 </body>
 </html> 
