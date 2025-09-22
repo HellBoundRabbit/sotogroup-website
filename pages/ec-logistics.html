@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Get Quote - EC Logistics</title>
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDTbiSXo9tg1Tx8SlZCZKsR_R0zIQ4N1VA&libraries=places"></script>
-    <script src="https://cdn.apple-cloudkit.com/ck/2/cloudkit.js"></script>
+    <!-- CloudKit removed -->
     <style>
         * {
             margin: 0;
@@ -300,21 +300,7 @@
     </div>
 
     <script>
-        // CloudKit configuration
-        CloudKit.configure({
-            containers: [{
-                containerIdentifier: 'iCloud.com.soto.SOTO',
-                apiTokenAuth: {
-                    apiToken: '712aded6feaa40243f5ba7da1232737bbf3e01b9a487797ee7e24286498037f8',
-                    persist: true
-                },
-                environment: 'production'
-            }]
-        });
-
-        // Initialize CloudKit
-        const container = CloudKit.getDefaultContainer();
-        const database = container.publicCloudDatabase;
+        // CloudKit functionality removed
 
         // Initialize Google Maps Autocomplete
         function initializeAutocomplete() {

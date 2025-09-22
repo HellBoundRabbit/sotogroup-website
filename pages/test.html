@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOTO Test Interface - Firebase</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        
+        // Firebase configuration for SOTO Routes project
+        const firebaseConfig = {
+            apiKey: "AIzaSyCkXzYFC1jQcA6yw6qY1Ao31uEYU4Rd0yA",
+            authDomain: "soto-routes.firebaseapp.com",
+            projectId: "soto-routes",
+            storageBucket: "soto-routes.firebasestorage.app",
+            messagingSenderId: "440989695549",
+            appId: "1:440989695549:web:0bce8b92a46f7f79953454",
+            measurementId: "G-4E3G40QQ9L"
+        };
+        
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        
+        // Make Firebase available globally
+        window.firebaseApp = app;
+        window.firestore = db;
+        window.firebaseCollection = collection;
+        window.firebaseAddDoc = addDoc;
+        window.firebaseGetDocs = getDocs;
+        window.firebaseQuery = query;
+        window.firebaseOrderBy = orderBy;
+        window.firebaseLimit = limit;
+        
+        console.log('Firebase initialized successfully!');
+    </script>
+    <style>
+        body {
+            background: #000000;
+            color: white;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <div class="min-h-screen flex items-center justify-center p-4">
+        <div class="w-full max-w-4xl">
+            <!-- Header -->
+            <div class="text-center mb-8">
+                <h1 class="text-4xl font-bold mb-2">SOTO Test Interface - Firebase</h1>
+                <p class="text-gray-400">Firebase Firestore Testing Environment</p>
+                <div class="flex justify-center gap-4 mt-4">
+                    <button onclick="window.location.href='/'" class="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg transition-colors">
+                        ← Back to Main
+                    </button>
+                    <button onclick="testFirebaseConnection()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">
+                        Test Firebase Connection
+                    </button>
+                </div>
+            </div>
+
+            <!-- Test Interface -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Input Section -->
+                <div class="bg-gray-900 rounded-lg p-6 border border-gray-700">
+                    <h2 class="text-2xl font-semibold mb-4 text-green-400">Input</h2>
+                    <textarea 
+                        id="inputText" 
+                        placeholder="Enter your test input here..."
+                        class="w-full h-64 p-4 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 resize-none"
+                    ></textarea>
+                    <button 
+                        onclick="processInput()"
+                        class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+                    >
+                        Process Input
+                    </button>
+                </div>
+
+                <!-- Output Section -->
+                <div class="bg-gray-900 rounded-lg p-6 border border-gray-700">
+                    <h2 class="text-2xl font-semibold mb-4 text-blue-400">Output</h2>
+                    <div 
+                        id="outputText" 
+                        class="w-full h-64 p-4 bg-gray-800 border border-gray-600 rounded-lg text-white overflow-auto"
+                    >
+                        <div class="text-gray-400 italic">Output will appear here...</div>
+                    </div>
+                    <div class="flex gap-2 mt-4">
+                        <button 
+                            onclick="readMessage()"
+                            class="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+                        >
+                            Read Message
+                        </button>
+                    <button 
+                        onclick="clearOutput()"
+                            class="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+                    >
+                        Clear Output
+                    </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status Section -->
+            <div class="mt-8 bg-gray-900 rounded-lg p-6 border border-gray-700">
+                <h2 class="text-2xl font-semibold mb-4 text-yellow-400">Status</h2>
+                <div id="statusText" class="text-gray-300 mb-4">
+                    Ready for testing...
+                </div>
+                <div class="flex gap-2">
+                    <button 
+                        onclick="window.debugFirebase.testConnection()"
+                        class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm"
+                    >
+                        Test Firebase Connection
+                    </button>
+                    <button 
+                        onclick="window.debugFirebase.listAllMessages()"
+                        class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm"
+                    >
+                        List All Messages
+                    </button>
+                    <button 
+                        onclick="console.log('Firebase App:', window.debugFirebase.getApp()); console.log('Firestore:', window.debugFirebase.getFirestore()); console.log('Ready:', window.debugFirebase.isReady());"
+                        class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm"
+                    >
+                        Log Debug Info
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // =============================================================================
+        // FIREBASE FIRESTORE INTEGRATION
+        // =============================================================================
+        
+        // Global variables for Firebase
+        let firestore;
+        let isFirebaseReady = false;
+        
+        // Initialize Firebase when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeFirebase();
+        });
+        
+        // =============================================================================
+        // FIREBASE INITIALIZATION
+        // =============================================================================
+        
+        async function initializeFirebase() {
+            try {
+                updateStatus('Initializing Firebase...', 'yellow');
+                
+                // Wait for Firebase to be available
+                let attempts = 0;
+                while (!window.firestore && attempts < 50) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    attempts++;
+                }
+                
+                if (!window.firestore) {
+                    throw new Error('Firebase failed to initialize');
+                }
+                
+                firestore = window.firestore;
+                isFirebaseReady = true;
+                
+                updateStatus('Firebase initialized successfully!', 'green');
+                console.log('Firebase initialized:', { firestore });
+                
+            } catch (error) {
+                console.error('Firebase initialization failed:', error);
+                updateStatus(`Firebase initialization failed: ${error.message}`, 'red');
+            }
+        }
+        
+        // =============================================================================
+        // FIREBASE CONNECTION TEST
+        // =============================================================================
+        
+        async function testFirebaseConnection() {
+            if (!isFirebaseReady) {
+                updateStatus('Firebase not ready. Please wait...', 'red');
+                return;
+            }
+            
+            try {
+                updateStatus('Testing Firebase connection...', 'yellow');
+                
+                // Test by trying to read from a collection
+                const testCollection = window.firebaseCollection(firestore, 'testMessages');
+                const testQuery = window.firebaseQuery(testCollection, window.firebaseLimit(1));
+                const snapshot = await window.firebaseGetDocs(testQuery);
+                
+                updateStatus('Firebase connection successful!', 'green');
+                console.log('Firebase test successful:', snapshot);
+                
+            } catch (error) {
+                console.error('Firebase connection test failed:', error);
+                updateStatus(`Firebase connection failed: ${error.message}`, 'red');
+            }
+        }
+        
+        // =============================================================================
+        // FIREBASE WRITE MESSAGE
+        // =============================================================================
+        
+        async function processInput() {
+            const input = document.getElementById('inputText').value;
+            
+            if (!input.trim()) {
+                updateStatus('Please enter some input text.', 'red');
+                return;
+            }
+            
+            // Check if Firebase is initialized
+            if (!isFirebaseReady) {
+                updateStatus('Firebase not initialized. Please refresh the page.', 'red');
+                return;
+            }
+            
+            try {
+                updateStatus('Saving message to Firebase...', 'yellow');
+                
+                // Create a new Firestore document
+                const messageData = {
+                    messageText: input,
+                    timestamp: new Date(),
+                    messageId: 'msg_' + Date.now(),
+                    createdAt: new Date().toISOString()
+                };
+                
+                // Save the document to Firestore
+                const docRef = await window.firebaseAddDoc(
+                    window.firebaseCollection(firestore, 'testMessages'), 
+                    messageData
+                );
+                
+                updateStatus(`Message saved successfully! Document ID: ${docRef.id}`, 'green');
+                
+                // Store the document ID for reading later
+                localStorage.setItem('lastSavedDocId', docRef.id);
+                
+                // Show success in output
+                const output = document.getElementById('outputText');
+                const timestamp = new Date().toLocaleString();
+                output.innerHTML = `
+                    <div class="text-green-400 mb-2">✅ Message saved to Firebase!</div>
+                    <div class="text-gray-300 mb-2">Document ID: <span class="text-blue-400">${docRef.id}</span></div>
+                    <div class="text-gray-300 mb-2">Timestamp: <span class="text-blue-400">${timestamp}</span></div>
+                    <div class="text-gray-300 mb-4">Message: "${input}"</div>
+                    <div class="text-gray-400 text-sm">Click "Read Message" to retrieve it from Firebase.</div>
+                `;
+                
+            } catch (error) {
+                console.error('Error saving to Firebase:', error);
+                updateStatus(`Error saving message: ${error.message}`, 'red');
+                
+                // Show error in output
+                const output = document.getElementById('outputText');
+                output.innerHTML = `
+                    <div class="text-red-400 mb-2">❌ Failed to save message</div>
+                    <div class="text-gray-300">Error: ${error.message}</div>
+                    <div class="text-gray-400 text-sm mt-2">Check the browser console for more details.</div>
+                `;
+            }
+        }
+        
+        // =============================================================================
+        // FIREBASE READ MESSAGE
+        // =============================================================================
+        
+        async function readMessage() {
+            // Check if Firebase is initialized
+            if (!isFirebaseReady) {
+                updateStatus('Firebase not initialized. Please refresh the page.', 'red');
+                return;
+            }
+            
+            try {
+                updateStatus('Reading message from Firebase...', 'yellow');
+                
+                // Query Firebase for recent messages
+                const messagesCollection = window.firebaseCollection(firestore, 'testMessages');
+                const messagesQuery = window.firebaseQuery(
+                    messagesCollection, 
+                    window.firebaseOrderBy('timestamp', 'desc'),
+                    window.firebaseLimit(10)
+                );
+                
+                const snapshot = await window.firebaseGetDocs(messagesQuery);
+                
+                if (snapshot.empty) {
+                    updateStatus('No messages found in Firebase.', 'red');
+                    return;
+                }
+                
+                // Get the most recent message
+                const mostRecentDoc = snapshot.docs[0];
+                const messageData = mostRecentDoc.data();
+                
+                updateStatus(`Message read successfully!`, 'green');
+                
+                // Display the message
+                const output = document.getElementById('outputText');
+                const displayTime = messageData.timestamp.toDate().toLocaleString();
+                const retrievedTime = new Date().toLocaleString();
+                
+                output.innerHTML = `
+                    <div class="text-green-400 mb-2">📖 Message retrieved from Firebase!</div>
+                    <div class="text-gray-300 mb-2">Document ID: <span class="text-blue-400">${mostRecentDoc.id}</span></div>
+                    <div class="text-gray-300 mb-2">Message ID: <span class="text-blue-400">${messageData.messageId}</span></div>
+                    <div class="text-gray-300 mb-2">Saved at: <span class="text-blue-400">${displayTime}</span></div>
+                    <div class="text-gray-300 mb-2">Retrieved at: <span class="text-blue-400">${retrievedTime}</span></div>
+                    <div class="bg-gray-700 p-4 rounded-lg mt-4">
+                        <div class="text-gray-400 text-sm mb-2">Message content:</div>
+                        <div class="text-white">"${messageData.messageText}"</div>
+                    </div>
+                `;
+                
+            } catch (error) {
+                console.error('Error reading from Firebase:', error);
+                updateStatus(`Error reading message: ${error.message}`, 'red');
+                
+                // Show error in output
+                const output = document.getElementById('outputText');
+                output.innerHTML = `
+                    <div class="text-red-400 mb-2">❌ Failed to read message</div>
+                    <div class="text-gray-300">Error: ${error.message}</div>
+                    <div class="text-gray-400 text-sm mt-2">Check the browser console for more details.</div>
+                `;
+            }
+        }
+        
+        // =============================================================================
+        // UTILITY FUNCTIONS
+        // =============================================================================
+        
+        function clearOutput() {
+            document.getElementById('outputText').innerHTML = '<div class="text-gray-400 italic">Output will appear here...</div>';
+            updateStatus('Output cleared.', 'gray');
+        }
+        
+        function updateStatus(message, color) {
+            const status = document.getElementById('statusText');
+            status.textContent = message;
+            status.className = `text-${color}-400`;
+        }
+        
+        // Allow Enter key to process input (Ctrl+Enter)
+        document.getElementById('inputText').addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'Enter') {
+                processInput();
+            }
+        });
+        
+        // =============================================================================
+        // FIREBASE DEBUGGING HELPERS
+        // =============================================================================
+        
+        // Add Firebase debugging functions to the global scope
+        window.debugFirebase = {
+            getFirestore: () => firestore,
+            getApp: () => window.firebaseApp,
+            isReady: () => isFirebaseReady,
+            testConnection: async () => {
+                try {
+                    const testCollection = window.firebaseCollection(firestore, 'testMessages');
+                    const testQuery = window.firebaseQuery(testCollection, window.firebaseLimit(1));
+                    const snapshot = await window.firebaseGetDocs(testQuery);
+                    console.log('Firebase test query successful:', snapshot);
+                    return { success: true, docs: snapshot.docs.length };
+                } catch (error) {
+                    console.error('Firebase test query failed:', error);
+                    return { success: false, error: error.message };
+                }
+            },
+            listAllMessages: async () => {
+                try {
+                    const messagesCollection = window.firebaseCollection(firestore, 'testMessages');
+                    const messagesQuery = window.firebaseQuery(
+                        messagesCollection, 
+                        window.firebaseOrderBy('timestamp', 'desc')
+                    );
+                    const snapshot = await window.firebaseGetDocs(messagesQuery);
+                    
+                    const messages = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        data: doc.data()
+                    }));
+                    
+                    console.log('All messages:', messages);
+                    return messages;
+                } catch (error) {
+                    console.error('Error listing messages:', error);
+                    return { error: error.message };
+                }
+            },
+            clearAllMessages: async () => {
+                try {
+                    // Note: This would require a Cloud Function or server-side code
+                    // For now, just log a message
+                    console.log('To clear all messages, you need to implement a Cloud Function or use the Firebase Console');
+                    return { message: 'Use Firebase Console to clear messages' };
+                } catch (error) {
+                    console.error('Error clearing messages:', error);
+                    return { error: error.message };
+                }
+            }
+        };
+        
+        console.log('Firebase Test Page loaded. Use window.debugFirebase for debugging.');
+    </script>
+</body>
+</html>
