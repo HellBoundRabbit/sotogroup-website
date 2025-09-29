@@ -20,6 +20,7 @@
 <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
     import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, where, updateDoc, doc, deleteDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+    import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
     
     // Firebase configuration
     const firebaseConfig = {
@@ -35,10 +36,12 @@
     // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
+    const functions = getFunctions(app);
     window.db = db; // Make db globally accessible
     
     // Make Firebase available globally
     window.firebaseApp = app;
+    window.firebase = { functions: functions, httpsCallable: httpsCallable };
     window.firestore = db;
     window.firebaseCollection = collection;
     window.firebaseAddDoc = addDoc;
