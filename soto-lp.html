@@ -1,0 +1,1943 @@
+3sets in... i dont think it had pages eithe<!or pagesDOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<link crossorigin="" href="https://fonts.gstatic.com/" rel="preconnect"/>
+<link as="style" href="https://fonts.googleapis.com/css2?display=swap&amp;family=Inter%3Awght%40400%3B500%3B700%3B900&amp;family=Noto+Sans%3Awght%40400%3B500%3B700%3B900" onload="this.rel='stylesheet'" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<title>SOTO Routes - Logistics Planner</title>
+<link href="data:image/x-icon;base64," rel="icon" type="image/x-icon"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+    tailwind.config = {
+        plugins: {
+            forms: {},
+            containerQueries: {}
+        }
+    }
+</script>
+<!-- Firebase SDK -->
+<script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+    import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, where, updateDoc, doc, deleteDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+    
+    // Firebase configuration
+    const firebaseConfig = {
+        apiKey: "AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA",
+        authDomain: "soto-routes.firebaseapp.com",
+        projectId: "soto-routes",
+        storageBucket: "soto-routes.firebasestorage.app",
+        messagingSenderId: "440989695549",
+        appId: "1:440989695549:web:0bce8b92a46f7f79953454",
+        measurementId: "G-4E3G40QQ9L"
+    };
+    
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    window.db = db; // Make db globally accessible
+    
+    // Make Firebase available globally
+    window.firebaseApp = app;
+    window.firestore = db;
+    window.firebaseCollection = collection;
+    window.firebaseAddDoc = addDoc;
+    window.firebaseGetDocs = getDocs;
+    window.firebaseQuery = query;
+    window.firebaseOrderBy = orderBy;
+    window.firebaseLimit = limit;
+    window.firebaseWhere = where;
+    window.firebaseUpdateDoc = updateDoc;
+    window.firebaseDoc = doc;
+    window.firebaseDeleteDoc = deleteDoc;
+    window.firebaseGetDoc = getDoc;
+    
+    // Make individual functions globally accessible
+    window.query = query;
+    window.collection = collection;
+    window.addDoc = addDoc;
+    window.getDocs = getDocs;
+    window.updateDoc = updateDoc;
+    window.where = where;
+    
+    console.log('Firebase initialized successfully!');
+</script>
+<script>
+// Wait for window to fully load before initializing Firebase
+window.onload = async function() {
+    console.log('Window loaded, checking Firebase...');
+        
+        // Check authentication first
+        async function checkAuthentication() {
+            try {
+                // Check if user identity is stored in localStorage
+                const storedUser = localStorage.getItem('soto_user_identity');
+                if (!storedUser) {
+                    console.log('No user identity found, redirecting to login');
+                    window.location.href = '/pages/soto-routes-login.html';
+                    return false;
+                }
+
+                // Parse stored user identity
+                const userIdentity = JSON.parse(storedUser);
+                console.log('Found stored user identity:', userIdentity);
+                
+                // Check if user has office role
+                if (userIdentity.role !== 'office') {
+                    console.log('User is not an office user, redirecting to login');
+                    window.location.href = '/pages/soto-routes-login.html';
+                    return false;
+                }
+
+                console.log('Routes system initialized successfully');
+                return true;
+                
+            } catch (error) {
+                console.error('Authentication check failed:', error);
+                window.location.href = '/pages/soto-routes-login.html';
+                return false;
+            }
+        }
+
+    // Wait for Firebase to be ready
+    function waitForFirebaseReady() {
+            const maxAttempts = 10;
+            let attempts = 0;
+            
+            while (attempts < maxAttempts) {
+                try {
+                if (window.firestore && window.firebaseCollection) {
+                    console.log('Firebase is ready!');
+                        return true;
+                    }
+                } catch (error) {
+                console.log(`Firebase not ready yet, attempt ${attempts + 1}/${maxAttempts}`);
+                }
+                
+                // Small synchronous delay
+                const start = Date.now();
+                while (Date.now() - start < 100) {
+                    // Busy wait for 100ms
+                }
+                attempts++;
+            }
+            
+        console.error('Firebase failed to initialize after maximum attempts');
+            return false;
+        }
+
+        // Initialize authentication
+        const authSuccess = await checkAuthentication();
+        if (!authSuccess) {
+            return;
+        }
+
+    // Wait for Firebase to be ready
+    const firebaseReady = waitForFirebaseReady();
+    if (!firebaseReady) {
+        console.error('Firebase is not available after window load');
+        return;
+    }
+
+    console.log('Firebase initialization complete');
+    
+    // Initialize day display
+    initializeRouteCounter();
+    
+    // Initialize day selection
+    await initializeDaySelection();
+    
+    // Show loading indicator for minimized routes
+    showMinimizedRoutesLoading();
+    
+    // Load existing routes and jobs for the selected date (async)
+    loadRoutesForSelectedDate();
+};
+</script>
+<style type="text/tailwindcss">
+      :root {
+        --primary-color: #0d7ff2;
+        --success-color: #22c55e;
+      }
+      .glow {
+        box-shadow: 0 0 15px 5px rgba(34, 197, 94, 0.4);
+      }
+    </style>
+</head>
+<body class="bg-[#111418] text-white" style='font-family: Inter, "Noto Sans", sans-serif;'>
+<div class="relative flex h-auto min-h-screen w-full flex-col dark group/design-root overflow-x-hidden">
+<div class="flex h-full grow flex-col">
+<header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-b-[#283039] px-6 py-3">
+<div class="flex items-center gap-4">
+<div class="size-8 text-[var(--primary-color)]">
+<svg fill="none" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+<path d="M13.8261 17.4264C16.7203 18.1174 20.2244 18.5217 24 18.5217C27.7756 18.5217 31.2797 18.1174 34.1739 17.4264C36.9144 16.7722 39.9967 15.2331 41.3563 14.1648L24.8486 40.6391C24.4571 41.267 23.5429 41.267 23.1514 40.6391L6.64374 14.1648C8.00331 15.2331 11.0856 16.7722 13.8261 17.4264Z" fill="currentColor"></path>
+<path clip-rule="evenodd" d="M39.998 12.236C39.9944 12.2537 39.9875 12.2845 39.9748 12.3294C39.9436 12.4399 39.8949 12.5741 39.8346 12.7175C39.8168 12.7597 39.7989 12.8007 39.7813 12.8398C38.5103 13.7113 35.9788 14.9393 33.7095 15.4811C30.9875 16.131 27.6413 16.5217 24 16.5217C20.3587 16.5217 17.0125 16.131 14.2905 15.4811C12.0012 14.9346 9.44505 13.6897 8.18538 12.8168C8.17384 12.7925 8.16216 12.767 8.15052 12.7408C8.09919 12.6249 8.05721 12.5114 8.02977 12.411C8.00356 12.3152 8.00039 12.2667 8.00004 12.2612C8.00004 12.261 8 12.2607 8.00004 12.2612C8.00004 12.2359 8.0104 11.9233 8.68485 11.3686C9.34546 10.8254 10.4222 10.2469 11.9291 9.72276C14.9242 8.68098 19.1919 8 24 8C28.8081 8 33.0758 8.68098 36.0709 9.72276C37.5778 10.2469 38.6545 10.8254 39.3151 11.3686C39.9006 11.8501 39.9857 12.1489 39.998 12.236ZM4.95178 15.2312L21.4543 41.6973C22.6288 43.5809 25.3712 43.5809 26.5457 41.6973L43.0534 15.223C43.0709 15.1948 43.0878 15.1662 43.104 15.1371L41.3563 14.1648C43.104 15.1371 43.1038 15.1374 43.104 15.1371L43.1051 15.135L43.1065 15.1325L43.1101 15.1261L43.1199 15.1082C43.1276 15.094 43.1377 15.0754 43.1497 15.0527C43.1738 15.0075 43.2062 14.9455 43.244 14.8701C43.319 14.7208 43.4196 14.511 43.5217 14.2683C43.6901 13.8679 44 13.0689 44 12.2609C44 10.5573 43.003 9.22254 41.8558 8.2791C40.6947 7.32427 39.1354 6.55361 37.385 5.94477C33.8654 4.72057 29.133 4 24 4C18.867 4 14.1346 4.72057 10.615 5.94478C8.86463 6.55361 7.30529 7.32428 6.14419 8.27911C4.99695 9.22255 3.99999 10.5573 3.99999 12.2609C3.99999 13.1275 4.29264 13.9078 4.49321 14.3607C4.60375 14.6102 4.71348 14.8196 4.79687 14.9689C4.83898 15.0444 4.87547 15.1065 4.9035 15.1529C4.91754 15.1762 4.92954 15.1957 4.93916 15.2111L4.94662 15.223L4.95178 15.2312ZM35.9868 18.996L24 38.22L12.0131 18.996C12.4661 19.1391 12.9179 19.2658 13.3617 19.3718C16.4281 20.1039 20.0901 20.5217 24 20.5217C27.9099 20.5217 31.5719 20.1039 34.6383 19.3718C35.082 19.2658 35.5339 19.1391 35.9868 18.996Z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+<h2 class="text-xl font-bold">SOTO Routes</h2>
+</div>
+<nav class="flex flex-1 justify-center gap-2">
+<a class="bg-[#283039] text-white text-sm font-medium rounded-md px-4 py-2" href="#">Routes</a>
+<a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/optimisation.html">Optimisation</a>
+<a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/drivers.html">Drivers</a>
+</nav>
+<div class="flex items-center gap-4">
+<button class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors" onclick="showNotifications()">
+<span class="material-symbols-outlined text-xl">notifications</span>
+</button>
+<button class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors text-sm" onclick="logout()">
+Logout
+</button>
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDevd-HNK-hCI6uo8erI-DVQkF2BKhqZ0ZAY0qf-E49wK_Eme1itzAv3OZQ8llueRr0JfYlmS9s0zJ1iZkEMovNFenOgEFVnmtKIQ6-Yty0sPAlp7F42lZf97BCZlS-X4oSH12C0DnPEaXrmNnX8gPV32TDFrCAQkoT-5vsSla2tL5Mu5BMnF37vCjaPVARHrMwp3QnHVpRCB_wtsJfmGdvPMIs27V2QfjKIZviBup9poMqsRtRRaTcW8FHMcFHXknCA_jokfbE9Ko");'></div>
+</div>
+</header>
+
+
+<main class="flex-1 px-6 py-4">
+<div class="max-w-6xl mx-auto">
+
+<!-- Compact Day Selection Dropdown -->
+<div id="daySelectionDropdown" class="hidden absolute top-16 right-4 bg-[#1a1f24] border border-[#283039] rounded-lg p-4 shadow-lg z-50 min-w-[300px]">
+    <p class="text-gray-400 mb-3 text-sm">Choose a week and day:</p>
+    
+    <!-- Week Selection -->
+    <div class="mb-3">
+        <select id="weekSelectDropdown" class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="">Choose a week...</option>
+            <option value="current">Current Week</option>
+            <option value="next">Next Week</option>
+        </select>
+    </div>
+    
+    <!-- Days Grid -->
+    <div id="weekDays" class="grid grid-cols-2 gap-2">
+        <!-- Days will be populated here -->
+    </div>
+</div>
+
+<div class="flex justify-between items-center mb-4">
+<h1 class="text-2xl font-bold tracking-tight">Create New Route</h1>
+<div class="flex items-center gap-4">
+<!-- Start Fresh Button -->
+<button id="start-fresh-btn" class="flex items-center justify-center gap-2 min-w-[120px] h-8 px-4 rounded-md bg-red-600 text-white text-sm font-bold hover:bg-red-700 transition-colors" onclick="startFresh()">
+<span class="material-symbols-outlined text-sm">delete_forever</span>
+<span>Start Fresh</span>
+</button>
+
+<!-- Select Day Button -->
+<button id="selectDayBtn" class="flex items-center justify-center gap-2 min-w-[120px] h-8 px-4 rounded-md bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-colors">
+<span class="material-symbols-outlined text-sm">calendar_today</span>
+<span id="selectDayBtnText">Select Day</span>
+</button>
+
+<!-- Status Indicator with Route Count -->
+<div id="status-indicator" class="flex items-center justify-center gap-2 min-w-[140px] h-8 px-4 rounded-md bg-[var(--success-color)] text-white text-sm font-bold">
+<span id="status-text">(<span id="routes-count">0</span>) Routes Uploaded</span>
+</div>
+</div>
+</div>
+<!-- Routes Container -->
+<div id="routes-container" class="space-y-4 pb-20">
+    <!-- Minimized Routes Grid -->
+    <div id="minimized-routes-grid" class="grid grid-cols-4 gap-4 mb-4">
+        <!-- Minimized routes will be dynamically created here -->
+    </div>
+    <!-- Active Route -->
+    <div id="active-route-container">
+        <!-- Active route will be dynamically created here -->
+    </div>
+</div>
+<!-- Job Details Input - Fixed to Bottom -->
+<div class="fixed bottom-0 left-0 right-0 bg-[#1a1f24] border-t border-[#283039] p-4 z-50">
+<div class="max-w-6xl mx-auto">
+<div class="relative flex items-center gap-4">
+<textarea class="form-input w-full rounded-md bg-[#283039] border border-[#3a444e] focus:ring-2 focus:ring-[var(--success-color)] focus:border-[var(--success-color)] h-8 placeholder:text-[#6b7f99] px-3 py-2 text-sm resize-none" id="job-details" placeholder="Paste job details here..."></textarea>
+<button class="flex items-center justify-center gap-2 min-w-[80px] h-8 px-4 rounded-md bg-[var(--success-color)] text-white text-sm font-bold hover:opacity-90 transition-opacity" onclick="enterJobDetails()">
+<span class="material-symbols-outlined text-sm">arrow_upward</span>
+<span>Enter</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</div>
+
+<script>
+// Global variables accessible to all functions (declare first)
+let activeJob = null;
+let processingQueue = [];
+let isProcessing = false;
+let currentRouteId = 1;
+let routes = {}; // Store route data
+let minimizedRoutes = []; // Store minimized routes
+let savedJobs = {}; // Track jobs that have been saved to Firebase
+let nextRouteId = 1; // Counter for assigning route IDs when saving
+
+// Day selection variables
+let selectedDay = null;
+let currentWeekDays = [];
+let totalDrivers = 0;
+let driversOffToday = [];
+
+// Day selection functionality
+async function initializeDaySelection() {
+    // Generate current week days
+    generateCurrentWeekDays();
+    
+    // Load total drivers count
+    await loadTotalDrivers();
+    
+    // Set up event listeners
+    document.getElementById('selectDayBtn').addEventListener('click', toggleDaySelection);
+    document.getElementById('weekSelectDropdown').addEventListener('change', populateWeekDays);
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(event) {
+        const dropdown = document.getElementById('daySelectionDropdown');
+        const button = document.getElementById('selectDayBtn');
+        
+        if (!dropdown.contains(event.target) && !button.contains(event.target)) {
+            dropdown.classList.add('hidden');
+        }
+    });
+}
+
+function generateCurrentWeekDays() {
+    const today = new Date();
+    const currentDay = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    
+    // Get Monday of current week
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - currentDay + (currentDay === 0 ? -6 : 1));
+    
+    const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    currentWeekDays = [];
+    
+    for (let i = 0; i < 7; i++) {
+        const dayDate = new Date(monday);
+        dayDate.setDate(monday.getDate() + i);
+        
+        currentWeekDays.push({
+            name: dayNames[i],
+            date: dayDate,
+            dateString: formatDateString(dayDate),
+            isToday: dayDate.toDateString() === today.toDateString()
+        });
+    }
+}
+
+function formatDateString(date) {
+    return date.toLocaleDateString('en-GB', { 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: 'numeric' 
+    });
+}
+
+function toggleDaySelection() {
+    const dropdown = document.getElementById('daySelectionDropdown');
+    const isHidden = dropdown.classList.contains('hidden');
+    
+    if (isHidden) {
+        // Reset week selection
+        document.getElementById('weekSelectDropdown').value = '';
+        populateWeekDays();
+        dropdown.classList.remove('hidden');
+    } else {
+        dropdown.classList.add('hidden');
+    }
+}
+
+function populateWeekDays() {
+    const weekDaysContainer = document.getElementById('weekDays');
+    const weekSelect = document.getElementById('weekSelectDropdown');
+    weekDaysContainer.innerHTML = '';
+    
+    if (!weekSelect.value) {
+        weekDaysContainer.innerHTML = '<p class="text-gray-400 col-span-full text-center">Please select a week first</p>';
+        return;
+    }
+    
+    // Generate days for selected week
+    const selectedWeekDays = generateWeekDays(weekSelect.value);
+    
+    selectedWeekDays.forEach(day => {
+        const dayElement = document.createElement('div');
+        dayElement.className = `day-option p-2 rounded border border-transparent cursor-pointer transition-colors text-center ${
+            day.isToday ? 'bg-blue-900 bg-opacity-30 border-blue-500' : 'bg-[#283039] hover:bg-[#3a444e]'
+        }`;
+        dayElement.innerHTML = `
+            <div class="text-xs font-semibold ${day.isToday ? 'text-blue-300' : 'text-white'}">${day.name}</div>
+            <div class="text-xs text-gray-400">${day.dateString}</div>
+            ${day.isToday ? '<div class="text-xs text-blue-400">Today</div>' : ''}
+        `;
+        
+        dayElement.addEventListener('click', () => selectDay(day));
+        weekDaysContainer.appendChild(dayElement);
+    });
+}
+
+function generateWeekDays(weekType) {
+    const today = new Date();
+    let startDate;
+    
+    if (weekType === 'current') {
+        // Get Monday of current week
+        const dayOfWeek = today.getDay();
+        const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        startDate = new Date(today);
+        startDate.setDate(today.getDate() - daysToMonday);
+    } else if (weekType === 'next') {
+        // Get Monday of next week
+        const dayOfWeek = today.getDay();
+        const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        startDate = new Date(today);
+        startDate.setDate(today.getDate() - daysToMonday + 7);
+    }
+    
+    const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const weekDays = [];
+    
+    for (let i = 0; i < 7; i++) {
+        const dayDate = new Date(startDate);
+        dayDate.setDate(startDate.getDate() + i);
+        
+        weekDays.push({
+            name: dayNames[i],
+            date: dayDate,
+            dateString: formatDateString(dayDate),
+            isToday: dayDate.toDateString() === today.toDateString()
+        });
+    }
+    
+    return weekDays;
+}
+
+async function selectDay(day) {
+    selectedDay = day;
+    
+    // Hide dropdown
+    document.getElementById('daySelectionDropdown').classList.add('hidden');
+    
+    // Load drivers off for this day
+    await loadDriversOffForDay(day);
+    
+    // Update planning status (this will update the button text)
+    updatePlanningStatus();
+}
+
+function formatFullDate(date) {
+    return date.toLocaleDateString('en-GB', { 
+        day: 'numeric', 
+        month: 'long', 
+        year: 'numeric' 
+    });
+}
+
+function getWeekNumber(date) {
+    const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
+    const pastDaysOfYear = (date - firstDayOfYear) / 86400000;
+    return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+}
+
+async function loadTotalDrivers() {
+    try {
+        const driversQuery = window.firebaseQuery(window.firebaseCollection(window.firestore, 'drivers'));
+        const driversSnapshot = await window.firebaseGetDocs(driversQuery);
+        totalDrivers = driversSnapshot.size;
+        console.log('Total drivers:', totalDrivers);
+    } catch (error) {
+        console.error('Error loading total drivers:', error);
+        totalDrivers = 0;
+    }
+}
+
+async function loadDriversOffForDay(day) {
+    try {
+        const dateString = day.date.toISOString().split('T')[0]; // YYYY-MM-DD format
+        
+        // Query calendar collection for this specific date - SUPER FAST!
+        const calendarDoc = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, "calendar", dateString));
+        
+        driversOffToday = [];
+        
+        if (calendarDoc.exists()) {
+            const data = calendarDoc.data();
+            driversOffToday = data.driversOff || [];
+            console.log(`Found ${driversOffToday.length} drivers off on ${day.name} (${dateString})`);
+        } else {
+            console.log(`No drivers off on ${day.name} (${dateString})`);
+        }
+        
+    } catch (error) {
+        console.error('Error loading drivers off for day:', error);
+        driversOffToday = [];
+    }
+}
+
+function updatePlanningStatus() {
+    const routesCount = Object.keys(routes).length;
+    const availableDrivers = totalDrivers - driversOffToday.length;
+    
+    // Update button text with current driver count and date
+    if (selectedDay) {
+        const buttonText = document.getElementById('selectDayBtnText');
+        const buttonIcon = document.querySelector('#selectDayBtn .material-symbols-outlined');
+        
+        // Format the date nicely
+        const dateString = selectedDay.date.toLocaleDateString('en-GB', { 
+            day: 'numeric', 
+            month: 'short' 
+        });
+        
+        buttonText.textContent = `${availableDrivers} Drivers working on ${dateString}`;
+        buttonIcon.textContent = 'group';
+    }
+    
+    console.log(`Planning status: ${routesCount} routes, ${availableDrivers} drivers available`);
+}
+
+// Start Fresh function - delete all routes and jobs with double confirmation
+async function startFresh() {
+    console.log('Start Fresh button clicked');
+    
+    // First confirmation
+    const firstConfirm = confirm('⚠️ WARNING: This will permanently delete ALL routes and jobs from the database.\n\nAre you sure you want to continue?');
+    
+    if (!firstConfirm) {
+        console.log('Start Fresh cancelled at first confirmation');
+        return;
+    }
+    
+    // Second confirmation with stronger warning
+    const secondConfirm = confirm('🚨 FINAL WARNING 🚨\n\nThis action CANNOT be undone!\n\nAll routes and jobs will be permanently deleted.\n\nType "YES" in your mind and click OK to confirm deletion.');
+    
+    if (!secondConfirm) {
+        console.log('Start Fresh cancelled at second confirmation');
+        return;
+    }
+    
+    console.log('Both confirmations passed, proceeding with deletion...');
+    
+    try {
+        // Show loading state
+        const startFreshBtn = document.getElementById('start-fresh-btn');
+        const originalText = startFreshBtn.innerHTML;
+        startFreshBtn.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">refresh</span><span>Deleting...</span>';
+        startFreshBtn.disabled = true;
+        
+        // Delete all routes
+        console.log('Deleting all routes...');
+        const routesQuery = window.query(window.collection(window.db, 'routes'));
+        const routesSnapshot = await window.getDocs(routesQuery);
+        
+        let routesDeleted = 0;
+        for (const doc of routesSnapshot.docs) {
+            await window.firebaseDeleteDoc(doc.ref);
+            routesDeleted++;
+            console.log(`Deleted route: ${doc.id}`);
+        }
+        
+        // Delete all jobs
+        console.log('Deleting all jobs...');
+        const jobsQuery = window.query(window.collection(window.db, 'jobs'));
+        const jobsSnapshot = await window.getDocs(jobsQuery);
+        
+        let jobsDeleted = 0;
+        for (const doc of jobsSnapshot.docs) {
+            await window.firebaseDeleteDoc(doc.ref);
+            jobsDeleted++;
+            console.log(`Deleted job: ${doc.id}`);
+        }
+        
+        // Clear local state
+        minimizedRoutes = [];
+        routes = {};
+        savedJobs = {};
+        nextRouteId = 1;
+        currentRouteId = 1;
+        
+        // Clear UI
+        const routesContainer = document.getElementById('routes-container');
+        const minimizedRoutesGrid = document.getElementById('minimized-routes-grid');
+        
+        if (routesContainer) {
+            routesContainer.innerHTML = '';
+        }
+        if (minimizedRoutesGrid) {
+            minimizedRoutesGrid.innerHTML = '';
+        }
+        
+        // Create fresh job panels
+        createNewRoute(1);
+        
+        // Update route counter
+        updateRouteCount();
+        
+        // Show success message
+        alert(`✅ Successfully deleted ${routesDeleted} routes and ${jobsDeleted} jobs!\n\nAll data has been cleared and you can start fresh.`);
+        
+        console.log(`Start Fresh completed: ${routesDeleted} routes and ${jobsDeleted} jobs deleted`);
+        
+    } catch (error) {
+        console.error('Error during Start Fresh:', error);
+        alert('❌ Error deleting data. Please check console for details and try again.');
+    } finally {
+        // Reset button
+        const startFreshBtn = document.getElementById('start-fresh-btn');
+        startFreshBtn.innerHTML = '<span class="material-symbols-outlined text-sm">delete_forever</span><span>Start Fresh</span>';
+        startFreshBtn.disabled = false;
+    }
+}
+
+// CloudKit will be initialized in window.onload event in the head section
+
+// Simple route counter initialization
+function initializeRouteCounter() {
+    console.log('Initializing route counter...');
+    updateRouteCount();
+    console.log('Route counter initialized');
+}
+
+function showMinimizedRoutesLoading() {
+    const minimizedRoutesGrid = document.getElementById('minimized-routes-grid');
+    if (!minimizedRoutesGrid) return;
+    
+    // Show loading indicator
+    minimizedRoutesGrid.innerHTML = `
+        <div class="flex items-center justify-center p-4 bg-[#1a1f24] rounded-lg border border-[#283039]">
+            <div class="flex items-center gap-2 text-[#9cabba]">
+                <span class="material-symbols-outlined animate-spin">refresh</span>
+                <span>Loading routes...</span>
+            </div>
+        </div>
+    `;
+}
+
+async function loadRoutesForSelectedDate() {
+    console.log('Loading all routes...');
+    
+    try {
+        // Clear loading indicator
+        const minimizedRoutesGrid = document.getElementById('minimized-routes-grid');
+        if (minimizedRoutesGrid) {
+            minimizedRoutesGrid.innerHTML = '';
+        }
+        
+        // Load all routes from Firebase
+        const routesQuery = window.query(window.collection(window.db, 'routes'));
+        
+        const routesSnapshot = await window.getDocs(routesQuery);
+        console.log(`Found ${routesSnapshot.size} routes`);
+        
+        if (routesSnapshot.empty) {
+            // No routes found, create job panels
+            console.log('No routes found, creating job panels');
+            createNewRoute(currentRouteId);
+            return;
+        }
+        
+        // Process each route - ALL routes should be minimized
+        for (const routeDoc of routesSnapshot.docs) {
+            const routeData = routeDoc.data();
+            console.log('Loading route:', routeData);
+            
+            // Load jobs for this route
+            const jobsQuery = window.query(
+                window.collection(window.db, 'jobs'),
+                window.where('assignedRouteId', '==', routeData.routeId)
+            );
+            
+            const jobsSnapshot = await window.getDocs(jobsQuery);
+            console.log(`Found ${jobsSnapshot.size} jobs for route ${routeData.routeId}`);
+            
+            const jobs = [];
+            jobsSnapshot.forEach(jobDoc => {
+                const jobData = jobDoc.data();
+                jobs.push({
+                    firebaseId: jobDoc.id,
+                    ...jobData
+                });
+            });
+            
+            // ALL routes become minimized routes
+            const minimizedRouteData = {
+                id: parseInt(routeData.routeId.replace('route_', '')),
+                jobs: jobs,
+                minimized: true
+            };
+            
+            minimizedRoutes.push(minimizedRouteData);
+            createMinimizedRouteUI(minimizedRouteData);
+        }
+        
+        // Set the next route ID and create job panels for new routes
+        if (routesSnapshot.size > 0) {
+            const maxRouteId = Math.max(...routesSnapshot.docs.map(doc => 
+                parseInt(doc.data().routeId.replace('route_', ''))
+            ));
+            currentRouteId = maxRouteId + 1;
+        }
+        createNewRoute(currentRouteId);
+        
+        // Update route counter
+        updateRouteCount();
+        
+        console.log('Routes loaded successfully');
+        
+    } catch (error) {
+        console.error('Error loading routes:', error);
+        // Clear loading indicator on error
+        const minimizedRoutesGrid = document.getElementById('minimized-routes-grid');
+        if (minimizedRoutesGrid) {
+            minimizedRoutesGrid.innerHTML = '';
+        }
+        currentRouteId = 1;
+        createNewRoute(currentRouteId);
+    }
+}
+
+function createMinimizedRouteUI(routeData) {
+    console.log('Creating minimized route UI for route:', routeData);
+    
+    const minimizedRoutesGrid = document.getElementById('minimized-routes-grid');
+    
+    if (!minimizedRoutesGrid) {
+        console.error('Minimized routes grid not found');
+        return;
+    }
+    
+    // Create minimized route bar
+    const minimizedBar = document.createElement('div');
+    minimizedBar.className = 'minimized-route bg-[#1a1f24] rounded-lg p-2 border border-[#283039] transition-colors text-sm';
+    minimizedBar.setAttribute('data-route-id', routeData.id);
+    
+    // Create job route display (collection → delivery) - match original format
+    const jobRoutes = routeData.jobs.map(job => {
+        // Handle processing states
+        if (job.collection === 'Processing...' || job.delivery === 'Processing...') {
+            return `
+                <div class="flex items-center justify-center gap-2 text-sm">
+                    <span class="text-[#9cabba]">Processing...</span>
+                    <span class="material-symbols-outlined text-[var(--success-color)] text-sm">arrow_forward</span>
+                    <span class="text-[#9cabba]">Processing...</span>
+                </div>
+            `;
+        }
+        
+        // Handle different data formats: Firebase data vs local data
+        let collectionAddress, deliveryAddress;
+        
+        if (job.parsedData) {
+            // Firebase format: job has parsedData
+            collectionAddress = job.parsedData.collection_address || 'Unknown';
+            deliveryAddress = job.parsedData.delivery_address || 'Unknown';
+        } else if (job.collection && job.delivery) {
+            // Local format: job has collection/delivery fields
+            collectionAddress = job.collection;
+            deliveryAddress = job.delivery;
+        } else {
+            // Fallback
+            collectionAddress = 'Unknown';
+            deliveryAddress = 'Unknown';
+        }
+        
+        // Extract postcodes from addresses (assuming they're at the start)
+        const collectionPostcode = collectionAddress ? collectionAddress.split(',')[0].trim() : 'Unknown';
+        const deliveryPostcode = deliveryAddress ? deliveryAddress.split(',')[0].trim() : 'Unknown';
+        
+        return `
+            <div class="flex items-center justify-center gap-2 text-sm">
+                <span class="text-[#9cabba]">${collectionPostcode}</span>
+                <span class="material-symbols-outlined text-[var(--success-color)] text-sm">arrow_forward</span>
+                <span class="text-[#9cabba]">${deliveryPostcode}</span>
+            </div>
+        `;
+    }).join('');
+    
+    minimizedBar.innerHTML = `
+        <div class="flex flex-col gap-1">
+            <div class="flex items-center justify-between">
+                <span class="text-sm font-bold">Route ${routeData.id}</span>
+                <button class="delete-route-btn flex items-center justify-center w-6 h-6 rounded-full bg-red-600 hover:bg-red-700 text-white transition-colors" onclick="deleteRoute(${routeData.id})">
+                    <span class="material-symbols-outlined text-xs">delete</span>
+                </button>
+            </div>
+            <div class="flex flex-col gap-0.5 text-xs">
+                ${jobRoutes}
+            </div>
+        </div>
+    `;
+    
+    minimizedRoutesGrid.appendChild(minimizedBar);
+    console.log('Minimized route UI created');
+}
+
+function clearCurrentRoutes() {
+    console.log('Clearing current routes...');
+    
+    // Clear minimized routes array
+    minimizedRoutes = [];
+    
+    // Clear minimized routes UI
+    const minimizedRoutesGrid = document.getElementById('minimized-routes-grid');
+    if (minimizedRoutesGrid) {
+        minimizedRoutesGrid.innerHTML = '';
+    }
+    
+    // Clear active route
+    const activeRoute = document.querySelector('.route-container:not(.minimized-route)');
+    if (activeRoute) {
+        activeRoute.remove();
+    }
+    
+    // Reset route counter
+    currentRouteId = 1;
+    
+    console.log('Current routes cleared');
+}
+
+function updateSelectedDayDisplay() {
+    console.log('Updating selected day display...');
+    const selectedDayText = document.getElementById('selected-day-text');
+    const currentDayTitle = document.getElementById('current-day-title');
+    const currentDayDate = document.getElementById('current-day-date');
+    
+    const formattedDate = selectedDate.toLocaleDateString('en-GB', { 
+        weekday: 'long', 
+        day: 'numeric', 
+        month: 'long' 
+    });
+    
+    console.log('Selected day:', selectedDay);
+    console.log('Formatted date:', formattedDate);
+    
+    if (selectedDay === 'today') {
+        if (selectedDayText) selectedDayText.textContent = 'Today';
+        if (currentDayTitle) currentDayTitle.textContent = 'Today';
+        if (currentDayDate) currentDayDate.textContent = formattedDate;
+    } else if (selectedDay === 'tomorrow') {
+        if (selectedDayText) selectedDayText.textContent = 'Tomorrow';
+        if (currentDayTitle) currentDayTitle.textContent = 'Tomorrow';
+        if (currentDayDate) currentDayDate.textContent = formattedDate;
+    }
+    
+    console.log('Selected day display updated');
+}
+
+async function updateRouteCount() {
+    // Count all routes from Firebase
+    let routesCount = 0;
+    
+    try {
+        // Query Firebase for all routes
+        const routesQuery = window.query(window.collection(window.db, 'routes'));
+        const routesSnapshot = await window.getDocs(routesQuery);
+        routesCount = routesSnapshot.size;
+        
+        console.log('Routes found in Firebase:', routesCount);
+        
+    } catch (error) {
+        console.error('Error querying Firebase for route counts:', error);
+    }
+    
+    // Add minimized routes (routes that exist locally but may not be in Firebase yet)
+    routesCount += minimizedRoutes.length;
+    
+    // Add 1 for the current active route if it has jobs
+    const activeRoute = document.querySelector('.route-container:not(.minimized-route)');
+    if (activeRoute) {
+        const hasJobs = activeRoute.querySelectorAll('.job-panel').length > 0;
+        if (hasJobs) {
+            routesCount += 1;
+        }
+    }
+    
+    console.log('Total routes count (Firebase + minimized + active):', routesCount);
+    
+    // Update route counter display
+    const routesCountElement = document.getElementById('routes-count');
+    if (routesCountElement) {
+        routesCountElement.textContent = routesCount;
+    }
+    
+    // Update day selection status if a day is selected
+    if (selectedDay) {
+        updatePlanningStatus();
+    }
+    
+    // Update the status indicator to reflect the new count
+    updateStatusIndicator();
+    
+    console.log('Route count updated:', routesCount);
+}
+
+
+// Status Indicator Management
+function updateStatusIndicator() {
+    const statusIndicator = document.getElementById('status-indicator');
+    const statusText = document.getElementById('status-text');
+    const routesCount = document.getElementById('routes-count');
+    
+    // Check if elements exist before proceeding
+    if (!statusIndicator || !statusText || !routesCount) {
+        console.log('Status indicator elements not found, skipping update');
+        return;
+    }
+    
+    // Get current route count
+    const currentCount = minimizedRoutes.length;
+    
+    if (isProcessing || processingQueue.length > 0) {
+        // Show processing state
+        statusIndicator.className = 'flex items-center justify-center gap-2 min-w-[140px] h-8 px-4 rounded-md bg-[var(--primary-color)] text-white text-sm font-bold';
+        statusText.innerHTML = `<span class="material-symbols-outlined text-sm animate-spin">hourglass_empty</span> Processing`;
+    } else {
+        // Show completed state with route count
+        statusIndicator.className = 'flex items-center justify-center gap-2 min-w-[140px] h-8 px-4 rounded-md bg-[var(--success-color)] text-white text-sm font-bold';
+        statusText.innerHTML = `<span class="material-symbols-outlined text-sm">check_circle</span> (${currentCount}) Routes Uploaded`;
+        routesCount.textContent = currentCount;
+    }
+}
+
+// Navigation functions
+function showNotifications() {
+    alert('Notifications feature coming soon!');
+}
+
+// Job selection functionality
+function selectJob(jobNumber) {
+    // Remove active state from all jobs first
+    for (let i = 1; i <= 4; i++) {
+        const jobElement = document.getElementById(`job-${i}`);
+        const titleElement = jobElement.querySelector('h3');
+        
+        // Remove all active styling
+        jobElement.classList.remove('glow');
+        jobElement.style.borderColor = '';
+        jobElement.style.border = '2px solid transparent';
+        titleElement.textContent = `Job ${i}`;
+        titleElement.className = 'text-sm font-bold';
+        titleElement.style.color = '';
+    }
+    
+    // Now set the selected job as active
+    const selectedJobElement = document.getElementById(`job-${jobNumber}`);
+    const selectedTitleElement = selectedJobElement.querySelector('h3');
+    
+    // Add active styling
+    selectedJobElement.style.border = '2px solid #22c55e';
+    selectedJobElement.classList.add('glow');
+    selectedTitleElement.textContent = `Job ${jobNumber} (Active)`;
+    selectedTitleElement.className = 'text-sm font-bold';
+    selectedTitleElement.style.color = '#22c55e';
+    
+    activeJob = jobNumber;
+}
+
+// Enter job details
+async function enterJobDetails() {
+    const jobText = document.getElementById('job-details').value.trim();
+    
+    if (!jobText) {
+        alert('Please enter job details before proceeding.');
+        return;
+    }
+
+    if (!activeJob) {
+        alert('Please click on a job panel first to select it');
+        return;
+    }
+
+    // Immediately clear the input and show pending state
+    document.getElementById('job-details').value = '';
+    
+    // Show pending in the active job panel
+    const collectionElement = document.getElementById(`job-${activeJob.routeId}-${activeJob.jobNumber}-collection`);
+    const deliveryElement = document.getElementById(`job-${activeJob.routeId}-${activeJob.jobNumber}-delivery`);
+    const priceElement = document.getElementById(`job-${activeJob.routeId}-${activeJob.jobNumber}-price`);
+    
+    collectionElement.textContent = 'Pending...';
+    deliveryElement.textContent = 'Pending...';
+    priceElement.textContent = 'Pending...';
+    
+    // Update next route button state when job starts processing
+    updateNextRouteButton(activeJob.routeId);
+
+    // Generate unique job ID for tracking
+    const jobId = `job-${activeJob.routeId}-${activeJob.jobNumber}-${Date.now()}`;
+
+    // Add to processing queue
+    processingQueue.push({
+        routeId: activeJob.routeId,
+        jobNumber: activeJob.jobNumber,
+        jobText: jobText,
+        jobId: jobId
+    });
+
+    // Update status indicator
+    updateStatusIndicator();
+
+    // Start processing if not already running
+    if (!isProcessing) {
+        processQueue();
+    }
+}
+
+// Process the queue
+async function processQueue() {
+    if (isProcessing || processingQueue.length === 0) {
+        return;
+    }
+
+    isProcessing = true;
+    updateStatusIndicator();
+
+    while (processingQueue.length > 0) {
+        const job = processingQueue.shift();
+        
+        try {
+            // Show processing state
+            const collectionElement = document.getElementById(`job-${job.routeId}-${job.jobNumber}-collection`);
+            const deliveryElement = document.getElementById(`job-${job.routeId}-${job.jobNumber}-delivery`);
+            const priceElement = document.getElementById(`job-${job.routeId}-${job.jobNumber}-price`);
+            
+            collectionElement.textContent = 'Processing...';
+            deliveryElement.textContent = 'Processing...';
+            priceElement.textContent = 'Processing...';
+
+            // Call Firebase Function to parse the job text
+            const parseJobFunction = window.firebase.httpsCallable(window.firebase.functions, 'parseJobText');
+            const result = await parseJobFunction({
+                rawText: job.jobText
+            });
+
+            console.log('Firebase Function response:', result.data);
+            
+            if (result.data.success) {
+                // Debug: Log the parsed data to see if confidence scores are included
+                console.log('Parsed data received:', result.data.parsed_data);
+                
+                // Save job to Firebase immediately
+                try {
+                    const jobData = {
+                        routeId: job.routeId,
+                        jobNumber: job.jobNumber,
+                        rawText: job.jobText,
+                        parsedData: result.data.parsed_data,
+                        status: 'parsed',
+                        createdAt: new Date(),
+                        // Assign route ID immediately
+                        assignedRouteId: `route_${job.routeId}`
+                    };
+                    
+                    const docRef = await window.firebaseAddDoc(window.firebaseCollection(window.firestore, "jobs"), jobData);
+                    console.log('Job saved to Firebase with ID:', docRef.id);
+                    console.log(`Assigned route ID route_${job.routeId} to job ${docRef.id}`);
+                    
+                    // Store the saved job reference by route
+                    if (!savedJobs[`route_${job.routeId}`]) {
+                        savedJobs[`route_${job.routeId}`] = [];
+                    }
+                    savedJobs[`route_${job.routeId}`].push({
+                        firebaseId: docRef.id,
+                        routeId: job.routeId,
+                        jobNumber: job.jobNumber,
+                        data: jobData
+                    });
+                    
+                    // Create route summary immediately after first job is saved
+                    console.log(`Creating route summary for route ${job.routeId}...`);
+                    createRouteSummary(job.routeId);
+                    
+                } catch (firebaseError) {
+                    console.error('Error saving job to Firebase:', firebaseError);
+                }
+                
+                // Create route if it doesn't exist (first job)
+                ensureRouteExists(job.routeId);
+                
+                // Update the job display with parsed data
+                updateJobDisplay(job.routeId, job.jobNumber, result.data.parsed_data);
+                
+                // Update next route button state
+                updateNextRouteButton(job.routeId);
+                
+                // Update route count immediately after job processing
+                updateRouteCount();
+            } else {
+                // Show error state
+                collectionElement.textContent = 'Error processing';
+                deliveryElement.textContent = 'Error processing';
+                priceElement.textContent = 'Error processing';
+            }
+        } catch (error) {
+            console.error('Error processing job:', error);
+            console.error('Error details:', {
+                message: error.message,
+                stack: error.stack,
+                jobNumber: job.jobNumber,
+                jobText: job.jobText
+            });
+            
+            // Show error state
+            const collectionElement = document.getElementById(`job-${job.routeId}-${job.jobNumber}-collection`);
+            const deliveryElement = document.getElementById(`job-${job.routeId}-${job.jobNumber}-delivery`);
+            const priceElement = document.getElementById(`job-${job.routeId}-${job.jobNumber}-price`);
+            
+            collectionElement.textContent = 'Error processing';
+            deliveryElement.textContent = 'Error processing';
+            priceElement.textContent = 'Error processing';
+        }
+    }
+
+    isProcessing = false;
+    updateStatusIndicator();
+    
+    // Update route count after all processing is complete
+    updateRouteCount();
+}
+
+
+function ensureRouteExists(routeId) {
+    // Check if route already exists
+    const existingRoute = document.querySelector(`[data-route-id="${routeId}"]`);
+    if (!existingRoute) {
+        console.log(`Creating new route ${routeId} for first job`);
+        createNewRoute(routeId);
+    }
+}
+
+function checkRouteHasJobs(routeId) {
+    const routeContainer = document.querySelector(`[data-route-id="${routeId}"]`);
+    if (!routeContainer) return false;
+    
+    const jobs = routeContainer.querySelectorAll('.job-panel');
+    const hasJobActivity = Array.from(jobs).some(job => {
+        const collection = job.querySelector('[id$="-collection"]');
+        const delivery = job.querySelector('[id$="-delivery"]');
+        const price = job.querySelector('[id$="-price"]');
+        
+        // Allow if job has any activity (processing, pending, or completed)
+        return collection && delivery && price &&
+               (collection.textContent !== 'Waiting for details...' || 
+                delivery.textContent !== 'Waiting for details...' ||
+                price.textContent !== '-');
+    });
+    
+    return hasJobActivity;
+}
+
+function updateNextRouteButton(routeId) {
+    const nextRouteBtn = document.getElementById(`next-route-btn-${routeId}`);
+    if (!nextRouteBtn) return;
+    
+    const hasJobs = checkRouteHasJobs(routeId);
+    
+    if (hasJobs) {
+        // Enable button and make it green
+        nextRouteBtn.disabled = false;
+        nextRouteBtn.className = 'w-full h-8 px-4 rounded-md bg-[var(--success-color)] text-white text-sm font-bold hover:bg-[#1ea84a] transition-colors';
+    } else {
+        // Disable button and keep it gray
+        nextRouteBtn.disabled = true;
+        nextRouteBtn.className = 'w-full h-8 px-4 rounded-md bg-[#283039] text-white text-sm font-bold hover:bg-[#3a444e] transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+    }
+}
+
+function updateJobDisplay(routeId, jobNumber, parsedData) {
+    console.log(`Updating job ${routeId}-${jobNumber} display with data:`, parsedData);
+    
+    const collectionElement = document.getElementById(`job-${routeId}-${jobNumber}-collection`);
+    const deliveryElement = document.getElementById(`job-${routeId}-${jobNumber}-delivery`);
+    const priceElement = document.getElementById(`job-${routeId}-${jobNumber}-price`);
+    
+    // Check if elements exist (route might be minimized)
+    if (collectionElement && deliveryElement && priceElement) {
+    // Update content
+    collectionElement.textContent = parsedData.collection_address || 'Not found';
+    deliveryElement.textContent = parsedData.delivery_address || 'Not found';
+    
+    // Format and color-code the price
+    const price = parsedData.price || 0;
+    priceElement.textContent = `£${price.toFixed(2)}`;
+    
+    // Apply color coding based on price
+    priceElement.className = 'font-semibold text-sm';
+    if (price <= 90) {
+        priceElement.classList.add('text-red-400');
+    } else if (price <= 130) {
+        priceElement.classList.add('text-orange-400');
+    } else {
+        priceElement.classList.add('text-green-400');
+    }
+        
+        // Add confidence indicators if available
+        console.log('Checking for confidence data:', {
+            hasConfidenceScores: !!parsedData.confidence_scores,
+            hasAccuracyRating: !!parsedData.accuracy_rating,
+            confidenceScores: parsedData.confidence_scores,
+            accuracyRating: parsedData.accuracy_rating
+        });
+        
+        if (parsedData.confidence_scores || parsedData.accuracy_rating) {
+            console.log('Adding confidence indicators for job', routeId, jobNumber);
+            addConfidenceIndicators(routeId, jobNumber, parsedData);
+        } else {
+            console.log('No confidence data found for job', routeId, jobNumber);
+        }
+    } else {
+        console.log(`Job elements not found for ${routeId}-${jobNumber}, route may be minimized`);
+    }
+    
+    // Always update minimized route if it exists (this handles the case where route is minimized)
+    updateMinimizedRoute(routeId, jobNumber, parsedData);
+}
+
+function updateMinimizedRoute(routeId, jobNumber, parsedData) {
+    // Check if this route is minimized
+    const minimizedBar = document.querySelector(`.minimized-route[data-route-id="${routeId}"]`);
+    if (!minimizedBar) {
+        return; // Route is not minimized
+    }
+    
+    // Find the route data in minimizedRoutes array
+    const routeData = minimizedRoutes.find(r => r.id === routeId);
+    if (!routeData) {
+        return;
+    }
+    
+    // If we have parsed data, update the specific job in the stored data
+    if (parsedData && jobNumber) {
+        const jobIndex = routeData.jobs.findIndex(job => job.jobNumber === jobNumber);
+        if (jobIndex !== -1) {
+            // Update the existing job with parsed data
+            routeData.jobs[jobIndex] = {
+                jobNumber,
+                collection: parsedData.collection_address || 'Not found',
+                delivery: parsedData.delivery_address || 'Not found',
+                price: `£${(parsedData.price || 0).toFixed(2)}`
+            };
+        } else {
+            // Add new job if it doesn't exist
+            routeData.jobs.push({
+                jobNumber,
+                collection: parsedData.collection_address || 'Not found',
+                delivery: parsedData.delivery_address || 'Not found',
+                price: `£${(parsedData.price || 0).toFixed(2)}`
+            });
+        }
+    } else {
+        // Fallback: get current job data from DOM (if route is still active)
+        const activeRouteContainer = document.querySelector(`[data-route-id="${routeId}"]`);
+        if (activeRouteContainer) {
+            const currentJobs = [];
+            const jobPanels = activeRouteContainer.querySelectorAll('.job-panel');
+            jobPanels.forEach((panel, index) => {
+                const jobNum = index + 1;
+                const collection = panel.querySelector(`#job-${routeId}-${jobNum}-collection`)?.textContent || '';
+                const delivery = panel.querySelector(`#job-${routeId}-${jobNum}-delivery`)?.textContent || '';
+                const price = panel.querySelector(`#job-${routeId}-${jobNum}-price`)?.textContent || '';
+                
+                // Add jobs that have meaningful data OR are currently processing
+                const hasData = collection && 
+                               delivery && 
+                               price && 
+                               collection !== 'Waiting for details...' && 
+                               delivery !== 'Waiting for details...' && 
+                               price !== '-';
+                
+                const isProcessing = collection === 'Processing...' || 
+                                    delivery === 'Processing...' || 
+                                    price === 'Processing...';
+                
+                if (hasData || isProcessing) {
+                    currentJobs.push({
+                        jobNumber: jobNum,
+                        collection,
+                        delivery,
+                        price
+                    });
+                }
+            });
+            routeData.jobs = currentJobs;
+        }
+    }
+    
+    // Recreate the job route display
+    const jobRoutes = routeData.jobs.map(job => {
+        // Handle processing states
+        if (job.collection === 'Processing...' || job.delivery === 'Processing...') {
+            return `
+                <div class="flex items-center justify-center gap-2 text-sm">
+                    <span class="text-[#9cabba]">Processing...</span>
+                    <span class="material-symbols-outlined text-[var(--success-color)] text-sm">arrow_forward</span>
+                    <span class="text-[#9cabba]">Processing...</span>
+                </div>
+            `;
+        }
+        
+        // Extract postcodes from addresses (assuming they're at the start)
+        const collectionPostcode = job.collection.split(',')[0].trim();
+        const deliveryPostcode = job.delivery.split(',')[0].trim();
+        
+        return `
+            <div class="flex items-center justify-center gap-2 text-sm">
+                <span class="text-[#9cabba]">${collectionPostcode}</span>
+                <span class="material-symbols-outlined text-[var(--success-color)] text-sm">arrow_forward</span>
+                <span class="text-[#9cabba]">${deliveryPostcode}</span>
+            </div>
+        `;
+    }).join('');
+    
+    // Update the minimized bar content
+    minimizedBar.innerHTML = `
+        <div class="flex flex-col gap-1">
+            <div class="flex items-center justify-between">
+                <span class="text-sm font-bold">Route ${routeId}</span>
+                <button class="delete-route-btn flex items-center justify-center w-6 h-6 rounded-full bg-red-600 hover:bg-red-700 text-white transition-colors" onclick="deleteRoute(${routeId})">
+                    <span class="material-symbols-outlined text-xs">delete</span>
+                </button>
+            </div>
+            <div class="flex flex-col gap-0.5 text-xs">
+                ${jobRoutes}
+            </div>
+        </div>
+    `;
+}
+
+function addConfidenceIndicators(routeId, jobNumber, parsedData) {
+    console.log(`Adding confidence indicators for job ${routeId}-${jobNumber}:`, parsedData);
+    
+    const jobElement = document.getElementById(`job-${routeId}-${jobNumber}`);
+    if (!jobElement) {
+        console.error(`Job element not found for job ${routeId}-${jobNumber}`);
+        return;
+    }
+    
+    // Remove existing confidence indicators
+    const existingConfidence = jobElement.querySelector('.confidence-indicator');
+    if (existingConfidence) {
+        console.log('Removing existing confidence indicators');
+        existingConfidence.remove();
+    }
+    
+    // Overall accuracy rating
+    const accuracyRating = parsedData.accuracy_rating || 'unknown';
+    
+    let accuracyColor = 'text-gray-400';
+    let accuracyIcon = '❓';
+    
+    switch (accuracyRating) {
+        case 'excellent':
+            accuracyColor = 'text-green-400';
+            accuracyIcon = '✅';
+            break;
+        case 'good':
+            accuracyColor = 'text-blue-400';
+            accuracyIcon = '👍';
+            break;
+        case 'fair':
+            accuracyColor = 'text-yellow-400';
+            accuracyIcon = '⚠️';
+            break;
+        case 'poor':
+            accuracyColor = 'text-red-400';
+            accuracyIcon = '❌';
+            break;
+    }
+    
+    // Create confidence indicator for top right corner
+    const confidenceIndicator = document.createElement('div');
+    confidenceIndicator.className = 'confidence-indicator absolute top-2 right-2 text-lg';
+    confidenceIndicator.innerHTML = `<span class="${accuracyColor}">${accuracyIcon}</span>`;
+    confidenceIndicator.title = `AI Accuracy: ${accuracyRating.toUpperCase()}`;
+    
+    // Make sure the job element has relative positioning
+    jobElement.classList.add('relative');
+    
+    // Add to job element
+    jobElement.appendChild(confidenceIndicator);
+    console.log('Confidence indicator added to top right corner for job', routeId, jobNumber);
+}
+
+// Function to create route summaries when all jobs in a route are complete
+async function createRouteSummary(routeId) {
+    console.log(`createRouteSummary called for routeId: ${routeId}`);
+    try {
+        // Check if Firebase is available
+        if (!window.firestore || !window.firebaseCollection) {
+            console.error('Firebase is not initialized');
+            throw new Error('Firebase is not initialized. Please refresh the page and try again.');
+        }
+        
+        console.log('Firebase is available, proceeding with route summary creation...');
+
+        // Check if route summary already exists
+        console.log(`Checking for existing route summary with routeId: route_${routeId}`);
+        const routesQuery = window.query(
+            window.collection(window.db, 'routes'),
+            window.where('routeId', '==', `route_${routeId}`)
+        );
+        const existingRoutes = await window.getDocs(routesQuery);
+        console.log(`Found ${existingRoutes.size} existing routes`);
+        
+        if (!existingRoutes.empty) {
+            console.log(`Route summary for route_${routeId} already exists, updating...`);
+            // Update existing route summary
+            const existingRoute = existingRoutes.docs[0];
+            const existingData = existingRoute.data();
+            
+            // Get all jobs for this route from Firebase
+            const jobsQuery = window.query(
+                window.collection(window.db, 'jobs'),
+                window.where('assignedRouteId', '==', `route_${routeId}`)
+            );
+            const jobsSnapshot = await window.getDocs(jobsQuery);
+            
+            const jobs = [];
+            jobsSnapshot.forEach(doc => {
+                jobs.push({
+                    firebaseId: doc.id,
+                    ...doc.data()
+                });
+            });
+
+            // Update the existing route summary
+            await window.updateDoc(existingRoute.ref, {
+                jobCount: jobs.length,
+                jobs: jobs.map(job => ({
+                    firebaseId: job.firebaseId,
+                    routeId: job.routeId,
+                    jobNumber: job.jobNumber
+                })),
+                updatedAt: new Date()
+            });
+            
+            console.log(`Updated route summary for route_${routeId} with ${jobs.length} jobs`);
+            return;
+        }
+
+        // Get all jobs for this route from Firebase
+        console.log(`Getting jobs for route_${routeId}...`);
+        const jobsQuery = window.query(
+            window.collection(window.db, 'jobs'),
+            window.where('assignedRouteId', '==', `route_${routeId}`)
+        );
+        const jobsSnapshot = await window.getDocs(jobsQuery);
+        console.log(`Found ${jobsSnapshot.size} jobs for route_${routeId}`);
+        
+        if (jobsSnapshot.empty) {
+            console.log(`No jobs found for route ${routeId}`);
+            return;
+        }
+
+        const jobs = [];
+        jobsSnapshot.forEach(doc => {
+            jobs.push({
+                firebaseId: doc.id,
+                ...doc.data()
+            });
+        });
+
+        // Create new route summary in Firebase
+        const routeData = {
+            routeId: `route_${routeId}`,
+            jobCount: jobs.length,
+            jobs: jobs.map(job => ({
+                firebaseId: job.firebaseId,
+                routeId: job.routeId,
+                jobNumber: job.jobNumber
+            })),
+            createdAt: new Date(),
+            status: 'active'
+        };
+        
+        console.log('Creating new route summary with data:', routeData);
+        await window.addDoc(window.collection(window.db, 'routes'), routeData);
+        console.log('Route summary created successfully in Firebase:', routeData);
+        
+        // Update route count after route summary is created
+        updateRouteCount();
+        
+    } catch (error) {
+        console.error('Error creating route summary:', error);
+    }
+}
+
+function resetJobDisplay(routeId, jobNumber) {
+    const collectionElement = document.getElementById(`job-${routeId}-${jobNumber}-collection`);
+    const deliveryElement = document.getElementById(`job-${routeId}-${jobNumber}-delivery`);
+    const priceElement = document.getElementById(`job-${routeId}-${jobNumber}-price`);
+    
+    // Check if elements exist before trying to modify them
+    if (collectionElement) {
+        collectionElement.textContent = 'Waiting for details...';
+    }
+    if (deliveryElement) {
+        deliveryElement.textContent = 'Waiting for details...';
+    }
+    if (priceElement) {
+        priceElement.textContent = '-';
+        // Reset styling
+        priceElement.className = 'font-semibold text-sm';
+        if (jobNumber > 2) {
+            priceElement.classList.add('text-[var(--primary-color)]/50');
+        }
+    }
+}
+
+// Add keyboard shortcut for Enter key
+document.getElementById('job-details').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        enterJobDetails();
+    }
+});
+
+// Logout function
+async function logout() {
+    try {
+        // Clear stored user identity
+        localStorage.removeItem('soto_user_identity');
+        
+        console.log('User logged out successfully');
+        
+        // Redirect to login page
+        window.location.href = '/pages/soto-routes-login.html';
+        
+    } catch (error) {
+        console.error('Logout error:', error);
+        // Even if logout fails, clear localStorage and redirect
+        localStorage.removeItem('soto_user_identity');
+        window.location.href = '/pages/soto-routes-login.html';
+    }
+}
+
+// New workflow functions
+function createJobPanel(routeId, jobNumber, isActive = false) {
+    const jobPanel = document.createElement('div');
+    jobPanel.className = `job-panel bg-[#1a1f24] rounded-lg p-2 flex flex-col gap-1 cursor-pointer border-2 transition-all duration-300 relative`;
+    
+    if (isActive) {
+        jobPanel.classList.add('border-[var(--success-color)]', 'glow');
+    } else {
+        jobPanel.classList.add('border-transparent', 'hover:border-[#3a444e]');
+    }
+    
+    jobPanel.id = `job-${routeId}-${jobNumber}`;
+    jobPanel.onclick = () => selectJob(routeId, jobNumber);
+    
+    jobPanel.innerHTML = `
+        <h3 class="text-xs font-bold ${isActive ? 'text-[var(--success-color)]' : ''}">Job ${jobNumber}</h3>
+        <div class="bg-[#283039] rounded-lg p-1">
+            <h4 class="text-xs font-medium text-[#9cabba] mb-0">Collection Address</h4>
+            <p class="font-semibold text-white text-xs" id="job-${routeId}-${jobNumber}-collection">Waiting for details...</p>
+        </div>
+        <div class="bg-[#283039] rounded-lg p-1">
+            <h4 class="text-xs font-medium text-[#9cabba] mb-0">Delivery Address</h4>
+            <p class="font-semibold text-white text-xs" id="job-${routeId}-${jobNumber}-delivery">Waiting for details...</p>
+        </div>
+        <div class="bg-[#283039] rounded-lg p-1">
+            <h4 class="text-xs font-medium text-[#9cabba] mb-0">Job Price</h4>
+            <p class="font-semibold text-xs" id="job-${routeId}-${jobNumber}-price">-</p>
+        </div>
+    `;
+    
+    return jobPanel;
+}
+
+function addJobPanel(routeId) {
+    const jobPanelsContainer = document.getElementById(`job-panels-${routeId}`);
+    const addJobBtn = document.getElementById(`add-job-btn-${routeId}`);
+    const job3Panel = document.getElementById(`job-${routeId}-3`);
+    const job4Panel = document.getElementById(`job-${routeId}-4`);
+    
+    if (!jobPanelsContainer) return;
+    
+    if (job3Panel && job3Panel.classList.contains('hidden')) {
+        // Show the third job panel
+        job3Panel.classList.remove('hidden');
+        jobPanelsContainer.classList.remove('grid-cols-2');
+        jobPanelsContainer.classList.add('grid-cols-3');
+        // Keep the add button visible for the 4th panel
+    } else if (job4Panel && job4Panel.classList.contains('hidden')) {
+        // Show the fourth job panel
+        job4Panel.classList.remove('hidden');
+        jobPanelsContainer.classList.remove('grid-cols-3');
+        jobPanelsContainer.classList.add('grid-cols-4');
+        addJobBtn.classList.add('hidden');
+    }
+}
+
+function selectJob(routeId, jobNumber) {
+    // Remove active state from all job panels in this route
+    const jobPanelsContainer = document.getElementById(`job-panels-${routeId}`);
+    if (jobPanelsContainer) {
+        jobPanelsContainer.querySelectorAll('.job-panel').forEach(panel => {
+            panel.classList.remove('border-[var(--success-color)]', 'glow');
+            panel.classList.add('border-transparent', 'hover:border-[#3a444e]');
+            panel.querySelector('h3').classList.remove('text-[var(--success-color)]');
+        });
+    }
+    
+    // Add active state to selected job
+    const selectedJob = document.getElementById(`job-${routeId}-${jobNumber}`);
+    if (selectedJob) {
+        selectedJob.classList.add('border-[var(--success-color)]', 'glow');
+        selectedJob.classList.remove('border-transparent', 'hover:border-[#3a444e]');
+        selectedJob.querySelector('h3').classList.add('text-[var(--success-color)]');
+        activeJob = { routeId, jobNumber };
+    }
+}
+
+function nextRoute() {
+    // Check if current route has valid jobs before proceeding
+    if (!checkRouteHasJobs(currentRouteId)) {
+        console.log('Cannot create next route: no valid jobs in current route');
+        return;
+    }
+    
+    // Minimize current route
+    minimizeRoute(currentRouteId);
+    
+    // Remove any existing active route containers
+    const existingActiveRoutes = document.querySelectorAll('.route-container:not(.minimized-route)');
+    existingActiveRoutes.forEach(route => {
+        if (!route.classList.contains('minimized-route')) {
+            route.remove();
+        }
+    });
+    
+    // Create new route
+    currentRouteId++;
+    createNewRoute(currentRouteId);
+}
+
+function minimizeRoute(routeId) {
+    const routeContainer = document.querySelector(`[data-route-id="${routeId}"]`);
+    if (!routeContainer) return;
+    
+    // Store route data
+    const routeData = {
+        id: routeId,
+        jobs: [],
+        minimized: true
+    };
+    
+    // Collect job data
+    const jobPanels = routeContainer.querySelectorAll('.job-panel');
+    jobPanels.forEach((panel, index) => {
+        const jobNumber = index + 1;
+        const collection = panel.querySelector(`#job-${routeId}-${jobNumber}-collection`)?.textContent || '';
+        const delivery = panel.querySelector(`#job-${routeId}-${jobNumber}-delivery`)?.textContent || '';
+        const price = panel.querySelector(`#job-${routeId}-${jobNumber}-price`)?.textContent || '';
+        
+        // Add jobs that have meaningful data OR are currently processing
+        const hasData = collection && 
+                       delivery && 
+                       price && 
+                       collection !== 'Waiting for details...' && 
+                       delivery !== 'Waiting for details...' && 
+                       price !== '-';
+        
+        const isProcessing = collection === 'Processing...' || 
+                            delivery === 'Processing...' || 
+                            price === 'Processing...';
+        
+        if (hasData || isProcessing) {
+            routeData.jobs.push({
+                jobNumber,
+                collection,
+                delivery,
+                price
+            });
+        }
+    });
+    
+    // Create minimized route bar
+    const minimizedBar = document.createElement('div');
+    minimizedBar.className = 'minimized-route bg-[#1a1f24] rounded-lg p-2 border border-[#283039] transition-colors text-sm';
+    minimizedBar.setAttribute('data-route-id', routeId);
+    
+    // Create job route display (collection → delivery)
+    const jobRoutes = routeData.jobs.map(job => {
+        // Handle processing states
+        if (job.collection === 'Processing...' || job.delivery === 'Processing...') {
+            return `
+                <div class="flex items-center justify-center gap-2 text-sm">
+                    <span class="text-[#9cabba]">Processing...</span>
+                    <span class="material-symbols-outlined text-[var(--success-color)] text-sm">arrow_forward</span>
+                    <span class="text-[#9cabba]">Processing...</span>
+                </div>
+            `;
+        }
+        
+        // Extract postcodes from addresses (assuming they're at the start)
+        const collectionPostcode = job.collection.split(',')[0].trim();
+        const deliveryPostcode = job.delivery.split(',')[0].trim();
+        
+        return `
+            <div class="flex items-center justify-center gap-2 text-sm">
+                <span class="text-[#9cabba]">${collectionPostcode}</span>
+                <span class="material-symbols-outlined text-[var(--success-color)] text-sm">arrow_forward</span>
+                <span class="text-[#9cabba]">${deliveryPostcode}</span>
+            </div>
+        `;
+    }).join('');
+    
+    minimizedBar.innerHTML = `
+        <div class="flex flex-col gap-1">
+            <div class="flex items-center justify-between">
+                <span class="text-sm font-bold">Route ${routeId}</span>
+                <button class="delete-route-btn flex items-center justify-center w-6 h-6 rounded-full bg-red-600 hover:bg-red-700 text-white transition-colors" onclick="deleteRoute(${routeId})">
+                    <span class="material-symbols-outlined text-xs">delete</span>
+                </button>
+            </div>
+            <div class="flex flex-col gap-0.5 text-xs">
+                ${jobRoutes}
+            </div>
+        </div>
+    `;
+    
+    // Add minimized bar to the grid
+    const minimizedGrid = document.getElementById('minimized-routes-grid');
+    if (minimizedGrid) {
+        minimizedGrid.appendChild(minimizedBar);
+    }
+    
+    // Remove the original route container
+    routeContainer.remove();
+    
+    // Store minimized route data
+    minimizedRoutes.push(routeData);
+    
+    // Update day indicator counts
+    updateRouteCount();
+}
+
+function expandRoute(routeId) {
+    // Find minimized route data
+    const routeData = minimizedRoutes.find(r => r.id === routeId);
+    if (!routeData) return;
+    
+    // Remove minimized bar
+    const minimizedBar = document.querySelector(`.minimized-route[data-route-id="${routeId}"]`);
+    if (minimizedBar) {
+        minimizedBar.remove();
+    }
+    
+    // Create expanded route
+    createNewRoute(routeId, routeData);
+    
+    // Remove from minimized routes
+    minimizedRoutes = minimizedRoutes.filter(r => r.id !== routeId);
+}
+
+async function deleteRoute(routeId) {
+    console.log('Deleting route:', routeId);
+    
+    // Remove the minimized route from the DOM
+    const minimizedBar = document.querySelector(`.minimized-route[data-route-id="${routeId}"]`);
+    if (minimizedBar) {
+        minimizedBar.remove();
+    }
+    
+    // Remove from minimized routes array
+    minimizedRoutes = minimizedRoutes.filter(r => r.id !== routeId);
+    
+    try {
+        // Delete route and jobs from Firebase
+        const routeIdStr = `route_${routeId}`;
+        
+        // Delete the route document
+        const routeQuery = window.query(
+            window.collection(window.db, 'routes'),
+            window.where('routeId', '==', routeIdStr)
+        );
+        
+        const routeSnapshot = await window.getDocs(routeQuery);
+        routeSnapshot.forEach(async (doc) => {
+            await window.firebaseDeleteDoc(doc.ref);
+            console.log('Deleted route document:', doc.id);
+        });
+        
+        // Delete all jobs for this route
+        const jobsQuery = window.query(
+            window.collection(window.db, 'jobs'),
+            window.where('assignedRouteId', '==', routeIdStr)
+        );
+        
+        const jobsSnapshot = await window.getDocs(jobsQuery);
+        jobsSnapshot.forEach(async (doc) => {
+            await window.firebaseDeleteDoc(doc.ref);
+            console.log('Deleted job document:', doc.id);
+        });
+        
+        console.log(`Deleted ${jobsSnapshot.size} jobs for route ${routeId}`);
+        
+    } catch (error) {
+        console.error('Error deleting route from Firebase:', error);
+    }
+    
+    // Update day indicator counts
+    updateRouteCount();
+    
+    // Reorder all remaining routes
+    reorderRoutes();
+}
+
+function reorderRoutes() {
+    // Get all minimized routes
+    const allMinimizedRoutes = document.querySelectorAll('.minimized-route');
+    
+    // Sort them by their current route ID
+    const sortedRoutes = Array.from(allMinimizedRoutes).sort((a, b) => {
+        const idA = parseInt(a.getAttribute('data-route-id'));
+        const idB = parseInt(b.getAttribute('data-route-id'));
+        return idA - idB;
+    });
+    
+    // Reorder the minimized routes array to match
+    minimizedRoutes.sort((a, b) => a.id - b.id);
+    
+    // Update route numbers starting from 1
+    sortedRoutes.forEach((routeElement, index) => {
+        const newRouteId = index + 1;
+        const oldRouteId = parseInt(routeElement.getAttribute('data-route-id'));
+        
+        // Update the DOM element
+        routeElement.setAttribute('data-route-id', newRouteId);
+        
+        // Update the route number in the display
+        const routeNumberSpan = routeElement.querySelector('.text-base.font-bold');
+        if (routeNumberSpan) {
+            routeNumberSpan.textContent = `Route ${newRouteId}`;
+        }
+        
+        // Update the delete button onclick
+        const deleteBtn = routeElement.querySelector('.delete-route-btn');
+        if (deleteBtn) {
+            deleteBtn.setAttribute('onclick', `deleteRoute(${newRouteId})`);
+        }
+        
+        // Update the minimized routes array
+        const routeData = minimizedRoutes.find(r => r.id === oldRouteId);
+        if (routeData) {
+            routeData.id = newRouteId;
+        }
+    });
+    
+    // Update currentRouteId if needed
+    if (currentRouteId > minimizedRoutes.length) {
+        currentRouteId = minimizedRoutes.length + 1;
+    }
+}
+
+function createNewRoute(routeId, existingData = null) {
+    console.log('createNewRoute called with routeId:', routeId);
+    const routesContainer = document.getElementById('routes-container');
+    console.log('routes-container found:', !!routesContainer);
+    
+    // Remove any existing active route containers first
+    const existingActiveRoutes = document.querySelectorAll('.route-container:not(.minimized-route)');
+    console.log('Found existing active routes:', existingActiveRoutes.length);
+    existingActiveRoutes.forEach(route => {
+        if (!route.classList.contains('minimized-route')) {
+            route.remove();
+        }
+    });
+    
+    const routeContainer = document.createElement('div');
+    routeContainer.className = 'route-container';
+    routeContainer.setAttribute('data-route-id', routeId);
+    
+    const jobPanelsContainer = document.createElement('div');
+    jobPanelsContainer.className = 'flex-grow grid grid-cols-2 gap-4 transition-all duration-300';
+    jobPanelsContainer.id = `job-panels-${routeId}`;
+    
+    // Create job panels
+    const job1Panel = createJobPanel(routeId, 1, true); // First job is active by default
+    const job2Panel = createJobPanel(routeId, 2);
+    const job3Panel = createJobPanel(routeId, 3);
+    const job4Panel = createJobPanel(routeId, 4);
+    job3Panel.classList.add('hidden');
+    job4Panel.classList.add('hidden');
+    
+    jobPanelsContainer.appendChild(job1Panel);
+    jobPanelsContainer.appendChild(job2Panel);
+    jobPanelsContainer.appendChild(job3Panel);
+    jobPanelsContainer.appendChild(job4Panel);
+    
+    const addJobBtn = document.createElement('button');
+    addJobBtn.className = 'flex-shrink-0 flex items-center justify-center w-12 h-12 rounded-full bg-[#283039] hover:bg-[#3a444e] transition-colors mt-auto mb-auto';
+    addJobBtn.id = `add-job-btn-${routeId}`;
+    addJobBtn.onclick = () => addJobPanel(routeId);
+    addJobBtn.innerHTML = '<span class="material-symbols-outlined text-2xl">arrow_forward_ios</span>';
+    
+    const routeRow = document.createElement('div');
+    routeRow.className = 'flex items-start gap-4';
+    routeRow.id = `route-container-${routeId}`;
+    routeRow.appendChild(jobPanelsContainer);
+    routeRow.appendChild(addJobBtn);
+    
+    const nextRouteBtn = document.createElement('button');
+    nextRouteBtn.id = `next-route-btn-${routeId}`;
+    nextRouteBtn.className = 'w-full h-8 px-4 rounded-md bg-[#283039] text-white text-sm font-bold hover:bg-[#3a444e] transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+    nextRouteBtn.onclick = nextRoute;
+    nextRouteBtn.textContent = 'Next Route';
+    nextRouteBtn.disabled = true; // Initially disabled
+    
+    const nextRouteContainer = document.createElement('div');
+    nextRouteContainer.className = 'mt-4';
+    nextRouteContainer.appendChild(nextRouteBtn);
+    
+    routeContainer.appendChild(routeRow);
+    routeContainer.appendChild(nextRouteContainer);
+    
+    // Add to active route container
+    const activeRouteContainer = document.getElementById('active-route-container');
+    console.log('active-route-container found:', !!activeRouteContainer);
+    if (activeRouteContainer) {
+        activeRouteContainer.appendChild(routeContainer);
+        console.log('Route container appended to active-route-container');
+    } else {
+        routesContainer.appendChild(routeContainer);
+        console.log('Route container appended to routes-container');
+    }
+    
+    // Set active job and update current route ID
+    activeJob = { routeId, jobNumber: 1 };
+    currentRouteId = routeId;
+    console.log('Route creation completed for routeId:', routeId);
+    
+    // Restore existing data if provided
+    if (existingData) {
+        existingData.jobs.forEach(job => {
+            const collectionEl = document.getElementById(`job-${routeId}-${job.jobNumber}-collection`);
+            const deliveryEl = document.getElementById(`job-${routeId}-${job.jobNumber}-delivery`);
+            const priceEl = document.getElementById(`job-${routeId}-${job.jobNumber}-price`);
+            
+            if (collectionEl) collectionEl.textContent = job.collection;
+            if (deliveryEl) deliveryEl.textContent = job.delivery;
+            if (priceEl) priceEl.textContent = job.price;
+        });
+        
+        // Update button state after loading existing jobs
+        updateNextRouteButton(routeId);
+    }
+}
+
+// Route initialization is now handled in window.onload after Firebase is ready
+
+// Make functions globally available
+window.updateJobDisplay = updateJobDisplay;
+window.addConfidenceIndicators = addConfidenceIndicators;
+window.addJobPanel = addJobPanel;
+window.selectJob = selectJob;
+window.nextRoute = nextRoute;
+</script>
+</body>
+</html>
