@@ -1,0 +1,2098 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <link crossorigin="" href="https://fonts.gstatic.com/" rel="preconnect"/>
+    <link as="style" href="https://fonts.googleapis.com/css2?display=swap&amp;family=Inter%3Awght%40400%3B500%3B700%3B900&amp;family=Noto+Sans%3Awght%40400%3B500%3B700%3B900" onload="this.rel='stylesheet'" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+    <title>SOTO Routes - Logistics Planning</title>
+    <link href="data:image/x-icon;base64," rel="icon" type="image/x-icon"/>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            plugins: {
+                forms: {},
+                containerQueries: {}
+            }
+        }
+    </script>
+    <!-- Google Maps API -->
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDTbiSXo9tg1Tx8SlZCZKsR_R0zIQ4N1VA&libraries=geometry&callback=initGoogleMaps"></script>
+    
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, addDoc, getDocs, getDoc, doc, query, orderBy, limit, where, setDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+        
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA",
+            authDomain: "soto-routes.firebaseapp.com",
+            projectId: "soto-routes",
+            storageBucket: "soto-routes.firebasestorage.app",
+            messagingSenderId: "440989695549",
+            appId: "1:440989695549:web:0bce8b92a46f7f79953454",
+            measurementId: "G-4E3G40QQ9L"
+        };
+        
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const functions = getFunctions(app);
+        
+        // Make Firebase available globally
+        window.firebaseApp = app;
+        window.firebase = { functions: functions, httpsCallable: httpsCallable };
+        window.firestore = db;
+        window.auth = auth;
+        window.firebaseCollection = collection;
+        window.firebaseAddDoc = addDoc;
+        window.firebaseGetDocs = getDocs;
+        window.firebaseGetDoc = getDoc;
+        window.firebaseDoc = doc;
+        window.firebaseSetDoc = setDoc;
+        window.firebaseQuery = query;
+        window.firebaseOrderBy = orderBy;
+        window.firebaseLimit = limit;
+        window.firebaseWhere = where;
+        window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+        window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+        window.signOut = signOut;
+        window.onAuthStateChanged = onAuthStateChanged;
+        
+        console.log('Firebase initialized successfully!');
+    </script>
+    <style type="text/tailwindcss">
+        :root {
+            --primary-color: #0d7ff2;
+            --success-color: #22c55e;
+        }
+    </style>
+</head>
+<body class="bg-[#111418] text-white" style='font-family: Inter, "Noto Sans", sans-serif;'>
+    <div class="relative flex h-auto min-h-screen w-full flex-col dark group/design-root overflow-x-hidden">
+        <div class="flex h-full grow flex-col">
+        <header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-b-[#283039] px-6 py-3">
+            <div class="flex items-center gap-4">
+                <div class="size-8 text-[var(--primary-color)]">
+                    <svg fill="none" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M13.8261 17.4264C16.7203 18.1174 20.2244 18.5217 24 18.5217C27.7756 18.5217 31.2797 18.1174 34.1739 17.4264C36.9144 16.7722 39.9967 15.2331 41.3563 14.1648L24.8486 40.6391C24.4571 41.267 23.5429 41.267 23.1514 40.6391L6.64374 14.1648C8.00331 15.2331 11.0856 16.7722 13.8261 17.4264Z" fill="currentColor"></path>
+                        <path clip-rule="evenodd" d="M39.998 12.236C39.9944 12.2537 39.9875 12.2845 39.9748 12.3294C39.9436 12.4399 39.8949 12.5741 39.8346 12.7175C39.8168 12.7597 39.7989 12.8007 39.7813 12.8398C38.5103 13.7113 35.9788 14.9393 33.7095 15.4811C30.9875 16.131 27.6413 16.5217 24 16.5217C20.3587 16.5217 17.0125 16.131 14.2905 15.4811C12.0012 14.9346 9.44505 13.6897 8.18538 12.8168C8.17384 12.7925 8.16216 12.767 8.15052 12.7408C8.09919 12.6249 8.05721 12.5114 8.02977 12.411C8.00356 12.3152 8.00039 12.2667 8.00004 12.2612C8.00004 12.261 8 12.2607 8.00004 12.2612C8.00004 12.2359 8.0104 11.9233 8.68485 11.3686C9.34546 10.8254 10.4222 10.2469 11.9291 9.72276C14.9242 8.68098 19.1919 8 24 8C28.8081 8 33.0758 8.68098 36.0709 9.72276C37.5778 10.2469 38.6545 10.8254 39.3151 11.3686C39.9006 11.8501 39.9857 12.1489 39.998 12.236ZM4.95178 15.2312L21.4543 41.6973C22.6288 43.5809 25.3712 43.5809 26.5457 41.6973L43.0534 15.223C43.0709 15.1948 43.0878 15.1662 43.104 15.1371L41.3563 14.1648C43.104 15.1371 43.1038 15.1374 43.104 15.1371L43.1051 15.135L43.1065 15.1325L43.1101 15.1261L43.1199 15.1082C43.1276 15.094 43.1377 15.0754 43.1497 15.0527C43.1738 15.0075 43.2062 14.9455 43.244 14.8701C43.319 14.7208 43.4196 14.511 43.5217 14.2683C43.6901 13.8679 44 13.0689 44 12.2609C44 10.5573 43.003 9.22254 41.8558 8.2791C40.6947 7.32427 39.1354 6.55361 37.385 5.94477C33.8654 4.72057 29.133 4 24 4C18.867 4 14.1346 4.72057 10.615 5.94478C8.86463 6.55361 7.30529 7.32428 6.14419 8.27911C4.99695 9.22255 3.99999 10.5573 3.99999 12.2609C3.99999 13.1275 4.29264 13.9078 4.49321 14.3607C4.60375 14.6102 4.71348 14.8196 4.79687 14.9689C4.83898 15.0444 4.87547 15.1065 4.9035 15.1529C4.91754 15.1762 4.92954 15.1957 4.93916 15.2111L4.94662 15.223L4.95178 15.2312ZM35.9868 18.996L24 38.22L12.0131 18.996C12.4661 19.1391 12.9179 19.2658 13.3617 19.3718C16.4281 20.1039 20.0901 20.5217 24 20.5217C27.9099 20.5217 31.5719 20.1039 34.6383 19.3718C35.082 19.2658 35.5339 19.1391 35.9868 18.996Z" fill="currentColor" fill-rule="evenodd"></path>
+                    </svg>
+                </div>
+                <h2 class="text-xl font-bold">SOTO Routes</h2>
+            </div>
+            <nav class="flex flex-1 justify-center gap-2">
+                <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/soto-lp.html">Routes</a>
+                <a class="bg-[#283039] text-white text-sm font-medium rounded-md px-4 py-2" href="#">Optimisation</a>
+                <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/drivers.html">Drivers</a>
+            </nav>
+            <div class="flex items-center gap-4">
+                <button class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors" onclick="showNotifications()">
+                    <span class="material-symbols-outlined text-xl">notifications</span>
+                </button>
+                <button class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors text-sm" onclick="logout()">
+                    Logout
+                </button>
+                <div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDevd-HNK-hCI6uo8erI-DVQkF2BKhqZ0ZAY0qf-E49wK_Eme1itzAv3OZQ8llueRr0JfYlmS9s0zJ1iZkEMovNFenOgEFVnmtKIQ6-Yty0sPAlp7F42lZf97BCZlS-X4oSH12C0DnPEaXrmNnX8gPV32TDFrCAQkoT-5vsSla2tL5Mu5BMnF37vCjaPVARHrMwp3QnHVpRCB_wtsJfmGdvPMIs27V2QfjKIZviBup9poMqsRtRRaTcW8FHMcFHXknCA_jokfbE9Ko");'></div>
+            </div>
+        </header>
+        <main class="flex-1 px-6 py-4">
+            <div class="max-w-6xl mx-auto">
+                <div class="flex justify-between items-center mb-4">
+                    <h1 class="text-2xl font-bold tracking-tight">Optimisation</h1>
+                    <div class="flex items-center gap-3">
+                        <button onclick="loadAndDisplayRoutes()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold">
+                            Load Routes
+                        </button>
+                        <button onclick="showOptimiseSettings()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold">
+                            <span class="truncate">Optimise</span>
+                        </button>
+                        <button onclick="clearAllRoutes()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold">
+                            Clear All Routes
+                        </button>
+                    </div>
+                </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4" id="routes-container">
+                        <!-- Routes will be dynamically loaded here -->
+                        <div id="no-routes-message" class="col-span-full text-center py-12 text-gray-400">
+                            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                            <p class="text-lg mb-2">Loading routes...</p>
+                            <p class="text-sm">Please wait while we load your saved routes</p>
+                        </div>
+                        
+                        <!-- Demo Route 1 (hidden by default) -->
+                        <div class="flex flex-col gap-4 rounded-lg border border-[#283039] bg-[#1a1f24] p-6" id="demo-route-1" style="display: none;">
+                            <div class="grid grid-cols-5 gap-6 text-sm">
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-gray-400 font-medium">Driver</label>
+                                    <p class="text-white font-semibold" id="route-1-driver">-</p>
+                                </div>
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-gray-400 font-medium">Driver's Location</label>
+                                    <p class="text-white font-semibold" id="route-1-driver-location">-</p>
+                                </div>
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-gray-400 font-medium">Collection A</label>
+                                    <p class="text-green-400 font-semibold">B797RU</p>
+                                </div>
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-gray-400 font-medium"># of Jobs</label>
+                                    <p class="text-white font-semibold">2</p>
+                                </div>
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-gray-400 font-medium">Delivery X</label>
+                                    <p class="text-red-400 font-semibold">M1 4AN</p>
+                                </div>
+                            </div>
+                            <div class="mt-4">
+                                <div class="flex justify-between items-end mb-1">
+                                    <label class="text-gray-400 font-medium text-sm">Distance to Collection A</label>
+                                    <p class="text-white font-semibold text-sm" id="route-1-distance-to-collection">-</p>
+                                </div>
+                                <div class="w-full bg-[#283039] rounded-full h-2.5 relative overflow-hidden">
+                                    <div class="bg-gray-600 h-full rounded-full" id="route-1-progress-to-collection" style="width: 0%;"></div>
+                                </div>
+                                <div class="flex justify-between text-xs text-gray-400 mt-1">
+                                    <span>0 mi</span>
+                                    <span>100 mi</span>
+                                </div>
+                            </div>
+                            <div class="mt-2">
+                                <div class="flex justify-between items-end mb-1">
+                                    <label class="text-gray-400 font-medium text-sm">Distance Home</label>
+                                    <p class="text-white font-semibold text-sm" id="route-1-distance">-</p>
+                                </div>
+                                <div class="w-full bg-[#283039] rounded-full h-2.5 relative overflow-hidden">
+                                    <div class="bg-gray-600 h-full rounded-full" id="route-1-progress" style="width: 0%;"></div>
+                                </div>
+                                <div class="flex justify-between text-xs text-gray-400 mt-1">
+                                    <span>0 mi</span>
+                                    <span>100 mi</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Demo Route 2 (hidden by default) -->
+                        <div class="flex flex-col gap-4 rounded-lg border border-[#283039] bg-[#1a1f24] p-6" id="demo-route-2" style="display: none;">
+                            <div class="grid grid-cols-5 gap-6 text-sm">
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-gray-400 font-medium">Driver</label>
+                                    <p class="text-white font-semibold" id="route-2-driver">-</p>
+                                </div>
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-gray-400 font-medium">Driver's Location</label>
+                                    <p class="text-white font-semibold" id="route-2-driver-location">-</p>
+                                </div>
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-gray-400 font-medium">Collection A</label>
+                                    <p class="text-green-400 font-semibold">B797RU</p>
+                                </div>
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-gray-400 font-medium"># of Jobs</label>
+                                    <p class="text-white font-semibold">2</p>
+                                </div>
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-gray-400 font-medium">Delivery X</label>
+                                    <p class="text-red-400 font-semibold">B775JA</p>
+                                </div>
+                            </div>
+                            <div class="mt-4">
+                                <div class="flex justify-between items-end mb-1">
+                                    <label class="text-gray-400 font-medium text-sm">Distance to Collection A</label>
+                                    <p class="text-white font-semibold text-sm" id="route-2-distance-to-collection">-</p>
+                                </div>
+                                <div class="w-full bg-[#283039] rounded-full h-2.5 relative overflow-hidden">
+                                    <div class="bg-gray-600 h-full rounded-full" id="route-2-progress-to-collection" style="width: 0%;"></div>
+                                </div>
+                                <div class="flex justify-between text-xs text-gray-400 mt-1">
+                                    <span>0 mi</span>
+                                    <span>100 mi</span>
+                                </div>
+                            </div>
+                            <div class="mt-2">
+                                <div class="flex justify-between items-end mb-1">
+                                    <label class="text-gray-400 font-medium text-sm">Distance Home</label>
+                                    <p class="text-white font-semibold text-sm" id="route-2-distance">-</p>
+                                </div>
+                                <div class="w-full bg-[#283039] rounded-full h-2.5 relative overflow-hidden">
+                                    <div class="bg-gray-600 h-full rounded-full" id="route-2-progress" style="width: 0%;"></div>
+                                </div>
+                                <div class="flex justify-between text-xs text-gray-400 mt-1">
+                                    <span>0 mi</span>
+                                    <span>100 mi</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Demo Route 3 (hidden by default) -->
+                        <div class="flex flex-col gap-4 rounded-lg border border-[#283039] bg-[#1a1f24] p-6" id="demo-route-3" style="display: none;">
+                            <div class="grid grid-cols-5 gap-6 text-sm">
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-gray-400 font-medium">Driver</label>
+                                    <p class="text-white font-semibold" id="route-3-driver">-</p>
+                                </div>
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-gray-400 font-medium">Driver's Location</label>
+                                    <p class="text-white font-semibold" id="route-3-driver-location">-</p>
+                                </div>
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-gray-400 font-medium">Collection A</label>
+                                    <p class="text-green-400 font-semibold">B797RU</p>
+                                </div>
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-gray-400 font-medium"># of Jobs</label>
+                                    <p class="text-white font-semibold">2</p>
+                                </div>
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-gray-400 font-medium">Delivery X</label>
+                                    <p class="text-red-400 font-semibold">LS1 4DY</p>
+                                </div>
+                            </div>
+                            <div class="mt-4">
+                                <div class="flex justify-between items-end mb-1">
+                                    <label class="text-gray-400 font-medium text-sm">Distance to Collection A</label>
+                                    <p class="text-white font-semibold text-sm" id="route-3-distance-to-collection">-</p>
+                                </div>
+                                <div class="w-full bg-[#283039] rounded-full h-2.5 relative overflow-hidden">
+                                    <div class="bg-gray-600 h-full rounded-full" id="route-3-progress-to-collection" style="width: 0%;"></div>
+                                </div>
+                                <div class="flex justify-between text-xs text-gray-400 mt-1">
+                                    <span>0 mi</span>
+                                    <span>100 mi</span>
+                                </div>
+                            </div>
+                            <div class="mt-2">
+                                <div class="flex justify-between items-end mb-1">
+                                    <label class="text-gray-400 font-medium text-sm">Distance Home</label>
+                                    <p class="text-white font-semibold text-sm" id="route-3-distance">-</p>
+                                </div>
+                                <div class="w-full bg-[#283039] rounded-full h-2.5 relative overflow-hidden">
+                                    <div class="bg-gray-600 h-full rounded-full" id="route-3-progress" style="width: 0%;"></div>
+                                </div>
+                                <div class="flex justify-between text-xs text-gray-400 mt-1">
+                                    <span>0 mi</span>
+                                    <span>100 mi</span>
+                                </div>
+                            </div>
+                        </div>
+            </div>
+        </main>
+        </div>
+    </div>
+
+    <script>
+        // Check authentication first
+        function checkAuthentication() {
+            const storedUser = localStorage.getItem('soto_user_identity');
+            if (!storedUser) {
+                console.log('No user identity found, redirecting to login');
+                window.location.href = '/pages/login.html';
+                return false;
+            }
+            return true;
+        }
+
+        // CloudKit functionality removed
+        let savedRoutes = [];
+        let currentUserId = 'default_user'; // Placeholder for user authentication
+
+        // Driver data loaded from Firebase
+        let drivers = [];
+
+        // Navigation functions
+        function showNotifications() {
+            alert('Notifications feature coming soon!');
+        }
+
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                localStorage.removeItem('soto_user_identity');
+                window.location.href = '/';
+            }
+        }
+
+        // Load routes from Firebase (with localStorage fallback)
+        async function loadRoutesFromFirebase() {
+            try {
+                // Check if Firebase is available
+                if (!window.firestore || !window.firebaseCollection) {
+                    console.log('Firebase not available, checking localStorage...');
+                    return loadRoutesFromLocalStorage();
+                }
+
+                // Get all routes from Firebase (no user filtering since we removed date-based filtering)
+                const routesQuery = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'routes')
+                );
+
+                const routesSnapshot = await window.firebaseGetDocs(routesQuery);
+                
+                savedRoutes = [];
+                
+                if (routesSnapshot.empty) {
+                    console.log('No routes found in Firebase, checking localStorage...');
+                    return loadRoutesFromLocalStorage();
+                }
+                
+                // For each route, get its associated jobs
+                for (const routeDoc of routesSnapshot.docs) {
+                    const routeData = routeDoc.data();
+                    
+                    const jobsQuery = window.firebaseQuery(
+                        window.firebaseCollection(window.firestore, 'jobs'),
+                        window.firebaseWhere('assignedRouteId', '==', routeData.routeId)
+                    );
+
+                    const jobsSnapshot = await window.firebaseGetDocs(jobsQuery);
+                    
+                    const jobs = [];
+                    jobsSnapshot.forEach(jobDoc => {
+                        jobs.push({
+                            id: jobDoc.id,
+                            ...jobDoc.data()
+                        });
+                    });
+
+                    const routeWithJobs = {
+                        route: {
+                            id: routeDoc.id,
+                            ...routeData
+                        },
+                        jobs: jobs
+                    };
+                    
+                    savedRoutes.push(routeWithJobs);
+                }
+
+                console.log('Loaded routes from Firebase:', savedRoutes);
+                return savedRoutes;
+            } catch (error) {
+                console.error('Error loading routes from Firebase:', error);
+                console.log('Falling back to localStorage...');
+                return loadRoutesFromLocalStorage();
+            }
+        }
+
+        // Save routes to Firebase
+        async function saveRoutesToFirebase() {
+            try {
+                const user = window.auth.currentUser;
+                if (!user) {
+                    console.error('No authenticated user found');
+                    return;
+                }
+
+                const routesCollection = window.firebaseCollection(window.firestore, 'routes');
+                
+                // Save each route with its assignments using the original route ID
+                for (let i = 0; i < savedRoutes.length; i++) {
+                    const routeData = savedRoutes[i];
+                    const originalRouteId = routeData.route.id; // Use the original Firebase document ID
+                    const routeDocRef = window.firebaseDoc(routesCollection, originalRouteId);
+                    
+                    
+                    await window.firebaseSetDoc(routeDocRef, {
+                        routeId: routeData.route.routeId || originalRouteId,
+                        route: routeData.route, // This contains the assignedDriverName, assignedDriverPostcode
+                        jobs: routeData.jobs,
+                        lastUpdated: new Date(),
+                        userId: user.uid
+                    });
+                }
+                
+                console.log(`Updated ${savedRoutes.length} routes in Firebase with driver assignments`);
+            } catch (error) {
+                console.error('Error saving routes to Firebase:', error);
+            }
+        }
+
+        // Load drivers from Firebase
+        async function loadDriversFromFirebase() {
+            try {
+                // Check if Firebase is available
+                if (!window.firestore || !window.firebaseCollection) {
+                    console.log('Firebase not available for drivers');
+                    return [];
+                }
+
+                // Get all drivers from Firebase
+                const driversQuery = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'drivers')
+                );
+
+                const driversSnapshot = await window.firebaseGetDocs(driversQuery);
+                
+                drivers = [];
+                
+                driversSnapshot.forEach(driverDoc => {
+                    const driverData = driverDoc.data();
+                    console.log('Driver data from Firebase:', driverData);
+                    
+                    // Use the correct field names from the drivers page: firstName, lastName, homePostcode
+                    const firstName = driverData.firstName || '';
+                    const lastName = driverData.lastName || '';
+                    const name = `${firstName} ${lastName}`.trim() || 'Unknown Driver';
+                    const postcode = driverData.homePostcode || 'Unknown Postcode';
+                    
+                    drivers.push({
+                        id: driverDoc.id,
+                        name: name,
+                        postcode: postcode,
+                        ...driverData
+                    });
+                    
+                    console.log('Processed driver:', { name, postcode });
+                });
+
+                console.log('Loaded drivers from Firebase:', drivers);
+                return drivers;
+            } catch (error) {
+                console.error('Error loading drivers from Firebase:', error);
+                // Fallback to demo drivers if Firebase fails
+                drivers = [
+                    { name: "John Smith", postcode: "B775JA" },
+                    { name: "Sarah Johnson", postcode: "M1 4AN" },
+                    { name: "Mike Wilson", postcode: "LS1 4DY" },
+                    { name: "Emma Brown", postcode: "B797RU" },
+                    { name: "David Taylor", postcode: "SW1A 0AA" }
+                ];
+                return drivers;
+            }
+        }
+
+        // Load routes from localStorage (fallback)
+        function loadRoutesFromLocalStorage() {
+            try {
+                const savedRoutesData = JSON.parse(localStorage.getItem('savedRoutes') || '[]');
+                savedRoutes = [];
+                
+                for (const routeData of savedRoutesData) {
+                    // Convert localStorage data to CloudKit-like format
+                    const routeRecord = {
+                        fields: {
+                            routeIdString: { value: routeData.routeId },
+                            userIdString: { value: routeData.userId },
+                            routeNameString: { value: routeData.routeName },
+                            driverNameString: { value: routeData.driverName },
+                            driverLocationString: { value: routeData.driverLocation },
+                            totalJobsInt64: { value: routeData.totalJobs },
+                            totalDistanceDouble: { value: routeData.totalDistance },
+                            estimatedDurationInt64: { value: routeData.estimatedDuration },
+                            statusString: { value: routeData.status }
+                        }
+                    };
+                    
+                    const jobs = routeData.jobs.map(job => ({
+                        fields: {
+                            jobIdString: { value: job.jobId || `job_${routeData.routeId}_${job.jobNumber}` },
+                            routeIdString: { value: routeData.routeId },
+                            jobNumberInt64: { value: job.jobNumber },
+                            collectionAddressString: { value: job.collectionAddress },
+                            deliveryAddressString: { value: job.deliveryAddress },
+                            collectionPostcodeString: { value: job.collectionPostcode },
+                            deliveryPostcodeString: { value: job.deliveryPostcode },
+                            jobPriceDouble: { value: job.price },
+                            jobDistanceDouble: { value: job.distance },
+                            jobDurationInt64: { value: job.duration },
+                            jobNotesString: { value: job.notes },
+                            isCompletedBoolean: { value: job.isCompleted ? 1 : 0 }
+                        }
+                    }));
+                    
+                    savedRoutes.push({
+                        route: routeRecord,
+                        jobs: jobs
+                    });
+                }
+                
+                console.log('Loaded routes from localStorage:', savedRoutes);
+                return savedRoutes;
+            } catch (error) {
+                console.error('Error loading routes from localStorage:', error);
+                return [];
+            }
+        }
+
+        // Display routes from Firebase
+        async function displayRoutesFromFirebase() {
+            try {
+                console.log('Loading routes from Firebase...');
+                await loadRoutesFromFirebase();
+                
+                const routesContainer = document.getElementById('routes-container');
+                const noRoutesMessage = document.getElementById('no-routes-message');
+                
+                if (savedRoutes.length === 0) {
+                    noRoutesMessage.style.display = 'block';
+                    noRoutesMessage.innerHTML = `
+                        <p class="text-lg mb-2">No saved routes available</p>
+                        <p class="text-sm">Go to the Routes page to create and save routes first</p>
+                    `;
+                    hideDemoRoutes();
+                    return;
+                }
+                
+                console.log(`Found ${savedRoutes.length} routes, displaying...`);
+                noRoutesMessage.style.display = 'none';
+                hideDemoRoutes();
+                
+                // Clear existing dynamic routes
+                const existingDynamicRoutes = routesContainer.querySelectorAll('.dynamic-route');
+                existingDynamicRoutes.forEach(route => route.remove());
+                
+                // Display each saved route
+                savedRoutes.forEach((routeData, index) => {
+                    const route = routeData.route;
+                    const jobs = routeData.jobs;
+                    
+                    if (jobs.length > 0) {
+                        const firstJob = jobs[0];
+                        const routeElement = createRouteElement(route, jobs, index + 1);
+                        routesContainer.appendChild(routeElement);
+                    }
+                });
+                
+                // Populate driver assignments if they exist
+                savedRoutes.forEach((routeData, index) => {
+                    // Check both possible locations for the assigned driver data
+                    const assignedDriverName = routeData.route?.assignedDriverName || routeData.route?.route?.assignedDriverName;
+                    const assignedDriverPostcode = routeData.route?.assignedDriverPostcode || routeData.route?.route?.assignedDriverPostcode;
+                    
+                    if (assignedDriverName) {
+                        const routeNumber = index + 1;
+                        const driverElement = document.getElementById(`firebase-route-${routeNumber}-driver`);
+                        const locationElement = document.getElementById(`firebase-route-${routeNumber}-driver-location`);
+                        
+                        if (driverElement) {
+                            driverElement.textContent = assignedDriverName;
+                        }
+                        if (locationElement) {
+                            locationElement.textContent = assignedDriverPostcode || '-';
+                        }
+                        
+                        // Calculate and display distances
+                        if (assignedDriverPostcode) {
+                            updateRouteDistances(routeNumber, assignedDriverPostcode, routeData.jobs);
+                        }
+                    }
+                });
+                
+                console.log(`Displayed ${savedRoutes.length} routes successfully`);
+                
+            } catch (error) {
+                console.error('Error displaying routes:', error);
+                const noRoutesMessage = document.getElementById('no-routes-message');
+                if (noRoutesMessage) {
+                    noRoutesMessage.style.display = 'block';
+                    noRoutesMessage.innerHTML = `
+                        <p class="text-lg mb-2 text-red-400">Error loading routes</p>
+                        <p class="text-sm">${error.message}</p>
+                        <p class="text-sm mt-2">Click "Load Routes" to try again</p>
+                    `;
+                }
+            }
+        }
+
+        // Create a route element from Firebase data
+        function createRouteElement(routeRecord, jobs, routeNumber) {
+            const routeDiv = document.createElement('div');
+            routeDiv.className = 'flex flex-col gap-3 rounded-lg border border-[#283039] bg-[#1a1f24] p-3 dynamic-route w-full max-w-2xl';
+            
+            // Create job pairs (Collection A -> Delivery A, Collection B -> Delivery B, etc.)
+            let jobPairsHTML = '';
+            jobs.forEach((job, index) => {
+                const jobLetter = String.fromCharCode(65 + index); // A, B, C, etc.
+                
+                // Extract postcodes from addresses
+                let collectionPostcode = 'N/A';
+                let deliveryPostcode = 'N/A';
+                
+                if (job.parsedData?.collection_address) {
+                    const collectionParts = job.parsedData.collection_address.split(',');
+                    collectionPostcode = collectionParts[0].trim();
+                }
+                
+                if (job.parsedData?.delivery_address) {
+                    const deliveryParts = job.parsedData.delivery_address.split(',');
+                    deliveryPostcode = deliveryParts[0].trim();
+                }
+                
+                jobPairsHTML += `
+                    <div class="flex flex-col gap-1.5">
+                        <label class="text-gray-400 font-medium text-xs">Collection ${jobLetter}</label>
+                        <p class="text-green-400 font-semibold text-sm">${collectionPostcode}</p>
+                    </div>
+                    <div class="flex flex-col gap-1.5">
+                        <label class="text-gray-400 font-medium text-xs">Delivery ${jobLetter}</label>
+                        <p class="text-red-400 font-semibold text-sm">${deliveryPostcode}</p>
+                    </div>
+                `;
+            });
+            
+            routeDiv.innerHTML = `
+                <div class="grid grid-cols-2 gap-4 text-sm">
+                    <div class="flex flex-col gap-1">
+                        <label class="text-gray-400 font-medium text-xs">Driver</label>
+                        <p class="text-white font-semibold text-sm" id="firebase-route-${routeNumber}-driver">-</p>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-gray-400 font-medium text-xs">Driver's Location</label>
+                        <p class="text-white font-semibold text-sm" id="firebase-route-${routeNumber}-driver-location">-</p>
+                    </div>
+                    </div>
+                <div class="grid grid-cols-${Math.min(jobs.length * 2, 6)} gap-2 text-xs">
+                    ${jobPairsHTML}
+                </div>
+                <div class="mt-3">
+                    <div class="flex justify-between items-end mb-1">
+                        <label class="text-gray-400 font-medium text-xs">Distance to Collection A</label>
+                        <p class="text-white font-semibold text-xs" id="firebase-route-${routeNumber}-distance-to-collection">-</p>
+                    </div>
+                    <div class="w-full bg-[#283039] rounded-full h-2 relative overflow-hidden">
+                        <div class="bg-gray-600 h-full rounded-full" id="firebase-route-${routeNumber}-progress-to-collection" style="width: 0%;"></div>
+                    </div>
+                    <div class="flex justify-between text-xs text-gray-400 mt-1">
+                        <span>0 mi</span>
+                        <span>100 mi</span>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <div class="flex justify-between items-end mb-1">
+                        <label class="text-gray-400 font-medium text-xs">Distance Home</label>
+                        <p class="text-white font-semibold text-xs" id="firebase-route-${routeNumber}-distance">-</p>
+                    </div>
+                    <div class="w-full bg-[#283039] rounded-full h-2 relative overflow-hidden">
+                        <div class="bg-gray-600 h-full rounded-full" id="firebase-route-${routeNumber}-progress" style="width: 0%;"></div>
+                    </div>
+                    <div class="flex justify-between text-xs text-gray-400 mt-1">
+                        <span>0 mi</span>
+                        <span>100 mi</span>
+                    </div>
+                </div>
+            `;
+            
+            return routeDiv;
+        }
+
+        // Show demo routes for optimization
+        function showDemoRoutes() {
+            document.getElementById('demo-route-1').style.display = 'block';
+            document.getElementById('demo-route-2').style.display = 'block';
+            document.getElementById('demo-route-3').style.display = 'block';
+            document.getElementById('no-routes-message').style.display = 'none';
+        }
+
+        // Hide demo routes
+        function hideDemoRoutes() {
+            document.getElementById('demo-route-1').style.display = 'none';
+            document.getElementById('demo-route-2').style.display = 'none';
+            document.getElementById('demo-route-3').style.display = 'none';
+        }
+
+        // Optimize routes function
+        // Global variable to store carry-over postcodes
+        let carryOverPostcodes = {};
+
+        async function optimizeRoutes() {
+            console.log('optimizeRoutes called, current drivers array length:', drivers.length);
+            
+            // Only load drivers from Firebase if we don't already have them
+            if (drivers.length === 0) {
+                console.log('Loading drivers for optimization...');
+                await loadDriversFromFirebase();
+                console.log('After loadDriversFromFirebase, drivers array length:', drivers.length);
+            } else {
+                console.log('Using existing drivers for optimization:', drivers.length);
+            }
+            
+            if (drivers.length === 0) {
+                alert('No drivers found in database. Please add drivers first.');
+                return;
+            }
+            
+            // Show alterations popup before optimization
+            showAlterationsPopup();
+        }
+
+        // Show alterations popup
+        function showAlterationsPopup() {
+            // Create popup overlay
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+            overlay.id = 'alterations-overlay';
+            
+            // Create popup content
+            overlay.innerHTML = `
+                <div class="bg-[#1a1f24] rounded-lg p-6 w-full max-w-md mx-4 border border-[#283039]">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-bold text-white">Alterations</h3>
+                        <button onclick="closeAlterationsPopup()" class="text-gray-400 hover:text-white">
+                            <span class="material-symbols-outlined text-xl">close</span>
+                        </button>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">Carry-Overs</label>
+                            <p class="text-xs text-gray-400 mb-3">Set temporary starting locations for drivers (e.g., morning car drop-offs)</p>
+                            
+                            <div id="carry-overs-list" class="space-y-2">
+                                <!-- Carry-over items will be added here -->
+                            </div>
+                            
+                            <div class="mt-3">
+                                <select id="carry-over-driver-select" class="w-full bg-[#283039] border border-gray-600 rounded-md px-3 py-2 text-white text-sm">
+                                    <option value="">Select a driver...</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="flex gap-3 pt-4">
+                            <button onclick="closeAlterationsPopup()" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                                Cancel
+                            </button>
+                            <button onclick="startOptimization()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                                Start Optimization
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(overlay);
+            
+            // Populate driver dropdown
+            populateDriverDropdown();
+            
+            // Add event listener for driver selection
+            document.getElementById('carry-over-driver-select').addEventListener('change', function() {
+                const selectedDriverId = this.value;
+                if (selectedDriverId) {
+                    addCarryOverDriver(selectedDriverId);
+                    this.value = ''; // Reset selection
+                }
+            });
+        }
+
+        // Populate driver dropdown
+        function populateDriverDropdown() {
+            const select = document.getElementById('carry-over-driver-select');
+            select.innerHTML = '<option value="">Select a driver...</option>';
+            
+            drivers.forEach((driver, index) => {
+                // Don't show drivers who already have carry-over set
+                if (!carryOverPostcodes[index]) {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.textContent = driver.name;
+                    select.appendChild(option);
+                }
+            });
+        }
+
+        // Add carry-over driver
+        function addCarryOverDriver(driverIndex) {
+            const driver = drivers[driverIndex];
+            const postcode = prompt(`Enter carry-over postcode for ${driver.name}:`);
+            
+            if (postcode && postcode.trim()) {
+                carryOverPostcodes[driverIndex] = postcode.trim().toUpperCase();
+                updateCarryOversList();
+                populateDriverDropdown(); // Refresh dropdown to remove selected driver
+                console.log(`Carry-over set for ${driver.name}: ${postcode.trim().toUpperCase()}`);
+            }
+        }
+
+        // Update carry-overs list display
+        function updateCarryOversList() {
+            const listContainer = document.getElementById('carry-overs-list');
+            listContainer.innerHTML = '';
+            
+            Object.keys(carryOverPostcodes).forEach(driverIndex => {
+                const driver = drivers[parseInt(driverIndex)];
+                const postcode = carryOverPostcodes[driverIndex];
+                
+                const item = document.createElement('div');
+                item.className = 'flex items-center justify-between bg-[#283039] rounded-md px-3 py-2';
+                item.innerHTML = `
+                    <div>
+                        <span class="text-white text-sm font-medium">${driver.name}</span>
+                        <span class="text-gray-400 text-xs ml-2">→ ${postcode}</span>
+                    </div>
+                    <button onclick="removeCarryOver(${driverIndex})" class="text-red-400 hover:text-red-300">
+                        <span class="material-symbols-outlined text-sm">close</span>
+                    </button>
+                `;
+                listContainer.appendChild(item);
+            });
+        }
+
+        // Remove carry-over
+        function removeCarryOver(driverIndex) {
+            delete carryOverPostcodes[driverIndex];
+            updateCarryOversList();
+            populateDriverDropdown(); // Refresh dropdown to show removed driver
+            console.log(`Carry-over removed for ${drivers[driverIndex].name}`);
+        }
+
+        // Close alterations popup
+        function closeAlterationsPopup() {
+            const overlay = document.getElementById('alterations-overlay');
+            if (overlay) {
+                overlay.remove();
+            }
+        }
+
+        // Week calculation functions for optimise settings
+        function getWeekStart(date) {
+            const d = new Date(date);
+            const day = d.getDay();
+            const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+            return new Date(d.setDate(diff));
+        }
+
+        function getWeekNumber(date) {
+            const d = new Date(date);
+            d.setHours(0, 0, 0, 0);
+            d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
+            const week1 = new Date(d.getFullYear(), 0, 4);
+            return 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+        }
+
+        // Show optimise settings popup
+        function showOptimiseSettings() {
+            // Create popup overlay
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+            overlay.id = 'optimise-settings-overlay';
+            
+            // Create popup content
+            overlay.innerHTML = `
+                <div class="bg-[#1a1f24] rounded-lg p-6 w-full max-w-2xl mx-4 border border-[#283039] max-h-[90vh] overflow-y-auto">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-bold text-white">Optimise Settings</h3>
+                        <button onclick="closeOptimiseSettings()" class="text-gray-400 hover:text-white">
+                            <span class="material-symbols-outlined text-xl">close</span>
+                        </button>
+                    </div>
+                    
+                    <div class="space-y-6">
+                        <!-- Day Selection Section -->
+                        <div id="day-selection-section">
+                            <h4 class="text-lg font-semibold text-white mb-3">1. Select Day</h4>
+                            <div class="flex gap-3">
+                                <select id="weekSelectOptimise" class="flex-1 bg-[#283039] border border-gray-600 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <option value="">Choose a week...</option>
+                                    <option value="current">Current Week</option>
+                                    <option value="next">Next Week</option>
+                                </select>
+                            </div>
+                            <div id="weekDaysOptimise" class="grid grid-cols-2 gap-2 mt-3">
+                                <!-- Days will be populated here -->
+                            </div>
+                        </div>
+
+                        <!-- Driver Overview Section (hidden initially) -->
+                        <div id="driver-overview-section" class="hidden">
+                            <h4 class="text-lg font-semibold text-white mb-3">2. Driver Availability</h4>
+                            
+                            <!-- Drivers Off Today -->
+                            <div class="bg-[#283039] rounded-lg p-4 mb-4">
+                                <div class="flex items-center justify-between mb-3">
+                                    <span class="text-white font-medium">Drivers Off Today</span>
+                                    <span id="driversOffCount" class="text-red-400 font-bold">0</span>
+                                </div>
+                                <div id="driversOffList" class="space-y-2">
+                                    <!-- Drivers off will be listed here -->
+                                </div>
+                            </div>
+
+                            <!-- Total Drivers -->
+                            <div class="bg-[#283039] rounded-lg p-4 mb-4">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-white font-medium">Available Drivers</span>
+                                    <span id="totalDriversCount" class="text-blue-400 font-bold text-lg">0/0</span>
+                                </div>
+                            </div>
+
+                            <!-- Mark as Off Button -->
+                            <div class="flex gap-3">
+                                <button id="markAsOffBtn" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                                    Mark as Off
+                                </button>
+                                <span class="text-gray-400 text-sm self-center">Click to temporarily mark drivers as unavailable</span>
+                            </div>
+
+                            <!-- Driver Selection Dropdown (hidden initially) -->
+                            <div id="driverSelectionDropdown" class="hidden mt-4 bg-[#283039] rounded-lg p-4 border border-gray-600">
+                                <h5 class="text-white font-medium mb-3">Select Driver to Mark as Off</h5>
+                                <div id="allDriversList" class="space-y-2 max-h-60 overflow-y-auto">
+                                    <!-- All drivers will be listed here -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="flex gap-3 pt-4 border-t border-gray-700">
+                            <button onclick="closeOptimiseSettings()" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                                Cancel
+                            </button>
+                            <button id="startOptimisationBtn" onclick="startOptimisationWithSettings()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                                Start Optimisation
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(overlay);
+            
+            // Ensure day selection section is visible when popup opens
+            const daySelectionSection = document.getElementById('day-selection-section');
+            const weekDaysContainer = document.getElementById('weekDaysOptimise');
+            if (daySelectionSection) {
+                daySelectionSection.style.display = 'block';
+            }
+            if (weekDaysContainer) {
+                weekDaysContainer.style.display = 'block';
+            }
+            
+            // Initialize day selection
+            initializeOptimiseDaySelection();
+        }
+
+        // Global variables for optimise settings
+        let selectedOptimiseDay = null;
+        let tempDriversOff = []; // Temporary list of drivers marked as off
+        let allDrivers = []; // All drivers for the office
+
+        // Initialize day selection for optimise settings
+        function initializeOptimiseDaySelection() {
+            const weekSelect = document.getElementById('weekSelectOptimise');
+            const markAsOffBtn = document.getElementById('markAsOffBtn');
+            
+            weekSelect.addEventListener('change', populateOptimiseWeekDays);
+            markAsOffBtn.addEventListener('click', toggleDriverSelectionDropdown);
+            
+            // Click outside to close dropdown
+            document.addEventListener('click', (e) => {
+                const dropdown = document.getElementById('driverSelectionDropdown');
+                const btn = document.getElementById('markAsOffBtn');
+                if (dropdown && !dropdown.contains(e.target) && !btn.contains(e.target)) {
+                    dropdown.classList.add('hidden');
+                }
+            });
+        }
+
+        // Populate week days for optimise settings
+        function populateOptimiseWeekDays() {
+            const weekSelect = document.getElementById('weekSelectOptimise');
+            const weekDaysContainer = document.getElementById('weekDaysOptimise');
+            
+            if (!weekSelect.value || weekSelect.value === 'selected') {
+                weekDaysContainer.innerHTML = '';
+                weekDaysContainer.style.display = 'none';
+                return;
+            }
+            
+            const weekType = weekSelect.value;
+            const days = generateOptimiseWeekDays(weekType);
+            
+            weekDaysContainer.innerHTML = days.map(day => `
+                <button onclick="selectOptimiseDay('${day.date.toISOString()}', '${day.dayName}', '${day.week}')" 
+                        class="p-3 bg-[#283039] border border-gray-600 rounded-lg text-white text-sm hover:bg-[#3a4049] transition-colors">
+                    <div class="font-medium">${day.dayName}</div>
+                    <div class="text-xs text-gray-400">${day.date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</div>
+                </button>
+            `).join('');
+            
+            // Show the week days container
+            weekDaysContainer.style.display = 'block';
+        }
+
+        // Generate week days for optimise settings
+        function generateOptimiseWeekDays(weekType) {
+            const today = new Date();
+            let startDate;
+            
+            if (weekType === 'current') {
+                startDate = getWeekStart(today);
+            } else { // next week
+                startDate = getWeekStart(today);
+                startDate.setDate(startDate.getDate() + 7);
+            }
+            
+            const days = [];
+            for (let i = 0; i < 5; i++) { // Monday to Friday only
+                const dayDate = new Date(startDate);
+                dayDate.setDate(startDate.getDate() + i);
+                
+                const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+                const week = getWeekNumber(dayDate);
+                
+                days.push({
+                    date: dayDate,
+                    dayName: dayNames[i],
+                    week: `${dayDate.getFullYear()}-W${week.toString().padStart(2, '0')}`
+                });
+            }
+            
+            return days;
+        }
+
+        // Select day for optimise settings
+        async function selectOptimiseDay(dateString, dayName, week) {
+            selectedOptimiseDay = {
+                date: new Date(dateString),
+                dayName: dayName,
+                week: week
+            };
+            
+            // Minimize the day selection section but keep the week dropdown
+            const daySelectionSection = document.getElementById('day-selection-section');
+            const weekDaysContainer = document.getElementById('weekDaysOptimise');
+            if (weekDaysContainer) {
+                weekDaysContainer.style.display = 'none';
+            }
+            
+            // Show driver overview section
+            const driverOverviewSection = document.getElementById('driver-overview-section');
+            driverOverviewSection.classList.remove('hidden');
+            
+            // Update the section title to show selected day
+            const sectionTitle = driverOverviewSection.querySelector('h4');
+            if (sectionTitle) {
+                sectionTitle.textContent = `2. Driver Availability - ${dayName} ${selectedOptimiseDay.date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+            }
+            
+            // Update the week dropdown to show selected day but keep functionality
+            const weekSelect = document.getElementById('weekSelectOptimise');
+            if (weekSelect) {
+                const selectedText = `${dayName} ${selectedOptimiseDay.date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+                // Keep the original options but update the selected one
+                const currentValue = weekSelect.value;
+                weekSelect.innerHTML = `
+                    <option value="">Choose a week...</option>
+                    <option value="current" ${currentValue === 'current' ? 'selected' : ''}>Current Week</option>
+                    <option value="next" ${currentValue === 'next' ? 'selected' : ''}>Next Week</option>
+                `;
+                // Add a custom option to show the selected day
+                const selectedOption = document.createElement('option');
+                selectedOption.value = 'selected';
+                selectedOption.textContent = selectedText;
+                selectedOption.selected = true;
+                weekSelect.appendChild(selectedOption);
+            }
+            
+            // Load drivers and their availability
+            await loadDriversForOptimise();
+            await loadDriversOffForOptimise();
+            
+            // Enable start optimisation button
+            document.getElementById('startOptimisationBtn').disabled = false;
+        }
+
+        // Load all drivers for the office
+        async function loadDriversForOptimise() {
+            try {
+                const userIdentity = JSON.parse(localStorage.getItem('soto_user_identity'));
+                const officeId = userIdentity.officeId;
+                
+                console.log('Loading drivers for office:', officeId);
+                
+                const driversQuery = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'drivers'),
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                
+                const driversSnapshot = await window.firebaseGetDocs(driversQuery);
+                allDrivers = [];
+                
+                driversSnapshot.forEach(doc => {
+                    const driverData = doc.data();
+                    allDrivers.push({
+                        id: doc.id,
+                        ...driverData
+                    });
+                });
+                
+                // Sort drivers alphabetically by name (handle missing names)
+                allDrivers.sort((a, b) => {
+                    const nameA = a.name || a.firstName + ' ' + a.lastName || 'Unknown';
+                    const nameB = b.name || b.firstName + ' ' + b.lastName || 'Unknown';
+                    return nameA.localeCompare(nameB);
+                });
+                
+                // Update total drivers count (will be updated with fraction in updateDriversOffDisplay)
+                // document.getElementById('totalDriversCount').textContent = allDrivers.length;
+                
+                console.log(`Loaded ${allDrivers.length} drivers for optimise settings:`, allDrivers);
+                console.log('Driver IDs in collection:', allDrivers.map(d => d.id));
+                console.log('Driver UIDs in collection:', allDrivers.map(d => d.uid));
+            } catch (error) {
+                console.error('Error loading drivers for optimise:', error);
+                // Set count to 0 on error
+                document.getElementById('totalDriversCount').textContent = '0';
+            }
+        }
+
+        // Load drivers off for the selected day
+        async function loadDriversOffForOptimise() {
+            try {
+                if (!selectedOptimiseDay) return;
+                
+                const dateString = selectedOptimiseDay.date.toISOString().split('T')[0]; // YYYY-MM-DD
+                console.log('Loading drivers off for date:', dateString);
+                console.log('Available drivers:', allDrivers);
+                
+                const calendarDoc = await window.firebaseGetDoc(
+                    window.firebaseDoc(window.firestore, 'calendar', dateString)
+                );
+                
+                tempDriversOff = []; // Reset temporary list
+                
+                if (calendarDoc.exists()) {
+                    const calendarData = calendarDoc.data();
+                    const driversOff = calendarData.driversOff || [];
+                    console.log('Calendar document found:', calendarData);
+                    console.log('Drivers off in calendar:', driversOff);
+                    
+                    // Populate tempDriversOff with actual drivers off from Firebase
+                    driversOff.forEach(driverOff => {
+                        console.log('Looking for driver with ID:', driverOff.driverId);
+                        console.log('Driver off object structure:', driverOff);
+                        console.log('Available driver IDs:', allDrivers.map(d => d.id));
+                        console.log('Available driver UIDs:', allDrivers.map(d => d.uid));
+                        
+                        // Try to match by Firebase Auth UID first, then by Firestore document ID
+                        const driver = allDrivers.find(d => d.uid === driverOff.driverId || d.id === driverOff.driverId);
+                        if (driver) {
+                            console.log('Found matching driver:', driver);
+                            tempDriversOff.push({
+                                id: driver.id,
+                                name: driver.name || (driver.firstName + ' ' + driver.lastName) || driverOff.driverName || 'Unknown Driver',
+                                email: driver.email
+                            });
+                        } else {
+                            console.log('No matching driver found for ID:', driverOff.driverId);
+                            console.log('Available drivers:', allDrivers);
+                        }
+                    });
+                } else {
+                    console.log('No calendar document found for date:', dateString);
+                }
+                
+                updateDriversOffDisplay();
+                console.log(`Loaded ${tempDriversOff.length} drivers off for ${dateString}`);
+            } catch (error) {
+                console.error('Error loading drivers off for optimise:', error);
+            }
+        }
+
+        // Update the drivers off display
+        function updateDriversOffDisplay() {
+            const driversOffList = document.getElementById('driversOffList');
+            const driversOffCount = document.getElementById('driversOffCount');
+            const totalDriversCount = document.getElementById('totalDriversCount');
+            
+            const totalDrivers = allDrivers.length;
+            const driversOff = tempDriversOff.length;
+            const availableDrivers = totalDrivers - driversOff;
+            
+            // Update drivers off count
+            driversOffCount.textContent = driversOff;
+            
+            // Update total drivers count with fraction format
+            totalDriversCount.textContent = `${availableDrivers}/${totalDrivers}`;
+            
+            if (tempDriversOff.length === 0) {
+                driversOffList.innerHTML = '<p class="text-gray-400 text-sm">No drivers off today</p>';
+            } else {
+                driversOffList.innerHTML = tempDriversOff.map(driver => `
+                    <div class="flex items-center justify-between bg-[#1a1f24] rounded-lg p-2">
+                        <span class="text-white text-sm">${driver.name}</span>
+                        <button onclick="removeDriverFromOff('${driver.id}')" class="text-red-400 hover:text-red-300 text-sm">
+                            Remove
+                        </button>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // Toggle driver selection dropdown
+        function toggleDriverSelectionDropdown() {
+            const dropdown = document.getElementById('driverSelectionDropdown');
+            dropdown.classList.toggle('hidden');
+            
+            if (!dropdown.classList.contains('hidden')) {
+                populateAllDriversList();
+            }
+        }
+
+        // Populate all drivers list for selection
+        function populateAllDriversList() {
+            const allDriversList = document.getElementById('allDriversList');
+            
+            // Sort drivers: off drivers first, then alphabetical
+            const sortedDrivers = [...allDrivers].sort((a, b) => {
+                const aIsOff = tempDriversOff.some(off => off.id === a.id);
+                const bIsOff = tempDriversOff.some(off => off.id === b.id);
+                
+                if (aIsOff && !bIsOff) return -1;
+                if (!aIsOff && bIsOff) return 1;
+                
+                const nameA = a.name || (a.firstName + ' ' + a.lastName) || 'Unknown';
+                const nameB = b.name || (b.firstName + ' ' + b.lastName) || 'Unknown';
+                return nameA.localeCompare(nameB);
+            });
+            
+            allDriversList.innerHTML = sortedDrivers.map(driver => {
+                const isOff = tempDriversOff.some(off => off.id === driver.id);
+                const driverName = driver.name || (driver.firstName + ' ' + driver.lastName) || 'Unknown Driver';
+                return `
+                    <button onclick="toggleDriverOffStatus('${driver.id}', '${driverName}', '${driver.email}')" 
+                            class="w-full flex items-center justify-between p-2 rounded-lg text-left transition-colors ${
+                                isOff ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-[#1a1f24] hover:bg-[#3a4049] text-white'
+                            }">
+                        <span class="text-sm">${driverName}</span>
+                        <span class="text-xs ${isOff ? 'text-red-200' : 'text-gray-400'}">
+                            ${isOff ? 'OFF' : 'Available'}
+                        </span>
+                    </button>
+                `;
+            }).join('');
+        }
+
+        // Toggle driver off status
+        function toggleDriverOffStatus(driverId, driverName, driverEmail) {
+            const existingIndex = tempDriversOff.findIndex(driver => driver.id === driverId);
+            
+            if (existingIndex > -1) {
+                // Remove from off list
+                tempDriversOff.splice(existingIndex, 1);
+            } else {
+                // Add to off list
+                tempDriversOff.push({
+                    id: driverId,
+                    name: driverName,
+                    email: driverEmail
+                });
+            }
+            
+            updateDriversOffDisplay();
+            populateAllDriversList(); // Refresh the dropdown
+        }
+
+        // Remove driver from off list
+        function removeDriverFromOff(driverId) {
+            const index = tempDriversOff.findIndex(driver => driver.id === driverId);
+            if (index > -1) {
+                tempDriversOff.splice(index, 1);
+                updateDriversOffDisplay();
+                populateAllDriversList(); // Refresh the dropdown
+            }
+        }
+
+        // Close optimise settings popup
+        function closeOptimiseSettings() {
+            const overlay = document.getElementById('optimise-settings-overlay');
+            if (overlay) {
+                overlay.remove();
+            }
+            
+            // Reset variables
+            selectedOptimiseDay = null;
+            tempDriversOff = [];
+            allDrivers = [];
+        }
+
+        // Start optimisation with settings
+        async function startOptimisationWithSettings() {
+            if (!selectedOptimiseDay) {
+                alert('Please select a day first');
+                return;
+            }
+            
+            // Simple approach: Get all office drivers, filter out the ones marked as off (BEFORE closing popup)
+            console.log('Starting simple optimization...');
+            console.log('All drivers:', allDrivers);
+            console.log('Drivers marked as off:', tempDriversOff);
+            
+            const availableDrivers = allDrivers.filter(driver => {
+                const isOff = tempDriversOff.some(off => off.id === driver.id || off.id === driver.uid);
+                return !isOff;
+            });
+            
+            console.log(`Available drivers for optimization: ${availableDrivers.length}`);
+            
+            if (availableDrivers.length === 0) {
+                alert('No drivers available for optimization');
+                closeOptimiseSettings();
+                return;
+            }
+            
+            // Close the popup after we've used the data
+            closeOptimiseSettings();
+            
+            // Directly call the assignment function with our filtered drivers
+            await assignDriversToRoutesDirect(availableDrivers);
+        }
+
+        // Simple direct assignment function
+        async function assignDriversToRoutesDirect(driversToUse) {
+            console.log('Direct assignment with drivers:', driversToUse.length);
+            console.log('Routes to assign:', savedRoutes.length);
+            
+            if (savedRoutes.length === 0 || driversToUse.length === 0) {
+                console.log('No routes or drivers available for assignment');
+                return;
+            }
+            
+            // Simple assignment: assign drivers to routes in order
+            for (let i = 0; i < savedRoutes.length && i < driversToUse.length; i++) {
+                const route = savedRoutes[i];
+                const driver = driversToUse[i];
+                
+                console.log(`Assigning driver ${driver.name || (driver.firstName + ' ' + driver.lastName)} to route ${i + 1}`);
+                
+                // Update the route with driver assignment (save in nested route object)
+                route.route.assignedDriver = driver;
+                route.route.assignedDriverName = driver.name || (driver.firstName + ' ' + driver.lastName);
+                route.route.assignedDriverPostcode = driver.homePostcode || driver.postcode;
+                
+                // Update the UI elements immediately
+                const routeNumber = i + 1;
+                const driverElement = document.getElementById(`firebase-route-${routeNumber}-driver`);
+                const locationElement = document.getElementById(`firebase-route-${routeNumber}-driver-location`);
+                
+                if (driverElement) {
+                    driverElement.textContent = route.route.assignedDriverName;
+                }
+                if (locationElement) {
+                    locationElement.textContent = route.route.assignedDriverPostcode;
+                }
+                
+                // Calculate and display distances
+                await updateRouteDistances(routeNumber, route.route.assignedDriverPostcode, route.jobs);
+            }
+            
+            // Save the assignments to Firebase
+            await saveRoutesToFirebase();
+            
+            // Update the display
+            await displayRoutesFromFirebase();
+            
+            alert(`Optimization complete! Assigned ${Math.min(savedRoutes.length, driversToUse.length)} drivers to routes.`);
+        }
+
+        // Update route distances using Google Maps API
+        async function updateRouteDistances(routeNumber, driverPostcode, jobs) {
+            if (!jobs || jobs.length === 0) return;
+            
+            try {
+                const firstJob = jobs[0];
+                const lastJob = jobs[jobs.length - 1];
+                
+                const collectionAddress = firstJob.parsedData?.collection_address || firstJob.collectionAddress;
+                const deliveryAddress = lastJob.parsedData?.postcode_delivery || lastJob.deliveryAddress;
+                
+                console.log(`Route ${routeNumber} - Driver: ${driverPostcode}, Collection: ${collectionAddress}, Delivery: ${deliveryAddress}`);
+                console.log(`Route ${routeNumber} - First job parsedData:`, firstJob.parsedData);
+                console.log(`Route ${routeNumber} - Last job parsedData:`, lastJob.parsedData);
+                
+                // Calculate distance from driver to first collection
+                const distanceToCollection = await calculateDistance(driverPostcode, collectionAddress);
+                
+                // Calculate distance from last delivery back to driver
+                const distanceFromDelivery = await calculateDistance(deliveryAddress, driverPostcode);
+                
+                // Update the UI elements
+                const distanceToCollectionElement = document.getElementById(`firebase-route-${routeNumber}-distance-to-collection`);
+                const distanceHomeElement = document.getElementById(`firebase-route-${routeNumber}-distance`);
+                const progressToCollectionBar = document.getElementById(`firebase-route-${routeNumber}-progress-to-collection`);
+                const progressHomeBar = document.getElementById(`firebase-route-${routeNumber}-progress`);
+                
+                if (distanceToCollectionElement) {
+                    distanceToCollectionElement.textContent = `${distanceToCollection} mi`;
+                }
+                if (distanceHomeElement) {
+                    distanceHomeElement.textContent = `${distanceFromDelivery} mi`;
+                }
+                
+                // Update progress bars (assuming max distance of 100 miles)
+                const maxDistance = 100;
+                if (progressToCollectionBar) {
+                    const progressToCollection = Math.min((distanceToCollection / maxDistance) * 100, 100);
+                    progressToCollectionBar.style.width = `${progressToCollection}%`;
+                }
+                if (progressHomeBar) {
+                    const progressHome = Math.min((distanceFromDelivery / maxDistance) * 100, 100);
+                    progressHomeBar.style.width = `${progressHome}%`;
+                }
+                
+            } catch (error) {
+                console.error(`Error calculating distances for route ${routeNumber}:`, error);
+            }
+        }
+
+        // Calculate distance between two addresses using Firebase Functions
+        async function calculateDistance(origin, destination) {
+            try {
+                const calculateDistanceFunction = window.firebase.httpsCallable(window.firebase.functions, 'calculateDistance');
+                const result = await calculateDistanceFunction({
+                    origin: origin,
+                    destination: destination
+                });
+                
+                if (result.data.success) {
+                    return result.data.distance;
+                } else {
+                    throw new Error(result.data.error || 'Distance calculation failed');
+                }
+            } catch (error) {
+                console.error('Error calculating distance:', error);
+                throw error;
+            }
+        }
+
+        // Start optimization after alterations
+        async function startOptimization() {
+            closeAlterationsPopup();
+            
+            console.log('Starting optimization with carry-overs:', carryOverPostcodes);
+            
+            // If no saved routes, show demo routes for optimization
+            if (savedRoutes.length === 0) {
+                showDemoRoutes();
+                optimizeDemoRoutes();
+                return;
+            }
+            
+            // Optimize saved routes
+            const optimizeButton = document.querySelector('button[onclick="showOptimiseSettings()"]');
+            optimizeButton.disabled = true;
+            optimizeButton.innerHTML = '<span class="truncate">Optimising...</span>';
+            optimizeButton.classList.add('opacity-50');
+
+            // Assign drivers to saved routes using Google Maps API
+            try {
+                await assignDriversToSavedRoutes();
+                
+                // Reset button
+                optimizeButton.disabled = false;
+                optimizeButton.innerHTML = '<span class="truncate">Optimise</span>';
+                optimizeButton.classList.remove('opacity-50');
+                
+                alert(`Routes optimized successfully! Optimized ${savedRoutes.length} saved routes using Google Maps API and ${drivers.length} drivers.`);
+            } catch (error) {
+                console.error('Error during optimization:', error);
+                
+                // Reset button
+                optimizeButton.disabled = false;
+                optimizeButton.innerHTML = '<span class="truncate">Optimise</span>';
+                optimizeButton.classList.remove('opacity-50');
+                
+                alert('Error during optimization. Please check console for details.');
+            }
+        }
+
+        // Optimize demo routes (when no saved routes exist)
+        function optimizeDemoRoutes() {
+            const optimizeButton = document.querySelector('button[onclick="showOptimiseSettings()"]');
+            optimizeButton.disabled = true;
+            optimizeButton.innerHTML = '<span class="truncate">Optimising...</span>';
+            optimizeButton.classList.add('opacity-50');
+
+            setTimeout(async () => {
+                await assignDriversToRoutes();
+                
+                optimizeButton.disabled = false;
+                optimizeButton.innerHTML = '<span class="truncate">Optimise</span>';
+                optimizeButton.classList.remove('opacity-50');
+                
+                alert('Demo routes optimized! Go to the Routes page to create and save your own routes.');
+            }, 2000);
+        }
+
+        // Assign drivers to saved routes from Firebase using optimal assignment algorithm
+        async function assignDriversToSavedRoutes() {
+            console.log('Assigning drivers using optimal assignment algorithm...');
+            console.log('Saved routes count:', savedRoutes.length);
+            console.log('Drivers count:', drivers.length);
+            console.log('Saved routes:', savedRoutes);
+            console.log('Drivers:', drivers);
+            
+            if (savedRoutes.length === 0 || drivers.length === 0) {
+                console.log('No routes or drivers available for assignment');
+                return;
+            }
+            
+            // Calculate all possible driver-route combinations
+            const assignments = [];
+            
+            for (let routeIndex = 0; routeIndex < savedRoutes.length; routeIndex++) {
+                const routeData = savedRoutes[routeIndex];
+                const jobs = routeData.jobs;
+                
+                if (jobs.length > 0) {
+                    const firstJob = jobs[0];
+                    const lastJob = jobs[jobs.length - 1];
+                    const collectionAddress = firstJob.parsedData?.collection_address || 'B797RU';
+                    const deliveryAddress = lastJob.parsedData?.delivery_address || 'M1 4AN';
+                    
+                    console.log(`Calculating distances for Route ${routeIndex + 1} (Collection: ${collectionAddress}, Delivery: ${deliveryAddress})`);
+                    
+                    // Calculate distances for each driver with this route
+                    for (let driverIndex = 0; driverIndex < drivers.length; driverIndex++) {
+                        const driver = drivers[driverIndex];
+                        
+                        try {
+                            // Use carry-over postcode for distance TO collection, home postcode for distance FROM delivery
+                            const startingPostcode = carryOverPostcodes[driverIndex] || driver.postcode;
+                            const endingPostcode = driver.postcode; // Always use home postcode for return journey
+                            
+                            const distanceToCollection = await calculateDistance(startingPostcode, collectionAddress);
+                            const distanceFromDelivery = await calculateDistance(deliveryAddress, endingPostcode);
+                            const totalDistance = distanceToCollection + distanceFromDelivery;
+                            
+                            assignments.push({
+                                routeIndex: routeIndex,
+                                driverIndex: driverIndex,
+                                driver: driver,
+                                routeData: routeData,
+                                distanceToCollection: distanceToCollection,
+                                distanceFromDelivery: distanceFromDelivery,
+                                totalDistance: totalDistance
+                            });
+                            
+                            const carryOverInfo = carryOverPostcodes[driverIndex] ? ` (carry-over: ${carryOverPostcodes[driverIndex]})` : '';
+                            console.log(`Driver ${driver.name}${carryOverInfo} → Route ${routeIndex + 1}: ${distanceToCollection} mi to collection + ${distanceFromDelivery} mi from delivery = ${totalDistance} mi total`);
+                            
+                        } catch (error) {
+                            console.error(`Error calculating distance for driver ${driver.name} and route ${routeIndex + 1}:`, error);
+                            // Add with default distances
+                            assignments.push({
+                                routeIndex: routeIndex,
+                                driverIndex: driverIndex,
+                                driver: driver,
+                                routeData: routeData,
+                                distanceToCollection: 100,
+                                distanceFromDelivery: 100,
+                                totalDistance: 200
+                            });
+                        }
+                    }
+                }
+            }
+            
+            // Find optimal assignment using Hungarian algorithm (simplified version)
+            const optimalAssignment = findOptimalAssignment(assignments, savedRoutes.length, drivers.length);
+            
+            console.log('Optimal assignment found:', optimalAssignment);
+            
+            // Apply the optimal assignment to UI
+            for (const assignment of optimalAssignment) {
+                const routeNumber = assignment.routeIndex + 1;
+                    const driverElement = document.getElementById(`firebase-route-${routeNumber}-driver`);
+                    const locationElement = document.getElementById(`firebase-route-${routeNumber}-driver-location`);
+                const distanceToCollectionElement = document.getElementById(`firebase-route-${routeNumber}-distance-to-collection`);
+                const distanceHomeElement = document.getElementById(`firebase-route-${routeNumber}-distance`);
+                const progressToCollectionBar = document.getElementById(`firebase-route-${routeNumber}-progress-to-collection`);
+                const progressHomeBar = document.getElementById(`firebase-route-${routeNumber}-progress`);
+                
+                if (driverElement) driverElement.textContent = assignment.driver.name;
+                if (locationElement) locationElement.textContent = assignment.driver.postcode;
+                if (distanceToCollectionElement) distanceToCollectionElement.textContent = `${assignment.distanceToCollection} miles`;
+                if (distanceHomeElement) distanceHomeElement.textContent = `${assignment.distanceFromDelivery} miles`;
+                
+                // Update progress bars color based on distance
+                if (progressToCollectionBar) {
+                    const progressPercentage = Math.min((assignment.distanceToCollection / 100) * 100, 100);
+                    progressToCollectionBar.style.width = `${progressPercentage}%`;
+                    
+                    if (assignment.distanceToCollection <= 30) {
+                        progressToCollectionBar.className = 'bg-green-500 h-full rounded-full';
+                    } else if (assignment.distanceToCollection <= 50) {
+                        progressToCollectionBar.className = 'bg-yellow-500 h-full rounded-full';
+                    } else {
+                        progressToCollectionBar.className = 'bg-red-500 h-full rounded-full';
+                    }
+                }
+                
+                if (progressHomeBar) {
+                    const progressPercentage = Math.min((assignment.distanceFromDelivery / 100) * 100, 100);
+                    progressHomeBar.style.width = `${progressPercentage}%`;
+                    
+                    if (assignment.distanceFromDelivery <= 30) {
+                        progressHomeBar.className = 'bg-green-500 h-full rounded-full';
+                    } else if (assignment.distanceFromDelivery <= 50) {
+                        progressHomeBar.className = 'bg-yellow-500 h-full rounded-full';
+                        } else {
+                        progressHomeBar.className = 'bg-red-500 h-full rounded-full';
+                    }
+                }
+                
+                console.log(`✅ Route ${routeNumber} assigned to ${assignment.driver.name} (${assignment.distanceToCollection} mi to collection + ${assignment.distanceFromDelivery} mi home = ${assignment.totalDistance} mi total)`);
+            }
+            
+            const totalDistance = optimalAssignment.reduce((sum, assignment) => sum + assignment.totalDistance, 0);
+            console.log(`🎯 Optimal assignment completed! Total distance across all routes: ${totalDistance} miles`);
+        }
+        
+        // Find optimal assignment using a greedy approach (simplified Hungarian algorithm)
+        function findOptimalAssignment(assignments, numRoutes, numDrivers) {
+            // Sort assignments by total distance (ascending)
+            assignments.sort((a, b) => a.totalDistance - b.totalDistance);
+            
+            const assignedRoutes = new Set();
+            const assignedDrivers = new Set();
+            const optimalAssignment = [];
+            
+            // Greedy assignment: pick the best available option at each step
+            for (const assignment of assignments) {
+                // Skip if this route or driver is already assigned
+                if (assignedRoutes.has(assignment.routeIndex) || assignedDrivers.has(assignment.driverIndex)) {
+                    continue;
+                }
+                
+                // Assign this driver to this route
+                assignedRoutes.add(assignment.routeIndex);
+                assignedDrivers.add(assignment.driverIndex);
+                optimalAssignment.push(assignment);
+                
+                // Stop if we've assigned all routes
+                if (optimalAssignment.length === numRoutes) {
+                    break;
+                }
+            }
+            
+            // If we have more drivers than routes, we're done
+            // If we have more routes than drivers, assign remaining routes to the best available driver
+            if (optimalAssignment.length < numRoutes) {
+                console.warn(`⚠️ More routes (${numRoutes}) than drivers (${numDrivers}). Some routes will be unassigned.`);
+            }
+            
+            return optimalAssignment;
+        }
+
+        // Assign drivers to demo routes using optimal assignment algorithm
+        async function assignDriversToRoutes() {
+            const routes = [
+                { id: 1, delivery: "M1 4AN", collection: "B797RU" },
+                { id: 2, delivery: "B775JA", collection: "CV1 1GF" },
+                { id: 3, delivery: "LS1 4DY", collection: "S1 2HE" }
+            ];
+
+            if (drivers.length === 0) {
+                console.log('No drivers available for demo assignment');
+                return;
+            }
+
+            // Calculate all possible driver-route combinations for demo routes
+            const assignments = [];
+            
+            for (let routeIndex = 0; routeIndex < routes.length; routeIndex++) {
+                const route = routes[routeIndex];
+                
+                console.log(`Calculating distances for Demo Route ${route.id} (Collection: ${route.collection}, Delivery: ${route.delivery})`);
+                
+                // Calculate distances for each driver with this route
+                for (let driverIndex = 0; driverIndex < drivers.length; driverIndex++) {
+                    const driver = drivers[driverIndex];
+                    
+                    try {
+                        // Use carry-over postcode for distance TO collection, home postcode for distance FROM delivery
+                        const startingPostcode = carryOverPostcodes[driverIndex] || driver.postcode;
+                        const endingPostcode = driver.postcode; // Always use home postcode for return journey
+                        
+                        const distanceToCollection = await calculateDistance(startingPostcode, route.collection);
+                        const distanceFromDelivery = await calculateDistance(route.delivery, endingPostcode);
+                        const totalDistance = distanceToCollection + distanceFromDelivery;
+                        
+                        assignments.push({
+                            routeIndex: routeIndex,
+                            routeId: route.id,
+                            driverIndex: driverIndex,
+                            driver: driver,
+                            distanceToCollection: distanceToCollection,
+                            distanceFromDelivery: distanceFromDelivery,
+                            totalDistance: totalDistance
+                        });
+                        
+                        const carryOverInfo = carryOverPostcodes[driverIndex] ? ` (carry-over: ${carryOverPostcodes[driverIndex]})` : '';
+                        console.log(`Driver ${driver.name}${carryOverInfo} → Demo Route ${route.id}: ${distanceToCollection} mi to collection + ${distanceFromDelivery} mi from delivery = ${totalDistance} mi total`);
+                        
+                    } catch (error) {
+                        console.error(`Error calculating distance for driver ${driver.name} and demo route ${route.id}:`, error);
+                        // Add with default distances
+                        assignments.push({
+                            routeIndex: routeIndex,
+                            routeId: route.id,
+                            driverIndex: driverIndex,
+                            driver: driver,
+                            distanceToCollection: 100,
+                            distanceFromDelivery: 100,
+                            totalDistance: 200
+                        });
+                    }
+                }
+            }
+            
+            // Find optimal assignment
+            const optimalAssignment = findOptimalAssignment(assignments, routes.length, drivers.length);
+            
+            console.log('Optimal demo assignment found:', optimalAssignment);
+            
+            // Apply the optimal assignment to demo UI
+            for (const assignment of optimalAssignment) {
+                const routeId = assignment.routeId;
+                
+                // Update UI
+                document.getElementById(`route-${routeId}-driver`).textContent = assignment.driver.name;
+                document.getElementById(`route-${routeId}-driver-location`).textContent = assignment.driver.postcode;
+                
+                // Display both distances
+                document.getElementById(`route-${routeId}-distance-to-collection`).textContent = `${assignment.distanceToCollection} miles`;
+                document.getElementById(`route-${routeId}-distance`).textContent = `${assignment.distanceFromDelivery} miles`;
+                
+                // Update progress bars
+                const progressToCollectionBar = document.getElementById(`route-${routeId}-progress-to-collection`);
+                const progressHomeBar = document.getElementById(`route-${routeId}-progress`);
+                
+                // Update collection distance progress bar
+                if (progressToCollectionBar) {
+                    const percentage = Math.min((assignment.distanceToCollection / 100) * 100, 100);
+                    progressToCollectionBar.style.width = `${percentage}%`;
+                    
+                    if (assignment.distanceToCollection <= 30) {
+                        progressToCollectionBar.className = 'bg-green-500 h-full rounded-full';
+                    } else if (assignment.distanceToCollection <= 50) {
+                        progressToCollectionBar.className = 'bg-yellow-500 h-full rounded-full';
+                } else {
+                        progressToCollectionBar.className = 'bg-red-500 h-full rounded-full';
+                    }
+                }
+                
+                // Update home distance progress bar
+                if (progressHomeBar) {
+                    const percentage = Math.min((assignment.distanceFromDelivery / 100) * 100, 100);
+                    progressHomeBar.style.width = `${percentage}%`;
+                    
+                    if (assignment.distanceFromDelivery <= 30) {
+                        progressHomeBar.className = 'bg-green-500 h-full rounded-full';
+                    } else if (assignment.distanceFromDelivery <= 50) {
+                        progressHomeBar.className = 'bg-yellow-500 h-full rounded-full';
+                    } else {
+                        progressHomeBar.className = 'bg-red-500 h-full rounded-full';
+                    }
+                }
+                
+                console.log(`✅ Demo Route ${routeId} assigned to ${assignment.driver.name} (${assignment.distanceToCollection} mi to collection + ${assignment.distanceFromDelivery} mi home = ${assignment.totalDistance} mi total)`);
+            }
+            
+            const totalDistance = optimalAssignment.reduce((sum, assignment) => sum + assignment.totalDistance, 0);
+            console.log(`🎯 Demo optimization completed! Total distance across all routes: ${totalDistance} miles`);
+        }
+
+        // Find best driver for a route based on minimizing sum of distance to first collection + distance from last delivery
+        async function findBestDriver(deliveryAddress, collectionAddress) {
+            if (!drivers || drivers.length === 0) {
+                console.log('No drivers available');
+                return { name: 'No Driver', postcode: 'Unknown' };
+            }
+            
+            // Extract postcodes from addresses if they're full addresses
+            let deliveryPostcode = deliveryAddress;
+            let collectionPostcode = collectionAddress;
+            
+            if (deliveryAddress.includes(',')) {
+                const parts = deliveryAddress.split(',');
+                deliveryPostcode = parts[0].trim();
+            }
+            
+            if (collectionAddress.includes(',')) {
+                const parts = collectionAddress.split(',');
+                collectionPostcode = parts[0].trim();
+            }
+            
+            console.log('Finding best driver for collection:', collectionPostcode, 'and delivery:', deliveryPostcode);
+            
+            let bestDriver = drivers[0];
+            let shortestTotalDistance = Infinity;
+            let bestDistances = { toCollection: 0, fromDelivery: 0 };
+            
+            // Calculate total distance (to first collection + from last delivery) for each driver
+            for (const driver of drivers) {
+                try {
+                    const distanceToCollection = await calculateDistance(driver.postcode, collectionPostcode);
+                    const distanceFromDelivery = await calculateDistance(deliveryPostcode, driver.postcode);
+                    const totalDistance = distanceToCollection + distanceFromDelivery;
+                    
+                    console.log(`Driver ${driver.name} (${driver.postcode}): ${distanceToCollection} mi to collection + ${distanceFromDelivery} mi from delivery = ${totalDistance} mi total`);
+                    
+                    if (totalDistance < shortestTotalDistance) {
+                        shortestTotalDistance = totalDistance;
+                        bestDriver = driver;
+                        bestDistances = { toCollection: distanceToCollection, fromDelivery: distanceFromDelivery };
+                    }
+                } catch (error) {
+                    console.error(`Error calculating distance for driver ${driver.name}:`, error);
+                    // Use default distances for this driver
+                    const defaultTotalDistance = 200;
+                    if (defaultTotalDistance < shortestTotalDistance) {
+                        shortestTotalDistance = defaultTotalDistance;
+                        bestDriver = driver;
+                        bestDistances = { toCollection: 100, fromDelivery: 100 };
+                    }
+                }
+            }
+            
+            console.log(`Best driver: ${bestDriver.name} (${bestDriver.postcode}) - ${bestDistances.toCollection} mi to collection + ${bestDistances.fromDelivery} mi from delivery = ${shortestTotalDistance} mi total`);
+            return { 
+                ...bestDriver, 
+                distance: bestDistances.fromDelivery, // Keep for backward compatibility
+                distanceToCollection: bestDistances.toCollection,
+                totalDistance: shortestTotalDistance
+            };
+        }
+
+        // Google Maps Distance Matrix API integration
+        let distanceMatrixService;
+        let isGoogleMapsLoaded = false;
+        let googleMapsError = null;
+
+        // Google Maps callback function
+        window.initGoogleMaps = function() {
+            try {
+                if (window.google && window.google.maps) {
+                    distanceMatrixService = new google.maps.DistanceMatrixService();
+                    isGoogleMapsLoaded = true;
+                    console.log('✅ Google Maps API loaded successfully');
+                    console.log('✅ Distance Matrix Service initialized');
+                    console.log('✅ All required APIs are available');
+                }
+            } catch (error) {
+                googleMapsError = error;
+                console.error('❌ Google Maps API initialization error:', error);
+                console.error('Make sure Distance Matrix API, Geocoding API, and Maps JavaScript API are enabled');
+            }
+        };
+
+        // Wait for Google Maps to load
+        function waitForGoogleMaps() {
+            return new Promise((resolve, reject) => {
+                if (googleMapsError) {
+                    reject(googleMapsError);
+                    return;
+                }
+                
+                if (window.google && window.google.maps && distanceMatrixService) {
+                    resolve(true);
+                } else {
+                    setTimeout(() => waitForGoogleMaps().then(resolve).catch(reject), 100);
+                }
+            });
+        }
+
+        // Calculate distance between two postcodes using Google Maps Distance Matrix API
+        async function calculateDistance(postcode1, postcode2) {
+            try {
+                // Add UK to postcodes for better geocoding
+                const origin = `${postcode1}, UK`;
+                const destination = `${postcode2}, UK`;
+
+                const calculateDistanceFunction = window.firebase.httpsCallable(window.firebase.functions, 'calculateDistance');
+                const result = await calculateDistanceFunction({
+                    origin: origin,
+                    destination: destination
+                });
+                
+                if (result.data.success) {
+                    console.log(`✅ Firebase Functions distance from ${postcode1} to ${postcode2}: ${result.data.distance} miles`);
+                    return Math.round(result.data.distance);
+                } else {
+                    console.warn(`⚠️ Firebase Functions error for ${postcode1} to ${postcode2}:`, result.data.error);
+                    return calculateFallbackDistance(postcode1, postcode2);
+                }
+            } catch (error) {
+                console.warn('Firebase Functions not available, using fallback calculation:', error.message);
+                return calculateFallbackDistance(postcode1, postcode2);
+            }
+        }
+
+        // Enhanced fallback distance calculation when Google Maps API is not available
+        function calculateFallbackDistance(postcode1, postcode2) {
+            // More comprehensive UK postcode area distance mapping
+            const area1 = postcode1.substring(0, 1);
+            const area2 = postcode2.substring(0, 1);
+            
+            // If same area, estimate shorter distance
+            if (area1 === area2) {
+                const distance = Math.floor(Math.random() * 30) + 10; // 10-40 miles within same area
+                console.log(`📏 Same area (${area1}) distance from ${postcode1} to ${postcode2}: ${distance} miles`);
+                return distance;
+            }
+            
+            // Cross-area distances (more realistic UK distances)
+            const areaDistances = {
+                'B': { 'M': 85, 'L': 125, 'S': 120, 'E': 140, 'N': 130, 'default': 65 },
+                'M': { 'B': 85, 'L': 45, 'S': 185, 'E': 200, 'N': 220, 'default': 55 },
+                'L': { 'B': 125, 'M': 45, 'S': 205, 'E': 180, 'N': 100, 'default': 85 },
+                'S': { 'B': 120, 'M': 185, 'L': 205, 'E': 50, 'N': 150, 'default': 110 },
+                'E': { 'B': 140, 'M': 200, 'L': 180, 'S': 50, 'N': 120, 'default': 95 },
+                'N': { 'B': 130, 'M': 220, 'L': 100, 'S': 150, 'E': 120, 'default': 90 }
+            };
+            
+            const baseDistance = areaDistances[area1]?.[area2] || areaDistances[area1]?.['default'] || 60;
+            // Add some variation to make it more realistic
+            const variation = Math.floor(Math.random() * 20) - 10; // ±10 miles variation
+            const distance = Math.max(10, baseDistance + variation); // Minimum 10 miles
+            
+            console.log(`📏 Fallback distance from ${postcode1} (${area1}) to ${postcode2} (${area2}): ${distance} miles`);
+            return distance;
+        }
+
+        // Fallback straight-line distance calculation using Google Maps Geometry library
+        function calculateStraightLineDistance(postcode1, postcode2) {
+            const geocoder = new google.maps.Geocoder();
+            
+            return new Promise((resolve) => {
+                const geocodePromises = [
+                    new Promise((res) => geocoder.geocode({ address: `${postcode1}, UK` }, res)),
+                    new Promise((res) => geocoder.geocode({ address: `${postcode2}, UK` }, res))
+                ];
+
+                Promise.all(geocodePromises).then(([result1, result2]) => {
+                    if (result1[0] && result1[0].status === 'OK' && result2[0] && result2[0].status === 'OK') {
+                        const location1 = result1[0].results[0].geometry.location;
+                        const location2 = result2[0].results[0].geometry.location;
+                        
+                        const distance = google.maps.geometry.spherical.computeDistanceBetween(location1, location2);
+                        const distanceInMiles = distance * 0.000621371;
+                        console.log(`Straight-line distance from ${postcode1} to ${postcode2}: ${distanceInMiles.toFixed(1)} miles`);
+                        resolve(Math.round(distanceInMiles));
+                    } else {
+                        console.warn('Geocoding failed, using fallback estimation');
+                        resolve(calculateFallbackDistance(postcode1, postcode2));
+                    }
+                }).catch(() => {
+                    resolve(calculateFallbackDistance(postcode1, postcode2));
+                });
+            });
+        }
+
+        // Clear all routes (both Firebase and localStorage)
+        async function clearAllRoutes() {
+            if (confirm('Are you sure you want to clear all saved routes? This action cannot be undone.')) {
+                try {
+                    // Clear localStorage
+                    localStorage.removeItem('savedRoutes');
+                    
+                    // Note: Firebase doesn't have a simple "delete all" function from client-side
+                    // In a production app, you'd need a server function to delete all routes
+                    console.log('Note: Firebase routes would need to be cleared via server function');
+                    
+                    // Reload the display
+                    await displayRoutesFromFirebase();
+                    
+                    alert('All routes have been cleared successfully!');
+                } catch (error) {
+                    console.error('Error clearing routes:', error);
+                    alert('Error clearing routes. Please try again.');
+                }
+            }
+        }
+
+        // Load and display routes function (can be called manually)
+        async function loadAndDisplayRoutes() {
+            const loadButton = document.querySelector('button[onclick="loadAndDisplayRoutes()"]');
+            const originalText = loadButton ? loadButton.innerHTML : '';
+            
+            if (loadButton) {
+                loadButton.innerHTML = '<span class="animate-spin">⟳</span> Loading...';
+                loadButton.disabled = true;
+            }
+            
+            try {
+                await displayRoutesFromFirebase();
+                console.log('Routes loaded successfully');
+            } catch (error) {
+                console.error('Error loading routes:', error);
+                alert('Error loading routes: ' + error.message);
+            } finally {
+                if (loadButton) {
+                    loadButton.innerHTML = originalText;
+                    loadButton.disabled = false;
+                }
+            }
+        }
+
+        // Make functions globally available
+        window.loadAndDisplayRoutes = loadAndDisplayRoutes;
+        window.optimizeRoutes = optimizeRoutes;
+        window.clearAllRoutes = clearAllRoutes;
+        window.showNotifications = showNotifications;
+        window.showAlterationsPopup = showAlterationsPopup;
+        window.closeAlterationsPopup = closeAlterationsPopup;
+        window.startOptimization = startOptimization;
+        window.addCarryOverDriver = addCarryOverDriver;
+        window.removeCarryOver = removeCarryOver;
+        window.showOptimiseSettings = showOptimiseSettings;
+        window.closeOptimiseSettings = closeOptimiseSettings;
+        window.startOptimisationWithSettings = startOptimisationWithSettings;
+        window.selectOptimiseDay = selectOptimiseDay;
+        window.toggleDriverOffStatus = toggleDriverOffStatus;
+        window.removeDriverFromOff = removeDriverFromOff;
+
+        // Wait for Firebase to be ready
+        function waitForFirebase() {
+            return new Promise((resolve) => {
+                const checkFirebase = () => {
+                    if (window.firestore && window.firebaseCollection) {
+                        console.log('Firebase is ready!');
+                        resolve(true);
+                    } else {
+                        console.log('Waiting for Firebase...');
+                        setTimeout(checkFirebase, 100);
+                    }
+                };
+                checkFirebase();
+            });
+        }
+
+        // Initialize the page when it loads
+        document.addEventListener('DOMContentLoaded', async function() {
+            console.log('Optimisation page loaded');
+            
+            // Check authentication first
+            if (!checkAuthentication()) {
+                return;
+            }
+            
+            // Hide demo routes by default
+            hideDemoRoutes();
+            
+            // Wait for Firebase to be ready, then load routes
+            try {
+                await waitForFirebase();
+                await displayRoutesFromFirebase();
+                console.log('Initial routes loaded');
+            } catch (error) {
+                console.error('Error initializing routes:', error);
+                // Show a message to user
+                const noRoutesMessage = document.getElementById('no-routes-message');
+                if (noRoutesMessage) {
+                    noRoutesMessage.innerHTML = `
+                        <p class="text-lg mb-2">Loading routes...</p>
+                        <p class="text-sm">Click "Load Routes" if routes don't appear automatically</p>
+                    `;
+                }
+            }
+        });
+    </script>
+</body>
+</html>

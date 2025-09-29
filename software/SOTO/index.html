@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOTO App</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #000000;
+            min-height: 100vh;
+            color: white;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .back-button {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .back-button:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .logo {
+            width: 120px;
+            height: 120px;
+            border-radius: 20px;
+            margin: 0 auto 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000000;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            padding: 15px;
+            display: block;
+        }
+
+        .logo-text {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #007AFF;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: none;
+        }
+
+        h1 {
+            color: white;
+            margin-bottom: 1rem;
+            font-size: 2.5rem;
+            font-weight: 600;
+        }
+
+        .download-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 2rem;
+            margin-bottom: 3rem;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: center;
+        }
+
+        .download-button {
+            background: #007AFF;
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            border-radius: 15px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 122, 255, 0.3);
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .download-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 122, 255, 0.4);
+        }
+
+        .partners-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 2rem;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: center;
+        }
+
+        .partners-title {
+            color: white;
+            margin-bottom: 2rem;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .partner-logo {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000000;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            overflow: hidden;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(255, 59, 48, 0.3);
+        }
+
+        .partner-logo:hover {
+            transform: translateY(-5px) scale(1.05);
+            box-shadow: 0 15px 35px rgba(255, 59, 48, 0.4);
+        }
+
+        .partner-logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            padding: 15px;
+            display: block;
+        }
+
+        .partner-logo-text {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #FF3B30;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <button class="back-button" onclick="goBack()">← Back</button>
+    
+    <div class="container">
+        <div class="download-section">
+            <div class="logo">
+                <img src="../../assets/logos/soto-logo.png" alt="SOTO Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <div class="logo-text" style="display: none;">SOTO</div>
+            </div>
+            <h2>Download Now for iOS</h2>
+            <p style="margin-bottom: 1.5rem; color: rgba(255, 255, 255, 0.8);">
+                Get the SOTO app on the App Store
+            </p>
+            <a href="#" class="download-button" onclick="downloadApp()">
+                Download on App Store
+            </a>
+        </div>
+
+        <div class="partners-section">
+            <h3 class="partners-title">SOTO Partners</h3>
+            <div class="partner-logo" onclick="navigateToECLogistics()">
+                <img src="../../assets/logos/EC-Logistics-logo.png" alt="EC Logistics Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <div class="partner-logo-text" style="display: none;">EC</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function goBack() {
+            window.location.href = '../index.html';
+        }
+
+        function navigateToECLogistics() {
+            window.location.href = 'ec-logistics/quotes/index.html';
+        }
+
+        function downloadApp() {
+            alert('App Store link coming soon!');
+        }
+
+        // Debug logo loading
+        document.addEventListener('DOMContentLoaded', function() {
+            const logoImg = document.querySelector('.logo img');
+            const logoText = document.querySelector('.logo-text');
+            
+            if (logoImg) {
+                logoImg.addEventListener('load', function() {
+                    console.log('SOTO logo loaded successfully');
+                    this.style.display = 'block';
+                    logoText.style.display = 'none';
+                });
+                
+                logoImg.addEventListener('error', function() {
+                    console.log('SOTO logo failed to load, showing text fallback');
+                    this.style.display = 'none';
+                    logoText.style.display = 'block';
+                });
+            }
+
+            const partnerLogoImg = document.querySelector('.partner-logo img');
+            const partnerLogoText = document.querySelector('.partner-logo-text');
+            
+            if (partnerLogoImg) {
+                partnerLogoImg.addEventListener('load', function() {
+                    console.log('EC Logistics logo loaded successfully');
+                    this.style.display = 'block';
+                    partnerLogoText.style.display = 'none';
+                });
+                
+                partnerLogoImg.addEventListener('error', function() {
+                    console.log('EC Logistics logo failed to load, showing text fallback');
+                    this.style.display = 'none';
+                    partnerLogoText.style.display = 'block';
+                });
+            }
+        });
+    </script>
+</body>
+</html> 
