@@ -162,7 +162,9 @@ function initializeDrivers() {
 <button class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors text-sm" onclick="logout()">
 Logout
 </button>
-<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDevd-HNK-hCI6uo8erI-DVQkF2BKhqZ0ZAY0qf-E49wK_Eme1itzAv3OZQ8llueRr0JfYlmS9s0zJ1iZkEMovNFenOgEFVnmtKIQ6-Yty0sPAlp7F42lZf97BCZlS-X4oSH12C0DnPEaXrmNnX8gPV32TDFrCAQkoT-5vsSla2tL5Mu5BMnF37vCjaPVARHrMwp3QnHVpRCB_wtsJfmGdvPMIs27V2QfjKIZviBup9poMqsRtRRaTcW8FHMcFHXknCA_jokfbE9Ko");'></div>
+<div class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden">
+    <img src="/assets/logos/c-logo.svg" alt="C Logo" class="w-full h-full object-cover">
+</div>
 </div>
 </header>
 <main class="flex-1 px-6 py-4">
@@ -372,7 +374,7 @@ alert('Error adding driver: ' + error.message);
 }
 
 async function deleteDriver(driverId) {
-if (!confirm('Are you sure you want to delete this driver?')) {
+if (!confirm('Are you sure you want to delete this driver? This will permanently remove their account and all associated data.')) {
 return;
 }
 
@@ -382,14 +384,32 @@ const driverDoc = await window.firebaseGetDoc(window.firebaseDoc(window.firestor
 const driverData = driverDoc.data();
 
 if (driverData && driverData.uid) {
+console.log('Deleting Firebase Authentication user:', driverData.uid);
+console.log('Driver email:', driverData.email);
+
+// Delete the Firebase Authentication user
+// Note: This requires admin privileges, so we'll use Firebase Admin SDK via a Cloud Function
+try {
+// Call a Firebase Function to delete the user
+const deleteUserFunction = window.firebase.httpsCallable('deleteUser');
+await deleteUserFunction({ uid: driverData.uid });
+console.log('✅ Firebase Authentication user deleted successfully');
+} catch (authError) {
+console.error('Error deleting Firebase Authentication user:', authError);
+// Continue with Firestore deletion even if auth deletion fails
+alert('Warning: Driver data deleted but there was an issue removing their login account. Please contact support.');
+}
+
 // Delete the user profile from Firestore users collection
 await window.firebaseDeleteDoc(window.firebaseDoc(window.firestore, "users", driverData.uid));
+console.log('✅ User profile deleted from Firestore');
 }
 
 // Delete the driver document from Firestore
 await window.firebaseDeleteDoc(window.firebaseDoc(window.firestore, "drivers", driverId));
+console.log('✅ Driver document deleted from Firestore');
 
-alert('Driver deleted successfully!');
+alert('Driver deleted successfully! All data and login access have been removed.');
 await fetchAndDisplayDrivers(); // Refresh the list
 } catch (error) {
 console.error('Error deleting driver:', error);
