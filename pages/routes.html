@@ -46,7 +46,9 @@
                             </svg>
                         </div>
                     </button>
-                    <div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDevd-HNK-hCI6uo8erI-DVQkF2BKhqZ0ZAY0qf-E49wK_Eme1itzAv3OZQ8llueRr0JfYlmS9s0zJ1iZkEMovNFenOgEFVnmtKIQ6-Yty0sPAlp7F42lZf97BCZlS-X4oSH12C0DnPEaXrmNnX8gPV32TDFrCAQkoT-5vsSla2tL5Mu5BMnF37vCjaPVARHrMwp3QnHVpRCB_wtsJfmGdvPMIs27V2QfjKIZviBup9poMqsRtRRaTcW8FHMcFHXknCA_jokfbE9Ko");'></div>
+                    <div class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden">
+                        <img src="/assets/logos/c-logo.svg" alt="C Logo" class="w-full h-full object-cover">
+                    </div>
                 </div>
             </header>
             <div class="px-6 flex flex-1 justify-center py-8">
@@ -290,7 +292,7 @@
         const storedUser = localStorage.getItem('soto_user_identity');
         if (!storedUser) {
             console.log('No user identity found, redirecting to login');
-            window.location.href = '/pages/login.html';
+            window.location.href = '/pages/soto-routes-login.html';
             return;
         }
 

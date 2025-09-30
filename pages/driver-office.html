@@ -87,7 +87,7 @@
             const storedUser = localStorage.getItem('soto_user_identity');
             if (!storedUser) {
                 console.log('No user identity found, redirecting to login');
-                window.location.href = '/pages/login.html';
+                window.location.href = '/pages/soto-routes-login.html';
                 return false;
             }
             return true;
@@ -114,13 +114,13 @@
                 console.log('User logged out successfully');
                 
                 // Redirect to login page
-                window.location.href = '/pages/login.html';
+                window.location.href = '/pages/soto-routes-login.html';
                 
             } catch (error) {
                 console.error('Logout error:', error);
                 // Even if logout fails, clear localStorage and redirect
                 localStorage.removeItem('soto_user_identity');
-                window.location.href = '/pages/login.html';
+                window.location.href = '/pages/soto-routes-login.html';
             }
         }
 
