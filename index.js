@@ -63,6 +63,180 @@ exports.calculateDistance = onCall(async (request) => {
 });
 
 /**
+ * Calculate travel options (taxi vs public transport) based on duration
+ * Returns taxi info if ≤15min drive, otherwise public transport details
+ * Supports arrivalTime (TO work) or departureTime (FROM work)
+ */
+exports.calculateTravelOptions = onCall(async (request) => {
+  try {
+    const {origin, destination, arrivalTime, departureTime} = request.data;
+
+    if (!origin || !destination) {
+      throw new Error("Origin and destination are required");
+    }
+
+    if (!GOOGLE_MAPS_API_KEY) {
+      throw new Error("Google Maps API key not configured");
+    }
+
+    // Helper function to ensure UK is appended for UK postcodes
+    const formatUKAddress = (address) => {
+      // Check if it's a UK postcode pattern (e.g., B77 5JA, M1 4AN)
+      const ukPostcodePattern = /^[A-Z]{1,2}\d{1,2}\s?\d[A-Z]{2}$/i;
+      if (ukPostcodePattern.test(address.trim())) {
+        return `${address}, UK`;
+      }
+      // If it doesn't already end with UK, add it
+      if (!address.toLowerCase().includes("uk") &&
+          !address.toLowerCase().includes("united kingdom")) {
+        return `${address}, UK`;
+      }
+      return address;
+    };
+
+    const formattedOrigin = formatUKAddress(origin);
+    const formattedDestination = formatUKAddress(destination);
+
+    // First, get driving time and distance
+    const drivingUrl = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(formattedOrigin)}&destinations=${encodeURIComponent(formattedDestination)}&mode=driving&key=${GOOGLE_MAPS_API_KEY}&units=imperial`;
+
+    const drivingResponse = await fetch(drivingUrl);
+    const drivingData = await drivingResponse.json();
+
+    if (drivingData.status !== "OK") {
+      throw new Error(`Google Maps API error: ${drivingData.status}`);
+    }
+
+    const drivingElement = drivingData.rows[0].elements[0];
+
+    if (drivingElement.status !== "OK") {
+      throw new Error(`Driving calculation failed: ${drivingElement.status}`);
+    }
+
+    // Convert meters to miles and seconds to minutes
+    const distanceInMiles = drivingElement.distance.value / 1609.34;
+    const durationInMinutes = drivingElement.duration.value / 60;
+
+    // If driving time is ≤15 minutes, return taxi option
+    if (durationInMinutes <= 15) {
+      return {
+        success: true,
+        mode: "taxi",
+        distance: Math.round(distanceInMiles * 10) / 10,
+        duration: Math.round(durationInMinutes),
+        durationText: drivingElement.duration.text,
+        origin: drivingData.origin_addresses[0],
+        destination: drivingData.destination_addresses[0],
+      };
+    }
+
+    // If >15 minutes, get public transport options
+    // Add arrivalTime or departureTime (Unix timestamp in seconds)
+    const baseUrl = "https://maps.googleapis.com/maps/api/directions/json";
+    const originParam = encodeURIComponent(formattedOrigin);
+    const destParam = encodeURIComponent(formattedDestination);
+    let transitUrl = `${baseUrl}?origin=${originParam}&destination=`;
+    transitUrl += `${destParam}&mode=transit&key=${GOOGLE_MAPS_API_KEY}`;
+    transitUrl += "&units=imperial";
+
+    if (arrivalTime) {
+      transitUrl += `&arrival_time=${arrivalTime}`;
+    } else if (departureTime) {
+      transitUrl += `&departure_time=${departureTime}`;
+    }
+
+    const transitResponse = await fetch(transitUrl);
+    const transitData = await transitResponse.json();
+
+    if (transitData.status !== "OK") {
+      // If no transit available, fall back to taxi with a warning
+      return {
+        success: true,
+        mode: "taxi",
+        distance: Math.round(distanceInMiles * 10) / 10,
+        duration: Math.round(durationInMinutes),
+        durationText: drivingElement.duration.text,
+        warning: "No public transport available for this route",
+        origin: drivingData.origin_addresses[0],
+        destination: drivingData.destination_addresses[0],
+      };
+    }
+
+    const route = transitData.routes[0];
+    const leg = route.legs[0];
+    const transitDurationMinutes = leg.duration.value / 60;
+
+    // Extract all steps including walking and transit
+    const allSteps = leg.steps.map((step) => {
+      if (step.travel_mode === "TRANSIT") {
+        const transitDetails = step.transit_details;
+        return {
+          type: "transit",
+          mode: transitDetails.line.vehicle.type, // BUS, TRAIN, etc
+          line: transitDetails.line.short_name || transitDetails.line.name,
+          departure: transitDetails.departure_stop.name,
+          arrival: transitDetails.arrival_stop.name,
+          duration: Math.round(step.duration.value / 60), // minutes
+          departureTime: transitDetails.departure_time.text,
+          arrivalTime: transitDetails.arrival_time.text,
+        };
+      } else if (step.travel_mode === "WALKING") {
+        return {
+          type: "walk",
+          duration: Math.round(step.duration.value / 60), // minutes
+          distance: step.distance.text,
+        };
+      }
+      return null;
+    }).filter((step) => step !== null);
+
+    // Calculate waiting times between steps
+    const stepsWithWaiting = [];
+    for (let i = 0; i < allSteps.length; i++) {
+      stepsWithWaiting.push(allSteps[i]);
+
+      // If this is a transit step and there's a next step
+      if (i < allSteps.length - 1 && allSteps[i].type === "transit") {
+        const nextStep = allSteps[i + 1];
+
+        // If next step is transit, there might be waiting time
+        if (nextStep.type === "transit") {
+          // Parse times and calculate waiting (this is approximate)
+          // Google already includes this in the total duration
+          // We'll just flag that there's a transfer
+          stepsWithWaiting.push({
+            type: "transfer",
+            duration: 0, // Duration already counted in total
+          });
+        }
+      }
+    }
+
+    const transitSteps = allSteps.filter((s) => s.type === "transit");
+
+    return {
+      success: true,
+      mode: "transit",
+      duration: Math.round(transitDurationMinutes),
+      durationText: leg.duration.text,
+      allSteps: stepsWithWaiting,
+      transitSteps: transitSteps,
+      numTransfers: transitSteps.length - 1,
+      origin: leg.start_address,
+      destination: leg.end_address,
+      departureTime: leg.departure_time ? leg.departure_time.text : null,
+      arrivalTime: leg.arrival_time ? leg.arrival_time.text : null,
+    };
+  } catch (error) {
+    logger.error("Travel options calculation error:", error);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+});
+
+/**
  * Geocode an address using Google Maps Geocoding API
  */
 exports.geocodeAddress = onCall(async (request) => {
