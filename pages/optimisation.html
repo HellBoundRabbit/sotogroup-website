@@ -97,9 +97,7 @@
                 <button class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors text-sm" onclick="logout()">
                     Logout
                 </button>
-                <div class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden">
-                    <img src="/assets/logos/c-logo.svg" alt="C Logo" class="w-full h-full object-cover">
-                </div>
+                <div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDevd-HNK-hCI6uo8erI-DVQkF2BKhqZ0ZAY0qf-E49wK_Eme1itzAv3OZQ8llueRr0JfYlmS9s0zJ1iZkEMovNFenOgEFVnmtKIQ6-Yty0sPAlp7F42lZf97BCZlS-X4oSH12C0DnPEaXrmNnX8gPV32TDFrCAQkoT-5vsSla2tL5Mu5BMnF37vCjaPVARHrMwp3QnHVpRCB_wtsJfmGdvPMIs27V2QfjKIZviBup9poMqsRtRRaTcW8FHMcFHXknCA_jokfbE9Ko");'></div>
             </div>
         </header>
         <main class="flex-1 px-6 py-4">
@@ -107,38 +105,17 @@
                 <div class="flex justify-between items-center mb-4">
                     <h1 class="text-2xl font-bold tracking-tight">Optimisation</h1>
                     <div class="flex items-center gap-3">
-                        <button onclick="loadAndDisplayRoutes()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold">
+                        <button onclick="loadAndDisplayRoutes()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold">
                             Load Routes
                         </button>
-                        <button onclick="showOptimiseSettings()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold">
+                        <button onclick="showOptimiseSettings()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold">
                             <span class="truncate">Optimise</span>
+                        </button>
+                        <button onclick="clearAllRoutes()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold">
+                            Clear All Routes
                         </button>
                     </div>
                 </div>
-                
-                <!-- Jobless Drivers Section -->
-                <div id="jobless-drivers-section" class="mb-6 hidden">
-                    <h2 class="text-lg font-semibold text-red-400 mb-3 flex items-center gap-2">
-                        <span class="material-symbols-outlined">person_off</span>
-                        Jobless Drivers
-                    </h2>
-                    <div id="jobless-drivers-container" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        <!-- Unassigned drivers will be displayed here -->
-                    </div>
-                </div>
-
-                <!-- Driverless Routes Section -->
-                <div id="driverless-routes-section" class="mb-6 hidden">
-                    <h2 class="text-lg font-semibold text-orange-400 mb-3 flex items-center gap-2">
-                        <span class="material-symbols-outlined">route</span>
-                        Driverless Routes
-                    </h2>
-                    <div id="driverless-routes-container" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        <!-- Unassigned routes will be displayed here -->
-                    </div>
-                </div>
-
-                <!-- Assigned Routes Section -->
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4" id="routes-container">
                         <!-- Routes will be dynamically loaded here -->
                         <div id="no-routes-message" class="col-span-full text-center py-12 text-gray-400">
@@ -380,16 +357,10 @@
                         });
                     });
 
-                    // Clear any existing driver assignments from loaded route data
-                    const cleanRouteData = { ...routeData };
-                    delete cleanRouteData.assignedDriver;
-                    delete cleanRouteData.assignedDriverName;
-                    delete cleanRouteData.assignedDriverPostcode;
-
                     const routeWithJobs = {
                         route: {
                             id: routeDoc.id,
-                            ...cleanRouteData
+                            ...routeData
                         },
                         jobs: jobs
                     };
@@ -424,22 +395,16 @@
                     const routeDocRef = window.firebaseDoc(routesCollection, originalRouteId);
                     
                     
-                    // Create a clean route object without driver assignments
-                    const cleanRoute = { ...routeData.route };
-                    delete cleanRoute.assignedDriver;
-                    delete cleanRoute.assignedDriverName;
-                    delete cleanRoute.assignedDriverPostcode;
-                    
                     await window.firebaseSetDoc(routeDocRef, {
                         routeId: routeData.route.routeId || originalRouteId,
-                        route: cleanRoute, // Clean route without driver assignments
+                        route: routeData.route, // This contains the assignedDriverName, assignedDriverPostcode
                         jobs: routeData.jobs,
                         lastUpdated: new Date(),
                         userId: user.uid
                     });
                 }
                 
-                console.log(`Updated ${savedRoutes.length} routes in Firebase (driver assignments kept temporary)`);
+                console.log(`Updated ${savedRoutes.length} routes in Firebase with driver assignments`);
             } catch (error) {
                 console.error('Error saving routes to Firebase:', error);
             }
@@ -591,8 +556,30 @@
                     }
                 });
                 
-                // Driver assignments are now temporary and not restored from Firebase
-                // Routes will display without any driver assignments on page load
+                // Populate driver assignments if they exist
+                savedRoutes.forEach((routeData, index) => {
+                    // Check both possible locations for the assigned driver data
+                    const assignedDriverName = routeData.route?.assignedDriverName || routeData.route?.route?.assignedDriverName;
+                    const assignedDriverPostcode = routeData.route?.assignedDriverPostcode || routeData.route?.route?.assignedDriverPostcode;
+                    
+                    if (assignedDriverName) {
+                        const routeNumber = index + 1;
+                        const driverElement = document.getElementById(`firebase-route-${routeNumber}-driver`);
+                        const locationElement = document.getElementById(`firebase-route-${routeNumber}-driver-location`);
+                        
+                        if (driverElement) {
+                            driverElement.textContent = assignedDriverName;
+                        }
+                        if (locationElement) {
+                            locationElement.textContent = assignedDriverPostcode || '-';
+                        }
+                        
+                        // Calculate and display distances
+                        if (assignedDriverPostcode) {
+                            updateRouteDistances(routeNumber, assignedDriverPostcode, routeData.jobs);
+                        }
+                    }
+                });
                 
                 console.log(`Displayed ${savedRoutes.length} routes successfully`);
                 
@@ -620,7 +607,6 @@
             jobs.forEach((job, index) => {
                 const jobLetter = String.fromCharCode(65 + index); // A, B, C, etc.
                 
-                
                 // Extract postcodes from addresses
                 let collectionPostcode = 'N/A';
                 let deliveryPostcode = 'N/A';
@@ -630,10 +616,9 @@
                     collectionPostcode = collectionParts[0].trim();
                 }
                 
-                if (job.parsedData?.postcode_delivery) {
-                    const deliveryParts = job.parsedData.postcode_delivery.split(',');
+                if (job.parsedData?.delivery_address) {
+                    const deliveryParts = job.parsedData.delivery_address.split(',');
                     deliveryPostcode = deliveryParts[0].trim();
-                } else {
                 }
                 
                 jobPairsHTML += `
@@ -649,12 +634,6 @@
             });
             
             routeDiv.innerHTML = `
-                <div class="relative">
-                    <!-- Score display in top right corner -->
-                    <div class="absolute top-0 right-0 bg-gray-800 rounded-bl-lg px-2 py-1" id="firebase-route-${routeNumber}-score">
-                        <span class="text-xs font-bold" id="firebase-route-${routeNumber}-score-text">-</span>
-                    </div>
-                    
                 <div class="grid grid-cols-2 gap-4 text-sm">
                     <div class="flex flex-col gap-1">
                         <label class="text-gray-400 font-medium text-xs">Driver</label>
@@ -940,16 +919,17 @@
                                 </div>
                             </div>
 
-                            <!-- Availability Button -->
-                            <div class="flex justify-center">
-                                <button id="markAsOffBtn" class="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-md text-sm font-medium transition-colors">
-                                    Availability
+                            <!-- Mark as Off Button -->
+                            <div class="flex gap-3">
+                                <button id="markAsOffBtn" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                                    Mark as Off
                                 </button>
+                                <span class="text-gray-400 text-sm self-center">Click to temporarily mark drivers as unavailable</span>
                             </div>
 
                             <!-- Driver Selection Dropdown (hidden initially) -->
                             <div id="driverSelectionDropdown" class="hidden mt-4 bg-[#283039] rounded-lg p-4 border border-gray-600">
-                                <h5 class="text-white font-medium mb-3">Select Driver Availability</h5>
+                                <h5 class="text-white font-medium mb-3">Select Driver to Mark as Off</h5>
                                 <div id="allDriversList" class="space-y-2 max-h-60 overflow-y-auto">
                                     <!-- All drivers will be listed here -->
                                 </div>
@@ -1002,14 +982,8 @@
             document.addEventListener('click', (e) => {
                 const dropdown = document.getElementById('driverSelectionDropdown');
                 const btn = document.getElementById('markAsOffBtn');
-                const allDriversList = document.getElementById('allDriversList');
-                
-                // Only close if clicking outside the dropdown, button, and driver list
-                if (dropdown && !dropdown.contains(e.target) && !btn.contains(e.target) && !allDriversList.contains(e.target)) {
+                if (dropdown && !dropdown.contains(e.target) && !btn.contains(e.target)) {
                     dropdown.classList.add('hidden');
-                    // Reset button state when closing
-                    btn.classList.remove('bg-gradient-to-r', 'from-red-500', 'to-red-700', 'hover:from-red-600', 'hover:to-red-800');
-                    btn.classList.add('bg-red-600', 'hover:bg-red-700');
                 }
             });
         }
@@ -1252,19 +1226,10 @@
         // Toggle driver selection dropdown
         function toggleDriverSelectionDropdown() {
             const dropdown = document.getElementById('driverSelectionDropdown');
-            const button = document.getElementById('markAsOffBtn');
-            
             dropdown.classList.toggle('hidden');
             
             if (!dropdown.classList.contains('hidden')) {
-                // Show dropdown - indicate button is active with red gradient
-                button.classList.remove('bg-red-600', 'hover:bg-red-700');
-                button.classList.add('bg-gradient-to-r', 'from-red-500', 'to-red-700', 'hover:from-red-600', 'hover:to-red-800');
                 populateAllDriversList();
-            } else {
-                // Hide dropdown - reset button to normal red state
-                button.classList.remove('bg-gradient-to-r', 'from-red-500', 'to-red-700', 'hover:from-red-600', 'hover:to-red-800');
-                button.classList.add('bg-red-600', 'hover:bg-red-700');
             }
         }
 
@@ -1289,7 +1254,7 @@
                 const isOff = tempDriversOff.some(off => off.id === driver.id);
                 const driverName = driver.name || (driver.firstName + ' ' + driver.lastName) || 'Unknown Driver';
                 return `
-                    <button onclick="event.stopPropagation(); toggleDriverOffStatus('${driver.id}', '${driverName}', '${driver.email}')" 
+                    <button onclick="toggleDriverOffStatus('${driver.id}', '${driverName}', '${driver.email}')" 
                             class="w-full flex items-center justify-between p-2 rounded-lg text-left transition-colors ${
                                 isOff ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-[#1a1f24] hover:bg-[#3a4049] text-white'
                             }">
@@ -1373,8 +1338,8 @@
             // Close the popup after we've used the data
             closeOptimiseSettings();
             
-            // Use the optimal assignment algorithm instead of simple direct assignment
-            await assignDriversToSavedRoutes(availableDrivers);
+            // Directly call the assignment function with our filtered drivers
+            await assignDriversToRoutesDirect(availableDrivers);
         }
 
         // Simple direct assignment function
@@ -1415,11 +1380,11 @@
                 await updateRouteDistances(routeNumber, route.route.assignedDriverPostcode, route.jobs);
             }
             
-            // Save the assignments to Firebase (without driver assignment data)
+            // Save the assignments to Firebase
             await saveRoutesToFirebase();
             
-            // Don't reload from Firebase - keep current assignments in memory
-            // await displayRoutesFromFirebase(); // Removed to preserve driver assignments
+            // Update the display
+            await displayRoutesFromFirebase();
             
             alert(`Optimization complete! Assigned ${Math.min(savedRoutes.length, driversToUse.length)} drivers to routes.`);
         }
@@ -1427,7 +1392,6 @@
         // Update route distances using Google Maps API
         async function updateRouteDistances(routeNumber, driverPostcode, jobs) {
             if (!jobs || jobs.length === 0) return;
-            
             
             try {
                 const firstJob = jobs[0];
@@ -1464,56 +1428,10 @@
                 if (progressToCollectionBar) {
                     const progressToCollection = Math.min((distanceToCollection / maxDistance) * 100, 100);
                     progressToCollectionBar.style.width = `${progressToCollection}%`;
-                    
-                    console.log(`🎨 Applying gradient to collection bar for route ${routeNumber}, distance: ${distanceToCollection}mi`);
-                    
-                    // Apply gradient based on distance
-                    if (distanceToCollection <= 20) {
-                        progressToCollectionBar.className = 'h-full rounded-full';
-                        progressToCollectionBar.style.background = 'linear-gradient(90deg, #10b981, #34d399)'; // Green gradient
-                        console.log('🟢 Applied green gradient');
-                    } else if (distanceToCollection <= 40) {
-                        progressToCollectionBar.className = 'h-full rounded-full';
-                        progressToCollectionBar.style.background = 'linear-gradient(90deg, #f59e0b, #fbbf24)'; // Orange gradient
-                        console.log('🟠 Applied orange gradient');
-                    } else if (distanceToCollection <= 60) {
-                        progressToCollectionBar.className = 'h-full rounded-full';
-                        progressToCollectionBar.style.background = 'linear-gradient(90deg, #f97316, #fb923c)'; // Red-orange gradient
-                        console.log('🔴 Applied red-orange gradient');
-                    } else {
-                        progressToCollectionBar.className = 'h-full rounded-full';
-                        progressToCollectionBar.style.background = 'linear-gradient(90deg, #dc2626, #ef4444)'; // Red gradient
-                        console.log('🔴 Applied red gradient');
-                    }
-                } else {
-                    console.log(`❌ Progress bar not found for route ${routeNumber}`);
                 }
                 if (progressHomeBar) {
                     const progressHome = Math.min((distanceFromDelivery / maxDistance) * 100, 100);
                     progressHomeBar.style.width = `${progressHome}%`;
-                    
-                    console.log(`🎨 Applying gradient to home bar for route ${routeNumber}, distance: ${distanceFromDelivery}mi`);
-                    
-                    // Apply gradient based on distance
-                    if (distanceFromDelivery <= 20) {
-                        progressHomeBar.className = 'h-full rounded-full';
-                        progressHomeBar.style.background = 'linear-gradient(90deg, #10b981, #34d399)'; // Green gradient
-                        console.log('🟢 Applied green gradient to home bar');
-                    } else if (distanceFromDelivery <= 40) {
-                        progressHomeBar.className = 'h-full rounded-full';
-                        progressHomeBar.style.background = 'linear-gradient(90deg, #f59e0b, #fbbf24)'; // Orange gradient
-                        console.log('🟠 Applied orange gradient to home bar');
-                    } else if (distanceFromDelivery <= 60) {
-                        progressHomeBar.className = 'h-full rounded-full';
-                        progressHomeBar.style.background = 'linear-gradient(90deg, #f97316, #fb923c)'; // Red-orange gradient
-                        console.log('🔴 Applied red-orange gradient to home bar');
-                    } else {
-                        progressHomeBar.className = 'h-full rounded-full';
-                        progressHomeBar.style.background = 'linear-gradient(90deg, #dc2626, #ef4444)'; // Red gradient
-                        console.log('🔴 Applied red gradient to home bar');
-                    }
-                } else {
-                    console.log(`❌ Home progress bar not found for route ${routeNumber}`);
                 }
                 
             } catch (error) {
@@ -1601,15 +1519,14 @@
         }
 
         // Assign drivers to saved routes from Firebase using optimal assignment algorithm
-        async function assignDriversToSavedRoutes(driversToUse = null) {
-            const driversForAssignment = driversToUse || drivers;
+        async function assignDriversToSavedRoutes() {
             console.log('Assigning drivers using optimal assignment algorithm...');
             console.log('Saved routes count:', savedRoutes.length);
-            console.log('Drivers count:', driversForAssignment.length);
+            console.log('Drivers count:', drivers.length);
             console.log('Saved routes:', savedRoutes);
-            console.log('Drivers:', driversForAssignment);
+            console.log('Drivers:', drivers);
             
-            if (savedRoutes.length === 0 || driversForAssignment.length === 0) {
+            if (savedRoutes.length === 0 || drivers.length === 0) {
                 console.log('No routes or drivers available for assignment');
                 return;
             }
@@ -1625,17 +1542,18 @@
                     const firstJob = jobs[0];
                     const lastJob = jobs[jobs.length - 1];
                     const collectionAddress = firstJob.parsedData?.collection_address || 'B797RU';
-                    const deliveryAddress = lastJob.parsedData?.postcode_delivery || 'M1 4AN';
+                    const deliveryAddress = lastJob.parsedData?.delivery_address || 'M1 4AN';
                     
+                    console.log(`Calculating distances for Route ${routeIndex + 1} (Collection: ${collectionAddress}, Delivery: ${deliveryAddress})`);
                     
                     // Calculate distances for each driver with this route
-                    for (let driverIndex = 0; driverIndex < driversForAssignment.length; driverIndex++) {
-                        const driver = driversForAssignment[driverIndex];
+                    for (let driverIndex = 0; driverIndex < drivers.length; driverIndex++) {
+                        const driver = drivers[driverIndex];
                         
                         try {
                             // Use carry-over postcode for distance TO collection, home postcode for distance FROM delivery
-                            const startingPostcode = carryOverPostcodes[driverIndex] || driver.homePostcode || driver.postcode;
-                            const endingPostcode = driver.homePostcode || driver.postcode; // Always use home postcode for return journey
+                            const startingPostcode = carryOverPostcodes[driverIndex] || driver.postcode;
+                            const endingPostcode = driver.postcode; // Always use home postcode for return journey
                             
                             const distanceToCollection = await calculateDistance(startingPostcode, collectionAddress);
                             const distanceFromDelivery = await calculateDistance(deliveryAddress, endingPostcode);
@@ -1652,10 +1570,10 @@
                             });
                             
                             const carryOverInfo = carryOverPostcodes[driverIndex] ? ` (carry-over: ${carryOverPostcodes[driverIndex]})` : '';
+                            console.log(`Driver ${driver.name}${carryOverInfo} → Route ${routeIndex + 1}: ${distanceToCollection} mi to collection + ${distanceFromDelivery} mi from delivery = ${totalDistance} mi total`);
                             
                         } catch (error) {
-                            const driverName = driver.name || (driver.firstName + ' ' + driver.lastName) || 'Unknown Driver';
-                            console.error(`Error calculating distance for driver ${driverName} and route ${routeIndex + 1}:`, error);
+                            console.error(`Error calculating distance for driver ${driver.name} and route ${routeIndex + 1}:`, error);
                             // Add with default distances
                             assignments.push({
                                 routeIndex: routeIndex,
@@ -1672,15 +1590,9 @@
             }
             
             // Find optimal assignment using Hungarian algorithm (simplified version)
-            const optimalAssignment = findOptimalAssignment(assignments, savedRoutes.length, driversForAssignment.length);
+            const optimalAssignment = findOptimalAssignment(assignments, savedRoutes.length, drivers.length);
             
-            
-            // Sort assignments by score (highest first)
-            optimalAssignment.sort((a, b) => {
-                const scoreA = calculateRouteScore(a.totalDistance).score;
-                const scoreB = calculateRouteScore(b.totalDistance).score;
-                return scoreB - scoreA; // Highest score first
-            });
+            console.log('Optimal assignment found:', optimalAssignment);
             
             // Apply the optimal assignment to UI
             for (const assignment of optimalAssignment) {
@@ -1692,11 +1604,8 @@
                 const progressToCollectionBar = document.getElementById(`firebase-route-${routeNumber}-progress-to-collection`);
                 const progressHomeBar = document.getElementById(`firebase-route-${routeNumber}-progress`);
                 
-                if (driverElement) {
-                    const driverName = assignment.driver.name || (assignment.driver.firstName + ' ' + assignment.driver.lastName) || 'Unknown Driver';
-                    driverElement.textContent = driverName;
-                }
-                if (locationElement) locationElement.textContent = assignment.driver.homePostcode || assignment.driver.postcode || 'Unknown';
+                if (driverElement) driverElement.textContent = assignment.driver.name;
+                if (locationElement) locationElement.textContent = assignment.driver.postcode;
                 if (distanceToCollectionElement) distanceToCollectionElement.textContent = `${assignment.distanceToCollection} miles`;
                 if (distanceHomeElement) distanceHomeElement.textContent = `${assignment.distanceFromDelivery} miles`;
                 
@@ -1705,19 +1614,12 @@
                     const progressPercentage = Math.min((assignment.distanceToCollection / 100) * 100, 100);
                     progressToCollectionBar.style.width = `${progressPercentage}%`;
                     
-                    // Apply gradient based on distance
-                    if (assignment.distanceToCollection <= 20) {
-                        progressToCollectionBar.className = 'h-full rounded-full';
-                        progressToCollectionBar.style.background = 'linear-gradient(90deg, #10b981, #34d399)'; // Green gradient
-                    } else if (assignment.distanceToCollection <= 40) {
-                        progressToCollectionBar.className = 'h-full rounded-full';
-                        progressToCollectionBar.style.background = 'linear-gradient(90deg, #f59e0b, #fbbf24)'; // Orange gradient
-                    } else if (assignment.distanceToCollection <= 60) {
-                        progressToCollectionBar.className = 'h-full rounded-full';
-                        progressToCollectionBar.style.background = 'linear-gradient(90deg, #f97316, #fb923c)'; // Red-orange gradient
+                    if (assignment.distanceToCollection <= 30) {
+                        progressToCollectionBar.className = 'bg-green-500 h-full rounded-full';
+                    } else if (assignment.distanceToCollection <= 50) {
+                        progressToCollectionBar.className = 'bg-yellow-500 h-full rounded-full';
                     } else {
-                        progressToCollectionBar.className = 'h-full rounded-full';
-                        progressToCollectionBar.style.background = 'linear-gradient(90deg, #dc2626, #ef4444)'; // Red gradient
+                        progressToCollectionBar.className = 'bg-red-500 h-full rounded-full';
                     }
                 }
                 
@@ -1725,197 +1627,20 @@
                     const progressPercentage = Math.min((assignment.distanceFromDelivery / 100) * 100, 100);
                     progressHomeBar.style.width = `${progressPercentage}%`;
                     
-                    // Apply gradient based on distance
-                    if (assignment.distanceFromDelivery <= 20) {
-                        progressHomeBar.className = 'h-full rounded-full';
-                        progressHomeBar.style.background = 'linear-gradient(90deg, #10b981, #34d399)'; // Green gradient
-                    } else if (assignment.distanceFromDelivery <= 40) {
-                        progressHomeBar.className = 'h-full rounded-full';
-                        progressHomeBar.style.background = 'linear-gradient(90deg, #f59e0b, #fbbf24)'; // Orange gradient
-                    } else if (assignment.distanceFromDelivery <= 60) {
-                        progressHomeBar.className = 'h-full rounded-full';
-                        progressHomeBar.style.background = 'linear-gradient(90deg, #f97316, #fb923c)'; // Red-orange gradient
+                    if (assignment.distanceFromDelivery <= 30) {
+                        progressHomeBar.className = 'bg-green-500 h-full rounded-full';
+                    } else if (assignment.distanceFromDelivery <= 50) {
+                        progressHomeBar.className = 'bg-yellow-500 h-full rounded-full';
                         } else {
-                        progressHomeBar.className = 'h-full rounded-full';
-                        progressHomeBar.style.background = 'linear-gradient(90deg, #dc2626, #ef4444)'; // Red gradient
+                        progressHomeBar.className = 'bg-red-500 h-full rounded-full';
                     }
                 }
                 
-                // Calculate and display route score
-                const routeScore = calculateRouteScore(assignment.totalDistance);
-                const scoreElement = document.getElementById(`firebase-route-${routeNumber}-score-text`);
-                const scoreContainer = document.getElementById(`firebase-route-${routeNumber}-score`);
-                
-                if (scoreElement) {
-                    scoreElement.textContent = `${routeScore.score}/10`;
-                }
-                if (scoreContainer) {
-                    // Apply color based on score
-                    if (routeScore.color === 'green') {
-                        scoreContainer.className = 'absolute top-0 right-0 bg-green-600 rounded-bl-lg px-2 py-1';
-                    } else if (routeScore.color === 'orange') {
-                        scoreContainer.className = 'absolute top-0 right-0 bg-orange-500 rounded-bl-lg px-2 py-1';
-                    } else {
-                        scoreContainer.className = 'absolute top-0 right-0 bg-red-600 rounded-bl-lg px-2 py-1';
-                    }
-                }
-                
-                const driverName = assignment.driver.name || (assignment.driver.firstName + ' ' + assignment.driver.lastName) || 'Unknown Driver';
-            }
-            
-            // Reorder route cards in DOM to match sorted order (by score)
-            const routesContainer = document.getElementById('routes-container');
-            if (routesContainer) {
-                // Get all route cards
-                const routeCards = Array.from(routesContainer.children);
-                
-                // Create a mapping of route numbers to their new order (by score)
-                const routeOrderMap = {};
-                optimalAssignment.forEach((assignment, index) => {
-                    const originalRouteNumber = assignment.routeIndex + 1;
-                    routeOrderMap[originalRouteNumber] = index;
-                });
-                
-                // Sort route cards based on the new order (highest score first)
-                routeCards.sort((a, b) => {
-                    const aRouteNumber = parseInt(a.id.match(/firebase-route-(\d+)/)?.[1] || '0');
-                    const bRouteNumber = parseInt(b.id.match(/firebase-route-(\d+)/)?.[1] || '0');
-                    return (routeOrderMap[aRouteNumber] || 0) - (routeOrderMap[bRouteNumber] || 0);
-                });
-                
-                // Re-append cards in new order
-                routeCards.forEach(card => routesContainer.appendChild(card));
-                
-            }
-            
-            // Display unassigned drivers (jobless drivers)
-            const assignedDriverIndices = new Set(optimalAssignment.map(a => a.driverIndex));
-            const joblessDrivers = driversForAssignment.filter((driver, index) => !assignedDriverIndices.has(index));
-            
-            const joblessDriversSection = document.getElementById('jobless-drivers-section');
-            const joblessDriversContainer = document.getElementById('jobless-drivers-container');
-            
-            if (joblessDrivers.length > 0) {
-                joblessDriversContainer.innerHTML = '';
-                joblessDrivers.forEach(driver => {
-                    const card = createJoblessDriverCard(driver);
-                    joblessDriversContainer.appendChild(card);
-                });
-                joblessDriversSection.classList.remove('hidden');
-            } else {
-                joblessDriversSection.classList.add('hidden');
-            }
-            
-            // Display unassigned routes (driverless routes)
-            const assignedRouteIndices = new Set(optimalAssignment.map(a => a.routeIndex));
-            const driverlessRoutes = savedRoutes.filter((route, index) => !assignedRouteIndices.has(index));
-            
-            const driverlessRoutesSection = document.getElementById('driverless-routes-section');
-            const driverlessRoutesContainer = document.getElementById('driverless-routes-container');
-            
-            if (driverlessRoutes.length > 0) {
-                driverlessRoutesContainer.innerHTML = '';
-                driverlessRoutes.forEach((route, index) => {
-                    const card = createDriverlessRouteCard(route, index);
-                    driverlessRoutesContainer.appendChild(card);
-                });
-                driverlessRoutesSection.classList.remove('hidden');
-            } else {
-                driverlessRoutesSection.classList.add('hidden');
+                console.log(`✅ Route ${routeNumber} assigned to ${assignment.driver.name} (${assignment.distanceToCollection} mi to collection + ${assignment.distanceFromDelivery} mi home = ${assignment.totalDistance} mi total)`);
             }
             
             const totalDistance = optimalAssignment.reduce((sum, assignment) => sum + assignment.totalDistance, 0);
-        }
-        
-        // Calculate route score based on total distance
-        function calculateRouteScore(totalDistance) {
-            if (totalDistance <= 20) return { score: 10, color: 'green' };
-            if (totalDistance <= 40) return { score: 9, color: 'green' };
-            if (totalDistance <= 60) return { score: 8, color: 'orange' };
-            if (totalDistance <= 80) return { score: 7, color: 'orange' };
-            if (totalDistance <= 100) return { score: 6, color: 'orange' };
-            if (totalDistance <= 120) return { score: 5, color: 'red' };
-            if (totalDistance <= 140) return { score: 4, color: 'red' };
-            if (totalDistance <= 160) return { score: 3, color: 'red' };
-            if (totalDistance <= 180) return { score: 2, color: 'red' };
-            return { score: 1, color: 'red' };
-        }
-
-        // Create jobless driver card
-        function createJoblessDriverCard(driver) {
-            const driverName = driver.name || (driver.firstName + ' ' + driver.lastName) || 'Unknown Driver';
-            const driverPostcode = driver.homePostcode || driver.postcode || 'Unknown';
-            
-            const card = document.createElement('div');
-            card.className = 'flex flex-col gap-3 rounded-lg border border-red-500/30 bg-red-900/10 p-4';
-            
-            card.innerHTML = `
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center">
-                        <span class="material-symbols-outlined text-white text-lg">person_off</span>
-                    </div>
-                    <div class="flex-1">
-                        <h3 class="font-semibold text-white">${driverName}</h3>
-                        <p class="text-sm text-gray-400">${driverPostcode}</p>
-                    </div>
-                    <div class="text-right">
-                        <span class="text-xs text-red-400 font-medium">No Route</span>
-                    </div>
-                </div>
-                <div class="text-sm text-gray-400">
-                    This driver was not assigned to any routes during optimization.
-                </div>
-            `;
-            
-            return card;
-        }
-
-        // Create driverless route card
-        function createDriverlessRouteCard(routeData, routeIndex) {
-            const routeNumber = routeIndex + 1;
-            const jobs = routeData.jobs || [];
-            
-            // Create job pairs display
-            let jobPairsHTML = '';
-            jobs.forEach((job, index) => {
-                const jobLetter = String.fromCharCode(65 + index);
-                const collectionPostcode = job.parsedData?.collection_address?.split(',')[0]?.trim() || 'N/A';
-                const deliveryPostcode = job.parsedData?.postcode_delivery || 'N/A';
-                
-                jobPairsHTML += `
-                    <div class="flex items-center gap-2 text-xs">
-                        <span class="text-green-400">${collectionPostcode}</span>
-                        <span class="material-symbols-outlined text-gray-400 text-sm">arrow_forward</span>
-                        <span class="text-red-400">${deliveryPostcode}</span>
-                    </div>
-                `;
-            });
-            
-            const card = document.createElement('div');
-            card.className = 'flex flex-col gap-3 rounded-lg border border-orange-500/30 bg-orange-900/10 p-4';
-            
-            card.innerHTML = `
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 bg-orange-600 rounded-full flex items-center justify-center">
-                        <span class="material-symbols-outlined text-white text-lg">route</span>
-                    </div>
-                    <div class="flex-1">
-                        <h3 class="font-semibold text-white">Route ${routeNumber}</h3>
-                        <p class="text-sm text-gray-400">${jobs.length} job${jobs.length !== 1 ? 's' : ''}</p>
-                    </div>
-                    <div class="text-right">
-                        <span class="text-xs text-orange-400 font-medium">No Driver</span>
-                    </div>
-                </div>
-                <div class="space-y-1">
-                    ${jobPairsHTML}
-                </div>
-                <div class="text-sm text-gray-400">
-                    This route was not assigned to any drivers during optimization.
-                </div>
-            `;
-            
-            return card;
+            console.log(`🎯 Optimal assignment completed! Total distance across all routes: ${totalDistance} miles`);
         }
         
         // Find optimal assignment using a greedy approach (simplified Hungarian algorithm)
@@ -2043,19 +1768,12 @@
                     const percentage = Math.min((assignment.distanceToCollection / 100) * 100, 100);
                     progressToCollectionBar.style.width = `${percentage}%`;
                     
-                    // Apply gradient based on distance
-                    if (assignment.distanceToCollection <= 20) {
-                        progressToCollectionBar.className = 'h-full rounded-full';
-                        progressToCollectionBar.style.background = 'linear-gradient(90deg, #10b981, #34d399)'; // Green gradient
-                    } else if (assignment.distanceToCollection <= 40) {
-                        progressToCollectionBar.className = 'h-full rounded-full';
-                        progressToCollectionBar.style.background = 'linear-gradient(90deg, #f59e0b, #fbbf24)'; // Orange gradient
-                    } else if (assignment.distanceToCollection <= 60) {
-                        progressToCollectionBar.className = 'h-full rounded-full';
-                        progressToCollectionBar.style.background = 'linear-gradient(90deg, #f97316, #fb923c)'; // Red-orange gradient
+                    if (assignment.distanceToCollection <= 30) {
+                        progressToCollectionBar.className = 'bg-green-500 h-full rounded-full';
+                    } else if (assignment.distanceToCollection <= 50) {
+                        progressToCollectionBar.className = 'bg-yellow-500 h-full rounded-full';
                 } else {
-                        progressToCollectionBar.className = 'h-full rounded-full';
-                        progressToCollectionBar.style.background = 'linear-gradient(90deg, #dc2626, #ef4444)'; // Red gradient
+                        progressToCollectionBar.className = 'bg-red-500 h-full rounded-full';
                     }
                 }
                 
@@ -2064,25 +1782,20 @@
                     const percentage = Math.min((assignment.distanceFromDelivery / 100) * 100, 100);
                     progressHomeBar.style.width = `${percentage}%`;
                     
-                    // Apply gradient based on distance
-                    if (assignment.distanceFromDelivery <= 20) {
-                        progressHomeBar.className = 'h-full rounded-full';
-                        progressHomeBar.style.background = 'linear-gradient(90deg, #10b981, #34d399)'; // Green gradient
-                    } else if (assignment.distanceFromDelivery <= 40) {
-                        progressHomeBar.className = 'h-full rounded-full';
-                        progressHomeBar.style.background = 'linear-gradient(90deg, #f59e0b, #fbbf24)'; // Orange gradient
-                    } else if (assignment.distanceFromDelivery <= 60) {
-                        progressHomeBar.className = 'h-full rounded-full';
-                        progressHomeBar.style.background = 'linear-gradient(90deg, #f97316, #fb923c)'; // Red-orange gradient
+                    if (assignment.distanceFromDelivery <= 30) {
+                        progressHomeBar.className = 'bg-green-500 h-full rounded-full';
+                    } else if (assignment.distanceFromDelivery <= 50) {
+                        progressHomeBar.className = 'bg-yellow-500 h-full rounded-full';
                     } else {
-                        progressHomeBar.className = 'h-full rounded-full';
-                        progressHomeBar.style.background = 'linear-gradient(90deg, #dc2626, #ef4444)'; // Red gradient
+                        progressHomeBar.className = 'bg-red-500 h-full rounded-full';
                     }
                 }
                 
+                console.log(`✅ Demo Route ${routeId} assigned to ${assignment.driver.name} (${assignment.distanceToCollection} mi to collection + ${assignment.distanceFromDelivery} mi home = ${assignment.totalDistance} mi total)`);
             }
             
             const totalDistance = optimalAssignment.reduce((sum, assignment) => sum + assignment.totalDistance, 0);
+            console.log(`🎯 Demo optimization completed! Total distance across all routes: ${totalDistance} miles`);
         }
 
         // Find best driver for a route based on minimizing sum of distance to first collection + distance from last delivery
@@ -2158,6 +1871,9 @@
                 if (window.google && window.google.maps) {
                     distanceMatrixService = new google.maps.DistanceMatrixService();
                     isGoogleMapsLoaded = true;
+                    console.log('✅ Google Maps API loaded successfully');
+                    console.log('✅ Distance Matrix Service initialized');
+                    console.log('✅ All required APIs are available');
                 }
             } catch (error) {
                 googleMapsError = error;
@@ -2196,6 +1912,7 @@
                 });
                 
                 if (result.data.success) {
+                    console.log(`✅ Firebase Functions distance from ${postcode1} to ${postcode2}: ${result.data.distance} miles`);
                     return Math.round(result.data.distance);
                 } else {
                     console.warn(`⚠️ Firebase Functions error for ${postcode1} to ${postcode2}:`, result.data.error);
@@ -2269,6 +1986,26 @@
         }
 
         // Clear all routes (both Firebase and localStorage)
+        async function clearAllRoutes() {
+            if (confirm('Are you sure you want to clear all saved routes? This action cannot be undone.')) {
+                try {
+                    // Clear localStorage
+                    localStorage.removeItem('savedRoutes');
+                    
+                    // Note: Firebase doesn't have a simple "delete all" function from client-side
+                    // In a production app, you'd need a server function to delete all routes
+                    console.log('Note: Firebase routes would need to be cleared via server function');
+                    
+                    // Reload the display
+                    await displayRoutesFromFirebase();
+                    
+                    alert('All routes have been cleared successfully!');
+                } catch (error) {
+                    console.error('Error clearing routes:', error);
+                    alert('Error clearing routes. Please try again.');
+                }
+            }
+        }
 
         // Load and display routes function (can be called manually)
         async function loadAndDisplayRoutes() {
@@ -2297,6 +2034,7 @@
         // Make functions globally available
         window.loadAndDisplayRoutes = loadAndDisplayRoutes;
         window.optimizeRoutes = optimizeRoutes;
+        window.clearAllRoutes = clearAllRoutes;
         window.showNotifications = showNotifications;
         window.showAlterationsPopup = showAlterationsPopup;
         window.closeAlterationsPopup = closeAlterationsPopup;

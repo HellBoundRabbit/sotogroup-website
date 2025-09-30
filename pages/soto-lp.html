@@ -20,7 +20,6 @@
 <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
     import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, where, updateDoc, doc, deleteDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
-    import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
     
     // Firebase configuration
     const firebaseConfig = {
@@ -36,12 +35,10 @@
     // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-    const functions = getFunctions(app);
     window.db = db; // Make db globally accessible
     
     // Make Firebase available globally
     window.firebaseApp = app;
-    window.firebase = { functions: functions, httpsCallable: httpsCallable };
     window.firestore = db;
     window.firebaseCollection = collection;
     window.firebaseAddDoc = addDoc;
@@ -192,9 +189,7 @@ window.onload = async function() {
 <button class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors text-sm" onclick="logout()">
 Logout
 </button>
-<div class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden">
-    <img src="/assets/logos/c-logo.svg" alt="C Logo" class="w-full h-full object-cover">
-</div>
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDevd-HNK-hCI6uo8erI-DVQkF2BKhqZ0ZAY0qf-E49wK_Eme1itzAv3OZQ8llueRr0JfYlmS9s0zJ1iZkEMovNFenOgEFVnmtKIQ6-Yty0sPAlp7F42lZf97BCZlS-X4oSH12C0DnPEaXrmNnX8gPV32TDFrCAQkoT-5vsSla2tL5Mu5BMnF37vCjaPVARHrMwp3QnHVpRCB_wtsJfmGdvPMIs27V2QfjKIZviBup9poMqsRtRRaTcW8FHMcFHXknCA_jokfbE9Ko");'></div>
 </div>
 </header>
 
@@ -238,7 +233,7 @@ Logout
 
 <!-- Status Indicator with Route Count -->
 <div id="status-indicator" class="flex items-center justify-center gap-2 min-w-[140px] h-8 px-4 rounded-md bg-[var(--success-color)] text-white text-sm font-bold">
-<span id="status-text"><span class="material-symbols-outlined text-sm">check_circle</span> (<span id="routes-count">0</span>) Routes Uploaded</span>
+<span id="status-text">(<span id="routes-count">0</span>) Routes Uploaded</span>
 </div>
 </div>
 </div>
@@ -579,10 +574,8 @@ async function startFresh() {
         // Create fresh job panels
         createNewRoute(1);
         
-        // Update route counter (with small delay to ensure Firebase is updated)
-        setTimeout(() => {
-            updateRouteCount();
-        }, 500);
+        // Update route counter
+        updateRouteCount();
         
         // Show success message
         alert(`✅ Successfully deleted ${routesDeleted} routes and ${jobsDeleted} jobs!\n\nAll data has been cleared and you can start fresh.`);
@@ -606,12 +599,6 @@ async function startFresh() {
 function initializeRouteCounter() {
     console.log('Initializing route counter...');
     updateRouteCount();
-    
-    // Set up periodic refresh of route counter every 30 seconds to ensure accuracy
-    setInterval(() => {
-        updateRouteCount();
-    }, 30000);
-    
     console.log('Route counter initialized');
 }
 
@@ -696,10 +683,8 @@ async function loadRoutesForSelectedDate() {
         }
         createNewRoute(currentRouteId);
         
-        // Update route counter (with small delay to ensure Firebase is updated)
-        setTimeout(() => {
-            updateRouteCount();
-        }, 500);
+        // Update route counter
+        updateRouteCount();
         
         console.log('Routes loaded successfully');
         
@@ -749,7 +734,7 @@ function createMinimizedRouteUI(routeData) {
         if (job.parsedData) {
             // Firebase format: job has parsedData
             collectionAddress = job.parsedData.collection_address || 'Unknown';
-            deliveryAddress = job.parsedData.postcode_delivery || 'Unknown';
+            deliveryAddress = job.parsedData.delivery_address || 'Unknown';
         } else if (job.collection && job.delivery) {
             // Local format: job has collection/delivery fields
             collectionAddress = job.collection;
@@ -844,8 +829,6 @@ function updateSelectedDayDisplay() {
 }
 
 async function updateRouteCount() {
-    console.log('=== updateRouteCount called ===');
-    
     // Count all routes from Firebase
     let routesCount = 0;
     
@@ -859,29 +842,26 @@ async function updateRouteCount() {
         
     } catch (error) {
         console.error('Error querying Firebase for route counts:', error);
-        routesCount = 0; // Set to 0 if there's an error
     }
     
-    console.log('Final routes count:', routesCount);
+    // Add minimized routes (routes that exist locally but may not be in Firebase yet)
+    routesCount += minimizedRoutes.length;
     
-    // Update route counter display - try multiple approaches
+    // Add 1 for the current active route if it has jobs
+    const activeRoute = document.querySelector('.route-container:not(.minimized-route)');
+    if (activeRoute) {
+        const hasJobs = activeRoute.querySelectorAll('.job-panel').length > 0;
+        if (hasJobs) {
+            routesCount += 1;
+        }
+    }
+    
+    console.log('Total routes count (Firebase + minimized + active):', routesCount);
+    
+    // Update route counter display
     const routesCountElement = document.getElementById('routes-count');
-    console.log('routes-count element found:', routesCountElement);
-    
     if (routesCountElement) {
         routesCountElement.textContent = routesCount;
-        console.log('Updated routes-count element to:', routesCount);
-    } else {
-        console.error('routes-count element not found!');
-        // Try to find it in the status text
-        const statusText = document.getElementById('status-text');
-        if (statusText) {
-            const nestedRoutesCount = statusText.querySelector('#routes-count');
-            if (nestedRoutesCount) {
-                nestedRoutesCount.textContent = routesCount;
-                console.log('Updated nested routes-count element to:', routesCount);
-            }
-        }
     }
     
     // Update day selection status if a day is selected
@@ -890,29 +870,26 @@ async function updateRouteCount() {
     }
     
     // Update the status indicator to reflect the new count
-    updateStatusIndicator(routesCount);
+    updateStatusIndicator();
     
-    console.log('Route count update completed:', routesCount);
+    console.log('Route count updated:', routesCount);
 }
 
 
 // Status Indicator Management
-function updateStatusIndicator(routeCount = null) {
+function updateStatusIndicator() {
     const statusIndicator = document.getElementById('status-indicator');
     const statusText = document.getElementById('status-text');
+    const routesCount = document.getElementById('routes-count');
     
     // Check if elements exist before proceeding
-    if (!statusIndicator || !statusText) {
+    if (!statusIndicator || !statusText || !routesCount) {
         console.log('Status indicator elements not found, skipping update');
         return;
     }
     
-    // Get current route count - use parameter if provided, otherwise get from DOM
-    let currentCount = routeCount;
-    if (currentCount === null) {
-        const routesCountElement = document.getElementById('routes-count');
-        currentCount = routesCountElement ? parseInt(routesCountElement.textContent) || 0 : 0;
-    }
+    // Get current route count
+    const currentCount = minimizedRoutes.length;
     
     if (isProcessing || processingQueue.length > 0) {
         // Show processing state
@@ -921,13 +898,8 @@ function updateStatusIndicator(routeCount = null) {
     } else {
         // Show completed state with route count
         statusIndicator.className = 'flex items-center justify-center gap-2 min-w-[140px] h-8 px-4 rounded-md bg-[var(--success-color)] text-white text-sm font-bold';
-        statusText.innerHTML = `<span class="material-symbols-outlined text-sm">check_circle</span> (<span id="routes-count">${currentCount}</span>) Routes Uploaded`;
-        
-        // Ensure the routes-count element exists and is updated
-        const routesCountElement = document.getElementById('routes-count');
-        if (routesCountElement) {
-            routesCountElement.textContent = currentCount;
-        }
+        statusText.innerHTML = `<span class="material-symbols-outlined text-sm">check_circle</span> (${currentCount}) Routes Uploaded`;
+        routesCount.textContent = currentCount;
     }
 }
 
@@ -1094,10 +1066,8 @@ async function processQueue() {
                 // Update next route button state
                 updateNextRouteButton(job.routeId);
                 
-                // Update route count immediately after job processing (with small delay to ensure Firebase is updated)
-                setTimeout(() => {
-                    updateRouteCount();
-                }, 1000);
+                // Update route count immediately after job processing
+                updateRouteCount();
             } else {
                 // Show error state
                 collectionElement.textContent = 'Error processing';
@@ -1127,10 +1097,8 @@ async function processQueue() {
     isProcessing = false;
     updateStatusIndicator();
     
-    // Update route count after all processing is complete (with small delay to ensure Firebase is updated)
-    setTimeout(() => {
-        updateRouteCount();
-    }, 1000);
+    // Update route count after all processing is complete
+    updateRouteCount();
 }
 
 
@@ -1191,7 +1159,7 @@ function updateJobDisplay(routeId, jobNumber, parsedData) {
     if (collectionElement && deliveryElement && priceElement) {
     // Update content
     collectionElement.textContent = parsedData.collection_address || 'Not found';
-    deliveryElement.textContent = parsedData.postcode_delivery || 'Not found';
+    deliveryElement.textContent = parsedData.delivery_address || 'Not found';
     
     // Format and color-code the price
     const price = parsedData.price || 0;
@@ -1250,7 +1218,7 @@ function updateMinimizedRoute(routeId, jobNumber, parsedData) {
             routeData.jobs[jobIndex] = {
                 jobNumber,
                 collection: parsedData.collection_address || 'Not found',
-                delivery: parsedData.postcode_delivery || 'Not found',
+                delivery: parsedData.delivery_address || 'Not found',
                 price: `£${(parsedData.price || 0).toFixed(2)}`
             };
         } else {
@@ -1258,7 +1226,7 @@ function updateMinimizedRoute(routeId, jobNumber, parsedData) {
             routeData.jobs.push({
                 jobNumber,
                 collection: parsedData.collection_address || 'Not found',
-                delivery: parsedData.postcode_delivery || 'Not found',
+                delivery: parsedData.delivery_address || 'Not found',
                 price: `£${(parsedData.price || 0).toFixed(2)}`
             });
         }
@@ -1492,10 +1460,8 @@ async function createRouteSummary(routeId) {
         await window.addDoc(window.collection(window.db, 'routes'), routeData);
         console.log('Route summary created successfully in Firebase:', routeData);
         
-        // Update route count after route summary is created (with small delay to ensure Firebase is updated)
-        setTimeout(() => {
-            updateRouteCount();
-        }, 500);
+        // Update route count after route summary is created
+        updateRouteCount();
         
     } catch (error) {
         console.error('Error creating route summary:', error);
@@ -1816,10 +1782,8 @@ async function deleteRoute(routeId) {
         console.error('Error deleting route from Firebase:', error);
     }
     
-    // Update day indicator counts (with small delay to ensure Firebase is updated)
-    setTimeout(() => {
-        updateRouteCount();
-    }, 500);
+    // Update day indicator counts
+    updateRouteCount();
     
     // Reorder all remaining routes
     reorderRoutes();
@@ -1974,32 +1938,6 @@ window.addConfidenceIndicators = addConfidenceIndicators;
 window.addJobPanel = addJobPanel;
 window.selectJob = selectJob;
 window.nextRoute = nextRoute;
-window.deleteRoute = deleteRoute;
-
-// Debug function to manually test route counter
-window.debugRouteCounter = function() {
-    console.log('=== DEBUG ROUTE COUNTER ===');
-    const routesCountElement = document.getElementById('routes-count');
-    console.log('Current routes-count element:', routesCountElement);
-    console.log('Current routes-count text:', routesCountElement ? routesCountElement.textContent : 'ELEMENT NOT FOUND');
-    console.log('Calling updateRouteCount...');
-    updateRouteCount();
-};
-
-// Simple test function to force update counter
-window.testCounter = function() {
-    console.log('=== TESTING COUNTER ===');
-    const element = document.getElementById('routes-count');
-    if (element) {
-        element.textContent = 'TEST';
-        console.log('Set counter to TEST');
-        setTimeout(() => {
-            updateRouteCount();
-        }, 1000);
-    } else {
-        console.error('Counter element not found!');
-    }
-};
 </script>
 </body>
 </html>
