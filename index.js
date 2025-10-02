@@ -335,7 +335,6 @@ exports.calculateTravelOptions = onCall(async (request) => {
           drivingToStation: timeBeforeTrain > 45,
           drivingFromStation: timeAfterTrain > 45,
         };
-
       }
     }
 
@@ -650,22 +649,57 @@ function parseJobTextSimple(rawText) {
 
   confidence.delivery = deliveryConfidence;
 
-  // Extract price (look for £ followed by numbers)
-  const priceRegex = /£\s?(\d+(?:[.,]\d{2})?)/;
-  const priceMatch = rawText.match(priceRegex);
+  // Extract price - look for Price keyword OR £ symbol
   let price = 0;
   let priceConfidence = 0;
 
-  if (priceMatch) {
-    price = parseFloat(priceMatch[1].replace(",", "."));
-    priceConfidence = 95; // High confidence - found with £ symbol
-  } else {
-    // Try to find standalone price
-    const standalonePriceRegex = /\b(\d{2,3}(?:[.,]\d{2})?)\b/;
-    const standalonePriceMatch = rawText.match(standalonePriceRegex);
-    if (standalonePriceMatch) {
-      price = parseFloat(standalonePriceMatch[1].replace(",", "."));
-      priceConfidence = 50; // Medium confidence - number found without £
+  // First: Try to find "Price" keyword followed by number
+  const priceKeywordRegex =
+    /price\s*(?:\([^)]*\))?\s*:?\s*£?\s*(\d+(?:[.,]\d{2})?)/gi;
+  const priceKeywordMatch = rawText.match(priceKeywordRegex);
+
+  if (priceKeywordMatch) {
+    // Extract the number from the match
+    const numberMatch =
+      priceKeywordMatch[0].match(/(\d+(?:[.,]\d{2})?)/);
+    if (numberMatch) {
+      const parsedPrice = parseFloat(numberMatch[1].replace(",", "."));
+      // Validate price is between £20 and £1000
+      if (parsedPrice >= 20 && parsedPrice <= 1000) {
+        price = parsedPrice;
+        priceConfidence = 95; // High confidence with Price keyword
+      }
+    }
+  }
+
+  // Second: Try to find £ symbol followed by numbers
+  if (price === 0) {
+    const poundSignRegex = /£\s?(\d+(?:[.,]\d{2})?)/;
+    const poundSignMatch = rawText.match(poundSignRegex);
+    if (poundSignMatch) {
+      const parsedPrice =
+        parseFloat(poundSignMatch[1].replace(",", "."));
+      // Validate price is between £20 and £1000
+      if (parsedPrice >= 20 && parsedPrice <= 1000) {
+        price = parsedPrice;
+        priceConfidence = 90; // High confidence with £ symbol
+      }
+    }
+  }
+
+  // Third: Try to find standalone number in price range
+  if (price === 0) {
+    const standalonePriceRegex = /\b(\d{2,3}(?:[.,]\d{2})?)\b/g;
+    const standalonePriceMatches =
+      Array.from(rawText.matchAll(standalonePriceRegex));
+    for (const match of standalonePriceMatches) {
+      const parsedPrice = parseFloat(match[1].replace(",", "."));
+      // Validate price is between £20 and £1000
+      if (parsedPrice >= 20 && parsedPrice <= 1000) {
+        price = parsedPrice;
+        priceConfidence = 50; // Medium confidence
+        break;
+      }
     }
   }
 
