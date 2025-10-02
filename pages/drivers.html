@@ -55,6 +55,20 @@
     window.sendPasswordResetEmail = sendPasswordResetEmail;
     
     console.log('Firebase initialized successfully!');
+    
+    // Hide loading overlay after Firebase is ready
+    window.addEventListener('load', () => {
+        setTimeout(() => {
+            const loadingOverlay = document.getElementById('loading-overlay');
+            if (loadingOverlay) {
+                loadingOverlay.style.opacity = '0';
+                loadingOverlay.style.transition = 'opacity 0.3s ease-out';
+                setTimeout(() => {
+                    loadingOverlay.style.display = 'none';
+                }, 300);
+            }
+        }, 500);
+    });
 </script>
 <script>
 // Wait for window to fully load before initializing Firebase
@@ -158,6 +172,7 @@ function initializeDrivers() {
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/soto-lp.html">Routes</a>
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/optimisation.html">Optimisation</a>
 <a class="bg-[#283039] text-white text-sm font-medium rounded-md px-4 py-2" href="#">Drivers</a>
+<a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/availability.html">Availability</a>
 </nav>
 <div class="flex items-center gap-4">
 <button class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors" onclick="showNotifications()">
@@ -171,6 +186,19 @@ Logout
 </div>
 </div>
 </header>
+
+<!-- Loading Overlay -->
+<div id="loading-overlay" class="fixed inset-0 bg-[#0f1419] bg-opacity-95 flex items-center justify-center z-50">
+    <div class="text-center">
+        <div class="relative w-16 h-16 mx-auto mb-4">
+            <div class="absolute inset-0 border-4 border-gray-700 rounded-full"></div>
+            <div class="absolute inset-0 border-4 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
+        </div>
+        <p class="text-white text-lg font-semibold">Loading Drivers...</p>
+        <p class="text-gray-400 text-sm mt-1">Please wait</p>
+    </div>
+</div>
+
 <main class="flex-1 px-6 py-4">
 <div class="max-w-6xl mx-auto">
 <div class="flex justify-between items-center mb-4">

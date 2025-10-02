@@ -64,6 +64,20 @@
         window.onAuthStateChanged = onAuthStateChanged;
         
         console.log('Firebase initialized successfully!');
+        
+        // Hide loading overlay after Firebase is ready and page content loads
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                const loadingOverlay = document.getElementById('loading-overlay');
+                if (loadingOverlay) {
+                    loadingOverlay.style.opacity = '0';
+                    loadingOverlay.style.transition = 'opacity 0.3s ease-out';
+                    setTimeout(() => {
+                        loadingOverlay.style.display = 'none';
+                    }, 300);
+                }
+            }, 500);
+        });
     </script>
     <style type="text/tailwindcss">
         :root {
@@ -89,6 +103,7 @@
                 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/soto-lp.html">Routes</a>
                 <a class="bg-[#283039] text-white text-sm font-medium rounded-md px-4 py-2" href="#">Optimisation</a>
                 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/drivers.html">Drivers</a>
+                <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/availability.html">Availability</a>
             </nav>
             <div class="flex items-center gap-4">
                 <button class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors" onclick="showNotifications()">
@@ -102,6 +117,19 @@
                 </div>
             </div>
         </header>
+        
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="fixed inset-0 bg-[#0f1419] bg-opacity-95 flex items-center justify-center z-50">
+            <div class="text-center">
+                <div class="relative w-16 h-16 mx-auto mb-4">
+                    <div class="absolute inset-0 border-4 border-gray-700 rounded-full"></div>
+                    <div class="absolute inset-0 border-4 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
+                </div>
+                <p class="text-white text-lg font-semibold">Loading Optimisation...</p>
+                <p class="text-gray-400 text-sm mt-1">Please wait</p>
+            </div>
+        </div>
+        
         <main class="flex-1 px-6 py-4">
             <div class="max-w-6xl mx-auto">
                 <div class="flex justify-between items-center mb-4">
@@ -655,22 +683,33 @@
                         <span class="text-xs font-bold" id="firebase-route-${routeNumber}-score-text">-</span>
                     </div>
                     
-                <div class="grid grid-cols-2 gap-4 text-sm">
-                    <div class="flex flex-col gap-1">
-                        <label class="text-gray-400 font-medium text-xs">Driver</label>
-                        <p class="text-white font-semibold text-sm" id="firebase-route-${routeNumber}-driver">-</p>
+                <!-- Driver Info Line -->
+                <div class="flex items-center gap-3 mb-3 text-sm">
+                    <div class="flex items-center gap-2">
+                        <span class="text-gray-400 font-medium text-xs">REG:</span>
+                        <span class="text-white font-bold" id="firebase-route-${routeNumber}-reg">-</span>
                     </div>
-                    <div class="flex flex-col gap-1">
-                        <label class="text-gray-400 font-medium text-xs">Driver's Location</label>
-                        <p class="text-white font-semibold text-sm" id="firebase-route-${routeNumber}-driver-location">-</p>
+                    <div class="h-4 w-px bg-gray-600"></div>
+                    <span class="text-white font-semibold" id="firebase-route-${routeNumber}-driver">-</span>
+                    <div class="h-4 w-px bg-gray-600"></div>
+                    <div class="flex flex-col">
+                        <div class="flex items-center gap-2">
+                            <span class="text-gray-400 text-xs">Driver Home:</span>
+                            <span class="text-white text-xs font-semibold" id="firebase-route-${routeNumber}-driver-location">-</span>
+                        </div>
+                        <div id="firebase-route-${routeNumber}-carryover-display" class="hidden flex items-center gap-2 mt-0.5">
+                            <span class="text-gray-400 text-xs">(Carryover):</span>
+                            <span class="text-red-400 text-xs font-bold" id="firebase-route-${routeNumber}-carryover-postcode">-</span>
+                        </div>
                     </div>
-                    </div>
+                </div>
+                    
                 <div class="grid grid-cols-${Math.min(jobs.length * 2, 6)} gap-2 text-xs">
                     ${jobPairsHTML}
                 </div>
                 <div class="mt-3 grid grid-cols-2 gap-2">
                     <div>
-                        <label class="text-gray-400 font-medium text-xs mb-1 block">To First Job</label>
+                        <label class="text-gray-400 font-medium text-xs mb-1 block" id="firebase-route-${routeNumber}-to-work-label">To First Job</label>
                         <div id="firebase-route-${routeNumber}-to-work" class="bg-[#283039] rounded-lg px-3 py-2 text-gray-500 text-xs">
                             -
                         </div>
@@ -944,12 +983,41 @@
                             </div>
                         </div>
 
+                        <!-- Carryover Settings Section -->
+                        <div id="carryoverSection" class="hidden">
+                            <div class="flex items-center gap-2 mb-3">
+                                <span class="material-symbols-outlined text-green-500">local_shipping</span>
+                                <h4 class="text-md font-bold text-white">3. Carryover Settings</h4>
+                            </div>
+                            <p class="text-sm text-gray-400 mb-3">Select drivers who have carryover vehicles to deliver in the morning</p>
+                            
+                            <!-- Driver Search and Selection -->
+                            <div class="mb-3">
+                                <input type="text" id="carryoverDriverSearch" placeholder="Search drivers..." 
+                                    class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-500 mb-2">
+                                <div id="carryoverDriverList" class="max-h-48 overflow-y-auto bg-[#283039] rounded-md border border-gray-600">
+                                    <!-- Drivers will be populated here -->
+                                </div>
+                            </div>
+                            
+                            <!-- Selected Carryovers Display -->
+                            <div id="selectedCarryovers" class="hidden mb-3">
+                                <h5 class="text-sm font-bold text-white mb-2">Drivers with Carryovers:</h5>
+                                <div id="carryoversList" class="space-y-2">
+                                    <!-- Carryover items will be added here -->
+                                </div>
+                            </div>
+                        </div>
+                        
                         <!-- Action Buttons -->
                         <div class="flex gap-3 pt-4 border-t border-gray-700">
                             <button onclick="closeOptimiseSettings()" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
                                 Cancel
                             </button>
-                            <button id="startOptimisationBtn" onclick="startOptimisationWithSettings()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            <button id="nextToCarryoverBtn" onclick="showCarryoverSettings()" class="hidden flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                                Next
+                            </button>
+                            <button id="startOptimisationBtn" onclick="startOptimisationWithSettings()" class="hidden flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
                                 Start Optimisation
                             </button>
                         </div>
@@ -1106,8 +1174,201 @@
             await loadDriversForOptimise();
             await loadDriversOffForOptimise();
             
-            // Enable start optimisation button
-            document.getElementById('startOptimisationBtn').disabled = false;
+            // Show "Next" button instead of "Start Optimisation"
+            document.getElementById('nextToCarryoverBtn').classList.remove('hidden');
+            document.getElementById('nextToCarryoverBtn').disabled = false;
+        }
+        
+        // Global variable for carryovers
+        let driversWithCarryover = new Map(); // Map<driverId, carryoverPostcode>
+        
+        // Show carryover settings
+        function showCarryoverSettings() {
+            // Hide day selection section
+            const daySelectionSection = document.getElementById('day-selection-section');
+            if (daySelectionSection) {
+                daySelectionSection.style.display = 'none';
+            }
+            
+            // Hide driver availability section
+            const driverSection = document.querySelector('#optimise-settings-overlay .space-y-6 > div:nth-child(2)');
+            if (driverSection) {
+                driverSection.style.display = 'none';
+            }
+            
+            // Show carryover section
+            const carryoverSection = document.getElementById('carryoverSection');
+            carryoverSection.classList.remove('hidden');
+            
+            // Hide "Next" button, show "Start Optimisation" button
+            document.getElementById('nextToCarryoverBtn').classList.add('hidden');
+            document.getElementById('startOptimisationBtn').classList.remove('hidden');
+            
+            // Populate driver list for carryover selection
+            populateCarryoverDriverList();
+        }
+        
+        // Populate driver list with search functionality
+        function populateCarryoverDriverList() {
+            const driverList = document.getElementById('carryoverDriverList');
+            const searchInput = document.getElementById('carryoverDriverSearch');
+            
+            const renderDriverList = (searchTerm = '') => {
+                const filteredDrivers = allDrivers.filter(driver => {
+                    const driverName = driver.name || `${driver.firstName} ${driver.lastName}`;
+                    const isOff = tempDriversOff.some(off => off.id === driver.id || off.id === driver.uid);
+                    const matchesSearch = searchTerm === '' || driverName.toLowerCase().includes(searchTerm.toLowerCase());
+                    return !isOff && matchesSearch; // Only show available drivers
+                });
+                
+                driverList.innerHTML = filteredDrivers.map(driver => {
+                    const driverName = driver.name || `${driver.firstName} ${driver.lastName}`;
+                    const hasCarryover = driversWithCarryover.has(driver.id);
+                    
+                    return `
+                        <div onclick="selectDriverForCarryover('${driver.id}', '${driverName.replace(/'/g, "\\'")}  ')" 
+                            class="p-3 hover:bg-[#3a4049] transition-colors cursor-pointer border-b border-gray-700 last:border-0 ${hasCarryover ? 'bg-green-900 bg-opacity-20' : ''}">
+                            <div class="flex items-center justify-between">
+                                <span class="text-white text-sm">${driverName}</span>
+                                ${hasCarryover ? '<span class="material-symbols-outlined text-green-500 text-sm">check_circle</span>' : ''}
+                            </div>
+                        </div>
+                    `;
+                }).join('') || '<div class="p-3 text-gray-400 text-sm text-center">No drivers found</div>';
+            };
+            
+            // Initial render
+            renderDriverList();
+            
+            // Search functionality
+            searchInput.addEventListener('input', (e) => {
+                renderDriverList(e.target.value);
+            });
+        }
+        
+        // Select driver for carryover
+        function selectDriverForCarryover(driverId, driverName) {
+            // Show input modal for carryover postcode
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[110]';
+            overlay.id = 'carryover-postcode-overlay';
+            
+            overlay.innerHTML = `
+                <div class="bg-[#1a1f24] rounded-lg p-6 max-w-md w-full mx-4 border border-gray-600">
+                    <h3 class="text-lg font-bold text-white mb-4">Carryover for ${driverName}</h3>
+                    <div class="mb-4">
+                        <label class="block text-sm text-gray-400 mb-2">Carryover Postcode</label>
+                        <input type="text" id="carryover-postcode-input" 
+                            class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                            placeholder="e.g., SW1A 1AA">
+                        <p id="carryover-validation-error" class="text-red-500 text-xs mt-1 hidden"></p>
+                    </div>
+                    <div class="flex gap-3">
+                        <button onclick="closeCarryoverPostcodeModal()" 
+                            class="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-bold">
+                            Cancel
+                        </button>
+                        <button onclick="saveCarryoverPostcode('${driverId}', '${driverName.replace(/'/g, "\\'")} ')" 
+                            class="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-bold">
+                            Save
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(overlay);
+            
+            // Focus and pre-fill if exists
+            setTimeout(() => {
+                const input = document.getElementById('carryover-postcode-input');
+                if (driversWithCarryover.has(driverId)) {
+                    input.value = driversWithCarryover.get(driverId);
+                }
+                input.focus();
+                input.select();
+            }, 100);
+        }
+        
+        // Save carryover postcode
+        function saveCarryoverPostcode(driverId, driverName) {
+            const input = document.getElementById('carryover-postcode-input');
+            const errorElement = document.getElementById('carryover-validation-error');
+            const value = input.value.trim().toUpperCase();
+            
+            if (!value) {
+                errorElement.textContent = 'Postcode is required';
+                errorElement.classList.remove('hidden');
+                return;
+            }
+            
+            // Validate UK postcode format
+            const postcodePattern = /^[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}$/i;
+            if (!postcodePattern.test(value)) {
+                errorElement.textContent = 'Please enter a valid UK postcode';
+                errorElement.classList.remove('hidden');
+                return;
+            }
+            
+            // Normalize postcode (add space before last 3 chars if needed)
+            const cleaned = value.replace(/\s+/g, '');
+            const normalized = `${cleaned.slice(0, -3)} ${cleaned.slice(-3)}`;
+            
+            // Save carryover
+            driversWithCarryover.set(driverId, normalized);
+            
+            // Close modal
+            closeCarryoverPostcodeModal();
+            
+            // Update UI
+            updateCarryoverDisplay();
+            populateCarryoverDriverList();
+        }
+        
+        // Close carryover postcode modal
+        function closeCarryoverPostcodeModal() {
+            const overlay = document.getElementById('carryover-postcode-overlay');
+            if (overlay) {
+                overlay.remove();
+            }
+        }
+        
+        // Update carryover display
+        function updateCarryoverDisplay() {
+            const selectedCarryoversSection = document.getElementById('selectedCarryovers');
+            const carryoversList = document.getElementById('carryoversList');
+            
+            if (driversWithCarryover.size > 0) {
+                selectedCarryoversSection.classList.remove('hidden');
+                
+                const items = [];
+                driversWithCarryover.forEach((postcode, driverId) => {
+                    const driver = allDrivers.find(d => d.id === driverId);
+                    const driverName = driver ? (driver.name || `${driver.firstName} ${driver.lastName}`) : 'Unknown';
+                    
+                    items.push(`
+                        <div class="flex items-center justify-between p-2 bg-[#283039] rounded">
+                            <div>
+                                <span class="text-white text-sm font-medium">${driverName}</span>
+                                <span class="text-red-400 text-sm font-bold ml-2">${postcode}</span>
+                            </div>
+                            <button onclick="removeCarryover('${driverId}')" class="text-gray-400 hover:text-white transition-colors">
+                                <span class="material-symbols-outlined text-sm">close</span>
+                            </button>
+                        </div>
+                    `);
+                });
+                
+                carryoversList.innerHTML = items.join('');
+            } else {
+                selectedCarryoversSection.classList.add('hidden');
+            }
+        }
+        
+        // Remove carryover
+        function removeCarryover(driverId) {
+            driversWithCarryover.delete(driverId);
+            updateCarryoverDisplay();
+            populateCarryoverDriverList();
         }
 
         // Load all drivers for the office
@@ -1358,11 +1619,148 @@
                 return;
             }
             
-            // Close the popup after we've used the data
+            // Close the settings popup
             closeOptimiseSettings();
+            
+            // Show progress modal
+            showOptimizationProgress();
             
             // Use the optimal assignment algorithm instead of simple direct assignment
             await assignDriversToSavedRoutes(availableDrivers);
+            
+            // Hide progress modal
+            hideOptimizationProgress();
+        }
+        
+        // Global progress tracking variables
+        let optimizationStartTime = null;
+        let totalCalculations = 0;
+        let completedCalculations = 0;
+        
+        // Show optimization progress modal
+        function showOptimizationProgress() {
+            optimizationStartTime = Date.now();
+            completedCalculations = 0;
+            
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[100]';
+            overlay.id = 'optimization-progress-overlay';
+            
+            overlay.innerHTML = `
+                <div class="bg-[#1a1f24] rounded-lg p-8 w-full max-w-md mx-4 border border-[#283039]">
+                    <!-- Header -->
+                    <div class="text-center mb-6">
+                        <div class="inline-flex items-center justify-center w-16 h-16 bg-green-600 bg-opacity-20 rounded-full mb-4">
+                            <span class="material-symbols-outlined text-4xl text-green-500 animate-spin">settings</span>
+                        </div>
+                        <h3 class="text-2xl font-bold text-white mb-2">Optimizing Routes</h3>
+                        <p class="text-gray-400 text-sm">Please wait while we find the best driver assignments...</p>
+                    </div>
+                    
+                    <!-- Progress Bar -->
+                    <div class="mb-6">
+                        <div class="w-full bg-[#283039] rounded-full h-3 overflow-hidden">
+                            <div id="optimization-progress-bar" class="h-full bg-gradient-to-r from-green-600 to-green-400 rounded-full transition-all duration-500" style="width: 0%"></div>
+                        </div>
+                        <p id="optimization-progress-text" class="text-center text-sm text-gray-400 mt-2">Initializing...</p>
+                        <p id="optimization-time-estimate" class="text-center text-xs text-gray-500 mt-1">Calculating time estimate...</p>
+                    </div>
+                    
+                    <!-- Current Step -->
+                    <div class="space-y-3">
+                        <div id="optimization-step-1" class="flex items-center gap-3 p-3 bg-[#283039] rounded-lg opacity-50">
+                            <span class="material-symbols-outlined text-gray-500">pending</span>
+                            <span class="text-sm text-gray-400">Loading routes</span>
+                        </div>
+                        <div id="optimization-step-2" class="flex items-center gap-3 p-3 bg-[#283039] rounded-lg opacity-50">
+                            <span class="material-symbols-outlined text-gray-500">pending</span>
+                            <span class="text-sm text-gray-400">Fetching driver data</span>
+                        </div>
+                        <div id="optimization-step-3" class="flex items-center gap-3 p-3 bg-[#283039] rounded-lg opacity-50">
+                            <span class="material-symbols-outlined text-gray-500">pending</span>
+                            <span class="text-sm text-gray-400">Calculating distances</span>
+                        </div>
+                        <div id="optimization-step-4" class="flex items-center gap-3 p-3 bg-[#283039] rounded-lg opacity-50">
+                            <span class="material-symbols-outlined text-gray-500">pending</span>
+                            <span class="text-sm text-gray-400">Running optimization</span>
+                        </div>
+                        <div id="optimization-step-5" class="flex items-center gap-3 p-3 bg-[#283039] rounded-lg opacity-50">
+                            <span class="material-symbols-outlined text-gray-500">pending</span>
+                            <span class="text-sm text-gray-400">Assigning drivers</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(overlay);
+        }
+        
+        // Update optimization progress with time estimate
+        function updateOptimizationProgress(step, percentage, text, currentCalc = null, total = null) {
+            const progressBar = document.getElementById('optimization-progress-bar');
+            const progressText = document.getElementById('optimization-progress-text');
+            const timeEstimate = document.getElementById('optimization-time-estimate');
+            const stepElement = document.getElementById(`optimization-step-${step}`);
+            
+            if (progressBar) {
+                progressBar.style.width = percentage + '%';
+            }
+            
+            if (progressText) {
+                progressText.textContent = text || `${percentage}%`;
+            }
+            
+            // Update time estimate if we have calculation progress
+            if (timeEstimate && currentCalc && total && completedCalculations > 0) {
+                const elapsed = (Date.now() - optimizationStartTime) / 1000; // seconds
+                const avgTimePerCalc = elapsed / completedCalculations;
+                const remaining = total - completedCalculations;
+                const estimatedRemaining = Math.ceil(avgTimePerCalc * remaining);
+                
+                if (estimatedRemaining > 60) {
+                    const mins = Math.floor(estimatedRemaining / 60);
+                    const secs = estimatedRemaining % 60;
+                    timeEstimate.textContent = `Estimated time remaining: ${mins}m ${secs}s`;
+                } else {
+                    timeEstimate.textContent = `Estimated time remaining: ${estimatedRemaining}s`;
+                }
+            } else if (timeEstimate) {
+                timeEstimate.textContent = 'Calculating time estimate...';
+            }
+            
+            if (stepElement) {
+                // Mark current step as active
+                stepElement.classList.remove('opacity-50');
+                stepElement.classList.add('bg-green-600', 'bg-opacity-20');
+                stepElement.querySelector('.material-symbols-outlined').textContent = 'check_circle';
+                stepElement.querySelector('.material-symbols-outlined').classList.remove('text-gray-500');
+                stepElement.querySelector('.material-symbols-outlined').classList.add('text-green-500');
+                stepElement.querySelector('span:last-child').classList.remove('text-gray-400');
+                stepElement.querySelector('span:last-child').classList.add('text-white');
+            }
+        }
+        
+        // Hide optimization progress modal with completion animation
+        function hideOptimizationProgress() {
+            // Show 100% completion
+            updateOptimizationProgress(5, 100, 'Complete!');
+            
+            // Change spinner to check icon
+            setTimeout(() => {
+                const spinner = document.querySelector('#optimization-progress-overlay .material-symbols-outlined.animate-spin');
+                if (spinner) {
+                    spinner.classList.remove('animate-spin');
+                    spinner.textContent = 'check_circle';
+                }
+            }, 100);
+            
+            // Hide after a delay
+            setTimeout(() => {
+                const overlay = document.getElementById('optimization-progress-overlay');
+                if (overlay) {
+                    overlay.remove();
+                }
+            }, 1500);
         }
 
         // Simple direct assignment function
@@ -1423,12 +1821,13 @@
         }
 
         // Format travel option for display (collapsed by default)
-        function formatTravelOptionForRoute(option, routeNumber, direction) {
+        function formatTravelOptionForRoute(option, routeNumber, direction, useMixedMode = false) {
             if (!option || !option.success) {
                 return '<span class="text-red-400 text-xs">Error</span>';
             }
             
             const detailsId = `${routeNumber}-${direction}-details`;
+            const mixedDetailsId = `${routeNumber}-${direction}-mixed-details`;
             
             if (option.mode === 'taxi') {
                 return `
@@ -1438,7 +1837,135 @@
                     </div>
                 `;
             } else {
-                // For public transport, show total time (clickable to expand)
+                // Check if mixed mode route exists
+                const hasMixedMode = option.mixedModeRoute && option.mixedModeRoute.duration < option.duration;
+                
+                if (hasMixedMode) {
+                    // Display both routes side-by-side
+                    const mixedMode = option.mixedModeRoute;
+                    const timeSavings = option.duration - mixedMode.duration;
+                    
+                    // Render mixed mode steps
+                    const mixedStepsHTML = mixedMode.allSteps.map(step => {
+                        if (step.type === 'drive') {
+                            return `
+                                <div class="flex items-center gap-1">
+                                    <span class="material-symbols-outlined text-green-500" style="font-size: 12px;">directions_car</span>
+                                    <span class="text-white text-xs">${formatTime(step.duration)}</span>
+                                </div>
+                            `;
+                        } else if (step.type === 'transit') {
+                            const icon = step.mode === 'BUS' ? 'directions_bus' : 'train';
+                            const iconColor = step.mode === 'BUS' ? 'text-blue-400' : 'text-purple-400';
+                            return `
+                                <div class="flex items-center gap-1">
+                                    <span class="material-symbols-outlined ${iconColor}" style="font-size: 12px;">${icon}</span>
+                                    <span class="text-white text-xs">${formatTime(step.duration)}</span>
+                                </div>
+                            `;
+                        } else if (step.type === 'walk') {
+                            return `
+                                <div class="flex items-center gap-1">
+                                    <span class="material-symbols-outlined text-gray-400" style="font-size: 12px;">directions_walk</span>
+                                    <span class="text-gray-400 text-xs">${formatTime(step.duration)}</span>
+                                </div>
+                            `;
+                        }
+                        return '';
+                    }).filter(h => h).join('');
+                    
+                    // Render original transit steps
+                    const originalStepsHTML = (option.allSteps || []).map(step => {
+                        if (step.type === 'transit') {
+                            const icon = step.mode === 'BUS' ? 'directions_bus' : 'train';
+                            const iconColor = step.mode === 'BUS' ? 'text-blue-400' : 'text-purple-400';
+                            return `
+                                <div class="flex items-center gap-1">
+                                    <span class="material-symbols-outlined ${iconColor}" style="font-size: 12px;">${icon}</span>
+                                    <span class="text-white text-xs">${formatTime(step.duration)}</span>
+                                </div>
+                            `;
+                        } else if (step.type === 'walk') {
+                            return `
+                                <div class="flex items-center gap-1">
+                                    <span class="material-symbols-outlined text-gray-400" style="font-size: 12px;">directions_walk</span>
+                                    <span class="text-gray-400 text-xs">${formatTime(step.duration)}</span>
+                                </div>
+                            `;
+                        }
+                        return '';
+                    }).filter(h => h).join('');
+                    
+                    // Determine display order based on useMixedMode flag
+                    const leftRoute = useMixedMode ? {
+                        label: 'Mixed Mode',
+                        time: mixedMode.duration,
+                        stepsHTML: mixedStepsHTML,
+                        detailsId: mixedDetailsId,
+                        icon: 'add_road',
+                        iconColor: 'text-green-500',
+                        timeSavings: timeSavings
+                    } : {
+                        label: 'Full Transit',
+                        time: option.duration,
+                        stepsHTML: originalStepsHTML,
+                        detailsId: detailsId,
+                        icon: 'directions_transit',
+                        iconColor: 'text-blue-400',
+                        timeSavings: null
+                    };
+                    
+                    const rightRoute = useMixedMode ? {
+                        label: 'Full Transit',
+                        time: option.duration,
+                        stepsHTML: originalStepsHTML,
+                        detailsId: detailsId,
+                        icon: 'directions_transit',
+                        iconColor: 'text-blue-400',
+                        timeSavings: null
+                    } : {
+                        label: 'Mixed Mode',
+                        time: mixedMode.duration,
+                        stepsHTML: mixedStepsHTML,
+                        detailsId: mixedDetailsId,
+                        icon: 'add_road',
+                        iconColor: 'text-green-500',
+                        timeSavings: timeSavings
+                    };
+                    
+                    return `
+                        <div class="grid grid-cols-2 gap-2">
+                            <!-- Left Route -->
+                            <div class="bg-[#1a1f24] rounded p-2 ${useMixedMode ? 'border-2 border-green-500' : ''}">
+                                <div class="text-xs text-gray-400 mb-1">${leftRoute.label}</div>
+                                <div class="flex items-center gap-1.5 cursor-pointer hover:bg-[#283039] rounded px-1 -mx-1 py-0.5 transition-colors" onclick="toggleTravelDetails('${leftRoute.detailsId}')">
+                                    <span class="material-symbols-outlined ${leftRoute.iconColor}" style="font-size: 14px;">${leftRoute.icon}</span>
+                                    <span class="text-white text-xs font-bold">${formatTime(leftRoute.time)}</span>
+                                    <span class="material-symbols-outlined text-gray-500" style="font-size: 12px;" id="${leftRoute.detailsId}-icon">expand_more</span>
+                                </div>
+                                <div id="${leftRoute.detailsId}" class="hidden flex flex-col gap-0.5 mt-1 pl-2">
+                                    ${leftRoute.timeSavings ? `<div class="text-green-500 text-xs font-bold mb-1">Saves ${formatTime(leftRoute.timeSavings)}</div>` : ''}
+                                    ${leftRoute.stepsHTML}
+                                </div>
+                            </div>
+                            
+                            <!-- Right Route -->
+                            <div class="bg-[#1a1f24] rounded p-2 ${!useMixedMode ? 'border-2 border-green-500' : ''}">
+                                <div class="text-xs text-gray-400 mb-1">${rightRoute.label}</div>
+                                <div class="flex items-center gap-1.5 cursor-pointer hover:bg-[#283039] rounded px-1 -mx-1 py-0.5 transition-colors" onclick="toggleTravelDetails('${rightRoute.detailsId}')">
+                                    <span class="material-symbols-outlined ${rightRoute.iconColor}" style="font-size: 14px;">${rightRoute.icon}</span>
+                                    <span class="text-white text-xs font-bold">${formatTime(rightRoute.time)}</span>
+                                    <span class="material-symbols-outlined text-gray-500" style="font-size: 12px;" id="${rightRoute.detailsId}-icon">expand_more</span>
+                                </div>
+                                <div id="${rightRoute.detailsId}" class="hidden flex flex-col gap-0.5 mt-1 pl-2">
+                                    ${rightRoute.timeSavings ? `<div class="text-green-500 text-xs font-bold mb-1">Saves ${formatTime(rightRoute.timeSavings)}</div>` : ''}
+                                    ${rightRoute.stepsHTML}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // No mixed mode - show single transit route
                 const allSteps = option.allSteps || [];
                 const stepsHTML = allSteps.map(step => {
                     if (step.type === 'transit') {
@@ -1473,6 +2000,7 @@
                         </div>
                     </div>
                 `;
+                }
             }
         }
         
@@ -1654,6 +2182,10 @@
 
         // Assign drivers to saved routes from Firebase using optimal assignment algorithm
         async function assignDriversToSavedRoutes(driversToUse = null) {
+            // Step 1: Loading routes
+            updateOptimizationProgress(1, 20, 'Loading routes...');
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
             const driversForAssignment = driversToUse || drivers;
             console.log('Assigning drivers using PRIORITY-BASED assignment algorithm...');
             console.log('Saved routes count:', savedRoutes.length);
@@ -1663,6 +2195,19 @@
                 console.log('No routes or drivers available for assignment');
                 return;
             }
+            
+            // Step 2: Fetching driver data
+            updateOptimizationProgress(2, 40, 'Fetching driver data...');
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // Calculate total number of API calls for time estimation
+            totalCalculations = savedRoutes.length * driversForAssignment.length;
+            console.log(`📊 Total calculations needed: ${totalCalculations} (${savedRoutes.length} routes × ${driversForAssignment.length} drivers)`);
+            
+            // First pass: Calculate all routes to determine which ones need mixed mode
+            // A route needs mixed mode if ALL drivers have >2 hour original transit time
+            const routeNeedsMixedMode = new Array(savedRoutes.length).fill(false);
+            const routeCalculations = []; // Store all calculations
             
             // Calculate all possible driver-route combinations with travel options
             const assignments = [];
@@ -1677,73 +2222,146 @@
                     const collectionAddress = firstJob.parsedData?.collection_address || 'B797RU';
                     const deliveryAddress = lastJob.parsedData?.postcode_delivery || 'M1 4AN';
                     
+                    const routeDriverTimes = []; // Track times for this route across all drivers
+                    
                     // Calculate travel options for each driver with this route
                     for (let driverIndex = 0; driverIndex < driversForAssignment.length; driverIndex++) {
                         const driver = driversForAssignment[driverIndex];
                         
+                        // Step 3: Calculating distances (update progress for each calculation)
+                        completedCalculations = routeIndex * driversForAssignment.length + driverIndex + 1;
+                        const calculationProgress = 40 + Math.floor((completedCalculations / totalCalculations) * 20);
+                        updateOptimizationProgress(3, calculationProgress, `Calculating distances (${completedCalculations}/${totalCalculations})...`, completedCalculations, totalCalculations);
+                        
                         try {
-                            const driverPostcode = driver.homePostcode || driver.postcode;
+                            const driverHomePostcode = driver.homePostcode || driver.postcode;
+                            const hasCarryover = driversWithCarryover.has(driver.id);
+                            const carryoverPostcode = driversWithCarryover.get(driver.id);
                             
-                            console.log(`Calculating travel options for driver ${driverIndex + 1} and route ${routeIndex + 1}...`);
+                            // Use carryover postcode for "to work" if driver has one
+                            const toWorkOrigin = hasCarryover ? carryoverPostcode : driverHomePostcode;
+                            
+                            console.log(`Calculating travel options for driver ${driverIndex + 1} and route ${routeIndex + 1}... ${hasCarryover ? '(with carryover)' : ''}`);
                             
                             // Get travel options for both directions
-                            const toWorkOptions = await calculateTravelOptions(driverPostcode, collectionAddress, true);
-                            const fromWorkOptions = await calculateTravelOptions(deliveryAddress, driverPostcode, false);
+                            const toWorkOptions = await calculateTravelOptions(toWorkOrigin, collectionAddress, true);
+                            const fromWorkOptions = await calculateTravelOptions(deliveryAddress, driverHomePostcode, false);
                             
-                            // Calculate priority score
-                            const bothTaxi = toWorkOptions.mode === 'taxi' && fromWorkOptions.mode === 'taxi';
-                            const oneTaxi = (toWorkOptions.mode === 'taxi') !== (fromWorkOptions.mode === 'taxi');
-                            const totalTime = toWorkOptions.duration + fromWorkOptions.duration;
+                            // Track original total time for this driver on this route
+                            const originalTotalTime = toWorkOptions.duration + fromWorkOptions.duration;
+                            routeDriverTimes.push(originalTotalTime);
                             
-                            let priorityScore;
-                            if (bothTaxi) {
-                                // Highest priority: Both taxi - minimize total time
-                                priorityScore = 10000 - totalTime;
-                                console.log(`🚕🚕 Both taxi: ${totalTime}m, score: ${priorityScore}`);
-                            } else if (oneTaxi) {
-                                // Medium priority: One taxi - minimize transit time
-                                const transitTime = toWorkOptions.mode === 'transit' ? toWorkOptions.duration : fromWorkOptions.duration;
-                                priorityScore = 5000 - transitTime;
-                                console.log(`🚕🚌 One taxi: transit ${transitTime}m, score: ${priorityScore}`);
-                            } else {
-                                // Low priority: Both transit - minimize total time
-                                priorityScore = 1000 - totalTime;
-                                console.log(`🚌🚌 Both transit: ${totalTime}m, score: ${priorityScore}`);
-                            }
-                            
-                            assignments.push({
-                                routeIndex: routeIndex,
-                                driverIndex: driverIndex,
-                                driver: driver,
-                                routeData: routeData,
-                                toWorkOptions: toWorkOptions,
-                                fromWorkOptions: fromWorkOptions,
-                                totalTime: totalTime,
-                                priorityScore: priorityScore,
-                                bothTaxi: bothTaxi,
-                                oneTaxi: oneTaxi
+                            // Store the calculation for later processing
+                            routeCalculations.push({
+                                routeIndex,
+                                driverIndex,
+                                driver,
+                                routeData,
+                                toWorkOptions,
+                                fromWorkOptions,
+                                originalTotalTime,
+                                hasCarryover: hasCarryover,
+                                carryoverPostcode: carryoverPostcode
                             });
                             
                         } catch (error) {
                             const driverName = driver.name || (driver.firstName + ' ' + driver.lastName) || 'Unknown Driver';
                             console.error(`Error calculating travel options for driver ${driverName} and route ${routeIndex + 1}:`, error);
-                            // Add with low priority score
-                            assignments.push({
-                                routeIndex: routeIndex,
-                                driverIndex: driverIndex,
-                                driver: driver,
-                                routeData: routeData,
+                            // Add error placeholder
+                            routeCalculations.push({
+                                routeIndex,
+                                driverIndex,
+                                driver,
+                                routeData,
                                 toWorkOptions: { success: false },
                                 fromWorkOptions: { success: false },
-                                totalTime: 999,
-                                priorityScore: -1000,
-                                bothTaxi: false,
-                                oneTaxi: false
+                                originalTotalTime: 999
                             });
+                            routeDriverTimes.push(999);
                         }
+                    }
+                    
+                    // Check if ALL drivers have >2 hours for this route
+                    const allDriversOverThreshold = routeDriverTimes.every(time => time > 120);
+                    routeNeedsMixedMode[routeIndex] = allDriversOverThreshold;
+                    
+                    if (allDriversOverThreshold) {
+                        console.log(`🔄 Route ${routeIndex + 1} needs mixed mode (all drivers >2hrs)`);
                     }
                 }
             }
+            
+            // Second pass: Build assignments with correct mode based on route analysis
+            console.log('Building assignments with mixed mode decisions...');
+            console.log('Routes needing mixed mode:', routeNeedsMixedMode.map((needs, i) => needs ? `Route ${i+1}` : null).filter(r => r).join(', ') || 'None');
+            
+            for (const calc of routeCalculations) {
+                const useMixedMode = routeNeedsMixedMode[calc.routeIndex];
+                
+                let effectiveToWorkDuration = calc.toWorkOptions.duration;
+                let effectiveFromWorkDuration = calc.fromWorkOptions.duration;
+                let useMixedModeToWork = false;
+                let useMixedModeFromWork = false;
+                
+                // If this route needs mixed mode, use it
+                if (useMixedMode) {
+                    if (calc.toWorkOptions.mixedModeRoute) {
+                        const originalTime = calc.toWorkOptions.duration;
+                        const mixedTime = calc.toWorkOptions.mixedModeRoute.duration;
+                        effectiveToWorkDuration = mixedTime;
+                        useMixedModeToWork = true;
+                        console.log(`  Route ${calc.routeIndex + 1} TO work: Using mixed mode ${mixedTime}min (was ${originalTime}min)`);
+                    }
+                    if (calc.fromWorkOptions.mixedModeRoute) {
+                        const originalTime = calc.fromWorkOptions.duration;
+                        const mixedTime = calc.fromWorkOptions.mixedModeRoute.duration;
+                        effectiveFromWorkDuration = mixedTime;
+                        useMixedModeFromWork = true;
+                        console.log(`  Route ${calc.routeIndex + 1} FROM work: Using mixed mode ${mixedTime}min (was ${originalTime}min)`);
+                    }
+                }
+                
+                const totalTime = effectiveToWorkDuration + effectiveFromWorkDuration;
+                const bothTaxi = calc.toWorkOptions.mode === 'taxi' && calc.fromWorkOptions.mode === 'taxi';
+                const oneTaxi = (calc.toWorkOptions.mode === 'taxi') !== (calc.fromWorkOptions.mode === 'taxi');
+                            
+                            let priorityScore;
+                            if (bothTaxi) {
+                                priorityScore = 10000 - totalTime;
+                            } else if (oneTaxi) {
+                    const transitTime = calc.toWorkOptions.mode === 'transit' ? effectiveToWorkDuration : effectiveFromWorkDuration;
+                                priorityScore = 5000 - transitTime;
+                            } else {
+                                priorityScore = 1000 - totalTime;
+                }
+                
+                // BOOST priority for drivers with carryovers (add 50000 to ensure they get preference)
+                if (calc.hasCarryover) {
+                    priorityScore += 50000;
+                    console.log(`  🚚 Carryover driver - boosting priority: ${priorityScore}`);
+                            }
+                            
+                assignments.push({
+                    routeIndex: calc.routeIndex,
+                    driverIndex: calc.driverIndex,
+                    driver: calc.driver,
+                    routeData: calc.routeData,
+                    toWorkOptions: calc.toWorkOptions,
+                    fromWorkOptions: calc.fromWorkOptions,
+                    totalTime: totalTime,
+                    priorityScore: priorityScore,
+                    bothTaxi: bothTaxi,
+                    oneTaxi: oneTaxi,
+                    useMixedModeToWork: useMixedModeToWork,
+                    useMixedModeFromWork: useMixedModeFromWork,
+                    hasCarryover: calc.hasCarryover,
+                    carryoverPostcode: calc.carryoverPostcode
+                });
+            }
+            
+            // Step 4: Running optimization
+            updateOptimizationProgress(4, 80, 'Running optimization algorithm...');
+            await new Promise(resolve => setTimeout(resolve, 500));
             
             // Find optimal assignment using priority score (not distance)
             // Modified Hungarian algorithm to use priorityScore instead of totalDistance
@@ -1751,12 +2369,18 @@
             
             console.log(`✅ Optimal assignment found with ${optimalAssignment.length} assignments`);
             
+            // Step 5: Assigning drivers
+            updateOptimizationProgress(5, 95, 'Assigning drivers to routes...');
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
             // Sort assignments by priority score (highest first)
             optimalAssignment.sort((a, b) => {
                 return b.priorityScore - a.priorityScore; // Highest priority first
             });
             
-            // Apply the optimal assignment to UI
+            // Apply the optimal assignment to UI and calculate scores
+            const assignmentsWithScores = [];
+            
             for (const assignment of optimalAssignment) {
                 const routeNumber = assignment.routeIndex + 1;
                 const driverElement = document.getElementById(`firebase-route-${routeNumber}-driver`);
@@ -1765,26 +2389,79 @@
                 const fromWorkElement = document.getElementById(`firebase-route-${routeNumber}-from-work`);
                 
                 const driverName = assignment.driver.name || (assignment.driver.firstName + ' ' + assignment.driver.lastName) || 'Unknown Driver';
+                const driverHome = assignment.driver.homePostcode || assignment.driver.postcode || 'Unknown';
                 
+                // Get REG number from first job
+                const firstJob = assignment.routeData.jobs[0];
+                const regNumber = firstJob?.parsedData?.reg_number || '-';
+                
+                // Update REG display
+                const regElement = document.getElementById(`firebase-route-${routeNumber}-reg`);
+                if (regElement) {
+                    regElement.textContent = regNumber;
+                }
+                
+                // Update driver name
                 if (driverElement) {
                     driverElement.textContent = driverName;
                 }
+                
+                // Update driver home
                 if (locationElement) {
-                    locationElement.textContent = assignment.driver.homePostcode || assignment.driver.postcode || 'Unknown';
+                    locationElement.textContent = driverHome;
+                }
+                
+                // Show carryover if driver has one
+                if (assignment.hasCarryover && assignment.carryoverPostcode) {
+                    const carryoverDisplay = document.getElementById(`firebase-route-${routeNumber}-carryover-display`);
+                    const carryoverPostcodeElement = document.getElementById(`firebase-route-${routeNumber}-carryover-postcode`);
+                    
+                    if (carryoverDisplay) {
+                        carryoverDisplay.classList.remove('hidden');
+                    }
+                    if (carryoverPostcodeElement) {
+                        carryoverPostcodeElement.textContent = assignment.carryoverPostcode;
+                    }
+                    
+                    // Change "To First Job" label to "From Carryover"
+                    const toWorkLabel = document.getElementById(`firebase-route-${routeNumber}-to-work-label`);
+                    if (toWorkLabel) {
+                        toWorkLabel.textContent = 'From Carryover';
+                    }
                 }
                 
                 // Display travel options directly (already calculated)
                 if (toWorkElement) {
-                    toWorkElement.innerHTML = formatTravelOptionForRoute(assignment.toWorkOptions, `route-${routeNumber}`, 'to-work');
+                    toWorkElement.innerHTML = formatTravelOptionForRoute(assignment.toWorkOptions, `route-${routeNumber}`, 'to-work', assignment.useMixedModeToWork);
                 }
                 if (fromWorkElement) {
-                    fromWorkElement.innerHTML = formatTravelOptionForRoute(assignment.fromWorkOptions, `route-${routeNumber}`, 'from-work');
+                    fromWorkElement.innerHTML = formatTravelOptionForRoute(assignment.fromWorkOptions, `route-${routeNumber}`, 'from-work', assignment.useMixedModeFromWork);
                 }
                 
                 // Calculate and display route score using new travel-based scoring
-                const routeScore = calculateTravelScore(assignment.toWorkOptions, assignment.fromWorkOptions);
+                // Use mixed mode durations if they were used for optimization
+                const effectiveToWork = assignment.useMixedModeToWork && assignment.toWorkOptions.mixedModeRoute 
+                    ? { ...assignment.toWorkOptions, duration: assignment.toWorkOptions.mixedModeRoute.duration }
+                    : assignment.toWorkOptions;
+                const effectiveFromWork = assignment.useMixedModeFromWork && assignment.fromWorkOptions.mixedModeRoute
+                    ? { ...assignment.fromWorkOptions, duration: assignment.fromWorkOptions.mixedModeRoute.duration }
+                    : assignment.fromWorkOptions;
+                
+                const routeScore = calculateTravelScore(effectiveToWork, effectiveFromWork);
                 const scoreElement = document.getElementById(`firebase-route-${routeNumber}-score-text`);
                 const scoreContainer = document.getElementById(`firebase-route-${routeNumber}-score`);
+                
+                // Log score calculation details for carryover drivers
+                if (assignment.hasCarryover) {
+                    console.log(`📦 Route ${routeNumber} (Carryover driver): Score ${routeScore.score} - TO: ${effectiveToWork.duration}min, FROM: ${effectiveFromWork.duration}min`);
+                }
+                
+                // Store assignment with score for sorting later
+                assignmentsWithScores.push({
+                    routeNumber: routeNumber,
+                    score: routeScore.score,
+                    routeElement: document.getElementById(`firebase-route-${routeNumber}`)
+                });
                 
                 if (scoreElement) {
                     scoreElement.textContent = `${routeScore.score}`;
@@ -1800,32 +2477,30 @@
                     }
                 }
                 
-                console.log(`✅ Assigned ${driverName} to route ${routeNumber} (Score: ${routeScore.score}/10)`);
+                console.log(`✅ Assigned ${driverName} to route ${routeNumber} (Score: ${routeScore.score}/100)`);
             }
             
-            // Reorder route cards in DOM to match sorted order (by score)
+            // Sort routes by score (highest first) and reorder in DOM
+            assignmentsWithScores.sort((a, b) => b.score - a.score);
+            
+            console.log('Routes sorted by score:', assignmentsWithScores.map(a => `Route ${a.routeNumber}: ${a.score}`).join(', '));
+            
             const routesContainer = document.getElementById('routes-container');
-            if (routesContainer) {
-                // Get all route cards
-                const routeCards = Array.from(routesContainer.children);
+            if (routesContainer && assignmentsWithScores.length > 0) {
+                // Store elements in array BEFORE touching DOM
+                const sortedElements = assignmentsWithScores
+                    .map(item => item.routeElement)
+                    .filter(el => el);
                 
-                // Create a mapping of route numbers to their new order (by score)
-                const routeOrderMap = {};
-                optimalAssignment.forEach((assignment, index) => {
-                    const originalRouteNumber = assignment.routeIndex + 1;
-                    routeOrderMap[originalRouteNumber] = index;
+                // Detach elements from DOM first (preserves them)
+                sortedElements.forEach(el => el.remove());
+                
+                // Re-append in sorted order (highest score first)
+                sortedElements.forEach(element => {
+                    routesContainer.appendChild(element);
                 });
                 
-                // Sort route cards based on the new order (highest score first)
-                routeCards.sort((a, b) => {
-                    const aRouteNumber = parseInt(a.id.match(/firebase-route-(\d+)/)?.[1] || '0');
-                    const bRouteNumber = parseInt(b.id.match(/firebase-route-(\d+)/)?.[1] || '0');
-                    return (routeOrderMap[aRouteNumber] || 0) - (routeOrderMap[bRouteNumber] || 0);
-                });
-                
-                // Re-append cards in new order
-                routeCards.forEach(card => routesContainer.appendChild(card));
-                
+                console.log('✅ Routes reordered: Top-left (highest) to bottom-right (lowest)');
             }
             
             // Display unassigned drivers (jobless drivers)

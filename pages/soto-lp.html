@@ -93,6 +93,19 @@ window.onload = async function() {
                 }
 
                 console.log('Routes system initialized successfully');
+                
+                // Hide loading overlay after initialization
+                setTimeout(() => {
+                    const loadingOverlay = document.getElementById('loading-overlay');
+                    if (loadingOverlay) {
+                        loadingOverlay.style.opacity = '0';
+                        loadingOverlay.style.transition = 'opacity 0.3s ease-out';
+                        setTimeout(() => {
+                            loadingOverlay.style.display = 'none';
+                        }, 300);
+                    }
+                }, 500);
+                
                 return true;
                 
             } catch (error) {
@@ -184,6 +197,7 @@ window.onload = async function() {
 <a class="bg-[#283039] text-white text-sm font-medium rounded-md px-4 py-2" href="#">Routes</a>
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/optimisation.html">Optimisation</a>
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/drivers.html">Drivers</a>
+<a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/availability.html">Availability</a>
 </nav>
 <div class="flex items-center gap-4">
 <button class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors" onclick="showNotifications()">
@@ -198,6 +212,17 @@ Logout
 </div>
 </header>
 
+<!-- Loading Overlay -->
+<div id="loading-overlay" class="fixed inset-0 bg-[#0f1419] bg-opacity-95 flex items-center justify-center z-50">
+    <div class="text-center">
+        <div class="relative w-16 h-16 mx-auto mb-4">
+            <div class="absolute inset-0 border-4 border-gray-700 rounded-full"></div>
+            <div class="absolute inset-0 border-4 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
+        </div>
+        <p class="text-white text-lg font-semibold">Loading Routes...</p>
+        <p class="text-gray-400 text-sm mt-1">Please wait</p>
+    </div>
+</div>
 
 <main class="flex-1 px-6 py-4">
 <div class="max-w-6xl mx-auto">
@@ -250,7 +275,7 @@ Logout
     </div>
     <!-- Active Route -->
     <div id="active-route-container">
-        <!-- Active route will be dynamically created here -->
+        <!-- Active route will be dynamized created here -->
     </div>
 </div>
 <!-- Job Details Input - Fixed to Bottom -->
@@ -730,7 +755,7 @@ function createMinimizedRouteUI(routeData) {
     minimizedBar.className = 'minimized-route bg-[#1a1f24] rounded-lg p-2 border border-[#283039] transition-colors text-sm';
     minimizedBar.setAttribute('data-route-id', routeData.id);
     
-    // Create job route display (collection → delivery) - match original format
+    // Create job route display (collection → delivery)
     const jobRoutes = routeData.jobs.map(job => {
         // Handle processing states
         if (job.collection === 'Processing...' || job.delivery === 'Processing...') {
@@ -773,10 +798,20 @@ function createMinimizedRouteUI(routeData) {
         `;
     }).join('');
     
+    // Get all REG numbers for the title
+    const regNumbers = routeData.jobs.map(job => {
+        if (job.parsedData) {
+            return job.parsedData.reg_number || 'Not found';
+        } else if (job.reg) {
+            return job.reg;
+        }
+        return 'Not found';
+    }).filter(reg => reg !== 'Not found').join(', ') || 'Route ' + routeData.id;
+    
     minimizedBar.innerHTML = `
         <div class="flex flex-col gap-1">
             <div class="flex items-center justify-between">
-                <span class="text-sm font-bold">Route ${routeData.id}</span>
+                <span class="text-sm font-bold">${regNumbers}</span>
                 <button class="delete-route-btn flex items-center justify-center w-6 h-6 rounded-full bg-red-600 hover:bg-red-700 text-white transition-colors" onclick="deleteRoute(${routeData.id})">
                     <span class="material-symbols-outlined text-xs">delete</span>
                 </button>
@@ -897,7 +932,7 @@ async function updateRouteCount() {
 
 
 // Status Indicator Management
-function updateStatusIndicator(routeCount = null) {
+function updateStatusIndicator(state = null, routeCount = null) {
     const statusIndicator = document.getElementById('status-indicator');
     const statusText = document.getElementById('status-text');
     
@@ -905,6 +940,18 @@ function updateStatusIndicator(routeCount = null) {
     if (!statusIndicator || !statusText) {
         console.log('Status indicator elements not found, skipping update');
         return;
+    }
+    
+    // Handle unreadable state
+    if (state === 'unreadable') {
+        statusIndicator.className = 'flex items-center justify-center gap-2 min-w-[140px] h-8 px-4 rounded-md bg-red-600 text-white text-sm font-bold';
+        statusText.innerHTML = '<span class="material-symbols-outlined text-sm">error</span> Unreadable';
+        return;
+    }
+    
+    // Handle success state
+    if (state === 'success' || routeCount !== null) {
+        statusIndicator.className = 'flex items-center justify-center gap-2 min-w-[140px] h-8 px-4 rounded-md bg-[var(--success-color)] text-white text-sm font-bold';
     }
     
     // Get current route count - use parameter if provided, otherwise get from DOM
@@ -987,10 +1034,12 @@ async function enterJobDetails() {
     const collectionElement = document.getElementById(`job-${activeJob.routeId}-${activeJob.jobNumber}-collection`);
     const deliveryElement = document.getElementById(`job-${activeJob.routeId}-${activeJob.jobNumber}-delivery`);
     const priceElement = document.getElementById(`job-${activeJob.routeId}-${activeJob.jobNumber}-price`);
+    const regElement = document.getElementById(`job-${activeJob.routeId}-${activeJob.jobNumber}-reg`);
     
     collectionElement.textContent = 'Pending...';
     deliveryElement.textContent = 'Pending...';
     priceElement.textContent = 'Pending...';
+    if (regElement) regElement.textContent = 'Pending...';
     
     // Update next route button state when job starts processing
     updateNextRouteButton(activeJob.routeId);
@@ -1032,10 +1081,12 @@ async function processQueue() {
             const collectionElement = document.getElementById(`job-${job.routeId}-${job.jobNumber}-collection`);
             const deliveryElement = document.getElementById(`job-${job.routeId}-${job.jobNumber}-delivery`);
             const priceElement = document.getElementById(`job-${job.routeId}-${job.jobNumber}-price`);
+            const regElement = document.getElementById(`job-${job.routeId}-${job.jobNumber}-reg`);
             
             collectionElement.textContent = 'Processing...';
             deliveryElement.textContent = 'Processing...';
             priceElement.textContent = 'Processing...';
+            if (regElement) regElement.textContent = 'Processing...';
 
             // Call Firebase Function to parse the job text
             const parseJobFunction = window.firebase.httpsCallable(window.firebase.functions, 'parseJobText');
@@ -1049,55 +1100,70 @@ async function processQueue() {
                 // Debug: Log the parsed data to see if confidence scores are included
                 console.log('Parsed data received:', result.data.parsed_data);
                 
-                // Save job to Firebase immediately
-                try {
-                    const jobData = {
-                        routeId: job.routeId,
-                        jobNumber: job.jobNumber,
-                        rawText: job.jobText,
-                        parsedData: result.data.parsed_data,
-                        status: 'parsed',
-                        createdAt: new Date(),
-                        // Assign route ID immediately
-                        assignedRouteId: `route_${job.routeId}`
-                    };
-                    
-                    const docRef = await window.firebaseAddDoc(window.firebaseCollection(window.firestore, "jobs"), jobData);
-                    console.log('Job saved to Firebase with ID:', docRef.id);
-                    console.log(`Assigned route ID route_${job.routeId} to job ${docRef.id}`);
-                    
-                    // Store the saved job reference by route
-                    if (!savedJobs[`route_${job.routeId}`]) {
-                        savedJobs[`route_${job.routeId}`] = [];
-                    }
-                    savedJobs[`route_${job.routeId}`].push({
-                        firebaseId: docRef.id,
-                        routeId: job.routeId,
-                        jobNumber: job.jobNumber,
-                        data: jobData
+                // Check if confidence is above 80%
+                const overallConfidence = result.data.parsed_data.overall_confidence || 0;
+                console.log('Overall confidence:', overallConfidence);
+                
+                if (overallConfidence >= 80) {
+                    // Save job to Firebase only if confidence is good
+                    try {
+                        const jobData = {
+                            routeId: job.routeId,
+                            jobNumber: job.jobNumber,
+                            rawText: job.jobText,
+                            parsedData: result.data.parsed_data,
+                            status: 'parsed',
+                            createdAt: new Date(),
+                            // Assign route ID immediately
+                            assignedRouteId: `route_${job.routeId}`
+                        };
+                        
+                        const docRef = await window.firebaseAddDoc(window.firebaseCollection(window.firestore, "jobs"), jobData);
+                        console.log('Job saved to Firebase with ID:', docRef.id);
+                        console.log(`Assigned route ID route_${job.routeId} to job ${docRef.id}`);
+                        
+                        // Store the saved job reference by route
+                        if (!savedJobs[`route_${job.routeId}`]) {
+                            savedJobs[`route_${job.routeId}`] = [];
+                        }
+                        savedJobs[`route_${job.routeId}`].push({
+                            firebaseId: docRef.id,
+                            routeId: job.routeId,
+                            jobNumber: job.jobNumber,
+                            data: jobData
                     });
                     
                     // Create route summary immediately after first job is saved
                     console.log(`Creating route summary for route ${job.routeId}...`);
                     createRouteSummary(job.routeId);
                     
-                } catch (firebaseError) {
-                    console.error('Error saving job to Firebase:', firebaseError);
+                    } catch (firebaseError) {
+                        console.error('Error saving job to Firebase:', firebaseError);
+                    }
+                    
+                    // Create route if it doesn't exist (first job)
+                    ensureRouteExists(job.routeId);
+                    
+                    // Update route count immediately after job processing (with small delay to ensure Firebase is updated)
+                    setTimeout(() => {
+                        updateRouteCount();
+                    }, 1000);
+                } else {
+                    // Confidence below 80% - don't save to Firebase
+                    console.log('Confidence too low (' + overallConfidence + '%), not uploading to Firebase');
+                    
+                    // Still create the route UI
+                    ensureRouteExists(job.routeId);
+                    
+                    // Set status to unreadable
+                    updateStatusIndicator('unreadable');
+                    
+                    // Disable next route button
+                    updateNextRouteButton(job.routeId, false);
                 }
                 
-                // Create route if it doesn't exist (first job)
-                ensureRouteExists(job.routeId);
-                
-                // Update the job display with parsed data
+                // Update the job display with parsed data (regardless of confidence)
                 updateJobDisplay(job.routeId, job.jobNumber, result.data.parsed_data);
-                
-                // Update next route button state
-                updateNextRouteButton(job.routeId);
-                
-                // Update route count immediately after job processing (with small delay to ensure Firebase is updated)
-                setTimeout(() => {
-                    updateRouteCount();
-                }, 1000);
             } else {
                 // Show error state
                 collectionElement.textContent = 'Error processing';
@@ -1117,10 +1183,12 @@ async function processQueue() {
             const collectionElement = document.getElementById(`job-${job.routeId}-${job.jobNumber}-collection`);
             const deliveryElement = document.getElementById(`job-${job.routeId}-${job.jobNumber}-delivery`);
             const priceElement = document.getElementById(`job-${job.routeId}-${job.jobNumber}-price`);
+            const regElement = document.getElementById(`job-${job.routeId}-${job.jobNumber}-reg`);
             
             collectionElement.textContent = 'Error processing';
             deliveryElement.textContent = 'Error processing';
             priceElement.textContent = 'Error processing';
+            if (regElement) regElement.textContent = 'Error';
         }
     }
 
@@ -1163,13 +1231,19 @@ function checkRouteHasJobs(routeId) {
     return hasJobActivity;
 }
 
-function updateNextRouteButton(routeId) {
+function updateNextRouteButton(routeId, forceEnable = null) {
     const nextRouteBtn = document.getElementById(`next-route-btn-${routeId}`);
     if (!nextRouteBtn) return;
     
-    const hasJobs = checkRouteHasJobs(routeId);
+    // If forceEnable is explicitly set, use that
+    let shouldEnable = forceEnable;
     
-    if (hasJobs) {
+    // Otherwise check if route has jobs
+    if (shouldEnable === null) {
+        shouldEnable = checkRouteHasJobs(routeId);
+    }
+    
+    if (shouldEnable) {
         // Enable button and make it green
         nextRouteBtn.disabled = false;
         nextRouteBtn.className = 'w-full h-8 px-4 rounded-md bg-[var(--success-color)] text-white text-sm font-bold hover:bg-[#1ea84a] transition-colors';
@@ -1186,12 +1260,24 @@ function updateJobDisplay(routeId, jobNumber, parsedData) {
     const collectionElement = document.getElementById(`job-${routeId}-${jobNumber}-collection`);
     const deliveryElement = document.getElementById(`job-${routeId}-${jobNumber}-delivery`);
     const priceElement = document.getElementById(`job-${routeId}-${jobNumber}-price`);
+    const regElement = document.getElementById(`job-${routeId}-${jobNumber}-reg`);
     
     // Check if elements exist (route might be minimized)
-    if (collectionElement && deliveryElement && priceElement) {
+    if (collectionElement && deliveryElement && priceElement && regElement) {
     // Update content
     collectionElement.textContent = parsedData.collection_address || 'Not found';
     deliveryElement.textContent = parsedData.postcode_delivery || 'Not found';
+    
+    // Display REG number (or chassis number)
+    const regNumber = parsedData.reg_number || 'Not found';
+    const isChassis = parsedData.is_chassis || false;
+    regElement.textContent = regNumber;
+    if (isChassis && regNumber !== 'Not found') {
+        regElement.textContent = regNumber + ' (Chassis)';
+        regElement.className = 'font-semibold text-white text-xs italic';
+    } else {
+        regElement.className = 'font-semibold text-white text-xs';
+    }
     
     // Format and color-code the price
     const price = parsedData.price || 0;
@@ -1212,8 +1298,13 @@ function updateJobDisplay(routeId, jobNumber, parsedData) {
             hasConfidenceScores: !!parsedData.confidence_scores,
             hasAccuracyRating: !!parsedData.accuracy_rating,
             confidenceScores: parsedData.confidence_scores,
-            accuracyRating: parsedData.accuracy_rating
+            accuracyRating: parsedData.accuracy_rating,
+            overallConfidence: parsedData.overall_confidence
         });
+        
+        // Store parsed data for reference
+        if (!window.jobParsedData) window.jobParsedData = {};
+        window.jobParsedData[`${routeId}-${jobNumber}`] = parsedData;
         
         if (parsedData.confidence_scores || parsedData.accuracy_rating) {
             console.log('Adding confidence indicators for job', routeId, jobNumber);
@@ -1251,6 +1342,7 @@ function updateMinimizedRoute(routeId, jobNumber, parsedData) {
                 jobNumber,
                 collection: parsedData.collection_address || 'Not found',
                 delivery: parsedData.postcode_delivery || 'Not found',
+                reg: parsedData.reg_number || 'Not found',
                 price: `£${(parsedData.price || 0).toFixed(2)}`
             };
         } else {
@@ -1259,6 +1351,7 @@ function updateMinimizedRoute(routeId, jobNumber, parsedData) {
                 jobNumber,
                 collection: parsedData.collection_address || 'Not found',
                 delivery: parsedData.postcode_delivery || 'Not found',
+                reg: parsedData.reg_number || 'Not found',
                 price: `£${(parsedData.price || 0).toFixed(2)}`
             });
         }
@@ -1272,6 +1365,7 @@ function updateMinimizedRoute(routeId, jobNumber, parsedData) {
                 const jobNum = index + 1;
                 const collection = panel.querySelector(`#job-${routeId}-${jobNum}-collection`)?.textContent || '';
                 const delivery = panel.querySelector(`#job-${routeId}-${jobNum}-delivery`)?.textContent || '';
+                const reg = panel.querySelector(`#job-${routeId}-${jobNum}-reg`)?.textContent || '';
                 const price = panel.querySelector(`#job-${routeId}-${jobNum}-price`)?.textContent || '';
                 
                 // Add jobs that have meaningful data OR are currently processing
@@ -1291,6 +1385,7 @@ function updateMinimizedRoute(routeId, jobNumber, parsedData) {
                         jobNumber: jobNum,
                         collection,
                         delivery,
+                        reg,
                         price
                     });
                 }
@@ -1357,11 +1452,35 @@ function addConfidenceIndicators(routeId, jobNumber, parsedData) {
         existingConfidence.remove();
     }
     
-    // Overall accuracy rating
-    const accuracyRating = parsedData.accuracy_rating || 'unknown';
+    // Use overall_confidence score (1-100)
+    let confidenceScore = parsedData.overall_confidence;
+    if (!confidenceScore && parsedData.confidence_scores) {
+        const scores = parsedData.confidence_scores;
+        confidenceScore = Math.round((scores.collection + scores.delivery + scores.price + scores.reg) / 4);
+    }
+    
+    // Default to 0 if no score
+    if (!confidenceScore) {
+        confidenceScore = 0;
+    }
     
     let accuracyColor = 'text-gray-400';
     let accuracyIcon = '❓';
+    let accuracyText = confidenceScore;
+    
+    if (confidenceScore >= 80) {
+        accuracyColor = 'text-green-500';
+        accuracyIcon = '✓';
+    } else if (confidenceScore >= 60) {
+        accuracyColor = 'text-yellow-500';
+        accuracyIcon = '⚠';
+    } else if (confidenceScore > 0) {
+        accuracyColor = 'text-red-500';
+        accuracyIcon = '✗';
+    }
+    
+    // Legacy fallback
+    const accuracyRating = parsedData.accuracy_rating || 'unknown';
     
     switch (accuracyRating) {
         case 'excellent':
@@ -1384,9 +1503,9 @@ function addConfidenceIndicators(routeId, jobNumber, parsedData) {
     
     // Create confidence indicator for top right corner
     const confidenceIndicator = document.createElement('div');
-    confidenceIndicator.className = 'confidence-indicator absolute top-2 right-2 text-lg';
-    confidenceIndicator.innerHTML = `<span class="${accuracyColor}">${accuracyIcon}</span>`;
-    confidenceIndicator.title = `AI Accuracy: ${accuracyRating.toUpperCase()}`;
+    confidenceIndicator.className = 'confidence-indicator absolute top-2 right-2 text-lg font-bold';
+    confidenceIndicator.innerHTML = `<span class="${accuracyColor}">${confidenceScore}</span>`;
+    confidenceIndicator.title = `AI Confidence: ${confidenceScore}/100`;
     
     // Make sure the job element has relative positioning
     jobElement.classList.add('relative');
@@ -1506,6 +1625,7 @@ function resetJobDisplay(routeId, jobNumber) {
     const collectionElement = document.getElementById(`job-${routeId}-${jobNumber}-collection`);
     const deliveryElement = document.getElementById(`job-${routeId}-${jobNumber}-delivery`);
     const priceElement = document.getElementById(`job-${routeId}-${jobNumber}-price`);
+    const regElement = document.getElementById(`job-${routeId}-${jobNumber}-reg`);
     
     // Check if elements exist before trying to modify them
     if (collectionElement) {
@@ -1513,6 +1633,9 @@ function resetJobDisplay(routeId, jobNumber) {
     }
     if (deliveryElement) {
         deliveryElement.textContent = 'Waiting for details...';
+    }
+    if (regElement) {
+        regElement.textContent = '-';
     }
     if (priceElement) {
         priceElement.textContent = '-';
@@ -1573,6 +1696,10 @@ function createJobPanel(routeId, jobNumber, isActive = false) {
         <div class="bg-[#283039] rounded-lg p-1">
             <h4 class="text-xs font-medium text-[#9cabba] mb-0">Delivery Address</h4>
             <p class="font-semibold text-white text-xs" id="job-${routeId}-${jobNumber}-delivery">Waiting for details...</p>
+        </div>
+        <div class="bg-[#283039] rounded-lg p-1">
+            <h4 class="text-xs font-medium text-[#9cabba] mb-0">Vehicle REG</h4>
+            <p class="font-semibold text-white text-xs" id="job-${routeId}-${jobNumber}-reg">-</p>
         </div>
         <div class="bg-[#283039] rounded-lg p-1">
             <h4 class="text-xs font-medium text-[#9cabba] mb-0">Job Price</h4>
@@ -1667,6 +1794,7 @@ function minimizeRoute(routeId) {
         const jobNumber = index + 1;
         const collection = panel.querySelector(`#job-${routeId}-${jobNumber}-collection`)?.textContent || '';
         const delivery = panel.querySelector(`#job-${routeId}-${jobNumber}-delivery`)?.textContent || '';
+        const reg = panel.querySelector(`#job-${routeId}-${jobNumber}-reg`)?.textContent || '';
         const price = panel.querySelector(`#job-${routeId}-${jobNumber}-price`)?.textContent || '';
         
         // Add jobs that have meaningful data OR are currently processing
@@ -1686,6 +1814,7 @@ function minimizeRoute(routeId) {
                 jobNumber,
                 collection,
                 delivery,
+                reg,
                 price
             });
         }
@@ -1722,10 +1851,13 @@ function minimizeRoute(routeId) {
         `;
     }).join('');
     
+    // Get all REG numbers for the title
+    const regNumbers = routeData.jobs.map(job => job.reg).filter(reg => reg && reg !== '-' && reg !== 'Not found').join(', ') || 'Route ' + routeId;
+    
     minimizedBar.innerHTML = `
         <div class="flex flex-col gap-1">
             <div class="flex items-center justify-between">
-                <span class="text-sm font-bold">Route ${routeId}</span>
+                <span class="text-sm font-bold">${regNumbers}</span>
                 <button class="delete-route-btn flex items-center justify-center w-6 h-6 rounded-full bg-red-600 hover:bg-red-700 text-white transition-colors" onclick="deleteRoute(${routeId})">
                     <span class="material-symbols-outlined text-xs">delete</span>
                 </button>
@@ -1968,6 +2100,381 @@ function createNewRoute(routeId, existingData = null) {
 
 // Route initialization is now handled in window.onload after Firebase is ready
 
+// Edit job field directly in the job panel
+function editJobField(routeId, jobNumber, fieldType) {
+    const key = `${routeId}-${jobNumber}`;
+    const parsedData = window.jobParsedData?.[key];
+    
+    if (!parsedData) {
+        console.error('No parsed data found for job:', key);
+        return;
+    }
+    
+    // Get current value
+    let currentValue = '';
+    let fieldLabel = '';
+    let placeholder = '';
+    let validationPattern = '';
+    let validationMessage = '';
+    
+    switch (fieldType) {
+        case 'collection':
+            currentValue = parsedData.collection_address || '';
+            fieldLabel = 'Collection Postcode';
+            placeholder = 'e.g., SW1A 1AA';
+            validationPattern = '^[A-Z]{1,2}\\d{1,2}[A-Z]?\\s?\\d[A-Z]{2}$';
+            validationMessage = 'Please enter a valid UK postcode (e.g., SW1A 1AA or SW1A1AA)';
+            break;
+        case 'delivery':
+            currentValue = parsedData.postcode_delivery || '';
+            fieldLabel = 'Delivery Postcode';
+            placeholder = 'e.g., M1 4AE';
+            validationPattern = '^[A-Z]{1,2}\\d{1,2}[A-Z]?\\s?\\d[A-Z]{2}$';
+            validationMessage = 'Please enter a valid UK postcode (e.g., M1 4AE or M14AE)';
+            break;
+        case 'reg':
+            currentValue = parsedData.reg_number || '';
+            fieldLabel = 'Vehicle Registration / Chassis';
+            placeholder = 'e.g., AB51 DVL or ABC123';
+            validationPattern = '^([A-Z]{1,3}\\d{1,3}\\s?[A-Z]{0,3}|[A-Z0-9]{6,8})$';
+            validationMessage = 'Please enter a valid UK registration (e.g., AB51 DVL) or chassis number (6-8 alphanumeric)';
+            break;
+        case 'price':
+            currentValue = (parsedData.price || 0).toString();
+            fieldLabel = 'Job Price';
+            placeholder = 'e.g., 95.50';
+            validationPattern = '^\\d+(\\.\\d{2})?$';
+            validationMessage = 'Please enter a valid price (e.g., 95.50)';
+            break;
+    }
+    
+    // Show edit modal
+    showEditModal(fieldLabel, currentValue, placeholder, validationPattern, validationMessage, (newValue) => {
+        // Update parsed data
+        switch (fieldType) {
+            case 'collection':
+                parsedData.collection_address = newValue.toUpperCase();
+                parsedData.confidence_scores.collection = 100; // User confirmed
+                break;
+            case 'delivery':
+                parsedData.postcode_delivery = newValue.toUpperCase();
+                parsedData.confidence_scores.delivery = 100;
+                break;
+            case 'reg':
+                parsedData.reg_number = newValue.toUpperCase();
+                parsedData.confidence_scores.reg = 100;
+                break;
+            case 'price':
+                parsedData.price = parseFloat(newValue);
+                parsedData.confidence_scores.price = 100;
+                break;
+        }
+        
+        // Recalculate overall confidence
+        const scores = parsedData.confidence_scores;
+        parsedData.overall_confidence = Math.round(
+            (scores.collection + scores.delivery + scores.price + scores.reg) / 4
+        );
+        
+        // Update job display
+        updateJobDisplay(routeId, jobNumber, parsedData);
+        
+        // Check if all fields now have high confidence
+        const allHighConfidence = scores.collection >= 60 && scores.delivery >= 60 && 
+                                   scores.price >= 60 && scores.reg >= 60;
+        
+        if (allHighConfidence) {
+            // Clear unreadable status and re-enable next route button
+            updateStatusIndicator('success');
+            updateNextRouteButton(routeId, true);
+        }
+    });
+}
+
+// Low confidence items tracking
+let lowConfidenceJobs = new Map(); // Map<'routeId-jobNumber', jobData>
+
+// Add job to low confidence review section
+function addToLowConfidenceReview(routeId, jobNumber, parsedData) {
+    const key = `${routeId}-${jobNumber}`;
+    
+    // Add to tracking map
+    lowConfidenceJobs.set(key, { routeId, jobNumber, parsedData });
+    
+    // Show the low confidence section
+    const section = document.getElementById('low-confidence-section');
+    section.classList.remove('hidden');
+    
+    // Update count
+    const countElement = document.getElementById('low-confidence-count');
+    countElement.textContent = lowConfidenceJobs.size;
+    
+    // Add to items list
+    const itemsContainer = document.getElementById('low-confidence-items');
+    
+    // Remove existing item if present
+    const existingItem = document.getElementById(`low-conf-${key}`);
+    if (existingItem) {
+        existingItem.remove();
+    }
+    
+    const scores = parsedData.confidence_scores || {};
+    
+    // Create item card
+    const itemCard = document.createElement('div');
+    itemCard.id = `low-conf-${key}`;
+    itemCard.className = 'bg-[#283039] rounded-lg p-3 border border-gray-600';
+    
+    const getConfidenceClass = (score) => {
+        if (score >= 60) return 'text-green-500';
+        if (score >= 40) return 'text-orange-500';
+        return 'text-red-500';
+    };
+    
+    itemCard.innerHTML = `
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-bold text-white">Route ${routeId} - Job ${jobNumber}</h3>
+            <button onclick="removeFromLowConfidence('${key}')" class="text-gray-400 hover:text-white transition-colors">
+                <span class="material-symbols-outlined text-sm">close</span>
+            </button>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+            <div class="bg-[#1a1f24] rounded p-2 cursor-pointer hover:bg-[#242a31] transition-colors" 
+                 onclick="editField('${key}', 'collection')">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs text-gray-400">Collection</span>
+                    <span class="text-xs ${getConfidenceClass(scores.collection)}">${scores.collection || 0}%</span>
+                </div>
+                <p class="text-sm font-semibold text-white truncate">${parsedData.collection_address || 'Not found'}</p>
+            </div>
+            <div class="bg-[#1a1f24] rounded p-2 cursor-pointer hover:bg-[#242a31] transition-colors" 
+                 onclick="editField('${key}', 'delivery')">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs text-gray-400">Delivery</span>
+                    <span class="text-xs ${getConfidenceClass(scores.delivery)}">${scores.delivery || 0}%</span>
+                </div>
+                <p class="text-sm font-semibold text-white truncate">${parsedData.postcode_delivery || 'Not found'}</p>
+            </div>
+            <div class="bg-[#1a1f24] rounded p-2 cursor-pointer hover:bg-[#242a31] transition-colors" 
+                 onclick="editField('${key}', 'reg')">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs text-gray-400">Vehicle REG</span>
+                    <span class="text-xs ${getConfidenceClass(scores.reg)}">${scores.reg || 0}%</span>
+                </div>
+                <p class="text-sm font-semibold text-white truncate">${parsedData.reg_number || 'Not found'}${parsedData.is_chassis ? ' (Chassis)' : ''}</p>
+            </div>
+            <div class="bg-[#1a1f24] rounded p-2 cursor-pointer hover:bg-[#242a31] transition-colors" 
+                 onclick="editField('${key}', 'price')">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs text-gray-400">Price</span>
+                    <span class="text-xs ${getConfidenceClass(scores.price)}">${scores.price || 0}%</span>
+                </div>
+                <p class="text-sm font-semibold text-white truncate">£${(parsedData.price || 0).toFixed(2)}</p>
+            </div>
+        </div>
+    `;
+    
+    itemsContainer.appendChild(itemCard);
+}
+
+// Remove job from low confidence review
+function removeFromLowConfidence(key) {
+    lowConfidenceJobs.delete(key);
+    
+    // Remove item from UI
+    const item = document.getElementById(`low-conf-${key}`);
+    if (item) {
+        item.remove();
+    }
+    
+    // Update count
+    const countElement = document.getElementById('low-confidence-count');
+    countElement.textContent = lowConfidenceJobs.size;
+    
+    // Hide section if no more low confidence items
+    if (lowConfidenceJobs.size === 0) {
+        const section = document.getElementById('low-confidence-section');
+        section.classList.add('hidden');
+    }
+}
+
+// Edit field with validation
+function editField(key, fieldType) {
+    const jobData = lowConfidenceJobs.get(key);
+    if (!jobData) {
+        console.error('Job data not found for key:', key);
+        return;
+    }
+    
+    const { routeId, jobNumber, parsedData } = jobData;
+    
+    // Get current value
+    let currentValue = '';
+    let fieldLabel = '';
+    let placeholder = '';
+    let validationPattern = '';
+    let validationMessage = '';
+    
+    switch (fieldType) {
+        case 'collection':
+            currentValue = parsedData.collection_address || '';
+            fieldLabel = 'Collection Postcode';
+            placeholder = 'e.g., SW1A 1AA';
+            validationPattern = '^[A-Z]{1,2}\\d{1,2}[A-Z]?\\s?\\d[A-Z]{2}$';
+            validationMessage = 'Please enter a valid UK postcode (e.g., SW1A 1AA or SW1A1AA)';
+            break;
+        case 'delivery':
+            currentValue = parsedData.postcode_delivery || '';
+            fieldLabel = 'Delivery Postcode';
+            placeholder = 'e.g., M1 4AE';
+            validationPattern = '^[A-Z]{1,2}\\d{1,2}[A-Z]?\\s?\\d[A-Z]{2}$';
+            validationMessage = 'Please enter a valid UK postcode (e.g., M1 4AE or M14AE)';
+            break;
+        case 'reg':
+            currentValue = parsedData.reg_number || '';
+            fieldLabel = 'Vehicle Registration / Chassis';
+            placeholder = 'e.g., AB51 DVL or ABC123';
+            validationPattern = '^([A-Z]{1,3}\\d{1,3}\\s?[A-Z]{0,3}|[A-Z0-9]{6,8})$';
+            validationMessage = 'Please enter a valid UK registration (e.g., AB51 DVL) or chassis number (6-8 alphanumeric)';
+            break;
+        case 'price':
+            currentValue = (parsedData.price || 0).toString();
+            fieldLabel = 'Job Price';
+            placeholder = 'e.g., 95.50';
+            validationPattern = '^\\d+(\\.\\d{2})?$';
+            validationMessage = 'Please enter a valid price (e.g., 95.50)';
+            break;
+    }
+    
+    // Show edit modal
+    showEditModal(fieldLabel, currentValue, placeholder, validationPattern, validationMessage, (newValue) => {
+        // Update parsed data
+        switch (fieldType) {
+            case 'collection':
+                parsedData.collection_address = newValue.toUpperCase();
+                parsedData.confidence_scores.collection = 100; // User confirmed
+                break;
+            case 'delivery':
+                parsedData.postcode_delivery = newValue.toUpperCase();
+                parsedData.confidence_scores.delivery = 100;
+                break;
+            case 'reg':
+                parsedData.reg_number = newValue.toUpperCase();
+                parsedData.confidence_scores.reg = 100;
+                break;
+            case 'price':
+                parsedData.price = parseFloat(newValue);
+                parsedData.confidence_scores.price = 100;
+                break;
+        }
+        
+        // Update job display
+        updateJobDisplay(routeId, jobNumber, parsedData);
+        
+        // Check if all fields now have high confidence
+        const scores = parsedData.confidence_scores;
+        const allHighConfidence = scores.collection >= 60 && scores.delivery >= 60 && 
+                                   scores.price >= 60 && scores.reg >= 60;
+        
+        if (allHighConfidence) {
+            // Remove from low confidence section
+            removeFromLowConfidence(key);
+        } else {
+            // Update the low confidence item display
+            addToLowConfidenceReview(routeId, jobNumber, parsedData);
+        }
+    });
+}
+
+// Show edit modal
+function showEditModal(label, currentValue, placeholder, pattern, validationMessage, onSave) {
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]';
+    overlay.id = 'edit-modal-overlay';
+    
+    overlay.innerHTML = `
+        <div class="bg-[#1a1f24] rounded-lg p-6 max-w-md w-full mx-4 border border-gray-600">
+            <h3 class="text-lg font-bold text-white mb-4">Edit ${label}</h3>
+            <div class="mb-4">
+                <label class="block text-sm text-gray-400 mb-2">${label}</label>
+                <input type="text" id="edit-field-input" 
+                       class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                       placeholder="${placeholder}"
+                       value="${currentValue}">
+                <p id="validation-error" class="text-red-500 text-xs mt-1 hidden"></p>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="closeEditModal()" 
+                        class="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-bold">
+                    Cancel
+                </button>
+                <button onclick="saveEditedField()" 
+                        class="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-bold">
+                    Save
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(overlay);
+    
+    // Store validation info and callback
+    window._editModalData = {
+        pattern: new RegExp(pattern, 'i'),
+        validationMessage,
+        onSave
+    };
+    
+    // Focus input
+    setTimeout(() => {
+        document.getElementById('edit-field-input').focus();
+        document.getElementById('edit-field-input').select();
+    }, 100);
+    
+    // Allow Enter key to save
+    document.getElementById('edit-field-input').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            saveEditedField();
+        }
+    });
+}
+
+// Close edit modal
+function closeEditModal() {
+    const overlay = document.getElementById('edit-modal-overlay');
+    if (overlay) {
+        overlay.remove();
+    }
+    delete window._editModalData;
+}
+
+// Save edited field
+function saveEditedField() {
+    const input = document.getElementById('edit-field-input');
+    const errorElement = document.getElementById('validation-error');
+    const value = input.value.trim().toUpperCase();
+    
+    if (!value) {
+        errorElement.textContent = 'This field cannot be empty';
+        errorElement.classList.remove('hidden');
+        return;
+    }
+    
+    // Validate against pattern
+    const { pattern, validationMessage, onSave } = window._editModalData;
+    
+    if (!pattern.test(value)) {
+        errorElement.textContent = validationMessage;
+        errorElement.classList.remove('hidden');
+        return;
+    }
+    
+    // Valid - save and close
+    onSave(value);
+    closeEditModal();
+}
+
 // Make functions globally available
 window.updateJobDisplay = updateJobDisplay;
 window.addConfidenceIndicators = addConfidenceIndicators;
@@ -1975,6 +2482,10 @@ window.addJobPanel = addJobPanel;
 window.selectJob = selectJob;
 window.nextRoute = nextRoute;
 window.deleteRoute = deleteRoute;
+window.editJobField = editJobField;
+window.showEditModal = showEditModal;
+window.closeEditModal = closeEditModal;
+window.saveEditedField = saveEditedField;
 
 // Debug function to manually test route counter
 window.debugRouteCounter = function() {
