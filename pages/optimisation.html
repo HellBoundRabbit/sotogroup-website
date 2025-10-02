@@ -642,6 +642,7 @@
         function createRouteElement(routeRecord, jobs, routeNumber) {
             const routeDiv = document.createElement('div');
             routeDiv.className = 'flex flex-col gap-3 rounded-lg border border-[#283039] bg-[#1a1f24] p-3 dynamic-route w-full max-w-2xl';
+            routeDiv.id = `firebase-route-${routeNumber}`;
             
             // Create job pairs (Collection A -> Delivery A, Collection B -> Delivery B, etc.)
             let jobPairsHTML = '';
@@ -1935,8 +1936,8 @@
                     
                     return `
                         <div class="grid grid-cols-2 gap-2">
-                            <!-- Left Route -->
-                            <div class="bg-[#1a1f24] rounded p-2 ${useMixedMode ? 'border-2 border-green-500' : ''}">
+                            <!-- Left Route (Always primary/used for optimization) -->
+                            <div class="bg-[#1a1f24] rounded p-2 border-2 border-green-500">
                                 <div class="text-xs text-gray-400 mb-1">${leftRoute.label}</div>
                                 <div class="flex items-center gap-1.5 cursor-pointer hover:bg-[#283039] rounded px-1 -mx-1 py-0.5 transition-colors" onclick="toggleTravelDetails('${leftRoute.detailsId}')">
                                     <span class="material-symbols-outlined ${leftRoute.iconColor}" style="font-size: 14px;">${leftRoute.icon}</span>
@@ -1949,8 +1950,8 @@
                                 </div>
                             </div>
                             
-                            <!-- Right Route -->
-                            <div class="bg-[#1a1f24] rounded p-2 ${!useMixedMode ? 'border-2 border-green-500' : ''}">
+                            <!-- Right Route (Alternative option) -->
+                            <div class="bg-[#1a1f24] rounded p-2">
                                 <div class="text-xs text-gray-400 mb-1">${rightRoute.label}</div>
                                 <div class="flex items-center gap-1.5 cursor-pointer hover:bg-[#283039] rounded px-1 -mx-1 py-0.5 transition-colors" onclick="toggleTravelDetails('${rightRoute.detailsId}')">
                                     <span class="material-symbols-outlined ${rightRoute.iconColor}" style="font-size: 14px;">${rightRoute.icon}</span>
@@ -2303,7 +2304,7 @@
                 let useMixedModeToWork = false;
                 let useMixedModeFromWork = false;
                 
-                // If this route needs mixed mode, use it
+                // If this route needs mixed mode (all drivers >2hrs), use it for optimization
                 if (useMixedMode) {
                     if (calc.toWorkOptions.mixedModeRoute) {
                         const originalTime = calc.toWorkOptions.duration;
@@ -2430,12 +2431,20 @@
                     }
                 }
                 
-                // Display travel options directly (already calculated)
+                // Display travel options - check EACH DIRECTION separately
+                // TO work: Show mixed mode only if TO work time > 2 hours
+                const toWorkOriginalTime = assignment.toWorkOptions.duration;
+                const fromWorkOriginalTime = assignment.fromWorkOptions.duration;
+                const shouldShowMixedModeToWork = toWorkOriginalTime > 120;
+                const shouldShowMixedModeFromWork = fromWorkOriginalTime > 120;
+                
+                console.log(`Route ${routeNumber}: TO work ${toWorkOriginalTime}min (${shouldShowMixedModeToWork ? 'Mixed Mode' : 'Original'} on left), FROM work ${fromWorkOriginalTime}min (${shouldShowMixedModeFromWork ? 'Mixed Mode' : 'Original'} on left)`);
+                
                 if (toWorkElement) {
-                    toWorkElement.innerHTML = formatTravelOptionForRoute(assignment.toWorkOptions, `route-${routeNumber}`, 'to-work', assignment.useMixedModeToWork);
+                    toWorkElement.innerHTML = formatTravelOptionForRoute(assignment.toWorkOptions, `route-${routeNumber}`, 'to-work', shouldShowMixedModeToWork);
                 }
                 if (fromWorkElement) {
-                    fromWorkElement.innerHTML = formatTravelOptionForRoute(assignment.fromWorkOptions, `route-${routeNumber}`, 'from-work', assignment.useMixedModeFromWork);
+                    fromWorkElement.innerHTML = formatTravelOptionForRoute(assignment.fromWorkOptions, `route-${routeNumber}`, 'from-work', shouldShowMixedModeFromWork);
                 }
                 
                 // Calculate and display route score using new travel-based scoring
@@ -2485,12 +2494,23 @@
             
             console.log('Routes sorted by score:', assignmentsWithScores.map(a => `Route ${a.routeNumber}: ${a.score}`).join(', '));
             
+            // Wait for DOM updates to complete before reordering
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
             const routesContainer = document.getElementById('routes-container');
             if (routesContainer && assignmentsWithScores.length > 0) {
-                // Store elements in array BEFORE touching DOM
+                // Re-fetch elements to ensure they exist
                 const sortedElements = assignmentsWithScores
-                    .map(item => item.routeElement)
+                    .map(item => {
+                        const el = document.getElementById(`firebase-route-${item.routeNumber}`);
+                        if (!el) {
+                            console.warn(`Route element not found: firebase-route-${item.routeNumber}`);
+                        }
+                        return el;
+                    })
                     .filter(el => el);
+                
+                console.log(`Found ${sortedElements.length} route elements to sort`);
                 
                 // Detach elements from DOM first (preserves them)
                 sortedElements.forEach(el => el.remove());
