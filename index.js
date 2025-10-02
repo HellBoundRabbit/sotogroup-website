@@ -214,6 +214,131 @@ exports.calculateTravelOptions = onCall(async (request) => {
 
     const transitSteps = allSteps.filter((s) => s.type === "transit");
 
+    // Check for mixed mode opportunity (driving to/from train station)
+    let mixedModeRoute = null;
+    const trainSteps = transitSteps.filter((s) => s.mode === "HEAVY_RAIL" ||
+                                                   s.mode === "RAIL" ||
+                                                   s.mode === "SUBWAY");
+
+    if (trainSteps.length > 0) {
+      // Find first and last train stations
+      const firstTrainStep = trainSteps[0];
+      const lastTrainStep = trainSteps[trainSteps.length - 1];
+
+      // Calculate time BEFORE first train (all steps before first train)
+      const firstTrainIndex = allSteps.indexOf(firstTrainStep);
+      const stepsBeforeTrain = allSteps.slice(0, firstTrainIndex);
+      const timeBeforeTrain = stepsBeforeTrain.reduce((sum, step) => {
+        return sum + (step.duration || 0);
+      }, 0);
+
+      // Calculate time AFTER last train (all steps after last train)
+      const lastTrainIndex = allSteps.lastIndexOf(lastTrainStep);
+      const stepsAfterTrain = allSteps.slice(lastTrainIndex + 1);
+      const timeAfterTrain = stepsAfterTrain.reduce((sum, step) => {
+        return sum + (step.duration || 0);
+      }, 0);
+
+      // If either segment >45min, calculate mixed mode alternative
+      if (timeBeforeTrain > 45 || timeAfterTrain > 45) {
+        const mixedModeSteps = [];
+        let totalMixedModeDuration = 0;
+
+        // If >45min before train, drive to first train station
+        if (timeBeforeTrain > 45) {
+          try {
+            const driveToStationUrl =
+              `https://maps.googleapis.com/maps/api/distancematrix/json` +
+              `?origins=${encodeURIComponent(formattedOrigin)}` +
+              `&destinations=${encodeURIComponent(firstTrainStep.departure)}` +
+              `&mode=driving&key=${GOOGLE_MAPS_API_KEY}&units=imperial`;
+
+            const driveResponse = await fetch(driveToStationUrl);
+            const driveData = await driveResponse.json();
+
+            if (driveData.status === "OK" &&
+                driveData.rows[0].elements[0].status === "OK") {
+              const driveElement = driveData.rows[0].elements[0];
+              const driveDuration =
+                Math.round(driveElement.duration.value / 60);
+
+              mixedModeSteps.push({
+                type: "drive",
+                mode: "CAR",
+                duration: driveDuration,
+                distance: driveElement.distance.text,
+                from: formattedOrigin,
+                to: firstTrainStep.departure,
+              });
+              totalMixedModeDuration += driveDuration;
+            }
+          } catch (error) {
+            console.error("Error calculating drive to station:", error);
+          }
+        } else {
+          // Keep original steps before train
+          stepsBeforeTrain.forEach((step) => {
+            mixedModeSteps.push(step);
+            totalMixedModeDuration += step.duration || 0;
+          });
+        }
+
+        // Add all train segments
+        trainSteps.forEach((step) => {
+          mixedModeSteps.push(step);
+          totalMixedModeDuration += step.duration || 0;
+        });
+
+        // If >45min after train, drive from last train station
+        if (timeAfterTrain > 45) {
+          try {
+            const driveFromStationUrl =
+              `https://maps.googleapis.com/maps/api/distancematrix/json` +
+              `?origins=${encodeURIComponent(lastTrainStep.arrival)}` +
+              `&destinations=${encodeURIComponent(formattedDestination)}` +
+              `&mode=driving&key=${GOOGLE_MAPS_API_KEY}&units=imperial`;
+
+            const driveResponse = await fetch(driveFromStationUrl);
+            const driveData = await driveResponse.json();
+
+            if (driveData.status === "OK" &&
+                driveData.rows[0].elements[0].status === "OK") {
+              const driveElement = driveData.rows[0].elements[0];
+              const driveDuration =
+                Math.round(driveElement.duration.value / 60);
+
+              mixedModeSteps.push({
+                type: "drive",
+                mode: "CAR",
+                duration: driveDuration,
+                distance: driveElement.distance.text,
+                from: lastTrainStep.arrival,
+                to: formattedDestination,
+              });
+              totalMixedModeDuration += driveDuration;
+            }
+          } catch (error) {
+            console.error("Error calculating drive from station:", error);
+          }
+        } else {
+          // Keep original steps after train
+          stepsAfterTrain.forEach((step) => {
+            mixedModeSteps.push(step);
+            totalMixedModeDuration += step.duration || 0;
+          });
+        }
+
+        mixedModeRoute = {
+          mode: "mixed",
+          duration: totalMixedModeDuration,
+          allSteps: mixedModeSteps,
+          drivingToStation: timeBeforeTrain > 45,
+          drivingFromStation: timeAfterTrain > 45,
+        };
+
+      }
+    }
+
     return {
       success: true,
       mode: "transit",
@@ -226,6 +351,7 @@ exports.calculateTravelOptions = onCall(async (request) => {
       destination: leg.end_address,
       departureTime: leg.departure_time ? leg.departure_time.text : null,
       arrivalTime: leg.arrival_time ? leg.arrival_time.text : null,
+      mixedModeRoute: mixedModeRoute,
     };
   } catch (error) {
     logger.error("Travel options calculation error:", error);
@@ -453,31 +579,178 @@ exports.parseJobText = onCall(async (request) => {
 });
 
 /**
- * Simple job text parser (replace with your AI logic)
+ * Simple job text parser with confidence scoring
  * @param {string} rawText - The raw job text to parse
- * @return {Object} Parsed job data
+ * @return {Object} Parsed job data with confidence scores
  */
 function parseJobTextSimple(rawText) {
-  // Extract postcodes (UK format: letters + numbers)
-  const postcodeRegex = /([A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2})/gi;
+  const confidence = {};
+
+  // Extract postcodes (UK format: comprehensive pattern)
+  // Matches: A9 9AA, A9A 9AA, A99 9AA, AA9 9AA, AA9A 9AA, AA99 9AA
+  const postcodeRegex = /\b([A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2})\b/gi;
   const postcodes = rawText.match(postcodeRegex) || [];
 
-  // Extract price (look for £ followed by numbers)
-  const priceRegex = /£(\d+(?:\.\d{2})?)/;
-  const priceMatch = rawText.match(priceRegex);
-  const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
+  // Normalize postcodes (ensure space before last 3 chars)
+  const normalizePostcode = (pc) => {
+    if (!pc) return pc;
+    const cleaned = pc.replace(/\s+/g, "").toUpperCase();
+    return `${cleaned.slice(0, -3)} ${cleaned.slice(-3)}`;
+  };
 
-  // Extract collection and delivery addresses
-  const collectionAddress = postcodes[0] || "Unknown";
-  // If only one postcode found, use it for both collection and delivery
-  // If two postcodes found, use second for delivery
-  const deliveryAddress = postcodes.length >= 2 ?
-    postcodes[1] : postcodes[0] || "Not found";
+  // Extract collection postcode
+  // Look for postcodes after "Collection" or "Collect" or similar
+  const collectionKeywords = /collection|collect|pickup|pick\s?up/gi;
+  let collectionAddress = "";
+  let collectionConfidence = 0;
+
+  const collectionMatches = rawText.matchAll(
+      new RegExp(`(${collectionKeywords.source}).*?` +
+      `(${postcodeRegex.source})`, "gi"));
+  const collectionMatchArray = Array.from(collectionMatches);
+
+  if (collectionMatchArray.length > 0) {
+    collectionAddress = normalizePostcode(collectionMatchArray[0][2]);
+    collectionConfidence = 95; // High confidence - found with keyword
+  } else if (postcodes.length > 0) {
+    collectionAddress = normalizePostcode(postcodes[0]);
+    collectionConfidence = 60; // Medium confidence - first postcode found
+  } else {
+    collectionAddress = "Unknown";
+    collectionConfidence = 0; // No confidence
+  }
+
+  confidence.collection = collectionConfidence;
+
+  // Extract delivery postcode
+  // Look for postcodes after "Delivery" or "Deliver" or similar
+  const deliveryKeywords = /delivery|deliver|destination|drop\s?off/gi;
+  let deliveryAddress = "";
+  let deliveryConfidence = 0;
+
+  const deliveryMatches = rawText.matchAll(
+      new RegExp(`(${deliveryKeywords.source}).*?` +
+      `(${postcodeRegex.source})`, "gi"));
+  const deliveryMatchArray = Array.from(deliveryMatches);
+
+  if (deliveryMatchArray.length > 0) {
+    deliveryAddress = normalizePostcode(deliveryMatchArray[0][2]);
+    deliveryConfidence = 95; // High confidence - found with keyword
+  } else if (postcodes.length >= 2) {
+    deliveryAddress = normalizePostcode(postcodes[1]);
+    deliveryConfidence = 60; // Medium confidence - second postcode found
+  } else if (postcodes.length === 1) {
+    // If only one postcode, use it for both collection and delivery
+    deliveryAddress = normalizePostcode(postcodes[0]);
+    deliveryConfidence = 40; // Low confidence - same as collection
+  } else {
+    deliveryAddress = "Not found";
+    deliveryConfidence = 0;
+  }
+
+  confidence.delivery = deliveryConfidence;
+
+  // Extract price (look for £ followed by numbers)
+  const priceRegex = /£\s?(\d+(?:[.,]\d{2})?)/;
+  const priceMatch = rawText.match(priceRegex);
+  let price = 0;
+  let priceConfidence = 0;
+
+  if (priceMatch) {
+    price = parseFloat(priceMatch[1].replace(",", "."));
+    priceConfidence = 95; // High confidence - found with £ symbol
+  } else {
+    // Try to find standalone price
+    const standalonePriceRegex = /\b(\d{2,3}(?:[.,]\d{2})?)\b/;
+    const standalonePriceMatch = rawText.match(standalonePriceRegex);
+    if (standalonePriceMatch) {
+      price = parseFloat(standalonePriceMatch[1].replace(",", "."));
+      priceConfidence = 50; // Medium confidence - number found without £
+    }
+  }
+
+  confidence.price = priceConfidence;
+
+  // Extract vehicle registration number (REG)
+  // UK formats:
+  // - Current (2001+): AA11 AAA (e.g. AB51 DVL)
+  // - Prefix (1983-2001): A111 AAA
+  // - Suffix (1963-1982): AAA 111A
+  // - Old: AAA 111
+  const regKeywords = /\b(?:reg(?:istration)?|vrm|number\s?plate)\b/gi;
+
+  // Comprehensive UK registration patterns
+  const currentRegex = /\b([A-Z]{2}\d{2}\s?[A-Z]{3})\b/gi; // AA11 AAA
+  const prefixRegex = /\b([A-Z]\d{1,3}\s?[A-Z]{3})\b/gi; // A111 AAA
+  const suffixRegex = /\b([A-Z]{3}\s?\d{1,3}[A-Z])\b/gi; // AAA 111A
+  const oldRegex = /\b([A-Z]{3}\s?\d{1,3})\b/gi; // AAA 111
+
+  let regNumber = "";
+  let regConfidence = 0;
+  let isChassisNumber = false;
+
+  // First, try to find registration with keywords
+  const regWithKeywordRegex = new RegExp(
+      `(${regKeywords.source}).*?` +
+      `(${currentRegex.source}|${prefixRegex.source}|` +
+      `${suffixRegex.source}|${oldRegex.source})`,
+      "gi");
+
+  const regMatches = Array.from(rawText.matchAll(regWithKeywordRegex));
+
+  if (regMatches.length > 0) {
+    // Found with keyword - high confidence
+    regNumber = regMatches[0][2].replace(/\s+/g, " ").toUpperCase().trim();
+    regConfidence = 90;
+  } else {
+    // Try to find registration patterns without keyword
+    const allRegMatches = [
+      ...Array.from(rawText.matchAll(currentRegex)),
+      ...Array.from(rawText.matchAll(prefixRegex)),
+      ...Array.from(rawText.matchAll(suffixRegex)),
+    ];
+
+    if (allRegMatches.length > 0) {
+      regNumber = allRegMatches[0][0].replace(/\s+/g, " ")
+          .toUpperCase().trim();
+      regConfidence = 65; // Medium confidence - pattern found without keyword
+    } else {
+      // Check for chassis number
+      // Chassis numbers are typically 6-8 alphanumeric characters
+      const chassisKeywords = /\b(?:chassis|vin|frame)\b/gi;
+      const chassisRegex = /\b([A-Z0-9]{6,8})\b/gi;
+
+      const chassisWithKeywordRegex = new RegExp(
+          `(${chassisKeywords.source}).*?(${chassisRegex.source})`,
+          "gi");
+
+      const chassisMatches =
+        Array.from(rawText.matchAll(chassisWithKeywordRegex));
+
+      if (chassisMatches.length > 0) {
+        regNumber = chassisMatches[0][2].toUpperCase().trim();
+        regConfidence = 70; // Medium confidence for chassis
+        isChassisNumber = true;
+      } else {
+        regNumber = "Not found";
+        regConfidence = 0;
+      }
+    }
+  }
+
+  confidence.reg = regConfidence;
 
   return {
     collection_address: collectionAddress,
     postcode_delivery: deliveryAddress,
     price: price,
+    reg_number: regNumber,
+    is_chassis: isChassisNumber,
+    confidence_scores: confidence,
+    overall_confidence: Math.round(
+        (confidence.collection + confidence.delivery +
+         confidence.price + confidence.reg) / 4,
+    ),
     raw_text: rawText,
     parsed_at: new Date().toISOString(),
   };
