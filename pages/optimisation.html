@@ -135,8 +135,8 @@
                 <div class="flex justify-between items-center mb-4">
                     <h1 class="text-2xl font-bold tracking-tight">Optimisation</h1>
                     <div class="flex items-center gap-3">
-                        <button onclick="loadAndDisplayRoutes()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold">
-                            Load Routes
+                        <button onclick="loadLastAssignedDrivers()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold">
+                            Load Last Assigned Drivers
                         </button>
                         <button onclick="showOptimiseSettings()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold">
                             <span class="truncate">Optimise</span>
@@ -144,6 +144,18 @@
                     </div>
                 </div>
                 
+                <!-- Routes Requiring Authorization Section -->
+                <div id="authorization-routes-section" class="mb-6 hidden">
+                    <h2 class="text-lg font-semibold text-yellow-400 mb-3 flex items-center gap-2">
+                        <span class="material-symbols-outlined">warning</span>
+                        Routes Requiring Authorization
+                    </h2>
+                    <p class="text-sm text-gray-400 mb-4">These routes require driving to a train station as no direct transit is available.</p>
+                    <div id="authorization-routes-container" class="grid grid-cols-1 gap-4">
+                        <!-- Routes requiring authorization will be displayed here -->
+                    </div>
+                </div>
+
                 <!-- Jobless Drivers Section -->
                 <div id="jobless-drivers-section" class="mb-6 hidden">
                     <h2 class="text-lg font-semibold text-red-400 mb-3 flex items-center gap-2">
@@ -407,17 +419,15 @@
                             ...jobDoc.data()
                         });
                     });
+                    
+                    // Sort jobs by jobNumber to ensure correct order
+                    jobs.sort((a, b) => (a.jobNumber || 0) - (b.jobNumber || 0));
 
-                    // Clear any existing driver assignments from loaded route data
-                    const cleanRouteData = { ...routeData };
-                    delete cleanRouteData.assignedDriver;
-                    delete cleanRouteData.assignedDriverName;
-                    delete cleanRouteData.assignedDriverPostcode;
-
+                    // Keep driver assignments if they exist
                     const routeWithJobs = {
                         route: {
                             id: routeDoc.id,
-                            ...cleanRouteData
+                            ...(routeData.route || routeData)  // Spread nested route if exists, otherwise spread routeData
                         },
                         jobs: jobs
                     };
@@ -451,23 +461,19 @@
                     const originalRouteId = routeData.route.id; // Use the original Firebase document ID
                     const routeDocRef = window.firebaseDoc(routesCollection, originalRouteId);
                     
-                    
-                    // Create a clean route object without driver assignments
-                    const cleanRoute = { ...routeData.route };
-                    delete cleanRoute.assignedDriver;
-                    delete cleanRoute.assignedDriverName;
-                    delete cleanRoute.assignedDriverPostcode;
+                    // Save driver assignments if they exist
+                    const routeWithAssignments = { ...routeData.route };
                     
                     await window.firebaseSetDoc(routeDocRef, {
                         routeId: routeData.route.routeId || originalRouteId,
-                        route: cleanRoute, // Clean route without driver assignments
+                        route: routeWithAssignments, // Include driver assignments
                         jobs: routeData.jobs,
                         lastUpdated: new Date(),
                         userId: user.uid
                     });
                 }
                 
-                console.log(`Updated ${savedRoutes.length} routes in Firebase (driver assignments kept temporary)`);
+                console.log(`Updated ${savedRoutes.length} routes in Firebase (with driver assignments)`);
             } catch (error) {
                 console.error('Error saving routes to Firebase:', error);
             }
@@ -619,8 +625,7 @@
                     }
                 });
                 
-                // Driver assignments are now temporary and not restored from Firebase
-                // Routes will display without any driver assignments on page load
+                // Driver assignments are saved to Firebase and restored when "Load Last Assigned Drivers" is clicked
                 
                 console.log(`Displayed ${savedRoutes.length} routes successfully`);
                 
@@ -655,14 +660,11 @@
                 let deliveryPostcode = 'N/A';
                 
                 if (job.parsedData?.collection_address) {
-                    const collectionParts = job.parsedData.collection_address.split(',');
-                    collectionPostcode = collectionParts[0].trim();
+                    collectionPostcode = job.parsedData.collection_address;
                 }
                 
                 if (job.parsedData?.postcode_delivery) {
-                    const deliveryParts = job.parsedData.postcode_delivery.split(',');
-                    deliveryPostcode = deliveryParts[0].trim();
-                } else {
+                    deliveryPostcode = job.parsedData.postcode_delivery;
                 }
                 
                 jobPairsHTML += `
@@ -723,6 +725,19 @@
                     </div>
                 </div>
             `;
+            
+            // Populate driver information if assigned
+            if (routeRecord.assignedDriverName) {
+                const driverElement = document.getElementById(`firebase-route-${routeNumber}-driver`);
+                const locationElement = document.getElementById(`firebase-route-${routeNumber}-driver-location`);
+                
+                if (driverElement) {
+                    driverElement.textContent = routeRecord.assignedDriverName;
+                }
+                if (locationElement) {
+                    locationElement.textContent = routeRecord.assignedDriverPostcode || '-';
+                }
+            }
             
             return routeDiv;
         }
@@ -965,6 +980,14 @@
                                 <div class="flex items-center justify-between">
                                     <span class="text-white font-medium">Available Drivers</span>
                                     <span id="totalDriversCount" class="text-blue-400 font-bold text-lg">0/0</span>
+                                </div>
+                            </div>
+
+                            <!-- Total Routes -->
+                            <div class="bg-[#283039] rounded-lg p-4 mb-4">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-white font-medium">Routes to Assign</span>
+                                    <span id="totalRoutesCount" class="text-green-400 font-bold text-lg">0</span>
                                 </div>
                             </div>
 
@@ -1474,6 +1497,7 @@
             const driversOffList = document.getElementById('driversOffList');
             const driversOffCount = document.getElementById('driversOffCount');
             const totalDriversCount = document.getElementById('totalDriversCount');
+            const totalRoutesCount = document.getElementById('totalRoutesCount');
             
             const totalDrivers = allDrivers.length;
             const driversOff = tempDriversOff.length;
@@ -1484,6 +1508,10 @@
             
             // Update total drivers count with fraction format
             totalDriversCount.textContent = `${availableDrivers}/${totalDrivers}`;
+            
+            // Update total routes count
+            const routeCount = savedRoutes ? savedRoutes.length : 0;
+            totalRoutesCount.textContent = routeCount;
             
             if (tempDriversOff.length === 0) {
                 driversOffList.innerHTML = '<p class="text-gray-400 text-sm">No drivers off today</p>';
@@ -1802,7 +1830,7 @@
                 await updateRouteDistances(routeNumber, route.route.assignedDriverPostcode, route.jobs);
             }
             
-            // Save the assignments to Firebase (without driver assignment data)
+            // Save the assignments to Firebase (with driver assignment data)
             await saveRoutesToFirebase();
             
             // Don't reload from Firebase - keep current assignments in memory
@@ -1830,6 +1858,66 @@
             const detailsId = `${routeNumber}-${direction}-details`;
             const mixedDetailsId = `${routeNumber}-${direction}-mixed-details`;
             
+            // Handle requires_authorization mode (show train station route with red car)
+            if (option.mode === 'requires_authorization') {
+                if (option.driveToStation && option.transitFromStation) {
+                    const totalTime = option.totalDuration;
+                    const driveTime = option.driveToStation.duration;
+                    const transitTime = option.transitFromStation.duration;
+                    
+                    const stepsHTML = `
+                        <div class="flex items-center gap-1">
+                            <span class="material-symbols-outlined text-red-500 font-bold" style="font-size: 12px;">local_taxi</span>
+                            <span class="text-white text-xs font-bold">${formatTime(driveTime)}</span>
+                            <span class="text-gray-400 text-xs">to ${option.trainStation.name}</span>
+                        </div>
+                        ${option.transitFromStation.steps.map(step => {
+                            if (step.type === 'transit') {
+                                const icon = step.mode === 'BUS' ? 'directions_bus' : 'train';
+                                const iconColor = step.mode === 'BUS' ? 'text-blue-400' : 'text-purple-400';
+                                return `
+                                    <div class="flex items-center gap-1">
+                                        <span class="material-symbols-outlined ${iconColor}" style="font-size: 12px;">${icon}</span>
+                                        <span class="text-white text-xs">${formatTime(step.duration)}</span>
+                                    </div>
+                                `;
+                            } else if (step.type === 'walk') {
+                                return `
+                                    <div class="flex items-center gap-1">
+                                        <span class="material-symbols-outlined text-gray-400" style="font-size: 12px;">directions_walk</span>
+                                        <span class="text-gray-400 text-xs">${formatTime(step.duration)}</span>
+                                    </div>
+                                `;
+                            }
+                            return '';
+                        }).join('')}
+                    `;
+                    
+                    return `
+                        <div>
+                            <div class="flex items-center gap-1.5 cursor-pointer hover:bg-[#1a1f24] rounded px-1 -mx-1 py-0.5 transition-colors" onclick="toggleTravelDetails('${detailsId}')">
+                                <span class="material-symbols-outlined text-yellow-400" style="font-size: 14px;">warning</span>
+                                <span class="text-white text-xs font-bold">${formatTime(totalTime)}</span>
+                                <span class="text-xs text-yellow-400">(Auth Req'd)</span>
+                                <span class="material-symbols-outlined text-gray-500" style="font-size: 12px;" id="${detailsId}-icon">expand_more</span>
+                            </div>
+                            <div id="${detailsId}" class="hidden flex flex-col gap-0.5 mt-1 pl-2">
+                                ${stepsHTML}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // No station found or no transit from station
+                    return `
+                        <div class="flex items-center gap-1.5">
+                            <span class="material-symbols-outlined text-yellow-400" style="font-size: 14px;">warning</span>
+                            <span class="text-white text-xs font-bold">${formatTime(option.originalDrivingDuration)}</span>
+                            <span class="text-xs text-yellow-400">(Auth Req'd)</span>
+                        </div>
+                    `;
+                }
+            }
+            
             if (option.mode === 'taxi') {
                 return `
                     <div class="flex items-center gap-1.5">
@@ -1849,9 +1937,12 @@
                     // Render mixed mode steps
                     const mixedStepsHTML = mixedMode.allSteps.map(step => {
                         if (step.type === 'drive') {
+                            // Check if this is an authorized route (red car) or regular mixed mode (green car)
+                            const isAuthorized = option.mode === 'requires_authorization';
+                            const carColor = isAuthorized ? 'text-red-500 font-bold' : 'text-green-500';
                             return `
                                 <div class="flex items-center gap-1">
-                                    <span class="material-symbols-outlined text-green-500" style="font-size: 12px;">directions_car</span>
+                                    <span class="material-symbols-outlined ${carColor}" style="font-size: 12px; font-weight: ${isAuthorized ? 'bold' : 'normal'};">local_taxi</span>
                                     <span class="text-white text-xs">${formatTime(step.duration)}</span>
                                 </div>
                             `;
@@ -2085,6 +2176,33 @@
             }
         }
 
+        // Get next Monday for accurate weekday transit schedules
+        function getNextMonday() {
+            const today = new Date();
+            const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+            
+            let daysUntilMonday;
+            if (dayOfWeek === 0) {
+                // Today is Sunday, next Monday is tomorrow
+                daysUntilMonday = 1;
+            } else if (dayOfWeek === 1) {
+                // Today is Monday, use next Monday
+                daysUntilMonday = 7;
+            } else {
+                // Today is Tuesday-Saturday, calculate days until next Monday
+                daysUntilMonday = (8 - dayOfWeek) % 7;
+                if (daysUntilMonday === 0) daysUntilMonday = 7;
+            }
+            
+            const nextMonday = new Date(today);
+            nextMonday.setDate(today.getDate() + daysUntilMonday);
+            
+            console.log(`📅 Today: ${today.toLocaleDateString()} (${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dayOfWeek]})`);
+            console.log(`📅 Using next Monday: ${nextMonday.toLocaleDateString()} for transit calculations`);
+            
+            return nextMonday;
+        }
+
         // Calculate travel options (taxi vs public transport) using Firebase Functions
         async function calculateTravelOptions(origin, destination, isToWork = true) {
             try {
@@ -2093,11 +2211,11 @@
                 // Use departure times for more realistic routes
                 // TO work: Depart at 7 AM (arrive by 8 AM)
                 // FROM work: Depart at 6 PM
-                const tomorrow = new Date();
-                tomorrow.setDate(tomorrow.getDate() + 1);
+                // Calculate for next Monday to get accurate weekday transit schedules
+                const nextMonday = getNextMonday();
                 
-                const departAt7AM = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 7, 0, 0);
-                const departAt6PM = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 18, 0, 0);
+                const departAt7AM = new Date(nextMonday.getFullYear(), nextMonday.getMonth(), nextMonday.getDate(), 7, 0, 0);
+                const departAt6PM = new Date(nextMonday.getFullYear(), nextMonday.getMonth(), nextMonday.getDate(), 18, 0, 0);
                 
                 const departureTime = Math.floor((isToWork ? departAt7AM : departAt6PM).getTime() / 1000);
                 
@@ -2325,9 +2443,13 @@
                 const totalTime = effectiveToWorkDuration + effectiveFromWorkDuration;
                 const bothTaxi = calc.toWorkOptions.mode === 'taxi' && calc.fromWorkOptions.mode === 'taxi';
                 const oneTaxi = (calc.toWorkOptions.mode === 'taxi') !== (calc.fromWorkOptions.mode === 'taxi');
+                const requiresAuth = calc.toWorkOptions.mode === 'requires_authorization' || calc.fromWorkOptions.mode === 'requires_authorization';
                             
                             let priorityScore;
-                            if (bothTaxi) {
+                            if (requiresAuth) {
+                                // Very low priority - these need manual authorization
+                                priorityScore = -10000 + totalTime; // Negative score to de-prioritize
+                            } else if (bothTaxi) {
                                 priorityScore = 10000 - totalTime;
                             } else if (oneTaxi) {
                     const transitTime = calc.toWorkOptions.mode === 'transit' ? effectiveToWorkDuration : effectiveFromWorkDuration;
@@ -2342,7 +2464,7 @@
                     console.log(`  🚚 Carryover driver - boosting priority: ${priorityScore}`);
                             }
                             
-                assignments.push({
+                const assignment = {
                     routeIndex: calc.routeIndex,
                     driverIndex: calc.driverIndex,
                     driver: calc.driver,
@@ -2357,8 +2479,13 @@
                     useMixedModeFromWork: useMixedModeFromWork,
                     hasCarryover: calc.hasCarryover,
                     carryoverPostcode: calc.carryoverPostcode
-                });
+                };
+                
+                assignments.push(assignment);
             }
+            
+            // Store assignments globally for authorization function
+            window.currentAssignments = assignments;
             
             // Step 4: Running optimization
             updateOptimizationProgress(4, 80, 'Running optimization algorithm...');
@@ -2391,6 +2518,11 @@
                 
                 const driverName = assignment.driver.name || (assignment.driver.firstName + ' ' + assignment.driver.lastName) || 'Unknown Driver';
                 const driverHome = assignment.driver.homePostcode || assignment.driver.postcode || 'Unknown';
+                
+                // CRITICAL: Update the route object in savedRoutes with driver assignment
+                assignment.routeData.route.assignedDriver = assignment.driver;
+                assignment.routeData.route.assignedDriverName = driverName;
+                assignment.routeData.route.assignedDriverPostcode = driverHome;
                 
                 // Get REG number from first job
                 const firstJob = assignment.routeData.jobs[0];
@@ -2438,7 +2570,24 @@
                 const shouldShowMixedModeToWork = toWorkOriginalTime > 120;
                 const shouldShowMixedModeFromWork = fromWorkOriginalTime > 120;
                 
-                console.log(`Route ${routeNumber}: TO work ${toWorkOriginalTime}min (${shouldShowMixedModeToWork ? 'Mixed Mode' : 'Original'} on left), FROM work ${fromWorkOriginalTime}min (${shouldShowMixedModeFromWork ? 'Mixed Mode' : 'Original'} on left)`);
+                // Calculate effective times for SCORING based on what's actually displayed
+                // Use mixed mode if available AND original time > 2 hours (matches display logic)
+                const effectiveToWork = shouldShowMixedModeToWork && assignment.toWorkOptions.mixedModeRoute 
+                    ? { ...assignment.toWorkOptions, duration: assignment.toWorkOptions.mixedModeRoute.duration, mode: 'mixed' }
+                    : assignment.toWorkOptions;
+                const effectiveFromWork = shouldShowMixedModeFromWork && assignment.fromWorkOptions.mixedModeRoute
+                    ? { ...assignment.fromWorkOptions, duration: assignment.fromWorkOptions.mixedModeRoute.duration, mode: 'mixed' }
+                    : assignment.fromWorkOptions;
+                
+                // Log the ACTUAL times being used for scoring (match what's displayed)
+                const displayToWorkTime = shouldShowMixedModeToWork && assignment.toWorkOptions.mixedModeRoute 
+                    ? assignment.toWorkOptions.mixedModeRoute.duration 
+                    : toWorkOriginalTime;
+                const displayFromWorkTime = shouldShowMixedModeFromWork && assignment.fromWorkOptions.mixedModeRoute 
+                    ? assignment.fromWorkOptions.mixedModeRoute.duration 
+                    : fromWorkOriginalTime;
+                
+                console.log(`Route ${routeNumber}: TO work ${displayToWorkTime}min (${shouldShowMixedModeToWork ? 'Mixed Mode' : 'Original'} on left), FROM work ${displayFromWorkTime}min (${shouldShowMixedModeFromWork ? 'Mixed Mode' : 'Original'} on left)`);
                 
                 if (toWorkElement) {
                     toWorkElement.innerHTML = formatTravelOptionForRoute(assignment.toWorkOptions, `route-${routeNumber}`, 'to-work', shouldShowMixedModeToWork);
@@ -2446,15 +2595,6 @@
                 if (fromWorkElement) {
                     fromWorkElement.innerHTML = formatTravelOptionForRoute(assignment.fromWorkOptions, `route-${routeNumber}`, 'from-work', shouldShowMixedModeFromWork);
                 }
-                
-                // Calculate and display route score using new travel-based scoring
-                // Use mixed mode durations if they were used for optimization
-                const effectiveToWork = assignment.useMixedModeToWork && assignment.toWorkOptions.mixedModeRoute 
-                    ? { ...assignment.toWorkOptions, duration: assignment.toWorkOptions.mixedModeRoute.duration }
-                    : assignment.toWorkOptions;
-                const effectiveFromWork = assignment.useMixedModeFromWork && assignment.fromWorkOptions.mixedModeRoute
-                    ? { ...assignment.fromWorkOptions, duration: assignment.fromWorkOptions.mixedModeRoute.duration }
-                    : assignment.fromWorkOptions;
                 
                 const routeScore = calculateTravelScore(effectiveToWork, effectiveFromWork);
                 const scoreElement = document.getElementById(`firebase-route-${routeNumber}-score-text`);
@@ -2523,6 +2663,43 @@
                 console.log('✅ Routes reordered: Top-left (highest) to bottom-right (lowest)');
             }
             
+            // Display routes requiring authorization (detected during calculations)
+            // Only show routes that require auth AND were NOT assigned in optimal assignment
+            const assignedRouteIndices = new Set(optimalAssignment.map(a => a.routeIndex));
+            const routesRequiringAuth = assignments.filter(assignment => 
+                (assignment.toWorkOptions.mode === 'requires_authorization' || 
+                 assignment.fromWorkOptions.mode === 'requires_authorization') &&
+                !assignedRouteIndices.has(assignment.routeIndex)
+            );
+            
+            const authSection = document.getElementById('authorization-routes-section');
+            const authContainer = document.getElementById('authorization-routes-container');
+            
+            if (routesRequiringAuth.length > 0) {
+                authContainer.innerHTML = '';
+                // Group by route and find best driver for each route
+                const routeAuthMap = new Map();
+                routesRequiringAuth.forEach(assignment => {
+                    if (!routeAuthMap.has(assignment.routeIndex)) {
+                        routeAuthMap.set(assignment.routeIndex, assignment);
+                    } else {
+                        // Keep the one with higher priority score
+                        const existing = routeAuthMap.get(assignment.routeIndex);
+                        if (assignment.priorityScore > existing.priorityScore) {
+                            routeAuthMap.set(assignment.routeIndex, assignment);
+                        }
+                    }
+                });
+                
+                routeAuthMap.forEach(assignment => {
+                    const card = createAuthorizationRouteCard(assignment);
+                    authContainer.appendChild(card);
+                });
+                authSection.classList.remove('hidden');
+            } else {
+                authSection.classList.add('hidden');
+            }
+            
             // Display unassigned drivers (jobless drivers)
             const assignedDriverIndices = new Set(optimalAssignment.map(a => a.driverIndex));
             const joblessDrivers = driversForAssignment.filter((driver, index) => !assignedDriverIndices.has(index));
@@ -2542,7 +2719,6 @@
             }
             
             // Display unassigned routes (driverless routes)
-            const assignedRouteIndices = new Set(optimalAssignment.map(a => a.routeIndex));
             const driverlessRoutes = savedRoutes.filter((route, index) => !assignedRouteIndices.has(index));
             
             const driverlessRoutesSection = document.getElementById('driverless-routes-section');
@@ -2560,6 +2736,11 @@
             }
             
             const totalDistance = optimalAssignment.reduce((sum, assignment) => sum + assignment.totalDistance, 0);
+            
+            // Save all driver assignments to Firebase
+            console.log('💾 Saving driver assignments to Firebase...');
+            await saveRoutesToFirebase();
+            console.log('✅ Driver assignments saved to Firebase');
         }
         
         // Calculate route score based on total distance (for backward compatibility)
@@ -2578,11 +2759,29 @@
 
         // Calculate route score based on travel time and mode (out of 100)
         function calculateTravelScore(toWork, fromWork) {
-            const totalMinutes = toWork.duration + fromWork.duration;
+            // Handle requires_authorization mode - use totalDuration if available
+            const toWorkDuration = toWork.mode === 'requires_authorization' && toWork.totalDuration ? toWork.totalDuration : toWork.duration;
+            const fromWorkDuration = fromWork.mode === 'requires_authorization' && fromWork.totalDuration ? fromWork.totalDuration : fromWork.duration;
+            
+            const totalMinutes = toWorkDuration + fromWorkDuration;
             const bothTaxi = toWork.mode === 'taxi' && fromWork.mode === 'taxi';
             const oneTaxi = (toWork.mode === 'taxi') !== (fromWork.mode === 'taxi');
+            const requiresAuth = toWork.mode === 'requires_authorization' || fromWork.mode === 'requires_authorization';
             
             let score = 0;
+            
+            // Routes requiring authorization get penalty (20-40 points based on total time)
+            if (requiresAuth) {
+                // Lower score for auth-required routes to prioritize them less
+                if (totalMinutes <= 60) {
+                    score = 40; // Best case for auth routes
+                } else if (totalMinutes <= 120) {
+                    score = 35 - Math.floor((totalMinutes - 60) / 12); // 35 down to 30
+                } else {
+                    score = Math.max(20, 30 - Math.floor((totalMinutes - 120) / 20)); // 30 down to 20
+                }
+                return score;
+            }
             
             // BOTH TAXI: 90-100 points (based on total taxi time)
             if (bothTaxi) {
@@ -2662,6 +2861,78 @@
         }
 
         // Create jobless driver card
+        // Create authorization route card with "Authorise Drive" button
+        function createAuthorizationRouteCard(assignment) {
+            const route = assignment.routeData;
+            const driver = assignment.driver;
+            const driverName = driver.name || (driver.firstName + ' ' + driver.lastName) || 'Unknown Driver';
+            const driverPostcode = driver.homePostcode || driver.postcode || 'Unknown';
+            const totalTime = assignment.totalTime;
+            
+            // Check which direction requires authorization
+            const toWorkAuth = assignment.toWorkOptions.mode === 'requires_authorization';
+            const fromWorkAuth = assignment.fromWorkOptions.mode === 'requires_authorization';
+            
+            // Get train station info
+            let stationInfo = '';
+            if (toWorkAuth && assignment.toWorkOptions.trainStation) {
+                stationInfo = assignment.toWorkOptions.trainStation.name;
+            } else if (fromWorkAuth && assignment.fromWorkOptions.trainStation) {
+                stationInfo = assignment.fromWorkOptions.trainStation.name;
+            }
+            
+            const card = document.createElement('div');
+            card.className = 'flex flex-col gap-3 rounded-lg border border-yellow-500/30 bg-yellow-900/10 p-4';
+            card.id = `auth-route-${assignment.routeIndex}`;
+            
+            // Format total time
+            const hours = Math.floor(totalTime / 60);
+            const minutes = totalTime % 60;
+            const timeText = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+            
+            card.innerHTML = `
+                <div class="flex items-center justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-yellow-600 rounded-full flex items-center justify-center">
+                            <span class="material-symbols-outlined text-white text-lg">warning</span>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="font-semibold text-white">Route ${route.route.routeNumber || assignment.routeIndex + 1}</h3>
+                            <p class="text-sm text-gray-400">${stationInfo ? `Via ${stationInfo}` : 'No direct transit'}</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-xs text-yellow-400 font-medium">Needs Authorization</span>
+                    </div>
+                </div>
+                
+                <div class="border-t border-gray-700 pt-3">
+                    <div class="grid grid-cols-2 gap-3 text-sm mb-3">
+                        <div>
+                            <span class="text-gray-400">Best Driver:</span>
+                            <p class="text-white font-semibold">${driverName}</p>
+                            <p class="text-gray-500 text-xs">${driverPostcode}</p>
+                        </div>
+                        <div>
+                            <span class="text-gray-400">Total Time:</span>
+                            <p class="text-white font-semibold">${timeText}</p>
+                            <p class="text-gray-500 text-xs">Including drive</p>
+                        </div>
+                    </div>
+                    
+                    ${toWorkAuth ? '<p class="text-xs text-yellow-300 mb-2">⚠️ TO work requires driving to station</p>' : ''}
+                    ${fromWorkAuth ? '<p class="text-xs text-yellow-300 mb-2">⚠️ FROM work requires driving from station</p>' : ''}
+                    
+                    <button onclick="authorizeRoute(${assignment.routeIndex}, ${assignment.driverIndex})" 
+                            class="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-semibold">
+                        Authorise Drive
+                    </button>
+                </div>
+            `;
+            
+            return card;
+        }
+
         function createJoblessDriverCard(driver) {
             const driverName = driver.name || (driver.firstName + ' ' + driver.lastName) || 'Unknown Driver';
             const driverPostcode = driver.homePostcode || driver.postcode || 'Unknown';
@@ -2699,7 +2970,7 @@
             let jobPairsHTML = '';
             jobs.forEach((job, index) => {
                 const jobLetter = String.fromCharCode(65 + index);
-                const collectionPostcode = job.parsedData?.collection_address?.split(',')[0]?.trim() || 'N/A';
+                const collectionPostcode = job.parsedData?.collection_address || 'N/A';
                 const deliveryPostcode = job.parsedData?.postcode_delivery || 'N/A';
                 
                 jobPairsHTML += `
@@ -3146,8 +3417,160 @@
             }
         }
 
+        // Load routes with their last assigned drivers (quick load)
+        async function loadLastAssignedDrivers() {
+            const loadButton = document.querySelector('button[onclick="loadLastAssignedDrivers()"]');
+            const originalText = loadButton ? loadButton.innerHTML : '';
+            
+            if (loadButton) {
+                loadButton.innerHTML = '<span class="animate-spin">⟳</span> Loading...';
+                loadButton.disabled = true;
+            }
+            
+            try {
+                console.log('Loading routes with last assigned drivers...');
+                savedRoutes = await loadRoutesFromFirebase();
+                
+                if (savedRoutes.length === 0) {
+                    showNoRoutesMessage();
+                    return;
+                }
+
+                // Load drivers to check for unmatched routes/drivers
+                await loadDriversFromFirebase();
+                
+                // Display routes with their assigned drivers
+                await displayRoutesWithAssignments();
+                
+                // Handle unmatched routes and drivers
+                await handleUnmatchedRoutesAndDrivers();
+                
+                console.log('Successfully loaded routes with last assigned drivers');
+            } catch (error) {
+                console.error('Error loading last assigned drivers:', error);
+                showNoRoutesMessage(error);
+            } finally {
+                if (loadButton) {
+                    loadButton.innerHTML = originalText;
+                    loadButton.disabled = false;
+                }
+            }
+        }
+
+        // Display routes with their previously assigned drivers
+        async function displayRoutesWithAssignments() {
+            const routesContainer = document.getElementById('routes-container');
+            if (!routesContainer) return;
+
+            routesContainer.innerHTML = '';
+
+            for (let i = 0; i < savedRoutes.length; i++) {
+                const routeData = savedRoutes[i];
+                const routeNumber = i + 1;
+                
+                // Create route card with assigned driver if available
+                const routeDiv = createRouteElement(routeData.route, routeData.jobs, routeNumber);
+                routesContainer.appendChild(routeDiv);
+                
+                // Don't calculate travel times when loading last assignments
+                // Travel times remain as "-" until a new optimization is run
+            }
+        }
+
+        // Show no routes message
+        function showNoRoutesMessage(error = null) {
+            const routesContainer = document.getElementById('routes-container');
+            if (routesContainer) {
+                const message = error ? 
+                    `<p class="text-red-400 text-center">Error loading routes: ${error.message || error}</p>` :
+                    `<p class="text-gray-400 text-center">No routes found. Create routes in the Routes page first.</p>`;
+                routesContainer.innerHTML = message;
+            }
+            
+            // Hide all sections
+            const authSection = document.getElementById('authorization-routes-section');
+            const joblessSection = document.getElementById('jobless-drivers-section');
+            const driverlessSection = document.getElementById('driverless-routes-section');
+            
+            if (authSection) authSection.classList.add('hidden');
+            if (joblessSection) joblessSection.classList.add('hidden');
+            if (driverlessSection) driverlessSection.classList.add('hidden');
+        }
+        
+        // Display jobless drivers section
+        function displayJoblessDrivers(joblessDrivers) {
+            const joblessDriversSection = document.getElementById('jobless-drivers-section');
+            const joblessDriversContainer = document.getElementById('jobless-drivers-container');
+            
+            if (!joblessDriversSection || !joblessDriversContainer) return;
+            
+            if (joblessDrivers.length > 0) {
+                joblessDriversContainer.innerHTML = '';
+                joblessDrivers.forEach(driver => {
+                    const card = createJoblessDriverCard(driver);
+                    joblessDriversContainer.appendChild(card);
+                });
+                joblessDriversSection.classList.remove('hidden');
+            } else {
+                joblessDriversSection.classList.add('hidden');
+            }
+        }
+        
+        // Display driverless routes section
+        function displayDriverlessRoutes(driverlessRoutes) {
+            const driverlessRoutesSection = document.getElementById('driverless-routes-section');
+            const driverlessRoutesContainer = document.getElementById('driverless-routes-container');
+            
+            if (!driverlessRoutesSection || !driverlessRoutesContainer) return;
+            
+            if (driverlessRoutes.length > 0) {
+                driverlessRoutesContainer.innerHTML = '';
+                driverlessRoutes.forEach((route, index) => {
+                    const card = createDriverlessRouteCard(route, index);
+                    driverlessRoutesContainer.appendChild(card);
+                });
+                driverlessRoutesSection.classList.remove('hidden');
+            } else {
+                driverlessRoutesSection.classList.add('hidden');
+            }
+        }
+
+        // Handle unmatched routes and drivers
+        async function handleUnmatchedRoutesAndDrivers() {
+            const assignedDriverIds = new Set();
+            const assignedRouteIds = new Set();
+            
+            // Track which drivers and routes are assigned
+            savedRoutes.forEach(route => {
+                if (route.route.assignedDriver) {
+                    assignedDriverIds.add(route.route.assignedDriver.uid || route.route.assignedDriver.id);
+                    assignedRouteIds.add(route.route.id);
+                }
+            });
+            
+            // Find jobless drivers (drivers not assigned to any route)
+            const joblessDrivers = drivers.filter(driver => {
+                const driverId = driver.uid || driver.id;
+                return !assignedDriverIds.has(driverId);
+            });
+            
+            // Find driverless routes (routes without assigned drivers)
+            const driverlessRoutes = savedRoutes.filter(route => !route.route.assignedDriver);
+            
+            // Display jobless drivers section
+            if (joblessDrivers.length > 0) {
+                displayJoblessDrivers(joblessDrivers);
+            }
+            
+            // Display driverless routes section
+            if (driverlessRoutes.length > 0) {
+                displayDriverlessRoutes(driverlessRoutes);
+            }
+        }
+
         // Make functions globally available
         window.loadAndDisplayRoutes = loadAndDisplayRoutes;
+        window.loadLastAssignedDrivers = loadLastAssignedDrivers;
         window.optimizeRoutes = optimizeRoutes;
         window.showNotifications = showNotifications;
         window.showAlterationsPopup = showAlterationsPopup;
@@ -3156,12 +3579,73 @@
         window.addCarryOverDriver = addCarryOverDriver;
         window.removeCarryOver = removeCarryOver;
         window.showOptimiseSettings = showOptimiseSettings;
+        // Authorize a route - assign driver and mark for red car display
+        async function authorizeRoute(routeIndex, driverIndex) {
+            try {
+                // Find the assignment in our stored assignments
+                const assignment = window.currentAssignments.find(a => 
+                    a.routeIndex === routeIndex && a.driverIndex === driverIndex
+                );
+                
+                if (!assignment) {
+                    console.error('Assignment not found');
+                    return;
+                }
+                
+                const route = assignment.routeData;
+                const driver = assignment.driver;
+                const routeNumber = route.route.routeNumber;
+                
+                // Mark this route as authorized (will show red car icon)
+                route.requiresAuthorization = true;
+                route.authorizationApproved = true;
+                
+                // Assign the driver to the route
+                await updateRouteDistances(
+                    routeNumber,
+                    driver.homePostcode || driver.postcode,
+                    route.jobs
+                );
+                
+                // Remove from authorization section
+                const authCard = document.getElementById(`auth-route-${routeIndex}`);
+                if (authCard) {
+                    authCard.remove();
+                }
+                
+                // Check if authorization section is now empty
+                const authContainer = document.getElementById('authorization-routes-container');
+                const authSection = document.getElementById('authorization-routes-section');
+                if (authContainer && authContainer.children.length === 0) {
+                    authSection.classList.add('hidden');
+                }
+                
+                // Find the route element in the assigned routes section
+                const routeElement = document.getElementById(`firebase-route-${routeNumber}`);
+                if (routeElement) {
+                    // Scroll to the route
+                    routeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    
+                    // Add a visual highlight temporarily
+                    routeElement.classList.add('ring-2', 'ring-green-500');
+                    setTimeout(() => {
+                        routeElement.classList.remove('ring-2', 'ring-green-500');
+                    }, 2000);
+                }
+                
+                console.log(`✅ Route ${routeNumber} authorized for driver ${driver.firstName} ${driver.lastName}`);
+            } catch (error) {
+                console.error('Error authorizing route:', error);
+            }
+        }
+        
         window.closeOptimiseSettings = closeOptimiseSettings;
         window.startOptimisationWithSettings = startOptimisationWithSettings;
         window.selectOptimiseDay = selectOptimiseDay;
         window.toggleDriverOffStatus = toggleDriverOffStatus;
         window.removeDriverFromOff = removeDriverFromOff;
         window.toggleTravelDetails = toggleTravelDetails;
+        window.authorizeRoute = authorizeRoute;
 
         // Wait for Firebase to be ready
         function waitForFirebase() {

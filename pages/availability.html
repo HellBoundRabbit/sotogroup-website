@@ -286,7 +286,15 @@
                     const data = doc.data();
                     // Support both 'driversOff' array (new format) and 'driverIdString' single driver (old format)
                     if (data.driversOff && Array.isArray(data.driversOff)) {
-                        driverAvailability[doc.id] = data.driversOff;
+                        // Check if array contains objects or strings
+                        const firstItem = data.driversOff[0];
+                        if (firstItem && typeof firstItem === 'object' && firstItem.driverId) {
+                            // Array of objects: extract driverId strings
+                            driverAvailability[doc.id] = data.driversOff.map(item => item.driverId);
+                        } else {
+                            // Array of strings: use as-is
+                            driverAvailability[doc.id] = data.driversOff;
+                        }
                     } else if (data.driverIdString) {
                         // Old format: single driver off
                         driverAvailability[doc.id] = [data.driverIdString];
@@ -401,8 +409,14 @@
         function openDayModal(date) {
             const dateString = formatDateString(date);
             const driversOffIds = driverAvailability[dateString] || [];
-            const driversOff = allDrivers.filter(d => driversOffIds.includes(d.id));
-            const driversWorking = allDrivers.filter(d => !driversOffIds.includes(d.id));
+            
+            // Filter by both id (Firestore doc ID) and uid (Firebase Auth ID)
+            const driversOff = allDrivers.filter(d => 
+                driversOffIds.includes(d.id) || driversOffIds.includes(d.uid)
+            );
+            const driversWorking = allDrivers.filter(d => 
+                !driversOffIds.includes(d.id) && !driversOffIds.includes(d.uid)
+            );
 
             // Update modal title
             const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -435,7 +449,7 @@
                                 <div class="text-[#9cabba] text-sm">${driver.homePostcode}</div>
                             </div>
                         </div>
-                        <button onclick="toggleDriverAvailability('${driver.id}', '${dateString}', event)" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm transition-colors">
+                        <button onclick="toggleDriverAvailability('${driver.uid || driver.id}', '${dateString}', event)" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm transition-colors">
                             Mark Available
                         </button>
                     </div>
@@ -458,7 +472,7 @@
                                 <div class="text-[#9cabba] text-sm">${driver.homePostcode}</div>
                             </div>
                         </div>
-                        <button onclick="toggleDriverAvailability('${driver.id}', '${dateString}', event)" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm transition-colors">
+                        <button onclick="toggleDriverAvailability('${driver.uid || driver.id}', '${dateString}', event)" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm transition-colors">
                             Mark Off
                         </button>
                     </div>
