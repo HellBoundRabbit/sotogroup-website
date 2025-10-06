@@ -14,6 +14,56 @@ const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY ||
   "AIzaSyDTbiSXo9tg1Tx8SlZCZKsR_R0zIQ4N1VA";
 
 /**
+ * Find nearest train station to a given location using Google Places API
+ * @param {string} location - The location to search from
+ * @param {number} radiusInMiles - Search radius in miles (default 50)
+ * @return {Object} Nearest station details or null
+ */
+async function findNearestTrainStation(location, radiusInMiles = 50) {
+  try {
+    // First geocode the location to get coordinates
+    const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(location)}&key=${GOOGLE_MAPS_API_KEY}`;
+
+    const geocodeResponse = await fetch(geocodeUrl);
+    const geocodeData = await geocodeResponse.json();
+
+    if (geocodeData.status !== "OK" || !geocodeData.results[0]) {
+      logger.error(`Geocoding failed for ${location}: ${geocodeData.status}`);
+      return null;
+    }
+
+    const coords = geocodeData.results[0].geometry.location;
+    const radiusInMeters = radiusInMiles * 1609.34;
+
+    // Search for train stations near this location
+    const placesUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${coords.lat},${coords.lng}&radius=${radiusInMeters}&type=train_station&key=${GOOGLE_MAPS_API_KEY}`;
+
+    const placesResponse = await fetch(placesUrl);
+    const placesData = await placesResponse.json();
+
+    if (placesData.status !== "OK" ||
+        !placesData.results ||
+        placesData.results.length === 0) {
+      logger.error(`No train stations found near ${location}`);
+      return null;
+    }
+
+    // Get the nearest station (first result is closest)
+    const nearestStation = placesData.results[0];
+
+    return {
+      name: nearestStation.name,
+      address: nearestStation.vicinity,
+      location: nearestStation.geometry.location,
+      placeId: nearestStation.place_id,
+    };
+  } catch (error) {
+    logger.error("Error finding nearest train station:", error);
+    return null;
+  }
+}
+
+/**
  * Calculate distance between two addresses using Google Maps Distance Matrix
  */
 exports.calculateDistance = onCall(async (request) => {
@@ -64,7 +114,7 @@ exports.calculateDistance = onCall(async (request) => {
 
 /**
  * Calculate travel options (taxi vs public transport) based on duration
- * Returns taxi info if ≤15min drive, otherwise public transport details
+ * Returns taxi info if ≤18min drive, otherwise public transport details
  * Supports arrivalTime (TO work) or departureTime (FROM work)
  */
 exports.calculateTravelOptions = onCall(async (request) => {
@@ -117,8 +167,8 @@ exports.calculateTravelOptions = onCall(async (request) => {
     const distanceInMiles = drivingElement.distance.value / 1609.34;
     const durationInMinutes = drivingElement.duration.value / 60;
 
-    // If driving time is ≤15 minutes, return taxi option
-    if (durationInMinutes <= 15) {
+    // If driving time is ≤18 minutes, return taxi option
+    if (durationInMinutes <= 18) {
       return {
         success: true,
         mode: "taxi",
@@ -149,14 +199,150 @@ exports.calculateTravelOptions = onCall(async (request) => {
     const transitData = await transitResponse.json();
 
     if (transitData.status !== "OK") {
-      // If no transit available, fall back to taxi with a warning
+      // No direct transit available - find nearest train station
+      logger.info(
+          `No direct transit from ${formattedOrigin} ` +
+          `to ${formattedDestination}`,
+      );
+
+      // Try to find nearest station to destination
+      const nearestStation = await findNearestTrainStation(
+          formattedDestination,
+          50,
+      );
+
+      if (!nearestStation) {
+        // Couldn't find station - return requires_authorization
+        return {
+          success: true,
+          mode: "requires_authorization",
+          originalDrivingDistance: Math.round(distanceInMiles * 10) / 10,
+          originalDrivingDuration: Math.round(durationInMinutes),
+          originalDrivingDurationText: drivingElement.duration.text,
+          noStationFound: true,
+          origin: drivingData.origin_addresses[0],
+          destination: drivingData.destination_addresses[0],
+        };
+      }
+
+      // Calculate driving from origin to train station
+      const driveToStationUrl =
+        `https://maps.googleapis.com/maps/api/distancematrix/json` +
+        `?origins=${encodeURIComponent(formattedOrigin)}` +
+        `&destinations=${encodeURIComponent(nearestStation.address)}` +
+        `&mode=driving&key=${GOOGLE_MAPS_API_KEY}&units=imperial`;
+
+      const driveToStationResponse = await fetch(driveToStationUrl);
+      const driveToStationData = await driveToStationResponse.json();
+
+      if (driveToStationData.status !== "OK" ||
+          driveToStationData.rows[0].elements[0].status !== "OK") {
+        // Can't calculate drive to station
+        return {
+          success: true,
+          mode: "requires_authorization",
+          originalDrivingDistance: Math.round(distanceInMiles * 10) / 10,
+          originalDrivingDuration: Math.round(durationInMinutes),
+          originalDrivingDurationText: drivingElement.duration.text,
+          noStationFound: true,
+          origin: drivingData.origin_addresses[0],
+          destination: drivingData.destination_addresses[0],
+        };
+      }
+
+      const driveToStationElement = driveToStationData.rows[0].elements[0];
+      const driveToStationDuration = Math.round(
+          driveToStationElement.duration.value / 60,
+      );
+      const driveToStationDistance = Math.round(
+          (driveToStationElement.distance.value / 1609.34) * 10,
+      ) / 10;
+
+      // Now get transit from station to destination
+      const stationToDestUrl =
+        `${baseUrl}?origin=${encodeURIComponent(nearestStation.address)}` +
+        `&destination=${destParam}&mode=transit` +
+        `&key=${GOOGLE_MAPS_API_KEY}&units=imperial`;
+      const stationTransitUrl = arrivalTime ?
+        `${stationToDestUrl}&arrival_time=${arrivalTime}` :
+        departureTime ?
+        `${stationToDestUrl}&departure_time=${departureTime}` :
+        stationToDestUrl;
+
+      const stationTransitResponse = await fetch(stationTransitUrl);
+      const stationTransitData = await stationTransitResponse.json();
+
+      if (stationTransitData.status !== "OK") {
+        // Station to destination transit also failed
+        return {
+          success: true,
+          mode: "requires_authorization",
+          originalDrivingDistance: Math.round(distanceInMiles * 10) / 10,
+          originalDrivingDuration: Math.round(durationInMinutes),
+          originalDrivingDurationText: drivingElement.duration.text,
+          trainStation: nearestStation,
+          driveToStationDuration: driveToStationDuration,
+          driveToStationDistance: driveToStationDistance,
+          noTransitFromStation: true,
+          origin: drivingData.origin_addresses[0],
+          destination: drivingData.destination_addresses[0],
+        };
+      }
+
+      // Successfully got transit from station to destination
+      const stationRoute = stationTransitData.routes[0];
+      const stationLeg = stationRoute.legs[0];
+      const stationTransitDuration = Math.round(stationLeg.duration.value / 60);
+
+      // Extract transit steps from station to destination
+      const stationTransitSteps = stationLeg.steps.map((step) => {
+        if (step.travel_mode === "TRANSIT") {
+          const transitDetails = step.transit_details;
+          return {
+            type: "transit",
+            mode: transitDetails.line.vehicle.type,
+            line: transitDetails.line.short_name || transitDetails.line.name,
+            departure: transitDetails.departure_stop.name,
+            arrival: transitDetails.arrival_stop.name,
+            duration: Math.round(step.duration.value / 60),
+            departureTime: transitDetails.departure_time.text,
+            arrivalTime: transitDetails.arrival_time.text,
+          };
+        } else if (step.travel_mode === "WALKING") {
+          return {
+            type: "walk",
+            duration: Math.round(step.duration.value / 60),
+            distance: step.distance.text,
+          };
+        }
+        return null;
+      }).filter((step) => step !== null);
+
+      // Total duration = drive to station + transit from station
+      const totalDuration = driveToStationDuration + stationTransitDuration;
+
+      // Return hybrid route requiring authorization
       return {
         success: true,
-        mode: "taxi",
-        distance: Math.round(distanceInMiles * 10) / 10,
-        duration: Math.round(durationInMinutes),
-        durationText: drivingElement.duration.text,
-        warning: "No public transport available for this route",
+        mode: "requires_authorization",
+        trainStation: nearestStation,
+        driveToStation: {
+          duration: driveToStationDuration,
+          distance: driveToStationDistance,
+          durationText: driveToStationElement.duration.text,
+        },
+        transitFromStation: {
+          duration: stationTransitDuration,
+          durationText: stationLeg.duration.text,
+          steps: stationTransitSteps,
+          departureTime: stationLeg.departure_time ?
+            stationLeg.departure_time.text : null,
+          arrivalTime: stationLeg.arrival_time ?
+            stationLeg.arrival_time.text : null,
+        },
+        totalDuration: totalDuration,
+        originalDrivingDistance: Math.round(distanceInMiles * 10) / 10,
+        originalDrivingDuration: Math.round(durationInMinutes),
         origin: drivingData.origin_addresses[0],
         destination: drivingData.destination_addresses[0],
       };
