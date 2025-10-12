@@ -3,7 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Panel - SOTO Routes</title>
+    <link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png">
+<title>Admin Panel - SOTO Routes</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -387,8 +391,8 @@
 
         // View office details
         function viewOfficeDetails(officeId) {
-            // For now, just show a message - you can expand this later
-            showMessage('Office details view coming soon!', 'info');
+            // Navigate to office calendar page with office ID as URL parameter
+            window.location.href = `/pages/office-calendar.html?officeId=${officeId}`;
         }
 
         // Delete office

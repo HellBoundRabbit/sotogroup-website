@@ -5,7 +5,11 @@
     <link crossorigin="" href="https://fonts.gstatic.com/" rel="preconnect"/>
     <link as="style" href="https://fonts.googleapis.com/css2?display=swap&amp;family=Inter%3Awght%40400%3B500%3B700%3B900&amp;family=Noto+Sans%3Awght%40400%3B500%3B700%3B900" onload="this.rel='stylesheet'" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
-    <title>SOTO Routes - Logistics Planning</title>
+    <link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png">
+<title>SOTO Routes - Logistics Planning</title>
     <link href="data:image/x-icon;base64," rel="icon" type="image/x-icon"/>
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
     <!-- CloudKit removed -->
@@ -46,8 +50,21 @@
                             </svg>
                         </div>
                     </button>
-                    <div class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden">
-                        <img src="/assets/logos/c-logo.svg" alt="C Logo" class="w-full h-full object-cover">
+                    <div class="relative">
+                        <button onclick="toggleProfileDropdown()" class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
+                            <img src="/assets/logos/c-logo.svg" alt="C Logo" class="w-full h-full object-cover">
+                        </button>
+                        <!-- Profile Dropdown -->
+                        <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50">
+                            <button onclick="showChangePassword()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors rounded-t-lg">
+                                <span class="material-symbols-outlined inline-block align-middle text-base mr-2">lock</span>
+                                Change Password
+                            </button>
+                            <button onclick="viewUsage()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors rounded-b-lg">
+                                <span class="material-symbols-outlined inline-block align-middle text-base mr-2">calendar_month</span>
+                                View Usage
+                            </button>
+                        </div>
                     </div>
                 </div>
             </header>
@@ -1057,6 +1074,155 @@
             initializeSavedRoutes();
             console.log('Routes page initialized successfully');
         });
+
+        // Profile dropdown functions
+        function toggleProfileDropdown() {
+            const dropdown = document.getElementById('profileDropdown');
+            dropdown.classList.toggle('hidden');
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+            const dropdown = document.getElementById('profileDropdown');
+            const profileButton = event.target.closest('button[onclick="toggleProfileDropdown()"]');
+            
+            if (!profileButton && !dropdown.contains(event.target)) {
+                dropdown.classList.add('hidden');
+            }
+        });
+
+        function showChangePassword() {
+            document.getElementById('changePasswordModal').classList.remove('hidden');
+            document.getElementById('profileDropdown').classList.add('hidden');
+        }
+
+        function hideChangePassword() {
+            document.getElementById('changePasswordModal').classList.add('hidden');
+            document.getElementById('changePasswordForm').reset();
+        }
+
+        // View usage calendar
+        function viewUsage() {
+            const storedUser = localStorage.getItem('soto_user_identity');
+            if (storedUser) {
+                const userData = JSON.parse(storedUser);
+                window.location.href = `/pages/office-calendar.html?officeId=${userData.officeId}`;
+            }
+        }
+
+        // Handle password change
+        async function handleChangePassword(event) {
+            event.preventDefault();
+            
+            const currentPassword = document.getElementById('currentPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            
+            if (newPassword !== confirmPassword) {
+                alert('New passwords do not match');
+                return;
+            }
+            
+            try {
+                const user = window.auth.currentUser;
+                if (!user) {
+                    alert('No user logged in');
+                    return;
+                }
+                
+                // Re-authenticate user with current password
+                const credential = window.EmailAuthProvider.credential(user.email, currentPassword);
+                await window.reauthenticateWithCredential(user, credential);
+                
+                // Update password
+                await window.updatePassword(user, newPassword);
+                
+                alert('Password changed successfully!');
+                hideChangePassword();
+                
+            } catch (error) {
+                console.error('Error changing password:', error);
+                
+                if (error.code === 'auth/wrong-password') {
+                    alert('Current password is incorrect');
+                } else if (error.code === 'auth/weak-password') {
+                    alert('New password is too weak. Please choose a stronger password.');
+                } else if (error.code === 'auth/requires-recent-login') {
+                    alert('Please log out and log back in, then try changing your password again.');
+                } else {
+                    alert('Error changing password: ' + error.message);
+                }
+            }
+        }
+
+        // Make functions globally available
+        window.toggleProfileDropdown = toggleProfileDropdown;
+        window.showChangePassword = showChangePassword;
+        window.hideChangePassword = hideChangePassword;
+        window.viewUsage = viewUsage;
+        window.handleChangePassword = handleChangePassword;
+
+        // Add event listener for password form
+        document.addEventListener('DOMContentLoaded', function() {
+            const changePasswordForm = document.getElementById('changePasswordForm');
+            if (changePasswordForm) {
+                changePasswordForm.addEventListener('submit', handleChangePassword);
+            }
+        });
     </script>
+
+    <!-- Change Password Modal -->
+    <div id="changePasswordModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-6 w-full max-w-md">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-white">Change Password</h3>
+                <button onclick="hideChangePassword()" class="text-gray-400 hover:text-white">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            
+            <form id="changePasswordForm" class="space-y-4">
+                <div>
+                    <label for="currentPassword" class="block text-sm font-medium text-gray-300 mb-2">Current Password</label>
+                    <input 
+                        type="password" 
+                        id="currentPassword" 
+                        required 
+                        class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Enter current password"
+                    >
+                </div>
+                
+                <div>
+                    <label for="newPassword" class="block text-sm font-medium text-gray-300 mb-2">New Password</label>
+                    <input 
+                        type="password" 
+                        id="newPassword" 
+                        required 
+                        class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Enter new password"
+                    >
+                </div>
+                
+                <div>
+                    <label for="confirmPassword" class="block text-sm font-medium text-gray-300 mb-2">Confirm New Password</label>
+                    <input 
+                        type="password" 
+                        id="confirmPassword" 
+                        required 
+                        class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Confirm new password"
+                    >
+                </div>
+
+                <button 
+                    type="submit"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+                >
+                    Change Password
+                </button>
+            </form>
+        </div>
+    </div>
 </body>
 </html>

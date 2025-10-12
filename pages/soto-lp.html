@@ -6,7 +6,11 @@
 <link as="style" href="https://fonts.googleapis.com/css2?display=swap&amp;family=Inter%3Awght%40400%3B500%3B700%3B900&amp;family=Noto+Sans%3Awght%40400%3B500%3B700%3B900" onload="this.rel='stylesheet'" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
 <title>SOTO Routes - Logistics Planner</title>
-<link href="data:image/x-icon;base64," rel="icon" type="image/x-icon"/>
+<!-- Favicon -->
+<link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png">
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
     tailwind.config = {
@@ -20,6 +24,7 @@
 <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
     import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, where, updateDoc, doc, deleteDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+    import { getAuth, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
     import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
     
     // Firebase configuration
@@ -36,13 +41,18 @@
     // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
+    const auth = getAuth(app);
     const functions = getFunctions(app);
     window.db = db; // Make db globally accessible
     
     // Make Firebase available globally
     window.firebaseApp = app;
+    window.auth = auth;
     window.firebase = { functions: functions, httpsCallable: httpsCallable };
     window.firestore = db;
+    window.updatePassword = updatePassword;
+    window.EmailAuthProvider = EmailAuthProvider;
+    window.reauthenticateWithCredential = reauthenticateWithCredential;
     window.firebaseCollection = collection;
     window.firebaseAddDoc = addDoc;
     window.firebaseGetDocs = getDocs;
@@ -206,8 +216,21 @@ window.onload = async function() {
 <button class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors text-sm" onclick="logout()">
 Logout
 </button>
-<div class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden">
-    <img src="/assets/logos/c-logo.svg" alt="C Logo" class="w-full h-full object-cover">
+<div class="relative">
+    <button onclick="toggleProfileDropdown()" class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
+        <img src="/assets/logos/c-logo.svg" alt="C Logo" class="w-full h-full object-cover">
+    </button>
+    <!-- Profile Dropdown -->
+    <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50">
+        <button onclick="showChangePassword()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors rounded-t-lg">
+            <span class="material-symbols-outlined inline-block align-middle text-base mr-2">lock</span>
+            Change Password
+        </button>
+        <button onclick="viewUsage()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors rounded-b-lg">
+            <span class="material-symbols-outlined inline-block align-middle text-base mr-2">calendar_month</span>
+            View Usage
+        </button>
+    </div>
 </div>
 </div>
 </header>
@@ -221,6 +244,93 @@ Logout
         </div>
         <p class="text-white text-lg font-semibold">Loading Routes...</p>
         <p class="text-gray-400 text-sm mt-1">Please wait</p>
+    </div>
+</div>
+
+<!-- Change Password Modal -->
+<div id="changePasswordModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-6 w-full max-w-md">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-xl font-bold text-white">Change Password</h3>
+            <button onclick="hideChangePassword()" class="text-gray-400 hover:text-white">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        
+        <form id="changePasswordForm" class="space-y-4">
+            <div>
+                <label for="currentPassword" class="block text-sm font-medium text-gray-300 mb-2">Current Password</label>
+                <input 
+                    type="password" 
+                    id="currentPassword" 
+                    required 
+                    class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Enter current password"
+                >
+            </div>
+            
+            <div>
+                <label for="newPassword" class="block text-sm font-medium text-gray-300 mb-2">New Password</label>
+                <input 
+                    type="password" 
+                    id="newPassword" 
+                    required 
+                    class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Enter new password"
+                >
+            </div>
+            
+            <div>
+                <label for="confirmPassword" class="block text-sm font-medium text-gray-300 mb-2">Confirm New Password</label>
+                <input 
+                    type="password" 
+                    id="confirmPassword" 
+                    required 
+                    class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Confirm new password"
+                >
+            </div>
+
+            <button 
+                type="submit"
+                class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+            >
+                Change Password
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Confirmation Modal for Low Confidence Jobs -->
+<div id="confirmJobsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-xl font-bold text-white">Confirm Job Details</h3>
+            <button onclick="hideConfirmJobsModal()" class="text-gray-400 hover:text-white">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        
+        <p class="text-gray-300 mb-4">The following jobs have confidence below 80%. Please review and confirm or edit the details:</p>
+        
+        <div id="lowConfidenceJobsList" class="space-y-4">
+            <!-- Low confidence jobs will be inserted here -->
+        </div>
+        
+        <div class="flex gap-3 mt-6">
+            <button 
+                onclick="hideConfirmJobsModal()"
+                class="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+            >
+                Cancel
+            </button>
+            <button 
+                onclick="confirmAndSaveJobs()"
+                class="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+            >
+                Confirm & Save Route
+            </button>
+        </div>
     </div>
 </div>
 
@@ -304,6 +414,7 @@ let currentRouteId = 1;
 let routes = {}; // Store route data
 let minimizedRoutes = []; // Store minimized routes
 let savedJobs = {}; // Track jobs that have been saved to Firebase
+let localJobs = {}; // Store all parsed jobs locally (before Firebase save)
 let nextRouteId = 1; // Counter for assigning route IDs when saving
 
 // Day selection variables
@@ -587,6 +698,7 @@ async function startFresh() {
         minimizedRoutes = [];
         routes = {};
         savedJobs = {};
+        localJobs = {};
         nextRouteId = 1;
         currentRouteId = 1;
         
@@ -1100,70 +1212,34 @@ async function processQueue() {
                 // Debug: Log the parsed data to see if confidence scores are included
                 console.log('Parsed data received:', result.data.parsed_data);
                 
-                // Check if confidence is above 80%
+                // Store job data locally (don't save to Firebase yet)
                 const overallConfidence = result.data.parsed_data.overall_confidence || 0;
                 console.log('Overall confidence:', overallConfidence);
                 
-                if (overallConfidence >= 80) {
-                    // Save job to Firebase only if confidence is good
-                    try {
-                        const jobData = {
-                            routeId: job.routeId,
-                            jobNumber: job.jobNumber,
-                            rawText: job.jobText,
-                            parsedData: result.data.parsed_data,
-                            status: 'parsed',
-                            createdAt: new Date(),
-                            // Assign route ID immediately
-                            assignedRouteId: `route_${job.routeId}`
-                        };
-                        
-                        const docRef = await window.firebaseAddDoc(window.firebaseCollection(window.firestore, "jobs"), jobData);
-                        console.log('Job saved to Firebase with ID:', docRef.id);
-                        console.log(`Assigned route ID route_${job.routeId} to job ${docRef.id}`);
-                        
-                        // Store the saved job reference by route
-                        if (!savedJobs[`route_${job.routeId}`]) {
-                            savedJobs[`route_${job.routeId}`] = [];
-                        }
-                        savedJobs[`route_${job.routeId}`].push({
-                            firebaseId: docRef.id,
-                            routeId: job.routeId,
-                            jobNumber: job.jobNumber,
-                            data: jobData
-                    });
-                    
-                    // Create route summary immediately after first job is saved
-                    console.log(`Creating route summary for route ${job.routeId}...`);
-                    createRouteSummary(job.routeId);
-                    
-                    } catch (firebaseError) {
-                        console.error('Error saving job to Firebase:', firebaseError);
-                    }
-                    
-                    // Create route if it doesn't exist (first job)
-                    ensureRouteExists(job.routeId);
-                    
-                    // Update route count immediately after job processing (with small delay to ensure Firebase is updated)
-                    setTimeout(() => {
-                        updateRouteCount();
-                    }, 1000);
-                } else {
-                    // Confidence below 80% - don't save to Firebase
-                    console.log('Confidence too low (' + overallConfidence + '%), not uploading to Firebase');
-                    
-                    // Still create the route UI
-                    ensureRouteExists(job.routeId);
-                    
-                    // Set status to unreadable
-                    updateStatusIndicator('unreadable');
-                    
-                    // Disable next route button
-                    updateNextRouteButton(job.routeId, false);
-                }
+                const jobData = {
+                    routeId: job.routeId,
+                    jobNumber: job.jobNumber,
+                    rawText: job.jobText,
+                    parsedData: result.data.parsed_data,
+                    confidence: overallConfidence,
+                    status: 'parsed',
+                    createdAt: new Date()
+                };
+                
+                // Store in local jobs object
+                const jobKey = `${job.routeId}-${job.jobNumber}`;
+                localJobs[jobKey] = jobData;
+                console.log(`Job ${jobKey} stored locally with ${overallConfidence}% confidence`);
+                
+                // Create route if it doesn't exist (first job)
+                ensureRouteExists(job.routeId);
                 
                 // Update the job display with parsed data (regardless of confidence)
                 updateJobDisplay(job.routeId, job.jobNumber, result.data.parsed_data);
+                
+                // Re-enable next route button after successful job processing
+                // Force enable the button since we have a job with data
+                updateNextRouteButton(job.routeId, true);
             } else {
                 // Show error state
                 collectionElement.textContent = 'Error processing';
@@ -1654,6 +1730,108 @@ document.getElementById('job-details').addEventListener('keypress', function(e) 
     }
 });
 
+// Profile dropdown functions
+function toggleProfileDropdown() {
+    const dropdown = document.getElementById('profileDropdown');
+    dropdown.classList.toggle('hidden');
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(event) {
+    const dropdown = document.getElementById('profileDropdown');
+    const profileButton = event.target.closest('button[onclick="toggleProfileDropdown()"]');
+    
+    if (!profileButton && !dropdown.contains(event.target)) {
+        dropdown.classList.add('hidden');
+    }
+});
+
+function showChangePassword() {
+    document.getElementById('changePasswordModal').classList.remove('hidden');
+    document.getElementById('profileDropdown').classList.add('hidden');
+}
+
+function hideChangePassword() {
+    document.getElementById('changePasswordModal').classList.add('hidden');
+    document.getElementById('changePasswordForm').reset();
+}
+
+// View usage calendar
+function viewUsage() {
+    const storedUser = localStorage.getItem('soto_user_identity');
+    if (storedUser) {
+        const userData = JSON.parse(storedUser);
+        window.location.href = `/pages/office-calendar.html?officeId=${userData.officeId}`;
+    }
+}
+
+// Change password
+async function handleChangePassword(event) {
+    event.preventDefault();
+    
+    const currentPassword = document.getElementById('currentPassword').value;
+    const newPassword = document.getElementById('newPassword').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+    
+    if (newPassword !== confirmPassword) {
+        alert('New passwords do not match.');
+        return;
+    }
+    
+    if (newPassword.length < 6) {
+        alert('New password must be at least 6 characters long.');
+        return;
+    }
+    
+    try {
+        // Get current user
+        const user = window.auth.currentUser;
+        if (!user || !user.email) {
+            alert('No user is currently signed in.');
+            return;
+        }
+        
+        // Re-authenticate user with current password
+        const credential = window.EmailAuthProvider.credential(user.email, currentPassword);
+        await window.reauthenticateWithCredential(user, credential);
+        
+        // Update password
+        await window.updatePassword(user, newPassword);
+        
+        console.log('Password changed successfully for user:', user.uid);
+        alert('Password changed successfully!');
+        
+        hideChangePassword();
+    } catch (error) {
+        console.error('Error changing password:', error);
+        
+        if (error.code === 'auth/wrong-password') {
+            alert('Current password is incorrect.');
+        } else if (error.code === 'auth/weak-password') {
+            alert('New password is too weak. Please choose a stronger password.');
+        } else if (error.code === 'auth/requires-recent-login') {
+            alert('For security reasons, please log out and log back in before changing your password.');
+        } else {
+            alert('Failed to change password. Please try again.');
+        }
+    }
+}
+
+// Attach event listener to change password form
+document.addEventListener('DOMContentLoaded', function() {
+    const changePasswordForm = document.getElementById('changePasswordForm');
+    if (changePasswordForm) {
+        changePasswordForm.addEventListener('submit', handleChangePassword);
+    }
+});
+
+// Make functions globally available
+window.toggleProfileDropdown = toggleProfileDropdown;
+window.showChangePassword = showChangePassword;
+window.hideChangePassword = hideChangePassword;
+window.viewUsage = viewUsage;
+window.handleChangePassword = handleChangePassword;
+
 // Logout function
 async function logout() {
     try {
@@ -1754,13 +1932,224 @@ function selectJob(routeId, jobNumber) {
     }
 }
 
-function nextRoute() {
-    // Check if current route has valid jobs before proceeding
-    if (!checkRouteHasJobs(currentRouteId)) {
-        console.log('Cannot create next route: no valid jobs in current route');
+// New saveRoute function that checks confidence and saves to Firebase
+async function saveRoute() {
+    const routeId = currentRouteId;
+    
+    // Debug: Log all localJobs and currentRouteId
+    console.log('=== SAVE ROUTE DEBUG ===');
+    console.log('currentRouteId:', routeId);
+    console.log('localJobs:', localJobs);
+    console.log('localJobs keys:', Object.keys(localJobs));
+    
+    // Get all jobs for this route from localJobs
+    const routeJobs = [];
+    const lowConfidenceJobs = [];
+    
+    for (const jobKey in localJobs) {
+        const job = localJobs[jobKey];
+        console.log(`Checking job ${jobKey}: routeId=${job.routeId}, currentRouteId=${routeId}`);
+        if (job.routeId === routeId) {
+            routeJobs.push(job);
+            if (job.confidence < 80) {
+                lowConfidenceJobs.push(job);
+            }
+        }
+    }
+    
+    console.log(`Found ${routeJobs.length} jobs for route ${routeId}, ${lowConfidenceJobs.length} low confidence`);
+    
+    if (routeJobs.length === 0) {
+        alert('No jobs to save for this route.');
         return;
     }
     
+    // If there are low confidence jobs, show confirmation modal
+    if (lowConfidenceJobs.length > 0) {
+        showConfirmJobsModal(lowConfidenceJobs);
+    } else {
+        // All jobs are high confidence, save directly
+        await saveAllJobsToFirebase(routeId, routeJobs);
+        createNextRoute();
+    }
+}
+
+// Show modal with low confidence jobs for user review
+function showConfirmJobsModal(lowConfidenceJobs) {
+    const modal = document.getElementById('confirmJobsModal');
+    const jobsList = document.getElementById('lowConfidenceJobsList');
+    
+    // Clear previous content
+    jobsList.innerHTML = '';
+    
+    // Create editable fields for each low confidence job
+    lowConfidenceJobs.forEach(job => {
+        const jobDiv = document.createElement('div');
+        jobDiv.className = 'bg-[#283039] p-4 rounded-lg border border-gray-600';
+        jobDiv.innerHTML = `
+            <div class="flex justify-between items-center mb-3">
+                <h4 class="text-white font-semibold">Job ${job.jobNumber}</h4>
+                <span class="text-red-500 text-sm">${job.confidence}% confidence</span>
+            </div>
+            
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Collection Postcode</label>
+                    <input 
+                        type="text" 
+                        data-job-key="${job.routeId}-${job.jobNumber}" 
+                        data-field="collection_address"
+                        value="${job.parsedData.collection_address || ''}"
+                        class="w-full px-3 py-2 bg-[#1a1f24] border border-gray-600 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Enter collection postcode"
+                    >
+                </div>
+                
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Delivery Postcode</label>
+                    <input 
+                        type="text" 
+                        data-job-key="${job.routeId}-${job.jobNumber}" 
+                        data-field="postcode_delivery"
+                        value="${job.parsedData.postcode_delivery || ''}"
+                        class="w-full px-3 py-2 bg-[#1a1f24] border border-gray-600 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Enter delivery postcode"
+                    >
+                </div>
+                
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">REG Number</label>
+                    <input 
+                        type="text" 
+                        data-job-key="${job.routeId}-${job.jobNumber}" 
+                        data-field="reg_number"
+                        value="${job.parsedData.reg_number || ''}"
+                        class="w-full px-3 py-2 bg-[#1a1f24] border border-gray-600 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Enter REG number"
+                    >
+                </div>
+                
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Price (£)</label>
+                    <input 
+                        type="number" 
+                        step="0.01"
+                        data-job-key="${job.routeId}-${job.jobNumber}" 
+                        data-field="price"
+                        value="${job.parsedData.price || ''}"
+                        class="w-full px-3 py-2 bg-[#1a1f24] border border-gray-600 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Enter price"
+                    >
+                </div>
+            </div>
+        `;
+        jobsList.appendChild(jobDiv);
+    });
+    
+    // Show modal
+    modal.classList.remove('hidden');
+}
+
+// Hide confirmation modal
+function hideConfirmJobsModal() {
+    const modal = document.getElementById('confirmJobsModal');
+    modal.classList.add('hidden');
+}
+
+// Confirm and save jobs after user review
+async function confirmAndSaveJobs() {
+    const routeId = currentRouteId;
+    
+    // Update localJobs with edited values from the modal
+    const inputs = document.querySelectorAll('#lowConfidenceJobsList input');
+    inputs.forEach(input => {
+        const jobKey = input.getAttribute('data-job-key');
+        const field = input.getAttribute('data-field');
+        const value = input.value;
+        
+        if (localJobs[jobKey]) {
+            if (field === 'price') {
+                localJobs[jobKey].parsedData[field] = parseFloat(value) || 0;
+            } else {
+                localJobs[jobKey].parsedData[field] = value;
+            }
+        }
+    });
+    
+    // Get all jobs for this route
+    const routeJobs = [];
+    for (const jobKey in localJobs) {
+        const job = localJobs[jobKey];
+        if (job.routeId === routeId) {
+            routeJobs.push(job);
+        }
+    }
+    
+    // Hide modal
+    hideConfirmJobsModal();
+    
+    // Save all jobs to Firebase
+    await saveAllJobsToFirebase(routeId, routeJobs);
+    createNextRoute();
+}
+
+// Save all jobs for a route to Firebase
+async function saveAllJobsToFirebase(routeId, jobs) {
+    try {
+        console.log(`Saving ${jobs.length} jobs for route ${routeId} to Firebase...`);
+        
+        const savedJobIds = [];
+        
+        for (const job of jobs) {
+            const jobData = {
+                routeId: job.routeId,
+                jobNumber: job.jobNumber,
+                rawText: job.rawText,
+                parsedData: job.parsedData,
+                status: 'parsed',
+                createdAt: new Date(),
+                assignedRouteId: `route_${routeId}`
+            };
+            
+            const docRef = await window.firebaseAddDoc(window.firebaseCollection(window.firestore, "jobs"), jobData);
+            console.log(`Job ${job.jobNumber} saved to Firebase with ID:`, docRef.id);
+            savedJobIds.push(docRef.id);
+            
+            // Store in savedJobs
+            if (!savedJobs[`route_${routeId}`]) {
+                savedJobs[`route_${routeId}`] = [];
+            }
+            savedJobs[`route_${routeId}`].push({
+                firebaseId: docRef.id,
+                routeId: job.routeId,
+                jobNumber: job.jobNumber,
+                data: jobData
+            });
+            
+            // Remove from localJobs after saving
+            const jobKey = `${job.routeId}-${job.jobNumber}`;
+            delete localJobs[jobKey];
+        }
+        
+        // Create route summary
+        console.log(`Creating route summary for route ${routeId}...`);
+        await createRouteSummary(routeId);
+        
+        // Update route count
+        setTimeout(() => {
+            updateRouteCount();
+        }, 1000);
+        
+        console.log(`✅ Route ${routeId} saved successfully with ${jobs.length} jobs`);
+        
+    } catch (error) {
+        console.error('Error saving jobs to Firebase:', error);
+        alert('Error saving route. Please try again.');
+    }
+}
+
+// Create next route after saving
+function createNextRoute() {
     // Minimize current route
     minimizeRoute(currentRouteId);
     
@@ -1775,6 +2164,11 @@ function nextRoute() {
     // Create new route
     currentRouteId++;
     createNewRoute(currentRouteId);
+}
+
+// Legacy function for compatibility
+function nextRoute() {
+    saveRoute();
 }
 
 function minimizeRoute(routeId) {
@@ -2053,9 +2447,9 @@ function createNewRoute(routeId, existingData = null) {
     
     const nextRouteBtn = document.createElement('button');
     nextRouteBtn.id = `next-route-btn-${routeId}`;
-    nextRouteBtn.className = 'w-full h-8 px-4 rounded-md bg-[#283039] text-white text-sm font-bold hover:bg-[#3a444e] transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
-    nextRouteBtn.onclick = nextRoute;
-    nextRouteBtn.textContent = 'Next Route';
+    nextRouteBtn.className = 'w-full h-8 px-4 rounded-md bg-green-600 text-white text-sm font-bold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+    nextRouteBtn.onclick = saveRoute;
+    nextRouteBtn.textContent = 'Save Route';
     nextRouteBtn.disabled = true; // Initially disabled
     
     const nextRouteContainer = document.createElement('div');

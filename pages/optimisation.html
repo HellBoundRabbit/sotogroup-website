@@ -5,7 +5,11 @@
     <link crossorigin="" href="https://fonts.gstatic.com/" rel="preconnect"/>
     <link as="style" href="https://fonts.googleapis.com/css2?display=swap&amp;family=Inter%3Awght%40400%3B500%3B700%3B900&amp;family=Noto+Sans%3Awght%40400%3B500%3B700%3B900" onload="this.rel='stylesheet'" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
-    <title>SOTO Routes - Logistics Planning</title>
+    <link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png">
+<title>SOTO Routes - Logistics Planning</title>
     <link href="data:image/x-icon;base64," rel="icon" type="image/x-icon"/>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -106,14 +110,40 @@
                 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/availability.html">Availability</a>
             </nav>
             <div class="flex items-center gap-4">
-                <button class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors" onclick="showNotifications()">
-                    <span class="material-symbols-outlined text-xl">notifications</span>
-                </button>
+                <div class="relative">
+                    <button class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors relative" onclick="showNotifications()">
+                        <span class="material-symbols-outlined text-xl">notifications</span>
+                        <!-- Notification Badge -->
+                        <span class="notification-badge absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold hidden">0</span>
+                    </button>
+                    <!-- Notifications Dropdown -->
+                    <div id="notificationDropdown" class="hidden absolute right-0 mt-2 w-80 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+                        <div class="px-4 py-3 border-b border-[#283039]">
+                            <h3 class="text-white font-semibold text-sm">Notifications</h3>
+                        </div>
+                        <div id="notificationsList" class="max-h-64 overflow-y-auto">
+                            <!-- Notifications will be loaded here -->
+                        </div>
+                    </div>
+                </div>
                 <button class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors text-sm" onclick="logout()">
                     Logout
                 </button>
-                <div class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden">
-                    <img src="/assets/logos/c-logo.svg" alt="C Logo" class="w-full h-full object-cover">
+                <div class="relative">
+                    <button onclick="toggleProfileDropdown()" class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
+                        <img src="/assets/logos/c-logo.svg" alt="C Logo" class="w-full h-full object-cover">
+                    </button>
+                    <!-- Profile Dropdown -->
+                    <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50">
+                        <button onclick="showChangePassword()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors rounded-t-lg">
+                            <span class="material-symbols-outlined inline-block align-middle text-base mr-2">lock</span>
+                            Change Password
+                        </button>
+                        <button onclick="viewUsage()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors rounded-b-lg">
+                            <span class="material-symbols-outlined inline-block align-middle text-base mr-2">calendar_month</span>
+                            View Usage
+                        </button>
+                    </div>
                 </div>
             </div>
         </header>
@@ -367,8 +397,181 @@
         let drivers = [];
 
         // Navigation functions
-        function showNotifications() {
-            alert('Notifications feature coming soon!');
+        // Update notification count across all office pages
+        async function updateNotificationCount() {
+            try {
+                const storedUser = localStorage.getItem('soto_user_identity');
+                if (!storedUser) return;
+                
+                const userData = JSON.parse(storedUser);
+                const officeId = userData.officeId;
+                
+                // Get all notifications for this office (no index required)
+                const notificationsQuery = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'notifications'),
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                
+                const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
+                
+                // Filter unread notifications on client side
+                const unreadCount = notificationsSnapshot.docs.filter(doc => !doc.data().read).length;
+                
+                // Update notification badge on all pages
+                updateNotificationBadge(unreadCount);
+                
+            } catch (error) {
+                console.error('Error updating notification count:', error);
+            }
+        }
+
+        // Update notification badge display
+        function updateNotificationBadge(count) {
+            const badgeElements = document.querySelectorAll('.notification-badge');
+            badgeElements.forEach(badge => {
+                if (count > 0) {
+                    badge.textContent = count > 99 ? '99+' : count.toString();
+                    badge.classList.remove('hidden');
+                } else {
+                    badge.classList.add('hidden');
+                }
+            });
+        }
+
+        // Show notifications dropdown
+        async function showNotifications() {
+            const dropdown = document.getElementById('notificationDropdown');
+            if (!dropdown) return;
+            
+            // Toggle dropdown visibility
+            dropdown.classList.toggle('hidden');
+            
+            if (!dropdown.classList.contains('hidden')) {
+                // Load and display notifications
+                await loadNotifications();
+            }
+        }
+
+        // Load notifications for dropdown
+        async function loadNotifications() {
+            try {
+                const storedUser = localStorage.getItem('soto_user_identity');
+                if (!storedUser) return;
+                
+                const userData = JSON.parse(storedUser);
+                const officeId = userData.officeId;
+                
+                // Get all notifications for this office (no index required)
+                const notificationsQuery = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'notifications'),
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                
+                const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
+                const notificationsList = document.getElementById('notificationsList');
+                
+                if (notificationsSnapshot.empty) {
+                    notificationsList.innerHTML = `
+                        <div class="px-4 py-3 text-gray-400 text-sm text-center">
+                            No notifications yet
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Sort notifications by createdAt (descending) and take last 10
+                const notifications = notificationsSnapshot.docs
+                    .map(doc => ({ id: doc.id, ...doc.data() }))
+                    .sort((a, b) => b.createdAt.toDate() - a.createdAt.toDate())
+                    .slice(0, 10);
+                
+                // Clear existing notifications
+                notificationsList.innerHTML = '';
+                
+                notifications.forEach(notification => {
+                    const notificationElement = createNotificationElement(notification.id, notification);
+                    notificationsList.appendChild(notificationElement);
+                });
+                
+            } catch (error) {
+                console.error('Error loading notifications:', error);
+            }
+        }
+
+        // Create notification element for dropdown
+        function createNotificationElement(notificationId, notification) {
+            const element = document.createElement('div');
+            element.className = `px-4 py-3 border-b border-[#283039] cursor-pointer hover:bg-[#283039] transition-colors ${!notification.read ? 'bg-[#283039]' : ''}`;
+            element.onclick = () => handleNotificationClick(notificationId, notification);
+            
+            const timeAgo = getTimeAgo(notification.createdAt.toDate());
+            
+            element.innerHTML = `
+                <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                        <div class="text-white text-sm font-medium">${notification.message}</div>
+                        <div class="text-[#9cabba] text-xs mt-1">${timeAgo}</div>
+                    </div>
+                    ${!notification.read ? '<div class="w-2 h-2 bg-blue-500 rounded-full ml-2 mt-1"></div>' : ''}
+                </div>
+            `;
+            
+            return element;
+        }
+
+        // Handle notification click
+        async function handleNotificationClick(notificationId, notification) {
+            try {
+                // Mark notification as read
+                const notificationRef = window.firebaseDoc(window.firestore, 'notifications', notificationId);
+                await window.firebaseUpdateDoc(notificationRef, { read: true });
+                
+                // Hide dropdown
+                document.getElementById('notificationDropdown').classList.add('hidden');
+                
+                // Navigate to availability page with specific date
+                const date = new Date(notification.date);
+                const year = date.getFullYear();
+                const month = date.getMonth() + 1; // JavaScript months are 0-indexed
+                
+                // Navigate to availability page with date parameters
+                window.location.href = `/pages/availability.html?year=${year}&month=${month}&openDate=${notification.date}`;
+                
+            } catch (error) {
+                console.error('Error handling notification click:', error);
+            }
+        }
+
+        // Get time ago string
+        function getTimeAgo(date) {
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+            
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins}m ago`;
+            if (diffHours < 24) return `${diffHours}h ago`;
+            if (diffDays < 7) return `${diffDays}d ago`;
+            
+            return date.toLocaleDateString();
+        }
+
+        // Initialize notification system
+        async function initializeNotifications() {
+            // Update notification count on page load
+            await updateNotificationCount();
+            
+            // Set up click outside to close dropdown
+            document.addEventListener('click', function(event) {
+                const dropdown = document.getElementById('notificationDropdown');
+                const button = event.target.closest('button[onclick="showNotifications()"]');
+                
+                if (!button && !dropdown.contains(event.target)) {
+                    dropdown.classList.add('hidden');
+                }
+            });
         }
 
         function logout() {
@@ -625,7 +828,60 @@
                     }
                 });
                 
-                // Driver assignments are saved to Firebase and restored when "Load Last Assigned Drivers" is clicked
+                // Populate driver assignments if they exist (same logic as displayRoutesWithAssignments)
+                savedRoutes.forEach((routeData, index) => {
+                    const routeNumber = index + 1;
+                    
+                    if (routeData.route.assignedDriverName) {
+                        const driverElement = document.getElementById(`firebase-route-${routeNumber}-driver`);
+                        const locationElement = document.getElementById(`firebase-route-${routeNumber}-driver-location`);
+                        const regElement = document.getElementById(`firebase-route-${routeNumber}-reg`);
+                        
+                        if (driverElement) {
+                            driverElement.textContent = routeData.route.assignedDriverName;
+                        }
+                        
+                        if (locationElement) {
+                            locationElement.textContent = routeData.route.assignedDriverPostcode || '-';
+                        }
+                        
+                        if (regElement && routeData.jobs.length > 0) {
+                            const firstJob = routeData.jobs[0];
+                            const regNumber = firstJob?.parsedData?.reg_number || '-';
+                            regElement.textContent = regNumber;
+                        }
+                        
+                        // Restore carryover information if it exists
+                        if (routeData.route.carryoverPostcode) {
+                            const carryoverDisplay = document.getElementById(`firebase-route-${routeNumber}-carryover-display`);
+                            const carryoverPostcode = document.getElementById(`firebase-route-${routeNumber}-carryover-postcode`);
+                            if (carryoverDisplay) carryoverDisplay.classList.remove('hidden');
+                            if (carryoverPostcode) carryoverPostcode.textContent = routeData.route.carryoverPostcode;
+                        }
+                        
+                        // Restore route score if it exists
+                        if (routeData.route.routeScore) {
+                            const scoreElement = document.getElementById(`firebase-route-${routeNumber}-score-text`);
+                            const scoreContainer = document.getElementById(`firebase-route-${routeNumber}-score`);
+                            
+                            if (scoreElement) {
+                                scoreElement.textContent = routeData.route.routeScore.score;
+                            }
+                            
+                            if (scoreContainer) {
+                                if (routeData.route.routeScore.color === 'green') {
+                                    scoreContainer.className = 'absolute top-0 right-0 bg-green-600 rounded-bl-lg px-2 py-1';
+                                } else if (routeData.route.routeScore.color === 'orange') {
+                                    scoreContainer.className = 'absolute top-0 right-0 bg-orange-500 rounded-bl-lg px-2 py-1';
+                                } else {
+                                    scoreContainer.className = 'absolute top-0 right-0 bg-red-600 rounded-bl-lg px-2 py-1';
+                                }
+                            }
+                        }
+                        
+                        console.log(`✅ Loaded assignment: ${routeData.route.assignedDriverName} to route ${routeNumber}`);
+                    }
+                });
                 
                 console.log(`Displayed ${savedRoutes.length} routes successfully`);
                 
@@ -1657,6 +1913,9 @@
             // Use the optimal assignment algorithm instead of simple direct assignment
             await assignDriversToSavedRoutes(availableDrivers);
             
+            // Track optimization usage for billing
+            await trackOptimizationUsage();
+            
             // Hide progress modal
             hideOptimizationProgress();
         }
@@ -1766,6 +2025,68 @@
                 stepElement.querySelector('.material-symbols-outlined').classList.add('text-green-500');
                 stepElement.querySelector('span:last-child').classList.remove('text-gray-400');
                 stepElement.querySelector('span:last-child').classList.add('text-white');
+            }
+        }
+        
+        // Track optimization usage for billing
+        async function trackOptimizationUsage() {
+            try {
+                // Get office ID from stored user
+                const storedUser = localStorage.getItem('soto_user_identity');
+                if (!storedUser) {
+                    console.warn('No user data found for tracking');
+                    return;
+                }
+                
+                const userData = JSON.parse(storedUser);
+                const officeId = userData.officeId;
+                
+                if (!officeId) {
+                    console.warn('No office ID found for tracking');
+                    return;
+                }
+                
+                // Get current date
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = now.getMonth() + 1; // 1-12
+                const day = now.getDate();
+                
+                // Create document ID based on office, year, month, day
+                const docId = `${officeId}_${year}_${String(month).padStart(2, '0')}_${String(day).padStart(2, '0')}`;
+                
+                // Check if document exists for today
+                const usageDocRef = window.firebaseDoc(window.firestore, 'optimization_usage', docId);
+                const usageDoc = await window.firebaseGetDoc(usageDocRef);
+                
+                if (usageDoc.exists()) {
+                    // Increment count
+                    const currentCount = usageDoc.data().count || 0;
+                    await window.firebaseSetDoc(usageDocRef, {
+                        officeId: officeId,
+                        year: year,
+                        month: month,
+                        day: day,
+                        count: currentCount + 1,
+                        lastOptimization: now
+                    });
+                    console.log(`📊 Usage tracked: ${officeId} - Day ${day}/${month}/${year} - Count: ${currentCount + 1}`);
+                } else {
+                    // Create new document with count = 1
+                    await window.firebaseSetDoc(usageDocRef, {
+                        officeId: officeId,
+                        year: year,
+                        month: month,
+                        day: day,
+                        count: 1,
+                        firstOptimization: now,
+                        lastOptimization: now
+                    });
+                    console.log(`📊 Usage tracked: ${officeId} - Day ${day}/${month}/${year} - Count: 1 (first)`);
+                }
+            } catch (error) {
+                console.error('Error tracking optimization usage:', error);
+                // Don't throw error - tracking shouldn't block optimization
             }
         }
         
@@ -2524,6 +2845,11 @@
                 assignment.routeData.route.assignedDriverName = driverName;
                 assignment.routeData.route.assignedDriverPostcode = driverHome;
                 
+                // Store carryover information if it exists
+                if (assignment.hasCarryover) {
+                    assignment.routeData.route.carryoverPostcode = assignment.carryoverPostcode;
+                }
+                
                 // Get REG number from first job
                 const firstJob = assignment.routeData.jobs[0];
                 const regNumber = firstJob?.parsedData?.reg_number || '-';
@@ -2625,6 +2951,9 @@
                         scoreContainer.className = 'absolute top-0 right-0 bg-red-600 rounded-bl-lg px-2 py-1';
                     }
                 }
+                
+                // CRITICAL: Save the route score to the route data for persistence
+                assignment.routeData.route.routeScore = routeScore;
                 
                 console.log(`✅ Assigned ${driverName} to route ${routeNumber} (Score: ${routeScore.score}/100)`);
             }
@@ -3472,8 +3801,58 @@
                 const routeDiv = createRouteElement(routeData.route, routeData.jobs, routeNumber);
                 routesContainer.appendChild(routeDiv);
                 
-                // Don't calculate travel times when loading last assignments
-                // Travel times remain as "-" until a new optimization is run
+                // Populate driver assignment data if it exists
+                if (routeData.route.assignedDriverName) {
+                    const driverElement = document.getElementById(`firebase-route-${routeNumber}-driver`);
+                    const locationElement = document.getElementById(`firebase-route-${routeNumber}-driver-location`);
+                    const regElement = document.getElementById(`firebase-route-${routeNumber}-reg`);
+                    
+                    if (driverElement) {
+                        driverElement.textContent = routeData.route.assignedDriverName;
+                    }
+                    
+                    if (locationElement) {
+                        locationElement.textContent = routeData.route.assignedDriverPostcode || '-';
+                    }
+                    
+                    // Get REG number from first job
+                    if (regElement && routeData.jobs.length > 0) {
+                        const firstJob = routeData.jobs[0];
+                        const regNumber = firstJob?.parsedData?.reg_number || '-';
+                        regElement.textContent = regNumber;
+                    }
+                    
+                    // Restore carryover information if it exists
+                    if (routeData.route.carryoverPostcode) {
+                        const carryoverDisplay = document.getElementById(`firebase-route-${routeNumber}-carryover-display`);
+                        const carryoverPostcode = document.getElementById(`firebase-route-${routeNumber}-carryover-postcode`);
+                        if (carryoverDisplay) carryoverDisplay.classList.remove('hidden');
+                        if (carryoverPostcode) carryoverPostcode.textContent = routeData.route.carryoverPostcode;
+                    }
+                    
+                    // Restore route score if it exists
+                    if (routeData.route.routeScore) {
+                        const scoreElement = document.getElementById(`firebase-route-${routeNumber}-score-text`);
+                        const scoreContainer = document.getElementById(`firebase-route-${routeNumber}-score`);
+                        
+                        if (scoreElement) {
+                            scoreElement.textContent = routeData.route.routeScore.score;
+                        }
+                        
+                        if (scoreContainer) {
+                            // Apply color based on score
+                            if (routeData.route.routeScore.color === 'green') {
+                                scoreContainer.className = 'absolute top-0 right-0 bg-green-600 rounded-bl-lg px-2 py-1';
+                            } else if (routeData.route.routeScore.color === 'orange') {
+                                scoreContainer.className = 'absolute top-0 right-0 bg-orange-500 rounded-bl-lg px-2 py-1';
+                            } else {
+                                scoreContainer.className = 'absolute top-0 right-0 bg-red-600 rounded-bl-lg px-2 py-1';
+                            }
+                        }
+                    }
+                    
+                    console.log(`✅ Restored assignment: ${routeData.route.assignedDriverName} to route ${routeNumber}`);
+                }
             }
         }
 
@@ -3680,6 +4059,10 @@
                 await waitForFirebase();
                 await displayRoutesFromFirebase();
                 console.log('Initial routes loaded');
+                
+                // Initialize notification system
+                await initializeNotifications();
+                
             } catch (error) {
                 console.error('Error initializing routes:', error);
                 // Show a message to user
@@ -3692,6 +4075,155 @@
                 }
             }
         });
+
+        // Profile dropdown functions
+        function toggleProfileDropdown() {
+            const dropdown = document.getElementById('profileDropdown');
+            dropdown.classList.toggle('hidden');
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+            const dropdown = document.getElementById('profileDropdown');
+            const profileButton = event.target.closest('button[onclick="toggleProfileDropdown()"]');
+            
+            if (!profileButton && !dropdown.contains(event.target)) {
+                dropdown.classList.add('hidden');
+            }
+        });
+
+        function showChangePassword() {
+            document.getElementById('changePasswordModal').classList.remove('hidden');
+            document.getElementById('profileDropdown').classList.add('hidden');
+        }
+
+        function hideChangePassword() {
+            document.getElementById('changePasswordModal').classList.add('hidden');
+            document.getElementById('changePasswordForm').reset();
+        }
+
+        // View usage calendar
+        function viewUsage() {
+            const storedUser = localStorage.getItem('soto_user_identity');
+            if (storedUser) {
+                const userData = JSON.parse(storedUser);
+                window.location.href = `/pages/office-calendar.html?officeId=${userData.officeId}`;
+            }
+        }
+
+        // Handle password change
+        async function handleChangePassword(event) {
+            event.preventDefault();
+            
+            const currentPassword = document.getElementById('currentPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            
+            if (newPassword !== confirmPassword) {
+                alert('New passwords do not match');
+                return;
+            }
+            
+            try {
+                const user = window.auth.currentUser;
+                if (!user) {
+                    alert('No user logged in');
+                    return;
+                }
+                
+                // Re-authenticate user with current password
+                const credential = window.EmailAuthProvider.credential(user.email, currentPassword);
+                await window.reauthenticateWithCredential(user, credential);
+                
+                // Update password
+                await window.updatePassword(user, newPassword);
+                
+                alert('Password changed successfully!');
+                hideChangePassword();
+                
+            } catch (error) {
+                console.error('Error changing password:', error);
+                
+                if (error.code === 'auth/wrong-password') {
+                    alert('Current password is incorrect');
+                } else if (error.code === 'auth/weak-password') {
+                    alert('New password is too weak. Please choose a stronger password.');
+                } else if (error.code === 'auth/requires-recent-login') {
+                    alert('Please log out and log back in, then try changing your password again.');
+                } else {
+                    alert('Error changing password: ' + error.message);
+                }
+            }
+        }
+
+        // Make functions globally available
+        window.toggleProfileDropdown = toggleProfileDropdown;
+        window.showChangePassword = showChangePassword;
+        window.hideChangePassword = hideChangePassword;
+        window.viewUsage = viewUsage;
+        window.handleChangePassword = handleChangePassword;
+
+        // Add event listener for password form
+        document.addEventListener('DOMContentLoaded', function() {
+            const changePasswordForm = document.getElementById('changePasswordForm');
+            if (changePasswordForm) {
+                changePasswordForm.addEventListener('submit', handleChangePassword);
+            }
+        });
     </script>
+
+    <!-- Change Password Modal -->
+    <div id="changePasswordModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-6 w-full max-w-md">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-white">Change Password</h3>
+                <button onclick="hideChangePassword()" class="text-gray-400 hover:text-white">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            
+            <form id="changePasswordForm" class="space-y-4">
+                <div>
+                    <label for="currentPassword" class="block text-sm font-medium text-gray-300 mb-2">Current Password</label>
+                    <input 
+                        type="password" 
+                        id="currentPassword" 
+                        required 
+                        class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Enter current password"
+                    >
+                </div>
+                
+                <div>
+                    <label for="newPassword" class="block text-sm font-medium text-gray-300 mb-2">New Password</label>
+                    <input 
+                        type="password" 
+                        id="newPassword" 
+                        required 
+                        class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Enter new password"
+                    >
+                </div>
+                
+                <div>
+                    <label for="confirmPassword" class="block text-sm font-medium text-gray-300 mb-2">Confirm New Password</label>
+                    <input 
+                        type="password" 
+                        id="confirmPassword" 
+                        required 
+                        class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Confirm new password"
+                    >
+                </div>
+
+                <button 
+                    type="submit"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+                >
+                    Change Password
+                </button>
+            </form>
+        </div>
+    </div>
 </body>
 </html>
