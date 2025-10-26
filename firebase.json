@@ -1,6 +1,9 @@
 {
   "firestore": {
-    "rules": "firestore.rules"
+    "database": "(default)",
+    "location": "eur3",
+    "rules": "firestore.rules",
+    "indexes": "default"
   },
   "functions": [
     {
