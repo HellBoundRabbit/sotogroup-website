@@ -2,8 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SOTO Routes - Login</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png">
+<title>SOTO Routes - Login</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -80,7 +84,7 @@
                 </div>
                 <div class="flex items-center gap-4">
                     <a href="/pages/software.html" class="text-sm text-gray-400 hover:text-white transition-colors">
-                        ← Back to Software
+                        ← Back to SOTOGroup
                     </a>
                 </div>
             </header>
@@ -103,7 +107,8 @@
                                     id="email" 
                                     name="email" 
                                     required 
-                                    class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    autocomplete="email"
+                                    class="w-full px-4 py-3 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base"
                                     placeholder="Enter your email"
                                 >
                             </div>
@@ -115,7 +120,8 @@
                                     id="password" 
                                     name="password" 
                                     required 
-                                    class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    autocomplete="current-password"
+                                    class="w-full px-4 py-3 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base"
                                     placeholder="Enter your password or temporary code"
                                 >
                             </div>
@@ -123,7 +129,8 @@
                             <button 
                                 type="submit" 
                                 id="loginBtn"
-                                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-[#1a1f24]"
+                                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-[#1a1f24] text-base"
+                                style="min-height: 44px;"
                             >
                                 Sign In
                             </button>
@@ -230,7 +237,7 @@
                     } else if (userRole === 'office') {
                         window.location.href = '/pages/soto-lp.html';
                     } else if (userRole === 'driver') {
-                        window.location.href = '/pages/driver-test.html';
+                        window.location.href = '/pages/driver-portal.html';
                     } else {
                         showMessage('Invalid user role. Please contact support.');
                     }
@@ -304,7 +311,7 @@
                     } else if (userData.role === 'office') {
                         window.location.href = '/pages/soto-lp.html';
                     } else if (userData.role === 'driver') {
-                        window.location.href = '/pages/driver-test.html';
+                        window.location.href = '/pages/driver-portal.html';
                     }
                 }
             } catch (error) {

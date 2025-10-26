@@ -108,6 +108,7 @@
                 <a class="bg-[#283039] text-white text-sm font-medium rounded-md px-4 py-2" href="#">Optimisation</a>
                 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/drivers.html">Drivers</a>
                 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/availability.html">Availability</a>
+                <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/expenses.html">Expenses</a>
             </nav>
             <div class="flex items-center gap-4">
                 <div class="relative">
@@ -574,10 +575,25 @@
             });
         }
 
-        function logout() {
+        async function logout() {
             if (confirm('Are you sure you want to logout?')) {
-                localStorage.removeItem('soto_user_identity');
-                window.location.href = '/';
+                try {
+                    // Clear stored user identity
+                    localStorage.removeItem('soto_user_identity');
+                    
+                    // Sign out from Firebase
+                    await window.signOut(window.auth);
+                    
+                    console.log('User logged out successfully');
+                    
+                    // Redirect to login page
+                    window.location.href = '/pages/soto-routes-login.html';
+                } catch (error) {
+                    console.error('Logout error:', error);
+                    // Even if logout fails, clear localStorage and redirect
+                    localStorage.removeItem('soto_user_identity');
+                    window.location.href = '/pages/soto-routes-login.html';
+                }
             }
         }
 

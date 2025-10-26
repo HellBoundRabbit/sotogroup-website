@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>My Expenses - SOTO Routes</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, where, updateDoc, doc, deleteDoc, getDoc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
+        
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA",
+            authDomain: "soto-routes.firebaseapp.com",
+            projectId: "soto-routes",
+            storageBucket: "soto-routes.firebasestorage.app",
+            messagingSenderId: "440989695549",
+            appId: "1:440989695549:web:0bce8b92a46f7f79953454",
+            measurementId: "G-4E3G40QQ9L"
+        };
+        
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const storage = getStorage(app);
+        
+        // Make Firebase available globally
+        window.firebaseApp = app;
+        window.db = db;
+        window.auth = auth;
+        window.storage = storage;
+        window.firebaseCollection = collection;
+        window.firebaseAddDoc = addDoc;
+        window.firebaseGetDocs = getDocs;
+        window.firebaseQuery = query;
+        window.firebaseOrderBy = orderBy;
+        window.firebaseLimit = limit;
+        window.firebaseWhere = where;
+        window.firebaseUpdateDoc = updateDoc;
+        window.firebaseDoc = doc;
+        window.firebaseDeleteDoc = deleteDoc;
+        window.firebaseGetDoc = getDoc;
+        window.firebaseSetDoc = setDoc;
+        window.serverTimestamp = serverTimestamp;
+        
+        // Make individual functions globally accessible
+        window.query = query;
+        window.collection = collection;
+        window.addDoc = addDoc;
+        window.getDocs = getDocs;
+        window.updateDoc = updateDoc;
+        window.where = where;
+        window.doc = doc;
+        window.getDoc = getDoc;
+        window.setDoc = setDoc;
+        window.deleteDoc = deleteDoc;
+        window.signOut = signOut;
+        window.ref = ref;
+        window.uploadBytes = uploadBytes;
+        window.getDownloadURL = getDownloadURL;
+        
+        console.log('Firebase initialized successfully!');
+        
+        // Initialize the app after Firebase is ready
+        initializeDriverExpensesApp();
+    </script>
+    <style>
+        /* Mobile-optimized touch targets */
+        .touch-target { min-height: 44px; min-width: 44px; }
+        
+        /* Status badge colors */
+        .status-pending { background-color: #f59e0b; }
+        .status-validated { background-color: #10b981; }
+        .status-paid { background-color: #3b82f6; }
+        .status-returned { background-color: #ef4444; }
+        
+        /* Loading overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 20, 25, 0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        
+        /* Smooth animations */
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* License plate style */
+        .license-plate {
+            background: #FFD500;
+            color: #000;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            letter-spacing: 2px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: 2px solid #000;
+        }
+    </style>
+</head>
+<body class="bg-[#0f1419] text-white min-h-screen">
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="text-center">
+            <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <p class="text-gray-400">Loading your expenses...</p>
+        </div>
+    </div>
+
+    <!-- Top Navigation -->
+    <div class="bg-[#1a1f24] border-b border-gray-800 sticky top-0 z-50">
+        <div class="flex items-center justify-between px-4 py-3">
+            <button onclick="goToPortal()" class="touch-target flex items-center text-gray-400 hover:text-white transition-colors">
+                <span class="material-symbols-outlined">arrow_back</span>
+            </button>
+            <h1 class="text-xl font-semibold">My Expenses</h1>
+            <button onclick="window.location.href='/pages/driver-paid-expenses.html'" class="touch-target flex items-center text-gray-400 hover:text-white transition-colors text-sm">
+                Paid Expenses
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container max-w-2xl mx-auto px-4 py-6 pb-24">
+        
+        <!-- Empty State -->
+        <div id="emptyState" class="hidden text-center py-16">
+            <span class="material-symbols-outlined text-6xl text-gray-600 mb-4">receipt_long</span>
+            <p class="text-gray-400 text-lg mb-6">No expense batches yet</p>
+            <p class="text-gray-500 text-sm mb-8">Create your first expense batch to get started</p>
+        </div>
+
+        <!-- Draft Batches Section -->
+        <div id="draftSection" class="hidden mb-6">
+            <h2 class="text-sm font-bold text-blue-500 mb-3 px-1">DRAFTS</h2>
+            <div id="draftBatches" class="space-y-3"></div>
+        </div>
+
+        <!-- Pending Batches Section -->
+        <div id="pendingSection" class="hidden mb-6">
+            <h2 class="text-sm font-bold text-orange-500 mb-3 px-1">PENDING VALIDATION</h2>
+            <div id="pendingBatches" class="space-y-3"></div>
+        </div>
+
+        <!-- Validated Batches Section -->
+        <div id="validatedSection" class="hidden mb-6">
+            <h2 class="text-sm font-bold text-green-500 mb-3 px-1">VALIDATED</h2>
+            <div id="validatedBatches" class="space-y-3"></div>
+        </div>
+
+        <!-- Returned Batches Section -->
+        <div id="returnedSection" class="hidden mb-6">
+            <h2 class="text-sm font-bold text-red-500 mb-3 px-1">RETURNED FOR REVIEW</h2>
+            <div id="returnedBatches" class="space-y-3"></div>
+        </div>
+
+    </div>
+
+    <!-- Floating Add Button -->
+    <button onclick="createNewBatch()" class="fixed bottom-6 right-6 bg-green-600 hover:bg-green-700 text-white rounded-full w-16 h-16 flex items-center justify-center shadow-lg transition-all transform hover:scale-110 active:scale-95 z-40">
+        <span class="material-symbols-outlined text-3xl">add</span>
+    </button>
+
+    <!-- Batch Detail Modal -->
+    <div id="batchModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 overflow-y-auto">
+        <div class="min-h-screen px-4 flex items-end sm:items-center justify-center">
+            <div class="bg-[#1a1f24] rounded-t-3xl sm:rounded-3xl w-full max-w-2xl transform transition-all">
+                
+                <!-- Modal Header -->
+                <div class="sticky top-0 bg-[#1a1f24] border-b border-gray-800 rounded-t-3xl z-10">
+                    <div class="flex items-center justify-between px-6 py-4">
+                        <h2 id="modalTitle" class="text-lg font-semibold px-4 py-2 rounded-lg border">DRAFT</h2>
+                        <div class="flex gap-2">
+                            <button id="deleteBatchBtn" onclick="deleteBatch()" class="touch-target text-red-500 hover:text-red-400 transition-colors hidden">
+                                <span class="material-symbols-outlined">delete</span>
+                            </button>
+                            <button onclick="closeBatchModal()" class="touch-target text-gray-400 hover:text-white transition-colors">
+                                <span class="material-symbols-outlined">close</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Content -->
+                <div class="p-6 pb-24">
+                    
+                    <!-- Registration Input -->
+                    <div class="mb-6">
+                        <label class="text-sm text-gray-400 mb-2 block">REGISTRATION</label>
+                        <input 
+                            type="text" 
+                            id="regInput" 
+                            placeholder="AB12 CDE"
+                            class="w-full bg-[#283039] text-white text-xl font-mono text-center uppercase px-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none"
+                            maxlength="8"
+                        >
+                    </div>
+
+                    <!-- Return Notes (if returned) -->
+                    <div id="returnNotesDiv" class="hidden mb-6 bg-red-900 bg-opacity-20 border border-red-500 rounded-lg p-4">
+                        <label class="text-sm text-red-400 mb-2 block">REASON FOR RETURN</label>
+                        <p id="returnNotes" class="text-white"></p>
+                    </div>
+
+                    <!-- Expenses List -->
+                    <div class="mb-6">
+                        <div class="flex items-center justify-between mb-3">
+                            <label class="text-sm text-gray-400">EXPENSES</label>
+                            <span id="totalAmount" class="text-lg font-semibold text-green-500">£0.00</span>
+                        </div>
+                        <div id="expensesList" class="space-y-2 mb-4">
+                            <!-- Expenses will be added here -->
+                        </div>
+                        <button id="addExpenseBtn" onclick="addExpense()" class="w-1/2 mx-auto py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2 touch-target">
+                            <span class="material-symbols-outlined">add</span>
+                            Add Expense
+                        </button>
+                    </div>
+
+                    <!-- Notes Section -->
+                    <div id="notesSection" class="mb-6">
+                        <label class="text-sm text-gray-400 mb-2 block">NOTES (Optional)</label>
+                        <textarea 
+                            id="notesInput" 
+                            placeholder="Add any additional notes..."
+                            class="w-full bg-[#283039] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none resize-none"
+                            rows="3"
+                        ></textarea>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="space-y-3" id="actionButtons">
+                        <button onclick="saveDraft()" class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors touch-target">
+                            Save as Draft
+                        </button>
+                        <button id="submitBtn" onclick="submitBatch()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors touch-target">
+                            Submit for Processing
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Expense Modal -->
+    <div id="expenseModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 overflow-y-auto">
+        <div class="min-h-screen px-4 flex items-end sm:items-center justify-center">
+            <div class="bg-[#1a1f24] rounded-t-3xl sm:rounded-3xl w-full max-w-lg transform transition-all">
+                
+                <!-- Modal Header -->
+                <div class="sticky top-0 bg-[#1a1f24] border-b border-gray-800 rounded-t-3xl z-10">
+                    <div class="flex items-center justify-between px-6 py-4">
+                        <button onclick="closeExpenseModal()" class="touch-target text-gray-400 hover:text-white transition-colors">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                        <h2 class="text-lg font-semibold">Add Expense</h2>
+                        <div class="w-10"></div>
+                    </div>
+                </div>
+
+                <!-- Modal Content -->
+                <div class="p-6 pb-24">
+                    
+                    <!-- Category Selection -->
+                    <div class="mb-6">
+                        <label class="text-sm text-gray-400 mb-3 block">CATEGORY</label>
+                        <div class="grid grid-cols-2 gap-3">
+                            <button onclick="selectCategory('Fuel')" class="category-btn p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-2">
+                                <span class="text-3xl">⛽</span>
+                                <span class="text-sm">Fuel</span>
+                            </button>
+                            <button onclick="selectCategory('Charge')" class="category-btn p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-2">
+                                <span class="text-3xl">🔌</span>
+                                <span class="text-sm">Charge</span>
+                            </button>
+                            <button onclick="selectCategory('Train')" class="category-btn p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-2">
+                                <span class="text-3xl">🚂</span>
+                                <span class="text-sm">Train</span>
+                            </button>
+                            <button onclick="selectCategory('Bus')" class="category-btn p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-2">
+                                <span class="text-3xl">🚌</span>
+                                <span class="text-sm">Bus</span>
+                            </button>
+                            <button onclick="selectCategory('Taxi')" class="category-btn p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-2">
+                                <span class="text-3xl">🚕</span>
+                                <span class="text-sm">Taxi</span>
+                            </button>
+                            <button onclick="selectCategory('Car Wash')" class="category-btn p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-2">
+                                <span class="text-3xl">🧼</span>
+                                <span class="text-sm">Car Wash</span>
+                            </button>
+                            <button onclick="selectCategory('Tolls')" class="category-btn p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-2">
+                                <span class="text-3xl">🛣️</span>
+                                <span class="text-sm">Tolls</span>
+                            </button>
+                            <button onclick="selectCategory('Other')" class="category-btn p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-2">
+                                <span class="text-3xl">📝</span>
+                                <span class="text-sm">Other</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Amount Input -->
+                    <div class="mb-6">
+                        <label class="text-sm text-gray-400 mb-2 block">AMOUNT (£)</label>
+                        <input 
+                            type="number" 
+                            id="amountInput" 
+                            placeholder="0.00"
+                            step="0.01"
+                            min="0"
+                            class="w-full bg-[#283039] text-white text-2xl text-center px-4 py-4 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none"
+                        >
+                    </div>
+
+                    <!-- Photo Upload -->
+                    <div class="mb-6">
+                        <label class="text-sm text-gray-400 mb-2 block">RECEIPT PHOTOS (Optional)</label>
+                        <input 
+                            type="file" 
+                            id="photoInput" 
+                            accept="image/*"
+                            multiple
+                            capture="environment"
+                            class="hidden"
+                            onchange="handlePhotoSelect(event)"
+                        >
+                        <button onclick="document.getElementById('photoInput').click()" class="w-full py-3 bg-[#283039] hover:bg-[#3a4552] text-white rounded-lg transition-colors flex items-center justify-center gap-2 touch-target border border-dashed border-gray-600">
+                            <span class="material-symbols-outlined">add_a_photo</span>
+                            Add Photos
+                        </button>
+                        <div id="photoPreview" class="mt-3 grid grid-cols-3 gap-2"></div>
+                    </div>
+
+                    <!-- Save Button -->
+                    <button onclick="saveExpense()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors touch-target">
+                        Save Expense
+                    </button>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Photo Viewer Modal -->
+    <div id="photoViewerModal" class="hidden fixed inset-0 bg-black bg-opacity-90 z-50">
+        <div class="w-full h-full flex flex-col">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-4 py-3 bg-black bg-opacity-50">
+                <button onclick="closePhotoViewer()" class="text-white hover:text-gray-300 transition-colors">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+                <h3 class="text-white font-semibold">View Photos</h3>
+                <div class="w-8"></div>
+            </div>
+            
+            <!-- Photo Grid -->
+            <div id="photoViewerGrid" class="flex-1 overflow-y-auto p-4">
+                <!-- Photos will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let currentUser = null;
+        let currentBatch = null;
+        let currentExpense = {
+            category: null,
+            amount: 0,
+            photos: []
+        };
+        let allBatches = [];
+
+        // Initialize function
+        function initializeDriverExpensesApp() {
+            console.log('Initializing driver expenses app...');
+            
+            window.auth.onAuthStateChanged(async function(user) {
+                console.log('Auth state changed:', user ? 'User logged in' : 'No user');
+                
+                if (!user) {
+                    window.location.href = '/pages/soto-routes-login.html';
+                    return;
+                }
+
+                try {
+                    console.log('Loading user data for:', user.uid);
+                    const userDoc = await window.getDoc(window.doc(window.db, 'users', user.uid));
+                    if (!userDoc.exists()) {
+                        console.log('User document not found');
+                        window.location.href = '/pages/soto-routes-login.html';
+                        return;
+                    }
+
+                    currentUser = { uid: user.uid, ...userDoc.data() };
+                    console.log('Current user:', currentUser);
+                    
+                    // Only drivers can access this page
+                    if (currentUser.role !== 'driver') {
+                        alert('Access denied. This page is for drivers only.');
+                        window.location.href = '/pages/soto-lp.html';
+                        return;
+                    }
+
+                    console.log('Loading expense batches...');
+                    await loadExpenseBatches();
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                    console.log('Loading complete!');
+                } catch (error) {
+                    console.error('Error loading user data:', error);
+                    console.error('Error details:', error.message);
+                    console.error('Error stack:', error.stack);
+                    alert('Error loading user data. Please try again.');
+                }
+            });
+        }
+
+        // Load all expense batches for this driver
+        async function loadExpenseBatches() {
+            try {
+                console.log('Loading expense batches for driverId:', currentUser.uid);
+                
+                const batchesQuery = window.query(
+                    window.collection(window.db, 'expenseBatches'),
+                    window.where('driverId', '==', currentUser.uid)
+                );
+
+                const batchesSnapshot = await window.getDocs(batchesQuery);
+                console.log('Found batches:', batchesSnapshot.docs.length);
+                
+                allBatches = [];
+
+                for (const doc of batchesSnapshot.docs) {
+                    const batchData = { id: doc.id, ...doc.data() };
+                    
+                    // Load expenses for this batch
+                    const expensesQuery = window.query(
+                        window.collection(window.db, 'expenses'),
+                        window.where('batchId', '==', doc.id)
+                    );
+                    const expensesSnapshot = await window.getDocs(expensesQuery);
+                    batchData.expenses = expensesSnapshot.docs.map(expDoc => ({ id: expDoc.id, ...expDoc.data() }));
+                    
+                    allBatches.push(batchData);
+                }
+
+                // Sort by updatedAt descending (client-side)
+                allBatches.sort((a, b) => {
+                    const aTime = a.updatedAt?.toDate ? a.updatedAt.toDate().getTime() : 0;
+                    const bTime = b.updatedAt?.toDate ? b.updatedAt.toDate().getTime() : 0;
+                    return bTime - aTime; // Descending order
+                });
+
+                console.log('Total batches loaded:', allBatches.length);
+                displayBatches();
+            } catch (error) {
+                console.error('Error loading batches:', error);
+                console.error('Error details:', error.message);
+                console.error('Error stack:', error.stack);
+                alert('Error loading expense batches: ' + error.message);
+            }
+        }
+
+        // Display batches by status
+        function displayBatches() {
+            const returned = allBatches.filter(b => b.status === 'returned');
+            const pending = allBatches.filter(b => b.status === 'pending');
+            const draft = allBatches.filter(b => b.status === 'draft');
+            const validated = allBatches.filter(b => b.status === 'validated');
+            const paid = allBatches.filter(b => b.status === 'paid');
+
+            // Show/hide sections - in order: draft, pending, validated, returned
+            document.getElementById('draftSection').classList.toggle('hidden', draft.length === 0);
+            document.getElementById('pendingSection').classList.toggle('hidden', pending.length === 0);
+            document.getElementById('validatedSection').classList.toggle('hidden', validated.length === 0);
+            document.getElementById('returnedSection').classList.toggle('hidden', returned.length === 0);
+            document.getElementById('emptyState').classList.toggle('hidden', allBatches.length > 0);
+
+            // Render batches - in order: draft, pending, validated, returned
+            if (draft.length > 0) renderBatchList(draft, 'draftBatches');
+            if (pending.length > 0) renderBatchList(pending, 'pendingBatches');
+            if (validated.length > 0) renderBatchList(validated, 'validatedBatches');
+            if (returned.length > 0) renderBatchList(returned, 'returnedBatches');
+        }
+
+        // Render batch list
+        function renderBatchList(batches, containerId) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = batches.map(batch => {
+                const statusColors = {
+                    draft: 'bg-gray-600',
+                    pending: 'bg-orange-500',
+                    validated: 'bg-green-500',
+                    paid: 'bg-green-500',
+                    returned: 'bg-red-500'
+                };
+                const statusColor = statusColors[batch.status] || 'bg-gray-600';
+                
+                return `
+                    <div onclick="openBatch('${batch.id}')" class="bg-[#1a1f24] rounded-lg p-4 border border-gray-800 hover:border-gray-700 transition-colors cursor-pointer fade-in">
+                        <div class="flex items-start justify-between mb-2">
+                            <div class="license-plate">${batch.registration}</div>
+                            <span class="${statusColor} px-3 py-1 rounded-full text-xs font-semibold uppercase">${batch.status}</span>
+                        </div>
+                        <div class="flex items-center justify-between mt-3">
+                            <span class="text-gray-400 text-sm">${batch.expenses?.length || 0} expense${batch.expenses?.length !== 1 ? 's' : ''}</span>
+                            <span class="text-green-500 font-semibold text-lg">£${batch.totalAmount?.toFixed(2) || '0.00'}</span>
+                        </div>
+                        ${batch.status === 'returned' ? `
+                            <div class="mt-2 text-red-400 text-sm">
+                                <span class="material-symbols-outlined text-sm">error</span>
+                                Action required
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Set modal title with status styling
+        function setStatusTitle(status) {
+            const modalTitle = document.getElementById('modalTitle');
+            const statusColors = {
+                draft: 'bg-gray-600 border-gray-600 text-white',
+                pending: 'bg-orange-500 border-orange-500 text-white',
+                validated: 'bg-green-500 border-green-500 text-white',
+                paid: 'bg-green-500 border-green-500 text-white',
+                returned: 'bg-red-500 border-red-500 text-white'
+            };
+            
+            modalTitle.textContent = status.toUpperCase();
+            modalTitle.className = `text-lg font-semibold px-4 py-2 rounded-lg border ${statusColors[status] || statusColors.draft}`;
+        }
+
+        // Create new batch
+        async function createNewBatch() {
+            currentBatch = {
+                id: null,
+                registration: '',
+                status: 'draft',
+                expenses: [],
+                totalAmount: 0
+            };
+            
+            setStatusTitle('draft');
+            document.getElementById('regInput').value = '';
+            document.getElementById('regInput').disabled = false;
+            // Show notes section for new drafts
+            const notesSection = document.getElementById('notesSection');
+            notesSection.classList.remove('hidden');
+            const notesInput = document.getElementById('notesInput');
+            notesInput.value = '';
+            notesInput.disabled = false;
+            document.getElementById('returnNotesDiv').classList.add('hidden');
+            document.getElementById('deleteBatchBtn').classList.add('hidden');
+            
+            // Show Add Expense button
+            const addExpenseBtn = document.getElementById('addExpenseBtn');
+            addExpenseBtn.classList.remove('hidden');
+            
+            // Show action buttons
+            const actionButtons = document.getElementById('actionButtons');
+            actionButtons.innerHTML = `
+                <button onclick="saveDraft()" class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors touch-target">
+                    Save as Draft
+                </button>
+                <button onclick="submitBatch()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors touch-target">
+                    Submit for Processing
+                </button>
+            `;
+            
+            document.getElementById('expensesList').innerHTML = '<p class="text-gray-500 text-center py-4">No expenses added yet</p>';
+            document.getElementById('totalAmount').textContent = '£0.00';
+            document.getElementById('batchModal').classList.remove('hidden');
+        }
+
+        // Open existing batch
+        async function openBatch(batchId) {
+            const batch = allBatches.find(b => b.id === batchId);
+            if (!batch) return;
+
+            currentBatch = batch;
+            
+            // Set title to status with styling
+            setStatusTitle(batch.status);
+            document.getElementById('regInput').value = batch.registration;
+            document.getElementById('regInput').disabled = batch.status !== 'draft' && batch.status !== 'returned';
+            
+            // Show/hide notes section based on status
+            const notesSection = document.getElementById('notesSection');
+            if (batch.status === 'draft' || batch.status === 'returned') {
+                notesSection.classList.remove('hidden');
+                const notesInput = document.getElementById('notesInput');
+                if (batch.notes) {
+                    notesInput.value = batch.notes;
+                } else {
+                    notesInput.value = '';
+                }
+                notesInput.disabled = false;
+            } else {
+                // Hide notes section for pending, validated, paid
+                notesSection.classList.add('hidden');
+            }
+
+            // Show return notes if returned
+            if (batch.status === 'returned' && batch.returnNotes) {
+                document.getElementById('returnNotesDiv').classList.remove('hidden');
+                document.getElementById('returnNotes').textContent = batch.returnNotes;
+            } else {
+                document.getElementById('returnNotesDiv').classList.add('hidden');
+            }
+
+            // Show delete button only for drafts
+            document.getElementById('deleteBatchBtn').classList.toggle('hidden', batch.status !== 'draft');
+
+            // Show/hide "Add Expense" button
+            const addExpenseBtn = document.getElementById('addExpenseBtn');
+            addExpenseBtn.classList.toggle('hidden', batch.status !== 'draft' && batch.status !== 'returned');
+
+            // Show/hide action buttons based on status
+            const actionButtons = document.getElementById('actionButtons');
+            const submitBtn = document.getElementById('submitBtn');
+            
+            if (batch.status === 'returned') {
+                // For returned batches, hide normal buttons and show discard
+                submitBtn.textContent = 'Resubmit for Processing';
+                actionButtons.innerHTML = `
+                    <button onclick="saveDraft()" class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors touch-target">
+                        Save Changes
+                    </button>
+                    <button onclick="submitBatch()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors touch-target">
+                        Resubmit for Processing
+                    </button>
+                    <button onclick="discardReturnedBatch()" class="w-full py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors touch-target">
+                        Discard Expense
+                    </button>
+                `;
+            } else if (batch.status === 'draft') {
+                // For drafts, show normal buttons
+                actionButtons.innerHTML = `
+                    <button onclick="saveDraft()" class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors touch-target">
+                        Save as Draft
+                    </button>
+                    <button onclick="submitBatch()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors touch-target">
+                        Submit for Processing
+                    </button>
+                `;
+            } else if (batch.status === 'pending' || batch.status === 'validated') {
+                // For submitted batches, show "Add Additional Expenses" button
+                actionButtons.innerHTML = `
+                    <button onclick="addAdditionalExpenses()" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors touch-target">
+                        Add Additional Expenses
+                    </button>
+                `;
+            } else {
+                // For other statuses (paid, etc), no action buttons
+                actionButtons.innerHTML = '';
+            }
+
+            // Display expenses
+            renderExpenses();
+            
+            document.getElementById('batchModal').classList.remove('hidden');
+        }
+
+        // Render expenses in batch modal
+        function renderExpenses() {
+            const container = document.getElementById('expensesList');
+            const expenses = currentBatch.expenses || [];
+            
+            if (expenses.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-center py-4">No expenses added yet</p>';
+            } else {
+                container.innerHTML = expenses.map((exp, index) => {
+                    const categoryEmojis = {
+                        fuel: '⛽',
+                        parking: '🅿️',
+                        toll: '🛣️',
+                        food: '🍔',
+                        maintenance: '🔧',
+                        other: '📝'
+                    };
+                    
+                    return `
+                        <div class="bg-[#283039] rounded-lg p-3 flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <span class="text-2xl">${categoryEmojis[exp.category] || '📝'}</span>
+                                <div>
+                                    <div class="font-medium capitalize">${exp.category}</div>
+                                    ${exp.photos && exp.photos.length > 0 ? `
+                                        <button onclick="viewExpensePhotos(${index})" class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1">
+                                            <span class="material-symbols-outlined text-xs">photo_camera</span>
+                                            ${exp.photos.length} photo${exp.photos.length !== 1 ? 's' : ''}
+                                        </button>
+                                    ` : ''}
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="font-semibold text-green-500">£${parseFloat(exp.amount).toFixed(2)}</span>
+                                ${currentBatch.status === 'draft' || currentBatch.status === 'returned' ? `
+                                    <button onclick="deleteExpense(${index})" class="text-red-500 hover:text-red-400 transition-colors">
+                                        <span class="material-symbols-outlined">delete</span>
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            // Update total
+            const total = expenses.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0);
+            document.getElementById('totalAmount').textContent = `£${total.toFixed(2)}`;
+        }
+
+        // Add expense button
+        function addExpense() {
+            // Only allow adding expenses if batch is draft or returned
+            if (currentBatch.status !== 'draft' && currentBatch.status !== 'returned') {
+                alert('Cannot add expenses to this batch');
+                return;
+            }
+
+            currentExpense = {
+                category: null,
+                amount: 0,
+                photos: []
+            };
+            
+            document.getElementById('amountInput').value = '';
+            document.getElementById('photoPreview').innerHTML = '';
+            document.querySelectorAll('.category-btn').forEach(btn => btn.classList.remove('ring-2', 'ring-blue-500'));
+            
+            document.getElementById('expenseModal').classList.remove('hidden');
+        }
+
+        // Select category
+        function selectCategory(category) {
+            currentExpense.category = category;
+            document.querySelectorAll('.category-btn').forEach(btn => btn.classList.remove('ring-2', 'ring-blue-500'));
+            event.target.closest('.category-btn').classList.add('ring-2', 'ring-blue-500');
+        }
+
+        // Handle photo selection
+        function handlePhotoSelect(event) {
+            const files = Array.from(event.target.files);
+            currentExpense.photos = files;
+            
+            const preview = document.getElementById('photoPreview');
+            preview.innerHTML = files.map((file, index) => `
+                <div class="relative">
+                    <img src="${URL.createObjectURL(file)}" class="w-full h-24 object-cover rounded-lg">
+                    <button onclick="removePhoto(${index})" class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">
+                        ×
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        // Remove photo
+        function removePhoto(index) {
+            currentExpense.photos.splice(index, 1);
+            const dataTransfer = new DataTransfer();
+            currentExpense.photos.forEach(file => dataTransfer.items.add(file));
+            document.getElementById('photoInput').files = dataTransfer.files;
+            handlePhotoSelect({ target: { files: dataTransfer.files } });
+        }
+
+        // Save expense
+        function saveExpense() {
+            if (!currentExpense.category) {
+                alert('Please select a category');
+                return;
+            }
+            
+            const amount = parseFloat(document.getElementById('amountInput').value);
+            if (!amount || amount <= 0) {
+                alert('Please enter a valid amount');
+                return;
+            }
+
+            currentExpense.amount = amount;
+            
+            if (!currentBatch.expenses) {
+                currentBatch.expenses = [];
+            }
+            
+            currentBatch.expenses.push({ ...currentExpense });
+            
+            closeExpenseModal();
+            renderExpenses();
+        }
+
+        // Delete expense
+        function deleteExpense(index) {
+            if (confirm('Delete this expense?')) {
+                currentBatch.expenses.splice(index, 1);
+                renderExpenses();
+            }
+        }
+
+        // Save as draft
+        // Helper function to normalize registration (remove spaces)
+        function normalizeReg(reg) {
+            return reg.replace(/\s+/g, '');
+        }
+
+        // Helper function to check if a registration exists and add asterisk if needed
+        async function getUniqueReg(baseReg, excludeBatchId = null) {
+            const normalizedReg = normalizeReg(baseReg);
+            
+            // Check if any batch with this officeId has this exact reg
+            const batchesQuery = window.query(
+                window.collection(window.db, 'expenseBatches'),
+                window.where('officeId', '==', currentUser.officeId)
+            );
+            const batchesSnapshot = await window.getDocs(batchesQuery);
+            
+            const existingRegs = new Set();
+            batchesSnapshot.docs.forEach(doc => {
+                // Skip the current batch if updating
+                if (excludeBatchId && doc.id === excludeBatchId) {
+                    return;
+                }
+                const data = doc.data();
+                if (data.registration) {
+                    const reg = normalizeReg(data.registration);
+                    existingRegs.add(reg);
+                }
+            });
+            
+            // If the exact reg doesn't exist, return it
+            if (!existingRegs.has(normalizedReg)) {
+                return normalizedReg;
+            }
+            
+            // Otherwise, add asterisk and check again
+            let counter = 1;
+            while (true) {
+                const newReg = `${normalizedReg}*`;
+                if (!existingRegs.has(newReg)) {
+                    return newReg;
+                }
+                counter++;
+            }
+        }
+
+        async function saveDraft() {
+            let registration = document.getElementById('regInput').value.trim().toUpperCase();
+            if (!registration) {
+                alert('Please enter a registration number');
+                return;
+            }
+
+            // Get unique registration (will add * if needed)
+            if (!currentBatch.id) {
+                // Only check for duplicates when creating new batches
+                registration = await getUniqueReg(registration);
+            } else {
+                // For existing batches, just normalize
+                registration = normalizeReg(registration);
+            }
+
+            try {
+                const notes = document.getElementById('notesInput').value.trim();
+                const batchData = {
+                    driverId: currentUser.uid,
+                    driverEmail: currentUser.email,
+                    driverName: currentUser.name || `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || 'Unknown Driver',
+                    officeId: currentUser.officeId,
+                    registration: registration,
+                    status: 'draft',
+                    totalAmount: currentBatch.expenses.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0),
+                    notes: notes || '',
+                    updatedAt: window.serverTimestamp()
+                };
+
+                let batchId = currentBatch.id;
+                
+                if (batchId) {
+                    await window.updateDoc(window.doc(window.db, 'expenseBatches', batchId), batchData);
+                } else {
+                    batchData.createdAt = window.serverTimestamp();
+                    const batchRef = await window.addDoc(window.collection(window.db, 'expenseBatches'), batchData);
+                    batchId = batchRef.id;
+                }
+
+                // Save expenses
+                await saveExpenses(batchId);
+
+                alert('Draft saved successfully');
+                
+                // Close modal and clear batch before reloading
+                document.getElementById('batchModal').classList.add('hidden');
+                currentBatch = null;
+                
+                await loadExpenseBatches();
+            } catch (error) {
+                console.error('Error saving draft:', error);
+                alert('Error saving draft. Please try again.');
+            }
+        }
+
+        // Submit batch for review
+        async function submitBatch() {
+            let registration = document.getElementById('regInput').value.trim().toUpperCase();
+            if (!registration) {
+                alert('Please enter a registration number');
+                return;
+            }
+
+            // Get unique registration (will add * if needed)
+            if (!currentBatch.id) {
+                // Only check for duplicates when creating new batches
+                registration = await getUniqueReg(registration);
+            } else {
+                // For existing batches, just normalize
+                registration = normalizeReg(registration);
+            }
+
+            if (!currentBatch.expenses || currentBatch.expenses.length === 0) {
+                alert('Please add at least one expense');
+                return;
+            }
+
+            if (!confirm('Submit this batch for review? You won\'t be able to edit it after submission.')) {
+                return;
+            }
+
+            try {
+                const notes = document.getElementById('notesInput').value.trim();
+                const batchData = {
+                    driverId: currentUser.uid,
+                    driverEmail: currentUser.email,
+                    driverName: currentUser.name || `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || 'Unknown Driver',
+                    officeId: currentUser.officeId,
+                    registration: registration,
+                    status: 'pending',
+                    totalAmount: currentBatch.expenses.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0),
+                    notes: notes || '',
+                    submittedAt: window.serverTimestamp(),
+                    updatedAt: window.serverTimestamp()
+                };
+
+                let batchId = currentBatch.id;
+                
+                if (batchId) {
+                    await window.updateDoc(window.doc(window.db, 'expenseBatches', batchId), batchData);
+                } else {
+                    batchData.createdAt = window.serverTimestamp();
+                    const batchRef = await window.addDoc(window.collection(window.db, 'expenseBatches'), batchData);
+                    batchId = batchRef.id;
+                }
+
+                // Save expenses
+                await saveExpenses(batchId);
+
+                alert('Batch submitted successfully!');
+                closeBatchModal();
+                await loadExpenseBatches();
+            } catch (error) {
+                console.error('Error submitting batch:', error);
+                alert('Error submitting batch. Please try again.');
+            }
+        }
+
+        // Save expenses to Firebase
+        async function saveExpenses(batchId) {
+            // Delete existing expenses for this batch
+            const existingExpensesQuery = window.query(
+                window.collection(window.db, 'expenses'),
+                window.where('batchId', '==', batchId)
+            );
+            const existingSnapshot = await window.getDocs(existingExpensesQuery);
+            const deletePromises = existingSnapshot.docs.map(doc => window.deleteDoc(doc.ref));
+            await Promise.all(deletePromises);
+
+            // Add new expenses
+            const addPromises = currentBatch.expenses.map(async (expense) => {
+                const expenseData = {
+                    batchId: batchId,
+                    driverId: currentUser.uid,
+                    officeId: currentUser.officeId,
+                    category: expense.category,
+                    amount: parseFloat(expense.amount),
+                    photos: [], // Will be populated if photos are uploaded
+                    createdAt: window.serverTimestamp()
+                };
+
+                // Upload photos to Firebase Storage and add URLs to expenseData.photos
+                if (expense.photos && expense.photos.length > 0) {
+                    // Check if running on localhost (development environment)
+                    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                    
+                    if (isLocalhost) {
+                        console.warn('Running on localhost: Photo upload is disabled due to CORS restrictions.');
+                        console.log(`Note: ${expense.photos.length} photo(s) were selected but not uploaded. Photos will upload on production (GitHub Pages).`);
+                        expenseData.photos = []; // Empty array - photos won't be uploaded
+                    } else {
+                        console.log(`Uploading ${expense.photos.length} photos for expense ${expense.category}...`);
+                        const photoPromises = expense.photos.map(async (photoFile, index) => {
+                            try {
+                                // Create unique filename
+                                const timestamp = Date.now();
+                                const filename = `expenses/${batchId}/${expense.category}_${timestamp}_${index}.jpg`;
+                                
+                                console.log(`Uploading photo ${index + 1}/${expense.photos.length}: ${filename}`);
+                                
+                                // Upload to Firebase Storage
+                                const photoRef = window.ref(window.storage, filename);
+                                await window.uploadBytes(photoRef, photoFile);
+                                
+                                // Get download URL
+                                const downloadURL = await window.getDownloadURL(photoRef);
+                                console.log(`Photo ${index + 1} uploaded successfully: ${downloadURL}`);
+                                return downloadURL;
+                            } catch (error) {
+                                console.error(`Error uploading photo ${index + 1}:`, error);
+                                alert(`Warning: Failed to upload photo ${index + 1}. The expense will be saved without this photo.`);
+                                return null;
+                            }
+                        });
+
+                        // Wait for all photos to upload
+                        const uploadedPhotos = await Promise.all(photoPromises);
+                        expenseData.photos = uploadedPhotos.filter(url => url !== null);
+                        
+                        if (expenseData.photos.length !== expense.photos.length) {
+                            console.warn(`Only ${expenseData.photos.length} out of ${expense.photos.length} photos uploaded successfully`);
+                        }
+                    }
+                }
+                
+                return window.addDoc(window.collection(window.db, 'expenses'), expenseData);
+            });
+
+            await Promise.all(addPromises);
+        }
+
+        // Delete batch
+        async function deleteBatch() {
+            if (!confirm('Delete this expense batch? This cannot be undone.')) {
+                return;
+            }
+
+            try {
+                // Delete all expenses in this batch
+                const expensesQuery = window.query(
+                    window.collection(window.db, 'expenses'),
+                    window.where('batchId', '==', currentBatch.id)
+                );
+                const expensesSnapshot = await window.getDocs(expensesQuery);
+                const deletePromises = expensesSnapshot.docs.map(doc => window.deleteDoc(doc.ref));
+                await Promise.all(deletePromises);
+
+                // Delete the batch
+                await window.deleteDoc(window.doc(window.db, 'expenseBatches', currentBatch.id));
+
+                alert('Batch deleted successfully');
+                closeBatchModal();
+                await loadExpenseBatches();
+            } catch (error) {
+                console.error('Error deleting batch:', error);
+                alert('Error deleting batch. Please try again.');
+            }
+        }
+
+        // Discard returned batch
+        async function discardReturnedBatch() {
+            if (!confirm('Discard this returned expense? This will permanently delete it and cannot be undone.')) {
+                return;
+            }
+
+            try {
+                // Delete all expenses in this batch
+                const expensesQuery = window.query(
+                    window.collection(window.db, 'expenses'),
+                    window.where('batchId', '==', currentBatch.id)
+                );
+                const expensesSnapshot = await window.getDocs(expensesQuery);
+                const deletePromises = expensesSnapshot.docs.map(doc => window.deleteDoc(doc.ref));
+                await Promise.all(deletePromises);
+
+                // Delete the batch
+                await window.deleteDoc(window.doc(window.db, 'expenseBatches', currentBatch.id));
+
+                alert('Expense discarded successfully');
+                closeBatchModal();
+                await loadExpenseBatches();
+            } catch (error) {
+                console.error('Error discarding batch:', error);
+                alert('Error discarding expense. Please try again.');
+            }
+        }
+
+        // Add additional expenses (creates new batch with same reg + *)
+        async function addAdditionalExpenses() {
+            if (!confirm('Create a new expense batch with the same registration? This will allow you to add additional expenses.')) {
+                return;
+            }
+
+            try {
+                // Get the base registration (remove asterisk if present)
+                let baseReg = normalizeReg(currentBatch.registration);
+                baseReg = baseReg.replace(/\*$/, ''); // Remove trailing asterisk if present
+                
+                // Get unique reg (will add asterisk)
+                const newReg = await getUniqueReg(baseReg);
+
+                // Create new batch
+                currentBatch = {
+                    id: null,
+                    registration: newReg,
+                    status: 'draft',
+                    expenses: [],
+                    totalAmount: 0
+                };
+                
+                // Update UI
+                setStatusTitle('draft');
+                document.getElementById('regInput').value = newReg;
+                document.getElementById('regInput').disabled = false;
+                // Show notes section for new additional expense drafts
+                const notesSection = document.getElementById('notesSection');
+                notesSection.classList.remove('hidden');
+                const notesInput = document.getElementById('notesInput');
+                notesInput.value = '';
+                notesInput.disabled = false;
+                document.getElementById('returnNotesDiv').classList.add('hidden');
+                document.getElementById('deleteBatchBtn').classList.add('hidden');
+                document.getElementById('expensesList').innerHTML = '<p class="text-gray-500 text-center py-4">No expenses added yet</p>';
+                document.getElementById('totalAmount').textContent = '£0.00';
+                
+                // Show Add Expense button
+                const addExpenseBtn = document.getElementById('addExpenseBtn');
+                addExpenseBtn.classList.remove('hidden');
+                
+                // Update action buttons to show draft buttons
+                const actionButtons = document.getElementById('actionButtons');
+                actionButtons.innerHTML = `
+                    <button onclick="saveDraft()" class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors touch-target">
+                        Save as Draft
+                    </button>
+                    <button onclick="submitBatch()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors touch-target">
+                        Submit for Processing
+                    </button>
+                `;
+            } catch (error) {
+                console.error('Error creating additional expenses batch:', error);
+                alert('Error creating additional expenses batch. Please try again.');
+            }
+        }
+
+        // View photos for an expense
+        async function viewExpensePhotos(expenseIndex) {
+            const expense = currentBatch.expenses[expenseIndex];
+            if (!expense || !expense.photos || expense.photos.length === 0) {
+                return;
+            }
+
+            const grid = document.getElementById('photoViewerGrid');
+            
+            // If photos are File objects (from new uploads)
+            if (expense.photos[0] instanceof File) {
+                grid.innerHTML = expense.photos.map((file, index) => `
+                    <div class="mb-4">
+                        <img src="${URL.createObjectURL(file)}" class="w-full rounded-lg">
+                    </div>
+                `).join('');
+            } else {
+                // Photos are URLs (from Firebase Storage)
+                grid.innerHTML = expense.photos.map((url, index) => `
+                    <div class="mb-4">
+                        <img src="${url}" class="w-full rounded-lg" alt="Expense photo ${index + 1}">
+                    </div>
+                `).join('');
+            }
+
+            document.getElementById('photoViewerModal').classList.remove('hidden');
+        }
+
+        // Close photo viewer
+        function closePhotoViewer() {
+            document.getElementById('photoViewerModal').classList.add('hidden');
+            document.getElementById('photoViewerGrid').innerHTML = '';
+        }
+
+        // Check if there are unsaved changes
+        function hasUnsavedChanges() {
+            if (!currentBatch) return false;
+            
+            // Check if it's a new batch with data
+            if (!currentBatch.id) {
+                // Check if there's a registration entered
+                const registration = document.getElementById('regInput').value.trim();
+                if (registration) return true;
+                
+                // Check if there are any expenses
+                if (currentBatch.expenses && currentBatch.expenses.length > 0) {
+                    return true;
+                }
+                
+                // Check if there are notes
+                const notes = document.getElementById('notesInput').value.trim();
+                if (notes) return true;
+            }
+            
+            return false;
+        }
+
+        // Close modals
+        async function closeBatchModal() {
+            // Check if there are unsaved changes
+            if (hasUnsavedChanges()) {
+                // Show custom modal for save/discard choice
+                const shouldSave = confirm('You have unsaved changes. Click OK to save as draft, or Cancel to discard.');
+                if (shouldSave) {
+                    // User wants to save
+                    await saveDraft();
+                    return;
+                } else {
+                    // User wants to discard - close without saving
+                    document.getElementById('batchModal').classList.add('hidden');
+                    currentBatch = null;
+                }
+            } else {
+                // No unsaved changes, just close
+                document.getElementById('batchModal').classList.add('hidden');
+                currentBatch = null;
+            }
+        }
+
+        function closeExpenseModal() {
+            document.getElementById('expenseModal').classList.add('hidden');
+            currentExpense = { category: null, amount: 0, photos: [] };
+        }
+
+        // Go back to portal
+        function goToPortal() {
+            window.location.href = '/pages/driver-portal.html';
+        }
+    </script>
+</body>
+</html>
+
