@@ -606,12 +606,13 @@
                     return loadRoutesFromLocalStorage();
                 }
 
-                // Get all routes from Firebase (no user filtering since we removed date-based filtering)
-                const routesQuery = window.firebaseQuery(
-                    window.firebaseCollection(window.firestore, 'routes')
-                );
-
-                const routesSnapshot = await window.firebaseGetDocs(routesQuery);
+                console.log('Loading routes and jobs from Firebase...');
+                
+                // Load all routes and all jobs in parallel (fixes N+1 query problem)
+                const [routesSnapshot, jobsSnapshot] = await Promise.all([
+                    window.firebaseGetDocs(window.firebaseQuery(window.firebaseCollection(window.firestore, 'routes'))),
+                    window.firebaseGetDocs(window.firebaseQuery(window.firebaseCollection(window.firestore, 'jobs')))
+                ]);
                 
                 savedRoutes = [];
                 
@@ -620,29 +621,33 @@
                     return loadRoutesFromLocalStorage();
                 }
                 
-                // For each route, get its associated jobs
-                for (const routeDoc of routesSnapshot.docs) {
-                    const routeData = routeDoc.data();
-                    
-                    const jobsQuery = window.firebaseQuery(
-                        window.firebaseCollection(window.firestore, 'jobs'),
-                        window.firebaseWhere('assignedRouteId', '==', routeData.routeId)
-                    );
-
-                    const jobsSnapshot = await window.firebaseGetDocs(jobsQuery);
-                    
-                    const jobs = [];
-                    jobsSnapshot.forEach(jobDoc => {
-                        jobs.push({
+                // Group jobs by routeId for efficient lookup
+                const jobsByRoute = {};
+                jobsSnapshot.forEach(jobDoc => {
+                    const jobData = jobDoc.data();
+                    const routeId = jobData.assignedRouteId;
+                    if (routeId) {
+                        if (!jobsByRoute[routeId]) {
+                            jobsByRoute[routeId] = [];
+                        }
+                        jobsByRoute[routeId].push({
                             id: jobDoc.id,
-                            ...jobDoc.data()
+                            ...jobData
                         });
-                    });
+                    }
+                });
+                
+                // Sort jobs within each route by jobNumber
+                Object.keys(jobsByRoute).forEach(routeId => {
+                    jobsByRoute[routeId].sort((a, b) => (a.jobNumber || 0) - (b.jobNumber || 0));
+                });
+                
+                // Process routes and attach their jobs
+                routesSnapshot.forEach(routeDoc => {
+                    const routeData = routeDoc.data();
+                    const routeId = routeData.routeId || routeDoc.id;
+                    const jobs = jobsByRoute[routeId] || [];
                     
-                    // Sort jobs by jobNumber to ensure correct order
-                    jobs.sort((a, b) => (a.jobNumber || 0) - (b.jobNumber || 0));
-
-                    // Keep driver assignments if they exist
                     const routeWithJobs = {
                         route: {
                             id: routeDoc.id,
@@ -652,9 +657,9 @@
                     };
                     
                     savedRoutes.push(routeWithJobs);
-                }
+                });
 
-                console.log('Loaded routes from Firebase:', savedRoutes);
+                console.log(`Loaded ${savedRoutes.length} routes with jobs from Firebase (optimized)`);
                 return savedRoutes;
             } catch (error) {
                 console.error('Error loading routes from Firebase:', error);

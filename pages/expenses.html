@@ -403,34 +403,42 @@ Logout
             try {
                 console.log('Loading expense batches for officeId:', currentUser.officeId);
                 
-                const batchesQuery = window.query(
-                    window.collection(window.db, 'expenseBatches'),
-                    window.where('officeId', '==', currentUser.officeId)
-                );
-
-                const batchesSnapshot = await window.getDocs(batchesQuery);
+                // Load batches and expenses in parallel (fixes N+1 query problem)
+                const [batchesSnapshot, expensesSnapshot] = await Promise.all([
+                    window.getDocs(window.query(
+                        window.collection(window.db, 'expenseBatches'),
+                        window.where('officeId', '==', currentUser.officeId)
+                    )),
+                    window.getDocs(window.query(
+                        window.collection(window.db, 'expenses'),
+                        window.where('officeId', '==', currentUser.officeId)
+                    ))
+                ]);
+                
                 console.log('Found batches:', batchesSnapshot.docs.length);
+                console.log('Found expenses:', expensesSnapshot.docs.length);
                 
                 allBatches = [];
 
-                for (const doc of batchesSnapshot.docs) {
+                // Group expenses by batchId for efficient lookup
+                const expensesByBatch = {};
+                expensesSnapshot.docs.forEach(expDoc => {
+                    const expData = { id: expDoc.id, ...expDoc.data() };
+                    const batchId = expData.batchId;
+                    if (batchId) {
+                        if (!expensesByBatch[batchId]) {
+                            expensesByBatch[batchId] = [];
+                        }
+                        expensesByBatch[batchId].push(expData);
+                    }
+                });
+
+                // Process batches and attach their expenses
+                batchesSnapshot.docs.forEach(doc => {
                     const batchData = { id: doc.id, ...doc.data() };
-                    console.log('Processing batch:', batchData);
-                    
-                    // Load expenses for this batch
-                    const expensesQuery = window.query(
-                        window.collection(window.db, 'expenses'),
-                        window.where('batchId', '==', doc.id)
-                    );
-                    const expensesSnapshot = await window.getDocs(expensesQuery);
-                    batchData.expenses = expensesSnapshot.docs.map(expDoc => {
-                        const expData = { id: expDoc.id, ...expDoc.data() };
-                        console.log('Loaded expense:', expData.category, 'Photos:', expData.photos ? expData.photos.length : 0);
-                        return expData;
-                    });
-                    
+                    batchData.expenses = expensesByBatch[doc.id] || [];
                     allBatches.push(batchData);
-                }
+                });
 
                 // Sort by updatedAt descending (client-side)
                 allBatches.sort((a, b) => {

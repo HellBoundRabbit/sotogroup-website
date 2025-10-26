@@ -3,7 +3,7 @@
     "database": "(default)",
     "location": "eur3",
     "rules": "firestore.rules",
-    "indexes": "default"
+    "indexes": "firestore.indexes.json"
   },
   "functions": [
     {
