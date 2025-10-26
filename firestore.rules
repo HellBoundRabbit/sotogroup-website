@@ -1,7 +1,7 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // No rules - completely open (like original setup)
+    // Allow all - no authentication required (original setup)
     match /{document=**} {
       allow read, write: if true;
     }
