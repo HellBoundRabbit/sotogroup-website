@@ -6,10 +6,13 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
     
-    // Drivers collection - users can read their own document
+    // Drivers collection - users can read all documents, office/admin can write
     match /drivers/{driverId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == driverId;
+      allow write: if request.auth != null && (
+        request.auth.uid == driverId || 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['office', 'admin']
+      );
     }
     
     // Expense Batches - authenticated users can read/write
