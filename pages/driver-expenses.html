@@ -394,44 +394,38 @@
         function initializeDriverExpensesApp() {
             console.log('Initializing driver expenses app...');
             
-            window.auth.onAuthStateChanged(async function(user) {
-                console.log('Auth state changed:', user ? 'User logged in' : 'No user');
-                
-                if (!user) {
+            // Use localStorage instead of Firebase Auth for faster loading
+            try {
+                const storedUser = localStorage.getItem('soto_user_identity');
+                if (!storedUser) {
+                    console.log('No user identity found, redirecting to login');
                     window.location.href = '/pages/soto-routes-login.html';
                     return;
                 }
 
-                try {
-                    console.log('Loading user data for:', user.uid);
-                    const userDoc = await window.getDoc(window.doc(window.db, 'users', user.uid));
-                    if (!userDoc.exists()) {
-                        console.log('User document not found');
-                        window.location.href = '/pages/soto-routes-login.html';
-                        return;
-                    }
+                const userData = JSON.parse(storedUser);
+                currentUser = { uid: userData.uid, ...userData };
+                console.log('Current user:', currentUser);
+                
+                // Only drivers can access this page
+                if (currentUser.role !== 'driver') {
+                    alert('Access denied. This page is for drivers only.');
+                    window.location.href = '/pages/soto-lp.html';
+                    return;
+                }
 
-                    currentUser = { uid: user.uid, ...userDoc.data() };
-                    console.log('Current user:', currentUser);
-                    
-                    // Only drivers can access this page
-                    if (currentUser.role !== 'driver') {
-                        alert('Access denied. This page is for drivers only.');
-                        window.location.href = '/pages/soto-lp.html';
-                        return;
-                    }
-
-                    console.log('Loading expense batches...');
-                    await loadExpenseBatches();
+                console.log('Loading expense batches...');
+                loadExpenseBatches().then(() => {
                     document.getElementById('loadingOverlay').style.display = 'none';
                     console.log('Loading complete!');
-                } catch (error) {
-                    console.error('Error loading user data:', error);
-                    console.error('Error details:', error.message);
-                    console.error('Error stack:', error.stack);
-                    alert('Error loading user data. Please try again.');
-                }
-            });
+                });
+                
+            } catch (error) {
+                console.error('Error loading user data:', error);
+                console.error('Error message:', error.message);
+                console.error('Error stack:', error.stack);
+                alert('Error loading user data: ' + error.message);
+            }
         }
 
         // Load all expense batches for this driver

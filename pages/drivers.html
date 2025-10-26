@@ -417,13 +417,18 @@ const userData = JSON.parse(storedUser);
 const officeId = userData.officeId;
 
 console.log('Loading drivers for office:', officeId);
+console.time('Firebase Query');
 
 // Query drivers filtered by office (no orderBy to avoid index issues)
 const q = window.firebaseQuery(
     window.firebaseCollection(window.firestore, "drivers"), 
     window.firebaseWhere('officeId', '==', officeId)
 );
+console.log('Query created, executing...');
 const querySnapshot = await window.firebaseGetDocs(q);
+console.timeEnd('Firebase Query');
+console.log('Query completed, processing results...');
+
 allDrivers = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
 // Sort drivers client-side by lastName
