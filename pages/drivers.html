@@ -79,52 +79,92 @@
 window.onload = async function() {
     console.log('Window loaded, checking Firebase...');
     
-    // Check localStorage first (like other pages)
-    const storedUser = localStorage.getItem('soto_user_identity');
-    if (!storedUser) {
-        console.log('No user identity found, redirecting to login');
-        window.location.href = '/pages/soto-routes-login.html';
-        return;
-    }
-
-    const userIdentity = JSON.parse(storedUser);
-    console.log('Found stored user identity:', userIdentity);
-
-    // Check if user has office/admin role
-    if (userIdentity.role !== 'office' && userIdentity.role !== 'admin') {
-        console.log('User is not office/admin, redirecting to login');
-        window.location.href = '/pages/soto-routes-login.html';
-        return;
-    }
-
-    // Use Firebase Auth state to ensure we're properly authenticated
-    window.auth.onAuthStateChanged(async function(user) {
-        console.log('Auth state changed:', user ? 'User logged in' : 'No user');
-        
-        if (!user) {
-            console.log('No authenticated user, but we have localStorage - this might be a session issue');
-            // Don't redirect immediately, try to continue with localStorage
-            console.log('Continuing with localStorage authentication...');
-        } else {
-            console.log('Firebase Auth confirmed for user:', user.uid);
-        }
-
+    // Check authentication first (same as other pages)
+    async function checkAuthentication() {
         try {
+            // Check if user identity is stored in localStorage
+            const storedUser = localStorage.getItem('soto_user_identity');
+            if (!storedUser) {
+                console.log('No user identity found, redirecting to login');
+                window.location.href = '/pages/soto-routes-login.html';
+                return false;
+            }
+
+            // Parse stored user identity
+            const userIdentity = JSON.parse(storedUser);
+            console.log('Found stored user identity:', userIdentity);
+
+            // Check if user has office/admin role
+            if (userIdentity.role !== 'office' && userIdentity.role !== 'admin') {
+                console.log('User is not office/admin, redirecting to login');
+                window.location.href = '/pages/soto-routes-login.html';
+                return false;
+            }
+
             console.log('Drivers system initialized successfully');
-            console.log('Firebase is ready!');
+            return true;
+            
+        } catch (error) {
+            console.error('Authentication check failed:', error);
+            window.location.href = '/pages/soto-routes-login.html';
+            return false;
+        }
+    }
+
+    // Wait for Firebase to be ready
+    function waitForFirebaseReady() {
+        const maxAttempts = 10;
+        let attempts = 0;
+        
+        while (attempts < maxAttempts) {
+            try {
+                if (window.firestore && window.firebaseCollection) {
+                    console.log('Firebase is ready!');
+                    return true;
+                }
+            } catch (error) {
+                console.log(`Firebase not ready yet, attempt ${attempts + 1}/${maxAttempts}`);
+            }
+            
+            // Small synchronous delay
+            const start = Date.now();
+            while (Date.now() - start < 100) {
+                // Busy wait for 100ms
+            }
+            attempts++;
+        }
+        
+        console.error('Firebase failed to initialize after maximum attempts');
+        return false;
+    }
+
+    // Check authentication and initialize
+    if (await checkAuthentication()) {
+        if (waitForFirebaseReady()) {
             console.log('Firebase initialization complete');
+            
+            // Try to ensure Firebase Auth is properly authenticated
+            try {
+                const currentUser = window.auth.currentUser;
+                if (!currentUser) {
+                    console.log('No Firebase Auth user, but localStorage is valid - this might cause permission issues');
+                    console.log('User will need to re-login for full functionality');
+                } else {
+                    console.log('Firebase Auth user confirmed:', currentUser.uid);
+                }
+            } catch (error) {
+                console.log('Firebase Auth check failed:', error);
+            }
             
             // Initialize drivers functionality
             initializeDrivers();
             
             // Initialize notification system
             await initializeNotifications();
-            
-        } catch (error) {
-            console.error('Initialization failed:', error);
-            // Don't redirect on error, just log it
+        } else {
+            console.error('Failed to initialize Firebase');
         }
-    });
+    }
 };
 
 // Initialize drivers functionality
