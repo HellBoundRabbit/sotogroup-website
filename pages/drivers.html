@@ -143,17 +143,24 @@ window.onload = async function() {
         if (waitForFirebaseReady()) {
             console.log('Firebase initialization complete');
             
-            // Try to ensure Firebase Auth is properly authenticated
+            // Check if Firebase Auth is working properly
             try {
                 const currentUser = window.auth.currentUser;
                 if (!currentUser) {
-                    console.log('No Firebase Auth user, but localStorage is valid - this might cause permission issues');
-                    console.log('User will need to re-login for full functionality');
+                    console.log('Firebase Auth session expired - redirecting to login for proper authentication');
+                    // Clear localStorage and redirect to login to ensure proper authentication
+                    localStorage.removeItem('soto_user_identity');
+                    window.location.href = '/pages/soto-routes-login.html';
+                    return;
                 } else {
                     console.log('Firebase Auth user confirmed:', currentUser.uid);
                 }
             } catch (error) {
                 console.log('Firebase Auth check failed:', error);
+                // If Firebase Auth fails, redirect to login
+                localStorage.removeItem('soto_user_identity');
+                window.location.href = '/pages/soto-routes-login.html';
+                return;
             }
             
             // Initialize drivers functionality
