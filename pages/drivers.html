@@ -78,72 +78,51 @@
 // Wait for window to fully load before initializing Firebase
 window.onload = async function() {
     console.log('Window loaded, checking Firebase...');
+    
+    // Use Firebase Auth state to check authentication
+    window.auth.onAuthStateChanged(async function(user) {
+        console.log('Auth state changed:', user ? 'User logged in' : 'No user');
         
-        // Check authentication first
-        async function checkAuthentication() {
-            try {
-                // Check if user identity is stored in localStorage
-                const storedUser = localStorage.getItem('soto_user_identity');
-                if (!storedUser) {
-                    console.log('No user identity found, redirecting to login');
-                    window.location.href = '/pages/soto-routes-login.html';
-                    return false;
-                }
+        if (!user) {
+            console.log('No authenticated user, redirecting to login');
+            window.location.href = '/pages/soto-routes-login.html';
+            return;
+        }
 
-                // Parse stored user identity
-                const userIdentity = JSON.parse(storedUser);
-                console.log('Found stored user identity:', userIdentity);
-
-                console.log('Drivers system initialized successfully');
-                return true;
-                
-            } catch (error) {
-                console.error('Authentication check failed:', error);
+        try {
+            // Get user data from Firestore
+            const userDoc = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'users', user.uid));
+            if (!userDoc.exists()) {
+                console.log('User document not found');
                 window.location.href = '/pages/soto-routes-login.html';
-                return false;
+                return;
             }
-        }
 
-    // Wait for Firebase to be ready
-    function waitForFirebaseReady() {
-            const maxAttempts = 10;
-            let attempts = 0;
-            
-            while (attempts < maxAttempts) {
-                try {
-                if (window.firestore && window.firebaseCollection) {
-                    console.log('Firebase is ready!');
-                        return true;
-                    }
-                } catch (error) {
-                console.log(`Firebase not ready yet, attempt ${attempts + 1}/${maxAttempts}`);
-                }
-                
-                // Small synchronous delay
-                const start = Date.now();
-                while (Date.now() - start < 100) {
-                    // Busy wait for 100ms
-                }
-                attempts++;
+            const userData = userDoc.data();
+            console.log('Found stored user identity:', { uid: user.uid, ...userData });
+
+            // Only office and admin can access
+            if (userData.role !== 'office' && userData.role !== 'admin') {
+                alert('Access denied. This page is for office staff only.');
+                window.location.href = '/pages/soto-routes-login.html';
+                return;
             }
-            
-        console.error('Firebase failed to initialize after maximum attempts');
-            return false;
-        }
 
-    // Check authentication and initialize
-    if (await checkAuthentication()) {
-        if (waitForFirebaseReady()) {
+            console.log('Drivers system initialized successfully');
+            console.log('Firebase is ready!');
             console.log('Firebase initialization complete');
+            
             // Initialize drivers functionality
             initializeDrivers();
-        } else {
-            console.error('Failed to initialize Firebase');
+            
+            // Initialize notification system
+            await initializeNotifications();
+            
+        } catch (error) {
+            console.error('Authentication check failed:', error);
+            window.location.href = '/pages/soto-routes-login.html';
         }
-        
-        // Initialize notification system
-        await initializeNotifications();
-    }
+    });
 };
 
 // Initialize drivers functionality
