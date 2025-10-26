@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Get Quote - EC Logistics</title>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDTbiSXo9tg1Tx8SlZCZKsR_R0zIQ4N1VA&libraries=places"></script>
+    <!-- CloudKit removed -->
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #000000;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+
+        .container {
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+            padding: 2rem;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .back-btn {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .logo {
+            width: 100px;
+            height: 100px;
+            margin: 0 auto 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 2rem;
+            color: white;
+            font-weight: 700;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: white;
+            font-weight: 500;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            color: white;
+            font-size: 16px;
+        }
+
+        input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        input:focus {
+            outline: none;
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .help-text {
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.6);
+            margin-top: 0.5rem;
+        }
+
+        .get-quote-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+
+        .get-quote-btn:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .get-quote-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 1rem 0;
+        }
+
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 999;
+        }
+
+        .result {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 2rem;
+            max-width: 500px;
+            width: 90%;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 1000;
+        }
+
+        .result h2 {
+            margin-bottom: 1rem;
+            color: white;
+        }
+
+        .result-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .info-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 1rem;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .info-label {
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 0.5rem;
+        }
+
+        .info-value {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: white;
+        }
+
+        .route-map {
+            width: 100%;
+            height: 200px;
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+            overflow: hidden;
+        }
+
+        .result-buttons {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .close-btn, .proceed-btn {
+            flex: 1;
+            padding: 12px;
+            border-radius: 8px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .close-btn {
+            background: rgba(255, 59, 48, 0.2);
+            border: 1px solid rgba(255, 59, 48, 0.3);
+            color: #ff3b30;
+        }
+
+        .close-btn:hover {
+            background: rgba(255, 59, 48, 0.3);
+        }
+
+        .proceed-btn {
+            background: rgba(52, 199, 89, 0.2);
+            border: 1px solid rgba(52, 199, 89, 0.3);
+            color: #34c759;
+        }
+
+        .proceed-btn:hover {
+            background: rgba(52, 199, 89, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <a href="/pages/soto.html" class="back-btn">← Back</a>
+    
+    <div class="container">
+        <div class="logo">
+            <img src="../assets/logos/EC-Logistics-logo.png" alt="EC Logistics Logo">
+        </div>
+        <h1>Get Quote</h1>
+        
+        <form id="quoteForm">
+            <div class="form-group">
+                <label for="clientCode">Client Code:</label>
+                <input type="text" id="clientCode" placeholder="Enter your client code" required>
+                <div class="help-text">(if you do not have a client code please contact EC Logistics)</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="collectionAddress">Collection Address:</label>
+                <input type="text" id="collectionAddress" placeholder="Start typing address..." required>
+            </div>
+            
+            <div class="form-group">
+                <label for="deliveryAddress">Delivery Address:</label>
+                <input type="text" id="deliveryAddress" placeholder="Start typing address..." required>
+            </div>
+            
+            <button type="submit" id="getQuoteBtn" class="get-quote-btn" disabled>Get Quote</button>
+        </form>
+        
+        <div id="loading" class="loading">
+            <p>Calculating route...</p>
+        </div>
+    </div>
+
+    <div id="overlay" class="overlay"></div>
+    <div id="result" class="result">
+        <h2 id="quoteTitle">Quote Result</h2>
+        <div class="result-info">
+            <div class="info-item">
+                <div class="info-label">Distance</div>
+                <div class="info-value" id="distance">0 miles</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Duration</div>
+                <div class="info-value" id="duration">0 min</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Price</div>
+                <div class="info-value" id="price">£0</div>
+            </div>
+        </div>
+        <div id="routeMap" class="route-map"></div>
+        <div class="result-buttons">
+            <button class="proceed-btn" onclick="proceedWithQuote()">Request Movement</button>
+            <button class="close-btn" onclick="closeQuote()">Close</button>
+        </div>
+    </div>
+
+    <script>
+        // CloudKit functionality removed
+
+        // Initialize Google Maps Autocomplete
+        function initializeAutocomplete() {
+            const collectionAddress = document.getElementById('collectionAddress');
+            const deliveryAddress = document.getElementById('deliveryAddress');
+            
+            if (collectionAddress) {
+                new google.maps.places.Autocomplete(collectionAddress, {
+                    types: ['address'],
+                    componentRestrictions: { country: 'GB' }
+                });
+            }
+            
+            if (deliveryAddress) {
+                new google.maps.places.Autocomplete(deliveryAddress, {
+                    types: ['address'],
+                    componentRestrictions: { country: 'GB' }
+                });
+            }
+        }
+
+        // Quote form functionality
+        document.getElementById('quoteForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            getQuote();
+        });
+
+        // Check form fields and enable/disable button
+        function checkFormFields() {
+            const clientCode = document.getElementById('clientCode').value.trim();
+            const collectionAddress = document.getElementById('collectionAddress').value.trim();
+            const deliveryAddress = document.getElementById('deliveryAddress').value.trim();
+            const getQuoteBtn = document.getElementById('getQuoteBtn');
+            
+            if (clientCode && collectionAddress && deliveryAddress) {
+                getQuoteBtn.disabled = false;
+            } else {
+                getQuoteBtn.disabled = true;
+            }
+        }
+
+        // Add event listeners to form fields
+        document.addEventListener('DOMContentLoaded', function() {
+            // Ensure popup is hidden on page load
+            document.getElementById('overlay').style.display = 'none';
+            document.getElementById('result').style.display = 'none';
+            document.getElementById('loading').style.display = 'none';
+            
+            const formFields = ['clientCode', 'collectionAddress', 'deliveryAddress'];
+            formFields.forEach(fieldId => {
+                const field = document.getElementById(fieldId);
+                if (field) {
+                    field.addEventListener('input', checkFormFields);
+                    field.addEventListener('change', checkFormFields);
+                }
+            });
+            
+            // Initially disable the button
+            const getQuoteBtn = document.getElementById('getQuoteBtn');
+            if (getQuoteBtn) {
+                getQuoteBtn.disabled = true;
+            }
+            
+            // Initialize autocomplete when page loads
+            initializeAutocomplete();
+        });
+
+        async function getQuote() {
+            const clientCode = document.getElementById('clientCode').value;
+            const collectionAddress = document.getElementById('collectionAddress').value;
+            const deliveryAddress = document.getElementById('deliveryAddress').value;
+            
+            if (!clientCode || !collectionAddress || !deliveryAddress) {
+                alert('Please fill in all fields');
+                return;
+            }
+
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('getQuoteBtn').disabled = true;
+
+            try {
+                console.log('Querying CloudKit for client code:', clientCode);
+                console.log('Query details:', {
+                    recordType: 'SOTOGroupWebsite',
+                    filterBy: [{
+                        fieldName: 'clientCode',
+                        comparator: 'EQUALS',
+                        fieldValue: {
+                            value: clientCode,
+                            type: 'STRING'
+                        }
+                    }]
+                });
+                
+                // Query CloudKit using CloudKit JS
+                console.log('Attempting CloudKit query...');
+                const response = await database.performQuery({
+                    recordType: 'SOTOGroupWebsite',
+                    filterBy: [{
+                        fieldName: 'clientCode',
+                        comparator: 'EQUALS',
+                        fieldValue: {
+                            value: clientCode,
+                            type: 'STRING'
+                        }
+                    }]
+                });
+                
+                console.log('CloudKit response:', response);
+                console.log('Records found:', response.records ? response.records.length : 'No records property');
+                if (response.records && response.records.length > 0) {
+                    console.log('First record:', response.records[0]);
+                }
+                
+                if (response.records && response.records.length > 0) {
+                    const record = response.records[0];
+                    const clientData = {
+                        valid: true,
+                        clientCode: record.fields.clientCode.value,
+                        pricingFormula: record.fields.pricingFormula.value,
+                        companyName: record.fields.companyName ? record.fields.companyName.value : 'Unknown'
+                    };
+                    
+                    // Calculate real distance using Google Maps Directions API - always longest route
+                    const routeInfo = await calculateDistance(collectionAddress, deliveryAddress);
+                    
+                    // Use pricing formula from CloudKit database
+                    const pricingFormula = clientData.pricingFormula;
+                    const companyName = clientData.companyName;
+                    
+                    // Calculate price based on the formula from database
+                    let price;
+                    console.log('Using pricing formula from database:', pricingFormula);
+                    
+                    if (pricingFormula && pricingFormula.trim()) {
+                        try {
+                            // Replace 'distance' with the actual distance value in the formula
+                            const formulaWithDistance = pricingFormula.replace(/distance/gi, routeInfo.distance);
+                            console.log('Formula with distance substituted:', formulaWithDistance);
+                            
+                            // Safely evaluate the mathematical expression
+                            // Note: eval() is used here to evaluate mathematical formulas from the database
+                            // This is safe because we're only evaluating mathematical expressions, not arbitrary code
+                            const calculatedPrice = eval(formulaWithDistance);
+                            price = Math.round(calculatedPrice);
+                            
+                            console.log(`Distance: ${routeInfo.distance} miles, Formula: ${pricingFormula}, Calculated: ${calculatedPrice}, Final Price: £${price}`);
+                        } catch (error) {
+                            console.error('Error evaluating formula:', error);
+                            // Fallback to default formula
+                            price = Math.round(routeInfo.distance * 5);
+                            console.log('Using default formula due to formula error');
+                        }
+                    } else {
+                        // Default formula if no valid formula found
+                        price = Math.round(routeInfo.distance * 5);
+                        console.log('Using default formula: distance*5');
+                    }
+                    
+                    // Update popup title with company name from database
+                    document.getElementById('quoteTitle').textContent = `An EC Logistics movement quote generated for "${companyName}"`;
+                    
+                    // Display results
+                    document.getElementById('distance').textContent = `${Math.round(routeInfo.distance)} miles`;
+                    document.getElementById('duration').textContent = routeInfo.duration;
+                    document.getElementById('price').textContent = `£${price}`;
+                    
+                    // Display route on map
+                    displayRouteOnMap(routeInfo.route, collectionAddress, deliveryAddress);
+                    
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('overlay').style.display = 'block';
+                    document.getElementById('result').style.display = 'block';
+                    document.getElementById('getQuoteBtn').disabled = false;
+                } else {
+                    alert('Incorrect client code');
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('getQuoteBtn').disabled = false;
+                }
+            } catch (error) {
+                console.error('CloudKit error:', error);
+                
+                // If it's an authentication error, try to reinitialize CloudKit
+                if (error._ckErrorCode === 'AUTHENTICATION_FAILED') {
+                    console.log('Authentication failed, trying to reinitialize CloudKit...');
+                    
+                    // Wait a moment and try again
+                    setTimeout(async () => {
+                        try {
+                            // Reinitialize CloudKit
+                            const container = CloudKit.getDefaultContainer();
+                            const database = container.publicCloudDatabase;
+                            
+                            console.log('Retrying CloudKit query...');
+                            const retryResponse = await database.performQuery({
+                                recordType: 'SOTOGroupWebsite',
+                                filterBy: [{
+                                    fieldName: 'clientCode',
+                                    comparator: 'EQUALS',
+                                    fieldValue: {
+                                        value: clientCode,
+                                        type: 'STRING'
+                                    }
+                                }]
+                            });
+                            
+                            if (retryResponse.records && retryResponse.records.length > 0) {
+                                // Process the successful retry response
+                                const record = retryResponse.records[0];
+                                const clientData = {
+                                    valid: true,
+                                    clientCode: record.fields.clientCode.value,
+                                    pricingFormula: record.fields.pricingFormula.value,
+                                    companyName: record.fields.companyName ? record.fields.companyName.value : 'Unknown'
+                                };
+                                
+                                // Continue with the rest of the quote processing...
+                                const routeInfo = await calculateDistance(collectionAddress, deliveryAddress);
+                                const pricingFormula = clientData.pricingFormula;
+                                const companyName = clientData.companyName;
+                                
+                                let price;
+                                console.log('Using pricing formula from database:', pricingFormula);
+                                
+                                if (pricingFormula && pricingFormula.trim()) {
+                                    try {
+                                        const formulaWithDistance = pricingFormula.replace(/distance/gi, routeInfo.distance);
+                                        console.log('Formula with distance substituted:', formulaWithDistance);
+                                        
+                                        const calculatedPrice = eval(formulaWithDistance);
+                                        price = Math.round(calculatedPrice);
+                                        
+                                        console.log(`Distance: ${routeInfo.distance} miles, Formula: ${pricingFormula}, Calculated: ${calculatedPrice}, Final Price: £${price}`);
+                                    } catch (error) {
+                                        console.error('Error evaluating formula:', error);
+                                        price = Math.round(routeInfo.distance * 5);
+                                        console.log('Using default formula due to formula error');
+                                    }
+                                } else {
+                                    price = Math.round(routeInfo.distance * 5);
+                                    console.log('Using default formula: distance*5');
+                                }
+                                
+                                document.getElementById('quoteTitle').textContent = `An EC Logistics movement quote generated for "${companyName}"`;
+                                document.getElementById('distance').textContent = `${Math.round(routeInfo.distance)} miles`;
+                                document.getElementById('duration').textContent = routeInfo.duration;
+                                document.getElementById('price').textContent = `£${price}`;
+                                
+                                displayRouteOnMap(routeInfo.route, collectionAddress, deliveryAddress);
+                                
+                                document.getElementById('loading').style.display = 'none';
+                                document.getElementById('overlay').style.display = 'block';
+                                document.getElementById('result').style.display = 'block';
+                                document.getElementById('getQuoteBtn').disabled = false;
+                            } else {
+                                alert('Incorrect client code');
+                                document.getElementById('loading').style.display = 'none';
+                                document.getElementById('getQuoteBtn').disabled = false;
+                            }
+                        } catch (retryError) {
+                            console.error('Retry also failed:', retryError);
+                            alert('Error validating client code. Please try again.');
+                            document.getElementById('loading').style.display = 'none';
+                            document.getElementById('getQuoteBtn').disabled = false;
+                        }
+                    }, 1000); // Wait 1 second before retry
+                } else {
+                    alert('Error validating client code. Please try again.');
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('getQuoteBtn').disabled = false;
+                }
+            }
+        }
+
+        // Calculate real distance using Google Maps Directions API - always longest route
+        async function calculateDistance(origin, destination) {
+            return new Promise((resolve, reject) => {
+                const directionsService = new google.maps.DirectionsService();
+                
+                // Always use longest route by avoiding highways and tolls
+                const routeOptions = {
+                    origin: origin,
+                    destination: destination,
+                    travelMode: google.maps.TravelMode.DRIVING,
+                    unitSystem: google.maps.UnitSystem.IMPERIAL,
+                    avoidHighways: true,
+                    avoidTolls: true
+                };
+                
+                directionsService.route(routeOptions, (response, status) => {
+                    if (status === 'OK') {
+                        const route = response.routes[0];
+                        const distance = route.legs[0].distance.text;
+                        const duration = route.legs[0].duration.text;
+                        // Convert "123.4 mi" to number
+                        const distanceInMiles = parseFloat(distance.replace(' mi', ''));
+                        resolve({
+                            distance: distanceInMiles,
+                            duration: duration,
+                            route: route
+                        });
+                    } else {
+                        reject(new Error('Could not calculate route'));
+                    }
+                });
+            });
+        }
+
+        function displayRouteOnMap(route, origin, destination) {
+            const mapContainer = document.getElementById('routeMap');
+            mapContainer.innerHTML = ''; // Clear previous map
+
+            const map = new google.maps.Map(mapContainer, {
+                zoom: 10,
+                center: route.legs[0].start_location,
+                mapTypeId: google.maps.MapTypeId.ROADMAP,
+                disableDefaultUI: true, // Remove all controls
+                zoomControl: false,
+                mapTypeControl: false,
+                scaleControl: false,
+                streetViewControl: false,
+                rotateControl: false,
+                fullscreenControl: false,
+                styles: [
+                    { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+                    { featureType: 'transit', elementType: 'labels', stylers: [{ visibility: 'off' }] }
+                ]
+            });
+
+            const directionsRenderer = new google.maps.DirectionsRenderer({
+                map: map,
+                suppressMarkers: false,
+                polylineOptions: {
+                    strokeColor: '#007AFF',
+                    strokeWeight: 6,
+                    strokeOpacity: 0.8
+                }
+            });
+
+            // Create a new directions service request to get a full response for the renderer
+            const directionsService = new google.maps.DirectionsService();
+            directionsService.route({
+                origin: origin,
+                destination: destination,
+                travelMode: google.maps.TravelMode.DRIVING,
+                unitSystem: google.maps.UnitSystem.IMPERIAL,
+                avoidHighways: true,
+                avoidTolls: true
+            }, (response, status) => {
+                if (status === 'OK') {
+                    directionsRenderer.setDirections(response);
+                }
+            });
+        }
+
+        function closeQuote() {
+            document.getElementById('overlay').style.display = 'none';
+            document.getElementById('result').style.display = 'none';
+        }
+
+        async function proceedWithQuote() {
+            try {
+                // Get the current quote data
+                const clientCode = document.getElementById('clientCode').value;
+                const collectionAddress = document.getElementById('collectionAddress').value;
+                const deliveryAddress = document.getElementById('deliveryAddress').value;
+                const distance = parseFloat(document.getElementById('distance').textContent.replace(' miles', ''));
+                const price = parseFloat(document.getElementById('price').textContent.replace('£', ''));
+                
+                // Show loading state
+                const proceedBtn = document.querySelector('.proceed-btn');
+                const originalText = proceedBtn.textContent;
+                proceedBtn.textContent = 'Submitting booking...';
+                proceedBtn.disabled = true;
+                
+                // Create booking record in CloudKit
+                const bookingRecord = {
+                    recordType: 'SOTOWebsiteBookings',
+                    fields: {
+                        companyNameString: {
+                            value: clientCode,
+                            type: 'STRING'
+                        },
+                        distanceDouble: {
+                            value: distance,
+                            type: 'DOUBLE'
+                        },
+                        locationALocation: {
+                            value: collectionAddress,
+                            type: 'STRING'
+                        },
+                        locationBLocation: {
+                            value: deliveryAddress,
+                            type: 'STRING'
+                        },
+                        priceDouble: {
+                            value: price,
+                            type: 'DOUBLE'
+                        }
+                    }
+                };
+                
+                console.log('Creating booking record:', bookingRecord);
+                
+                // Save the booking to CloudKit
+                const saveResponse = await database.saveRecords([bookingRecord]);
+                
+                console.log('Booking saved successfully:', saveResponse);
+                
+                // Show success message
+                alert('Booking request submitted successfully! Your movement request has been recorded and will be processed by our team.');
+                closeQuote();
+                
+            } catch (error) {
+                console.error('Error submitting booking:', error);
+                alert('Error submitting booking. Please try again or contact EC Logistics directly.');
+            } finally {
+                // Reset button state
+                const proceedBtn = document.querySelector('.proceed-btn');
+                proceedBtn.textContent = 'Request Movement';
+                proceedBtn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html> 

@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <link crossorigin="" href="https://fonts.gstatic.com/" rel="preconnect"/>
+    <link as="style" href="https://fonts.googleapis.com/css2?display=swap&amp;family=Inter%3Awght%40400%3B500%3B700%3B900&amp;family=Noto+Sans%3Awght%40400%3B500%3B700%3B900" onload="this.rel='stylesheet'" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+    <link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png">
+<title>Driver Availability - SOTO Routes</title>
+    <link href="data:image/x-icon;base64," rel="icon" type="image/x-icon"/>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            plugins: {
+                forms: {},
+                containerQueries: {}
+            }
+        }
+    </script>
+    
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, addDoc, getDocs, getDoc, doc, query, orderBy, limit, where, setDoc, deleteDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+        
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA",
+            authDomain: "soto-routes.firebaseapp.com",
+            projectId: "soto-routes",
+            storageBucket: "soto-routes.firebasestorage.app",
+            messagingSenderId: "440989695549",
+            appId: "1:440989695549:web:0bce8b92a46f7f79953454",
+            measurementId: "G-4E3G40QQ9L"
+        };
+        
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const functions = getFunctions(app);
+        
+        // Make Firebase available globally
+        window.firebaseApp = app;
+        window.firebase = { functions: functions, httpsCallable: httpsCallable };
+        window.firestore = db;
+        window.auth = auth;
+        window.firebaseCollection = collection;
+        window.firebaseAddDoc = addDoc;
+        window.firebaseGetDocs = getDocs;
+        window.firebaseGetDoc = getDoc;
+        window.firebaseDoc = doc;
+        window.firebaseSetDoc = setDoc;
+        window.firebaseQuery = query;
+        window.firebaseOrderBy = orderBy;
+        window.firebaseLimit = limit;
+        window.firebaseWhere = where;
+        window.firebaseDeleteDoc = deleteDoc;
+        window.firebaseUpdateDoc = updateDoc;
+        
+        console.log('Firebase initialized successfully!');
+    </script>
+    
+    <style type="text/tailwindcss">
+        :root {
+            --primary-color: #0d7ff2;
+            --success-color: #22c55e;
+        }
+    </style>
+</head>
+<body class="bg-[#111418] text-white" style='font-family: Inter, "Noto Sans", sans-serif;'>
+    <div class="relative flex h-auto min-h-screen w-full flex-col dark group/design-root overflow-x-hidden">
+        <div class="flex h-full grow flex-col">
+        <header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-b-[#283039] px-6 py-3">
+            <div class="flex items-center gap-4">
+                <div class="size-8 text-[var(--primary-color)]">
+                    <svg fill="none" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M13.8261 17.4264C16.7203 18.1174 20.2244 18.5217 24 18.5217C27.7756 18.5217 31.2797 18.1174 34.1739 17.4264C36.9144 16.7722 39.9967 15.2331 41.3563 14.1648L24.8486 40.6391C24.4571 41.267 23.5429 41.267 23.1514 40.6391L6.64374 14.1648C8.00331 15.2331 11.0856 16.7722 13.8261 17.4264Z" fill="currentColor"></path>
+                        <path clip-rule="evenodd" d="M39.998 12.236C39.9944 12.2537 39.9875 12.2845 39.9748 12.3294C39.9436 12.4399 39.8949 12.5741 39.8346 12.7175C39.8168 12.7597 39.7989 12.8007 39.7813 12.8398C38.5103 13.7113 35.9788 14.9393 33.7095 15.4811C30.9875 16.131 27.6413 16.5217 24 16.5217C20.3587 16.5217 17.0125 16.131 14.2905 15.4811C12.0012 14.9346 9.44505 13.6897 8.18538 12.8168C8.17384 12.7925 8.16216 12.767 8.15052 12.7408C8.09919 12.6249 8.05721 12.5114 8.02977 12.411C8.00356 12.3152 8.00039 12.2667 8.00004 12.2612C8.00004 12.261 8 12.2607 8.00004 12.2612C8.00004 12.2359 8.0104 11.9233 8.68485 11.3686C9.34546 10.8254 10.4222 10.2469 11.9291 9.72276C14.9242 8.68098 19.1919 8 24 8C28.8081 8 33.0758 8.68098 36.0709 9.72276C37.5778 10.2469 38.6545 10.8254 39.3151 11.3686C39.9006 11.8501 39.9857 12.1489 39.998 12.236ZM4.95178 15.2312L21.4543 41.6973C22.6288 43.5809 25.3712 43.5809 26.5457 41.6973L43.0534 15.223C43.0709 15.1948 43.0878 15.1662 43.104 15.1371L41.3563 14.1648C43.104 15.1371 43.1038 15.1374 43.104 15.1371L43.1051 15.135L43.1065 15.1325L43.1101 15.1261L43.1199 15.1082C43.1276 15.094 43.1377 15.0754 43.1497 15.0527C43.1738 15.0075 43.2062 14.9455 43.244 14.8701C43.319 14.7208 43.4196 14.511 43.5217 14.2683C43.6901 13.8679 44 13.0689 44 12.2609C44 10.5573 43.003 9.22254 41.8558 8.2791C40.6947 7.32427 39.1354 6.55361 37.385 5.94477C33.8654 4.72057 29.133 4 24 4C18.867 4 14.1346 4.72057 10.615 5.94478C8.86463 6.55361 7.30529 7.32428 6.14419 8.27911C4.99695 9.22255 3.99999 10.5573 3.99999 12.2609C3.99999 13.1275 4.29264 13.9078 4.49321 14.3607C4.60375 14.6102 4.71348 14.8196 4.79687 14.9689C4.83898 15.0444 4.87547 15.1065 4.9035 15.1529C4.91754 15.1762 4.92954 15.1957 4.93916 15.2111L4.94662 15.223L4.95178 15.2312ZM35.9868 18.996L24 38.22L12.0131 18.996C12.4661 19.1391 12.9179 19.2658 13.3617 19.3718C16.4281 20.1039 20.0901 20.5217 24 20.5217C27.9099 20.5217 31.5719 20.1039 34.6383 19.3718C35.082 19.2658 35.5339 19.1391 35.9868 18.996Z" fill="currentColor" fill-rule="evenodd"></path>
+                    </svg>
+                </div>
+                <h2 class="text-xl font-bold">SOTO Routes</h2>
+            </div>
+            <nav class="flex flex-1 justify-center gap-2">
+                <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/soto-lp.html">Routes</a>
+                <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/optimisation.html">Optimisation</a>
+                <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/drivers.html">Drivers</a>
+                <a class="bg-[#283039] text-white text-sm font-medium rounded-md px-4 py-2" href="#">Availability</a>
+                <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/expenses.html">Expenses</a>
+            </nav>
+            <div class="flex items-center gap-4">
+                <div class="relative">
+                    <button class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors relative" onclick="showNotifications()">
+                        <span class="material-symbols-outlined text-xl">notifications</span>
+                        <!-- Notification Badge -->
+                        <span class="notification-badge absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold hidden">0</span>
+                    </button>
+                    <!-- Notifications Dropdown -->
+                    <div id="notificationDropdown" class="hidden absolute right-0 mt-2 w-80 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+                        <div class="px-4 py-3 border-b border-[#283039]">
+                            <h3 class="text-white font-semibold text-sm">Notifications</h3>
+                        </div>
+                        <div id="notificationsList" class="max-h-64 overflow-y-auto">
+                            <!-- Notifications will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+                <button class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors text-sm" onclick="logout()">
+                    Logout
+                </button>
+                <div class="relative">
+                    <button onclick="toggleProfileDropdown()" class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
+                        <img src="/assets/logos/c-logo.svg" alt="C Logo" class="w-full h-full object-cover">
+                    </button>
+                    <!-- Profile Dropdown -->
+                    <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50">
+                        <button onclick="showChangePassword()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors rounded-t-lg">
+                            <span class="material-symbols-outlined inline-block align-middle text-base mr-2">lock</span>
+                            Change Password
+                        </button>
+                        <button onclick="viewUsage()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors rounded-b-lg">
+                            <span class="material-symbols-outlined inline-block align-middle text-base mr-2">calendar_month</span>
+                            View Usage
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="fixed inset-0 bg-[#0f1419] bg-opacity-95 flex items-center justify-center z-50">
+            <div class="text-center">
+                <div class="relative w-16 h-16 mx-auto mb-4">
+                    <div class="absolute inset-0 border-4 border-gray-700 rounded-full"></div>
+                    <div class="absolute inset-0 border-4 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
+                </div>
+                <p class="text-white text-lg font-semibold">Loading Availability...</p>
+                <p class="text-gray-400 text-sm mt-1">Please wait</p>
+            </div>
+        </div>
+        
+        <main class="flex-1 px-6 py-4">
+            <div class="max-w-7xl mx-auto">
+                <div class="flex justify-between items-center mb-6">
+                    <div>
+                        <h1 class="text-2xl font-bold tracking-tight mb-1">Driver Availability</h1>
+                        <p class="text-[#9cabba] text-sm">View and manage driver schedules</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="bg-[#1a1f24] border border-[#283039] rounded-lg px-4 py-2">
+                            <div class="flex items-center gap-2">
+                                <span class="text-[#9cabba] text-sm">Total Drivers:</span>
+                                <span class="text-white font-bold text-lg" id="total-drivers-count">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Calendar Header -->
+                <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-4 mb-4">
+                    <div class="flex items-center justify-between">
+                        <button onclick="previousMonth()" class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors">
+                            <span class="material-symbols-outlined">chevron_left</span>
+                        </button>
+                        <h2 class="text-xl font-bold" id="calendar-month-year">Loading...</h2>
+                        <button onclick="nextMonth()" class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors">
+                            <span class="material-symbols-outlined">chevron_right</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Calendar Grid -->
+                <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-4">
+                    <!-- Day Headers -->
+                    <div class="grid grid-cols-5 gap-2 mb-2">
+                        <div class="text-center text-[#9cabba] text-sm font-semibold py-2">Mon</div>
+                        <div class="text-center text-[#9cabba] text-sm font-semibold py-2">Tue</div>
+                        <div class="text-center text-[#9cabba] text-sm font-semibold py-2">Wed</div>
+                        <div class="text-center text-[#9cabba] text-sm font-semibold py-2">Thu</div>
+                        <div class="text-center text-[#9cabba] text-sm font-semibold py-2">Fri</div>
+                    </div>
+                    
+                    <!-- Calendar Days -->
+                    <div id="calendar-grid" class="grid grid-cols-5 gap-2">
+                        <!-- Calendar days will be generated here -->
+                    </div>
+                </div>
+            </div>
+        </main>
+        </div>
+    </div>
+
+    <!-- Day Detail Modal -->
+    <div id="day-detail-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50" onclick="closeDayModal(event)">
+        <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold" id="modal-date-title">Loading...</h2>
+                    <p class="text-[#9cabba] text-sm mt-1" id="modal-date-subtitle"></p>
+                </div>
+                <button onclick="closeModal()" class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+
+            <!-- Summary Stats -->
+            <div class="grid grid-cols-3 gap-4 mb-6">
+                <div class="bg-[#283039] rounded-lg p-4">
+                    <div class="text-[#9cabba] text-sm mb-1">Total Drivers</div>
+                    <div class="text-2xl font-bold text-white" id="modal-total-drivers">0</div>
+                </div>
+                <div class="bg-[#283039] rounded-lg p-4">
+                    <div class="text-[#9cabba] text-sm mb-1">Working</div>
+                    <div class="text-2xl font-bold text-green-500" id="modal-working-count">0</div>
+                </div>
+                <div class="bg-[#283039] rounded-lg p-4">
+                    <div class="text-[#9cabba] text-sm mb-1">Off</div>
+                    <div class="text-2xl font-bold text-red-500" id="modal-off-count">0</div>
+                </div>
+            </div>
+
+            <!-- Drivers Off Section -->
+            <div class="mb-6">
+                <h3 class="text-lg font-bold mb-3 flex items-center gap-2">
+                    <span class="material-symbols-outlined text-red-500">event_busy</span>
+                    Drivers Off
+                </h3>
+                <div id="drivers-off-list" class="space-y-2">
+                    <!-- Will be populated dynamically -->
+                </div>
+            </div>
+
+            <!-- Drivers Working Section -->
+            <div>
+                <h3 class="text-lg font-bold mb-3 flex items-center gap-2">
+                    <span class="material-symbols-outlined text-green-500">event_available</span>
+                    Drivers Working
+                </h3>
+                <div id="drivers-working-list" class="space-y-2">
+                    <!-- Will be populated dynamically -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Check authentication
+        const storedUser = localStorage.getItem('soto_user_identity');
+        if (!storedUser) {
+            console.log('No user identity found, redirecting to login');
+            window.location.href = '/pages/soto-routes-login.html';
+        }
+
+        // Global variables
+        let allDrivers = [];
+        let driverAvailability = {}; // Format: { 'YYYY-MM-DD': ['driverId1', 'driverId2'] } - stores IDs of drivers who are OFF
+        let currentDate = new Date();
+
+        // Initialize on page load
+        window.addEventListener('load', async function() {
+            await loadDrivers();
+            await loadAvailabilityData();
+            renderCalendar();
+            
+            // Handle URL parameters for opening specific dates
+            handleUrlParameters();
+            
+            // Initialize notification system
+            await initializeNotifications();
+            
+            // Hide loading overlay after data is loaded
+            setTimeout(() => {
+                const loadingOverlay = document.getElementById('loading-overlay');
+                if (loadingOverlay) {
+                    loadingOverlay.style.opacity = '0';
+                    loadingOverlay.style.transition = 'opacity 0.3s ease-out';
+                    setTimeout(() => {
+                        loadingOverlay.style.display = 'none';
+                    }, 300);
+                }
+            }, 500);
+        });
+
+        // Load all drivers from Firebase
+        async function loadDrivers() {
+            try {
+                const driversRef = window.firebaseCollection(window.firestore, 'drivers');
+                const driversSnapshot = await window.firebaseGetDocs(driversRef);
+                
+                allDrivers = [];
+                driversSnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    allDrivers.push({
+                        id: doc.id,
+                        firstName: data.firstName || data.name || '',
+                        lastName: data.lastName || '',
+                        email: data.email || '',
+                        homePostcode: data.homePostcode || data.postcode || '',
+                        uid: data.uid || ''
+                    });
+                });
+
+                document.getElementById('total-drivers-count').textContent = allDrivers.length;
+                console.log('Loaded drivers:', allDrivers);
+            } catch (error) {
+                console.error('Error loading drivers:', error);
+            }
+        }
+
+        // Load availability data from Firebase (calendar collection)
+        async function loadAvailabilityData() {
+            try {
+                const calendarRef = window.firebaseCollection(window.firestore, 'calendar');
+                const calendarSnapshot = await window.firebaseGetDocs(calendarRef);
+                
+                driverAvailability = {};
+                calendarSnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    // Support both 'driversOff' array (new format) and 'driverIdString' single driver (old format)
+                    if (data.driversOff && Array.isArray(data.driversOff)) {
+                        // Check if array contains objects or strings
+                        const firstItem = data.driversOff[0];
+                        if (firstItem && typeof firstItem === 'object' && firstItem.driverId) {
+                            // Array of objects: extract driverId strings
+                            driverAvailability[doc.id] = data.driversOff.map(item => item.driverId);
+                        } else {
+                            // Array of strings: use as-is
+                            driverAvailability[doc.id] = data.driversOff;
+                        }
+                    } else if (data.driverIdString) {
+                        // Old format: single driver off
+                        driverAvailability[doc.id] = [data.driverIdString];
+                    } else {
+                        driverAvailability[doc.id] = [];
+                    }
+                });
+
+                console.log('Loaded availability data from calendar:', driverAvailability);
+            } catch (error) {
+                console.error('Error loading availability:', error);
+            }
+        }
+
+        // Render calendar for current month (weekdays only)
+        function renderCalendar() {
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+            
+            // Update header
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                'July', 'August', 'September', 'October', 'November', 'December'];
+            document.getElementById('calendar-month-year').textContent = `${monthNames[month]} ${year}`;
+
+            // Get first day of month
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            const daysInMonth = lastDay.getDate();
+            
+            // Generate calendar grid
+            const grid = document.getElementById('calendar-grid');
+            grid.innerHTML = '';
+
+            // Get today for comparison
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            // Track current position in weekday grid (0-4 for Mon-Fri)
+            let currentDayOfWeek = firstDay.getDay();
+            currentDayOfWeek = currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1; // Convert to Mon=0 format
+
+            // Add empty cells for days before month starts (only for weekdays)
+            if (currentDayOfWeek < 5) {
+                for (let i = 0; i < currentDayOfWeek; i++) {
+                    const emptyCell = document.createElement('div');
+                    emptyCell.className = 'h-24';
+                    grid.appendChild(emptyCell);
+                }
+            }
+
+            // Add cells for each day of the month (only weekdays)
+            for (let day = 1; day <= daysInMonth; day++) {
+                const cellDate = new Date(year, month, day);
+                const dayOfWeek = cellDate.getDay();
+                
+                // Skip weekends (Saturday = 6, Sunday = 0)
+                if (dayOfWeek === 0 || dayOfWeek === 6) {
+                    continue;
+                }
+                
+                const dateString = formatDateString(cellDate);
+                const driversOff = driverAvailability[dateString] || [];
+                const driversWorking = allDrivers.length - driversOff.length;
+                
+                const isToday = cellDate.getTime() === today.getTime();
+                const isPast = cellDate < today;
+                
+                const dayCell = document.createElement('div');
+                dayCell.className = `h-24 border border-[#283039] rounded-lg p-2 cursor-pointer transition-all hover:bg-[#283039] hover:border-[#3a444e] ${
+                    isToday ? 'border-blue-500 border-2' : ''
+                } ${isPast ? 'opacity-50' : ''}`;
+                dayCell.onclick = () => openDayModal(cellDate);
+                
+                dayCell.innerHTML = `
+                    <div class="flex flex-col h-full">
+                        <div class="text-right ${isToday ? 'text-blue-500 font-bold' : 'text-white'} text-sm mb-1">${day}</div>
+                        <div class="flex-1 flex flex-col items-center justify-center">
+                            <div class="text-green-500 font-bold text-lg">${driversWorking}</div>
+                            <div class="text-[#9cabba] text-xs">working</div>
+                            ${driversOff.length > 0 ? `
+                                <div class="text-red-500 text-xs mt-1">${driversOff.length} off</div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                
+                grid.appendChild(dayCell);
+            }
+        }
+
+        // Format date as YYYY-MM-DD
+        function formatDateString(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        // Navigate to previous month
+        function previousMonth() {
+            currentDate.setMonth(currentDate.getMonth() - 1);
+            renderCalendar();
+        }
+
+        // Navigate to next month
+        function nextMonth() {
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            renderCalendar();
+        }
+
+        // Open day detail modal
+        function openDayModal(date) {
+            const dateString = formatDateString(date);
+            const driversOffIds = driverAvailability[dateString] || [];
+            
+            // Filter by both id (Firestore doc ID) and uid (Firebase Auth ID)
+            const driversOff = allDrivers.filter(d => 
+                driversOffIds.includes(d.id) || driversOffIds.includes(d.uid)
+            );
+            const driversWorking = allDrivers.filter(d => 
+                !driversOffIds.includes(d.id) && !driversOffIds.includes(d.uid)
+            );
+
+            // Update modal title
+            const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                'July', 'August', 'September', 'October', 'November', 'December'];
+            const dayName = dayNames[date.getDay()];
+            const monthName = monthNames[date.getMonth()];
+            
+            document.getElementById('modal-date-title').textContent = `${dayName}, ${monthName} ${date.getDate()}, ${date.getFullYear()}`;
+            document.getElementById('modal-date-subtitle').textContent = dateString;
+
+            // Update stats
+            document.getElementById('modal-total-drivers').textContent = allDrivers.length;
+            document.getElementById('modal-working-count').textContent = driversWorking.length;
+            document.getElementById('modal-off-count').textContent = driversOff.length;
+
+            // Render drivers off list
+            const driversOffList = document.getElementById('drivers-off-list');
+            if (driversOff.length === 0) {
+                driversOffList.innerHTML = '<div class="text-[#9cabba] text-sm italic p-4 bg-[#283039] rounded-lg">No drivers off on this day</div>';
+            } else {
+                driversOffList.innerHTML = driversOff.map(driver => `
+                    <div class="bg-[#283039] rounded-lg p-3 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="flex items-center justify-center rounded-full h-10 w-10 bg-red-600">
+                                <span class="material-symbols-outlined text-white">person</span>
+                            </div>
+                            <div>
+                                <div class="font-semibold">${driver.firstName} ${driver.lastName}</div>
+                                <div class="text-[#9cabba] text-sm">${driver.homePostcode}</div>
+                            </div>
+                        </div>
+                        <button onclick="toggleDriverAvailability('${driver.uid || driver.id}', '${dateString}', event)" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm transition-colors">
+                            Mark Available
+                        </button>
+                    </div>
+                `).join('');
+            }
+
+            // Render drivers working list
+            const driversWorkingList = document.getElementById('drivers-working-list');
+            if (driversWorking.length === 0) {
+                driversWorkingList.innerHTML = '<div class="text-[#9cabba] text-sm italic p-4 bg-[#283039] rounded-lg">No drivers working on this day</div>';
+            } else {
+                driversWorkingList.innerHTML = driversWorking.map(driver => `
+                    <div class="bg-[#283039] rounded-lg p-3 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="flex items-center justify-center rounded-full h-10 w-10 bg-green-600">
+                                <span class="material-symbols-outlined text-white">person</span>
+                            </div>
+                            <div>
+                                <div class="font-semibold">${driver.firstName} ${driver.lastName}</div>
+                                <div class="text-[#9cabba] text-sm">${driver.homePostcode}</div>
+                            </div>
+                        </div>
+                        <button onclick="toggleDriverAvailability('${driver.uid || driver.id}', '${dateString}', event)" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm transition-colors">
+                            Mark Off
+                        </button>
+                    </div>
+                `).join('');
+            }
+
+            // Show modal
+            document.getElementById('day-detail-modal').classList.remove('hidden');
+            document.getElementById('day-detail-modal').classList.add('flex');
+        }
+
+        // Toggle driver availability for a specific date
+        async function toggleDriverAvailability(driverId, dateString, event) {
+            event.stopPropagation();
+            
+            try {
+                const driversOffIds = driverAvailability[dateString] || [];
+                const isCurrentlyOff = driversOffIds.includes(driverId);
+                
+                let updatedDriversOff;
+                let isAddingDayOff = false;
+                
+                if (isCurrentlyOff) {
+                    // Mark as available (remove from off list)
+                    updatedDriversOff = driversOffIds.filter(id => id !== driverId);
+                } else {
+                    // Mark as off (add to off list)
+                    updatedDriversOff = [...driversOffIds, driverId];
+                    isAddingDayOff = true;
+                }
+                
+                // Update local state
+                driverAvailability[dateString] = updatedDriversOff;
+                
+                // Save to Firebase (calendar collection)
+                const calendarDocRef = window.firebaseDoc(window.firestore, 'calendar', dateString);
+                await window.firebaseSetDoc(calendarDocRef, {
+                    date: dateString,
+                    driversOff: updatedDriversOff,
+                    updatedAt: new Date().toISOString()
+                }, { merge: true });
+                
+                // Create notification if driver is adding a day off
+                if (isAddingDayOff) {
+                    await createDayOffNotification(driverId, dateString);
+                }
+                
+                console.log('Updated availability for', dateString);
+                
+                // Refresh calendar and modal
+                renderCalendar();
+                const selectedDate = new Date(dateString);
+                openDayModal(selectedDate);
+                
+            } catch (error) {
+                console.error('Error toggling driver availability:', error);
+                alert('Error updating driver availability. Please try again.');
+            }
+        }
+
+        // Close modal
+        function closeModal() {
+            document.getElementById('day-detail-modal').classList.add('hidden');
+            document.getElementById('day-detail-modal').classList.remove('flex');
+        }
+
+        // Close modal when clicking outside
+        function closeDayModal(event) {
+            if (event.target.id === 'day-detail-modal') {
+                closeModal();
+            }
+        }
+
+        // Create notification when driver adds day off
+        async function createDayOffNotification(driverId, dateString) {
+            try {
+                // Get driver information
+                const driver = allDrivers.find(d => d.uid === driverId);
+                if (!driver) {
+                    console.error('Driver not found for notification:', driverId);
+                    return;
+                }
+                
+                // Get office ID from current user
+                const storedUser = localStorage.getItem('soto_user_identity');
+                if (!storedUser) {
+                    console.error('No user identity found for notification');
+                    return;
+                }
+                
+                const userData = JSON.parse(storedUser);
+                const officeId = userData.officeId;
+                
+                // Format date for display
+                const date = new Date(dateString);
+                const formattedDate = date.toLocaleDateString('en-GB', { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                });
+                
+                // Create notification data
+                const notificationData = {
+                    type: 'day_off',
+                    driverId: driverId,
+                    driverName: driver.name || `${driver.firstName} ${driver.lastName}`,
+                    date: dateString,
+                    formattedDate: formattedDate,
+                    officeId: officeId,
+                    createdAt: new Date(),
+                    read: false,
+                    message: `${driver.name || `${driver.firstName} ${driver.lastName}`} has requested time off on ${formattedDate}`
+                };
+                
+                // Save notification to Firebase
+                const notificationsCollection = window.firebaseCollection(window.firestore, 'notifications');
+                await window.firebaseAddDoc(notificationsCollection, notificationData);
+                
+                console.log('✅ Day off notification created:', notificationData);
+                
+                // Update notification count on all office pages
+                updateNotificationCount();
+                
+            } catch (error) {
+                console.error('Error creating day off notification:', error);
+            }
+        }
+
+        // Update notification count across all office pages
+        async function updateNotificationCount() {
+            try {
+                const storedUser = localStorage.getItem('soto_user_identity');
+                if (!storedUser) return;
+                
+                const userData = JSON.parse(storedUser);
+                const officeId = userData.officeId;
+                
+                // Get all notifications for this office (no index required)
+                const notificationsQuery = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'notifications'),
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                
+                const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
+                
+                // Filter unread notifications on client side
+                const unreadCount = notificationsSnapshot.docs.filter(doc => !doc.data().read).length;
+                
+                // Update notification badge on all pages
+                updateNotificationBadge(unreadCount);
+                
+            } catch (error) {
+                console.error('Error updating notification count:', error);
+            }
+        }
+
+        // Update notification badge display
+        function updateNotificationBadge(count) {
+            const badgeElements = document.querySelectorAll('.notification-badge');
+            badgeElements.forEach(badge => {
+                if (count > 0) {
+                    badge.textContent = count > 99 ? '99+' : count.toString();
+                    badge.classList.remove('hidden');
+                } else {
+                    badge.classList.add('hidden');
+                }
+            });
+        }
+
+        // Show notifications dropdown
+        async function showNotifications() {
+            const dropdown = document.getElementById('notificationDropdown');
+            if (!dropdown) return;
+            
+            // Toggle dropdown visibility
+            dropdown.classList.toggle('hidden');
+            
+            if (!dropdown.classList.contains('hidden')) {
+                // Load and display notifications
+                await loadNotifications();
+            }
+        }
+
+        // Load notifications for dropdown
+        async function loadNotifications() {
+            try {
+                const storedUser = localStorage.getItem('soto_user_identity');
+                if (!storedUser) return;
+                
+                const userData = JSON.parse(storedUser);
+                const officeId = userData.officeId;
+                
+                // Get all notifications for this office (no index required)
+                const notificationsQuery = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'notifications'),
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                
+                const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
+                const notificationsList = document.getElementById('notificationsList');
+                
+                if (notificationsSnapshot.empty) {
+                    notificationsList.innerHTML = `
+                        <div class="px-4 py-3 text-gray-400 text-sm text-center">
+                            No notifications yet
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Sort notifications by createdAt (descending) and take last 10
+                const notifications = notificationsSnapshot.docs
+                    .map(doc => ({ id: doc.id, ...doc.data() }))
+                    .sort((a, b) => b.createdAt.toDate() - a.createdAt.toDate())
+                    .slice(0, 10);
+                
+                // Clear existing notifications
+                notificationsList.innerHTML = '';
+                
+                notifications.forEach(notification => {
+                    const notificationElement = createNotificationElement(notification.id, notification);
+                    notificationsList.appendChild(notificationElement);
+                });
+                
+            } catch (error) {
+                console.error('Error loading notifications:', error);
+            }
+        }
+
+        // Create notification element for dropdown
+        function createNotificationElement(notificationId, notification) {
+            const element = document.createElement('div');
+            element.className = `px-4 py-3 border-b border-[#283039] cursor-pointer hover:bg-[#283039] transition-colors ${!notification.read ? 'bg-[#283039]' : ''}`;
+            element.onclick = () => handleNotificationClick(notificationId, notification);
+            
+            const timeAgo = getTimeAgo(notification.createdAt.toDate());
+            
+            element.innerHTML = `
+                <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                        <div class="text-white text-sm font-medium">${notification.message}</div>
+                        <div class="text-[#9cabba] text-xs mt-1">${timeAgo}</div>
+                    </div>
+                    ${!notification.read ? '<div class="w-2 h-2 bg-blue-500 rounded-full ml-2 mt-1"></div>' : ''}
+                </div>
+            `;
+            
+            return element;
+        }
+
+        // Handle notification click
+        async function handleNotificationClick(notificationId, notification) {
+            try {
+                // Mark notification as read
+                const notificationRef = window.firebaseDoc(window.firestore, 'notifications', notificationId);
+                await window.firebaseUpdateDoc(notificationRef, { read: true });
+                
+                // Hide dropdown
+                document.getElementById('notificationDropdown').classList.add('hidden');
+                
+                // Navigate to availability page with specific date
+                const date = new Date(notification.date);
+                const year = date.getFullYear();
+                const month = date.getMonth() + 1; // JavaScript months are 0-indexed
+                
+                // Navigate to availability page with date parameters
+                window.location.href = `/pages/availability.html?year=${year}&month=${month}&openDate=${notification.date}`;
+                
+            } catch (error) {
+                console.error('Error handling notification click:', error);
+            }
+        }
+
+        // Get time ago string
+        function getTimeAgo(date) {
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+            
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins}m ago`;
+            if (diffHours < 24) return `${diffHours}h ago`;
+            if (diffDays < 7) return `${diffDays}d ago`;
+            
+            return date.toLocaleDateString();
+        }
+
+        // Handle URL parameters for opening specific dates
+        function handleUrlParameters() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const year = urlParams.get('year');
+            const month = urlParams.get('month');
+            const openDate = urlParams.get('openDate');
+            
+            if (year && month) {
+                // Navigate to specific year/month
+                currentDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+                renderCalendar();
+                
+                // If openDate is provided, open that specific date's modal
+                if (openDate) {
+                    setTimeout(() => {
+                        const date = new Date(openDate);
+                        openDayModal(date);
+                    }, 1000); // Wait for calendar to render
+                }
+            }
+        }
+
+        // Initialize notification system
+        async function initializeNotifications() {
+            // Update notification count on page load
+            await updateNotificationCount();
+            
+            // Set up click outside to close dropdown
+            document.addEventListener('click', function(event) {
+                const dropdown = document.getElementById('notificationDropdown');
+                const button = event.target.closest('button[onclick="showNotifications()"]');
+                
+                if (!button && !dropdown.contains(event.target)) {
+                    dropdown.classList.add('hidden');
+                }
+            });
+        }
+
+        // Logout function
+        function logout() {
+            localStorage.removeItem('soto_user_identity');
+            window.location.href = '/pages/soto-routes-login.html';
+        }
+
+        // Profile dropdown functions
+        function toggleProfileDropdown() {
+            const dropdown = document.getElementById('profileDropdown');
+            dropdown.classList.toggle('hidden');
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+            const dropdown = document.getElementById('profileDropdown');
+            const profileButton = event.target.closest('button[onclick="toggleProfileDropdown()"]');
+            
+            if (!profileButton && !dropdown.contains(event.target)) {
+                dropdown.classList.add('hidden');
+            }
+        });
+
+        function showChangePassword() {
+            document.getElementById('changePasswordModal').classList.remove('hidden');
+            document.getElementById('profileDropdown').classList.add('hidden');
+        }
+
+        function hideChangePassword() {
+            document.getElementById('changePasswordModal').classList.add('hidden');
+            document.getElementById('changePasswordForm').reset();
+        }
+
+        // View usage calendar
+        function viewUsage() {
+            const storedUser = localStorage.getItem('soto_user_identity');
+            if (storedUser) {
+                const userData = JSON.parse(storedUser);
+                window.location.href = `/pages/office-calendar.html?officeId=${userData.officeId}`;
+            }
+        }
+
+        // Handle password change
+        async function handleChangePassword(event) {
+            event.preventDefault();
+            
+            const currentPassword = document.getElementById('currentPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            
+            if (newPassword !== confirmPassword) {
+                alert('New passwords do not match');
+                return;
+            }
+            
+            try {
+                const user = window.auth.currentUser;
+                if (!user) {
+                    alert('No user logged in');
+                    return;
+                }
+                
+                // Re-authenticate user with current password
+                const credential = window.EmailAuthProvider.credential(user.email, currentPassword);
+                await window.reauthenticateWithCredential(user, credential);
+                
+                // Update password
+                await window.updatePassword(user, newPassword);
+                
+                alert('Password changed successfully!');
+                hideChangePassword();
+                
+            } catch (error) {
+                console.error('Error changing password:', error);
+                
+                if (error.code === 'auth/wrong-password') {
+                    alert('Current password is incorrect');
+                } else if (error.code === 'auth/weak-password') {
+                    alert('New password is too weak. Please choose a stronger password.');
+                } else if (error.code === 'auth/requires-recent-login') {
+                    alert('Please log out and log back in, then try changing your password again.');
+                } else {
+                    alert('Error changing password: ' + error.message);
+                }
+            }
+        }
+
+        // Make functions globally available
+        window.toggleProfileDropdown = toggleProfileDropdown;
+        window.showChangePassword = showChangePassword;
+        window.hideChangePassword = hideChangePassword;
+        window.viewUsage = viewUsage;
+        window.handleChangePassword = handleChangePassword;
+
+        // Add event listener for password form
+        document.addEventListener('DOMContentLoaded', function() {
+            const changePasswordForm = document.getElementById('changePasswordForm');
+            if (changePasswordForm) {
+                changePasswordForm.addEventListener('submit', handleChangePassword);
+            }
+        });
+    </script>
+
+    <!-- Change Password Modal -->
+    <div id="changePasswordModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-6 w-full max-w-md">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-white">Change Password</h3>
+                <button onclick="hideChangePassword()" class="text-gray-400 hover:text-white">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            
+            <form id="changePasswordForm" class="space-y-4">
+                <div>
+                    <label for="currentPassword" class="block text-sm font-medium text-gray-300 mb-2">Current Password</label>
+                    <input 
+                        type="password" 
+                        id="currentPassword" 
+                        required 
+                        class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Enter current password"
+                    >
+                </div>
+                
+                <div>
+                    <label for="newPassword" class="block text-sm font-medium text-gray-300 mb-2">New Password</label>
+                    <input 
+                        type="password" 
+                        id="newPassword" 
+                        required 
+                        class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Enter new password"
+                    >
+                </div>
+                
+                <div>
+                    <label for="confirmPassword" class="block text-sm font-medium text-gray-300 mb-2">Confirm New Password</label>
+                    <input 
+                        type="password" 
+                        id="confirmPassword" 
+                        required 
+                        class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Confirm new password"
+                    >
+                </div>
+
+                <button 
+                    type="submit"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+                >
+                    Change Password
+                </button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>
+

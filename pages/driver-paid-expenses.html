@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Paid Expenses - SOTO Routes</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, getDocs, query, where } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA",
+            authDomain: "soto-routes.firebaseapp.com",
+            projectId: "soto-routes",
+            storageBucket: "soto-routes.firebasestorage.app",
+            messagingSenderId: "440989695549",
+            appId: "1:440989695549:web:0bce8b92a46f7f79953454",
+            measurementId: "G-4E3G40QQ9L"
+        };
+        
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        
+        window.db = db;
+        window.auth = auth;
+        window.query = query;
+        window.collection = collection;
+        window.getDocs = getDocs;
+        window.where = where;
+        
+        initializePaidExpensesApp();
+    </script>
+    <style>
+        .touch-target { min-height: 44px; min-width: 44px; }
+        .license-plate {
+            background: #FFD500;
+            color: #000;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            letter-spacing: 2px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: 2px solid #000;
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 20, 25, 0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-[#0f1419] text-white min-h-screen">
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="text-center">
+            <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <p class="text-gray-400">Loading paid expenses...</p>
+        </div>
+    </div>
+
+    <div class="bg-[#1a1f24] border-b border-gray-800 sticky top-0 z-50">
+        <div class="flex items-center justify-between px-4 py-3">
+            <button onclick="window.location.href='/pages/driver-expenses.html'" class="touch-target flex items-center text-gray-400 hover:text-white transition-colors">
+                <span class="material-symbols-outlined">arrow_back</span>
+            </button>
+            <h1 class="text-xl font-semibold">Paid Expenses</h1>
+            <div class="w-10"></div>
+        </div>
+    </div>
+
+    <div class="container max-w-2xl mx-auto px-4 py-6 pb-24">
+        <div id="emptyState" class="hidden text-center py-16">
+            <span class="material-symbols-outlined text-6xl text-gray-600 mb-4">check_circle</span>
+            <p class="text-gray-400 text-lg mb-6">No paid expenses yet</p>
+            <p class="text-gray-500 text-sm">Your paid expense batches will appear here</p>
+        </div>
+
+        <div id="paidBatches" class="space-y-3"></div>
+    </div>
+
+    <script>
+        let currentUser = null;
+
+        function initializePaidExpensesApp() {
+            window.auth.onAuthStateChanged(async function(user) {
+                if (!user) {
+                    window.location.href = '/pages/soto-routes-login.html';
+                    return;
+                }
+
+                try {
+                    const userDoc = await (await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js')).getDoc((await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js')).doc(window.db, 'users', user.uid));
+                    if (!userDoc.exists()) {
+                        window.location.href = '/pages/soto-routes-login.html';
+                        return;
+                    }
+
+                    currentUser = { uid: user.uid, ...userDoc.data() };
+                    
+                    if (currentUser.role !== 'driver') {
+                        alert('Access denied.');
+                        window.location.href = '/pages/soto-lp.html';
+                        return;
+                    }
+
+                    await loadPaidExpenses();
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                } catch (error) {
+                    console.error('Error loading user data:', error);
+                    alert('Error loading user data.');
+                }
+            });
+        }
+
+        async function loadPaidExpenses() {
+            try {
+                const batchesQuery = window.query(
+                    window.collection(window.db, 'expenseBatches'),
+                    window.where('driverId', '==', currentUser.uid),
+                    window.where('status', '==', 'paid')
+                );
+
+                const batchesSnapshot = await window.getDocs(batchesQuery);
+                const batches = [];
+
+                for (const doc of batchesSnapshot.docs) {
+                    const batchData = { id: doc.id, ...doc.data() };
+                    
+                    const expensesQuery = window.query(
+                        window.collection(window.db, 'expenses'),
+                        window.where('batchId', '==', doc.id)
+                    );
+                    const expensesSnapshot = await window.getDocs(expensesQuery);
+                    batchData.expenses = expensesSnapshot.docs.map(expDoc => expDoc.data());
+                    
+                    batches.push(batchData);
+                }
+
+                batches.sort((a, b) => {
+                    const aTime = a.paidAt?.toDate ? a.paidAt.toDate().getTime() : a.submittedAt?.toDate ? a.submittedAt.toDate().getTime() : 0;
+                    const bTime = b.paidAt?.toDate ? b.paidAt.toDate().getTime() : b.submittedAt?.toDate ? b.submittedAt.toDate().getTime() : 0;
+                    return bTime - aTime;
+                });
+
+                displayPaidExpenses(batches);
+            } catch (error) {
+                console.error('Error loading paid expenses:', error);
+                alert('Error loading paid expenses.');
+            }
+        }
+
+        function displayPaidExpenses(batches) {
+            const container = document.getElementById('paidBatches');
+            const emptyState = document.getElementById('emptyState');
+            
+            if (batches.length === 0) {
+                container.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            container.classList.remove('hidden');
+            emptyState.classList.add('hidden');
+
+            container.innerHTML = batches.map(batch => {
+                const paidDate = batch.paidAt?.toDate ? batch.paidAt.toDate() : new Date();
+                const dateStr = paidDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                const timeStr = paidDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                
+                return `
+                    <div class="bg-[#1a1f24] rounded-lg p-4 border border-gray-800 fade-in">
+                        <div class="flex items-start justify-between mb-2">
+                            <div class="license-plate">${batch.registration}</div>
+                            <span class="bg-green-500 px-3 py-1 rounded-full text-xs font-semibold uppercase">PAID</span>
+                        </div>
+                        <div class="flex items-center justify-between mt-3 mb-2">
+                            <span class="text-gray-400 text-sm">${batch.expenses?.length || 0} expense${batch.expenses?.length !== 1 ? 's' : ''}</span>
+                            <span class="text-green-500 font-semibold text-lg">£${batch.totalAmount?.toFixed(2) || '0.00'}</span>
+                        </div>
+                        <div class="text-gray-500 text-xs">
+                            Paid: ${dateStr} at ${timeStr}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+    </script>
+</body>
+</html>
