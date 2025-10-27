@@ -98,34 +98,32 @@
         let currentUser = null;
 
         function initializePaidExpensesApp() {
-            window.auth.onAuthStateChanged(async function(user) {
-                if (!user) {
+            // Use localStorage instead of Firebase Auth for faster loading
+            try {
+                const storedUser = localStorage.getItem('soto_user_identity');
+                if (!storedUser) {
+                    console.log('No user identity found, redirecting to login');
                     window.location.href = '/pages/soto-routes-login.html';
                     return;
                 }
 
-                try {
-                    const userDoc = await (await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js')).getDoc((await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js')).doc(window.db, 'users', user.uid));
-                    if (!userDoc.exists()) {
-                        window.location.href = '/pages/soto-routes-login.html';
-                        return;
-                    }
-
-                    currentUser = { uid: user.uid, ...userDoc.data() };
-                    
-                    if (currentUser.role !== 'driver') {
-                        alert('Access denied.');
-                        window.location.href = '/pages/soto-lp.html';
-                        return;
-                    }
-
-                    await loadPaidExpenses();
-                    document.getElementById('loadingOverlay').style.display = 'none';
-                } catch (error) {
-                    console.error('Error loading user data:', error);
-                    alert('Error loading user data.');
+                const userData = JSON.parse(storedUser);
+                currentUser = { uid: userData.uid, ...userData };
+                
+                if (currentUser.role !== 'driver') {
+                    alert('Access denied.');
+                    window.location.href = '/pages/soto-lp.html';
+                    return;
                 }
-            });
+
+                loadPaidExpenses().then(() => {
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                });
+                
+            } catch (error) {
+                console.error('Error loading user data:', error);
+                alert('Error loading user data.');
+            }
         }
 
         async function loadPaidExpenses() {
@@ -203,4 +201,3 @@
     </script>
 </body>
 </html>
-
