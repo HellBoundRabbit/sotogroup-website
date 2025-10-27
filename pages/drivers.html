@@ -411,34 +411,9 @@ driversContainer.classList.add('hidden');
 emptyState.classList.add('hidden');
 
 try {
-// Get current user's office ID
-const storedUser = localStorage.getItem('soto_user_identity');
-const userData = JSON.parse(storedUser);
-const officeId = userData.officeId;
-
-console.log('Loading drivers for office:', officeId);
-console.time('Firebase Query');
-
-// Query drivers filtered by office (no orderBy to avoid index issues)
-const q = window.firebaseQuery(
-    window.firebaseCollection(window.firestore, "drivers"), 
-    window.firebaseWhere('officeId', '==', officeId)
-);
-console.log('Query created, executing...');
+const q = window.firebaseQuery(window.firebaseCollection(window.firestore, "drivers"), window.firebaseOrderBy("lastName"));
 const querySnapshot = await window.firebaseGetDocs(q);
-console.timeEnd('Firebase Query');
-console.log('Query completed, processing results...');
-
 allDrivers = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-// Sort drivers client-side by lastName
-allDrivers.sort((a, b) => {
-    const lastNameA = (a.lastName || '').toLowerCase();
-    const lastNameB = (b.lastName || '').toLowerCase();
-    return lastNameA.localeCompare(lastNameB);
-});
-
-console.log(`Loaded ${allDrivers.length} drivers for office ${officeId}`);
 
 renderDrivers(allDrivers);
 

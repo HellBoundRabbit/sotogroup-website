@@ -289,19 +289,8 @@
         // Load all drivers from Firebase
         async function loadDrivers() {
             try {
-                // Get current user's office ID
-                const storedUser = localStorage.getItem('soto_user_identity');
-                const userData = JSON.parse(storedUser);
-                const officeId = userData.officeId;
-                
-                console.log('Loading drivers for office:', officeId);
-                
-                // Query drivers filtered by office
-                const driversQuery = window.firebaseQuery(
-                    window.firebaseCollection(window.firestore, 'drivers'),
-                    window.firebaseWhere('officeId', '==', officeId)
-                );
-                const driversSnapshot = await window.firebaseGetDocs(driversQuery);
+                const driversRef = window.firebaseCollection(window.firestore, 'drivers');
+                const driversSnapshot = await window.firebaseGetDocs(driversRef);
                 
                 allDrivers = [];
                 driversSnapshot.forEach((doc) => {
@@ -316,15 +305,8 @@
                     });
                 });
 
-                // Sort drivers client-side by name
-                allDrivers.sort((a, b) => {
-                    const nameA = `${a.firstName} ${a.lastName}`.trim().toLowerCase();
-                    const nameB = `${b.firstName} ${b.lastName}`.trim().toLowerCase();
-                    return nameA.localeCompare(nameB);
-                });
-
                 document.getElementById('total-drivers-count').textContent = allDrivers.length;
-                console.log(`Loaded ${allDrivers.length} drivers for office ${officeId}:`, allDrivers);
+                console.log('Loaded drivers:', allDrivers);
             } catch (error) {
                 console.error('Error loading drivers:', error);
             }

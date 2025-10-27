@@ -587,21 +587,10 @@ function getWeekNumber(date) {
 
 async function loadTotalDrivers() {
     try {
-        // Get current user's office ID
-        const storedUser = localStorage.getItem('soto_user_identity');
-        const userData = JSON.parse(storedUser);
-        const officeId = userData.officeId;
-        
-        console.log('Loading total drivers for office:', officeId);
-        
-        // Query drivers filtered by office
-        const driversQuery = window.firebaseQuery(
-            window.firebaseCollection(window.firestore, 'drivers'),
-            window.firebaseWhere('officeId', '==', officeId)
-        );
+        const driversQuery = window.firebaseQuery(window.firebaseCollection(window.firestore, 'drivers'));
         const driversSnapshot = await window.firebaseGetDocs(driversQuery);
         totalDrivers = driversSnapshot.size;
-        console.log(`Total drivers for office ${officeId}:`, totalDrivers);
+        console.log('Total drivers:', totalDrivers);
     } catch (error) {
         console.error('Error loading total drivers:', error);
         totalDrivers = 0;
