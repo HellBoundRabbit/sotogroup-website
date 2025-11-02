@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16x16.png">
@@ -84,7 +84,7 @@
                 </div>
                 <div class="flex items-center gap-4">
                     <a href="/pages/software.html" class="text-sm text-gray-400 hover:text-white transition-colors">
-                        ← Back to SOTOGroup
+                        ← Back to Software
                     </a>
                 </div>
             </header>
@@ -107,8 +107,7 @@
                                     id="email" 
                                     name="email" 
                                     required 
-                                    autocomplete="email"
-                                    class="w-full px-4 py-3 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base"
+                                    class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                     placeholder="Enter your email"
                                 >
                             </div>
@@ -120,8 +119,7 @@
                                     id="password" 
                                     name="password" 
                                     required 
-                                    autocomplete="current-password"
-                                    class="w-full px-4 py-3 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base"
+                                    class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                     placeholder="Enter your password or temporary code"
                                 >
                             </div>
@@ -129,8 +127,7 @@
                             <button 
                                 type="submit" 
                                 id="loginBtn"
-                                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-[#1a1f24] text-base"
-                                style="min-height: 44px;"
+                                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-[#1a1f24]"
                             >
                                 Sign In
                             </button>
@@ -231,13 +228,23 @@
                         name: userData.name || user.email
                     }));
                     
-                    // Redirect based on role
+                    // Check if there's a redirect parameter
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const redirectUrl = urlParams.get('redirect');
+                    
+                    if (redirectUrl) {
+                        // Redirect to the original page they were trying to access
+                        window.location.href = decodeURIComponent(redirectUrl);
+                        return;
+                    }
+                    
+                    // No redirect parameter - use default role-based redirect
                     if (userRole === 'admin') {
                         window.location.href = '/pages/admin-panel.html';
                     } else if (userRole === 'office') {
                         window.location.href = '/pages/soto-lp.html';
                     } else if (userRole === 'driver') {
-                        window.location.href = '/pages/driver-portal.html';
+                        window.location.href = '/pages/driver-test.html';
                     } else {
                         showMessage('Invalid user role. Please contact support.');
                     }
@@ -305,13 +312,23 @@
                 if (storedUser) {
                     const userData = JSON.parse(storedUser);
                     
-                    // Redirect based on role
+                    // Check if there's a redirect parameter (user came from another page)
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const redirectUrl = urlParams.get('redirect');
+                    
+                    if (redirectUrl) {
+                        // Redirect to the original page they were trying to access
+                        window.location.href = decodeURIComponent(redirectUrl);
+                        return;
+                    }
+                    
+                    // No redirect parameter - use default role-based redirect
                     if (userData.role === 'admin') {
                         window.location.href = '/pages/admin-panel.html';
                     } else if (userData.role === 'office') {
                         window.location.href = '/pages/soto-lp.html';
                     } else if (userData.role === 'driver') {
-                        window.location.href = '/pages/driver-portal.html';
+                        window.location.href = '/pages/driver-test.html';
                     }
                 }
             } catch (error) {

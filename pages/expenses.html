@@ -14,6 +14,9 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
+        // CACHE BUSTER - Force fresh load
+        console.log('🔴 EXPENSES PAGE LOADING - CACHE BUSTER v2 - ' + new Date().getTime());
+        
         tailwind.config = {
             plugins: {
                 forms: {},
@@ -78,9 +81,24 @@
         window.auth = auth;
         
         console.log('Firebase initialized successfully!');
+        console.log('🔴 Checking localStorage NOW...');
+        const testLocalStorage = localStorage.getItem('soto_user_identity');
+        console.log('🔴 Direct localStorage check result:', testLocalStorage ? 'FOUND ✅' : 'NOT FOUND ❌');
+        if (testLocalStorage) {
+            console.log('🔴 localStorage value:', testLocalStorage);
+        }
         
-        // Initialize the app after Firebase is ready
-        initializeExpensesApp();
+        // Wait for DOM to be ready before initializing
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                console.log('🔴 DOM loaded, initializing expenses app...');
+                initializeExpensesApp();
+            });
+        } else {
+            // DOM is already loaded
+            console.log('🔴 DOM already loaded, initializing expenses app...');
+            initializeExpensesApp();
+        }
     </script>
     <style>
         .tab-active {
@@ -355,47 +373,75 @@ Logout
         let activeTab = 'pending';
 
         // Initialize function
-        function initializeExpensesApp() {
-            console.log('Initializing app...');
+        async function initializeExpensesApp() {
+            console.log('=== EXPENSES INITIALIZATION START ===');
+            console.log('Current URL:', window.location.href);
+            console.log('localStorage available:', typeof localStorage !== 'undefined');
             
-            window.auth.onAuthStateChanged(async function(user) {
-                console.log('Auth state changed:', user ? 'User logged in' : 'No user');
+            // Log ALL localStorage keys for debugging
+            console.log('All localStorage keys:', Object.keys(localStorage));
+            console.log('localStorage.length:', localStorage.length);
+            
+            try {
+                // Check localStorage first for fast loading (like drivers.html)
+                console.log('Checking localStorage for user identity...');
+                const storedUser = localStorage.getItem('soto_user_identity');
+                console.log('localStorage.getItem("soto_user_identity") result:', storedUser);
+                console.log('Type of storedUser:', typeof storedUser);
+                console.log('Is null?:', storedUser === null);
+                console.log('Is undefined?:', storedUser === undefined);
                 
-                if (!user) {
+                if (!storedUser) {
+                    console.log('❌ No user identity found in localStorage');
+                    console.log('Adding 2 second delay before redirect to see logs...');
+                    
+                    // Add delay so we can see the logs before redirect
+                    setTimeout(() => {
+                        const redirectUrl = encodeURIComponent(window.location.pathname);
+                        console.log('Redirect URL:', redirectUrl);
+                        window.location.href = `/pages/soto-routes-login.html?redirect=${redirectUrl}`;
+                    }, 2000);
+                    return;
+                }
+
+                // Parse stored user identity
+                console.log('✅ Found stored user identity, parsing...');
+                currentUser = JSON.parse(storedUser);
+                console.log('Parsed user identity:', currentUser);
+                console.log('User role:', currentUser.role);
+                console.log('User officeId:', currentUser.officeId);
+                
+                // Only office and admin can access
+                if (currentUser.role !== 'office' && currentUser.role !== 'admin') {
+                    alert('Access denied. This page is for office staff only.');
                     window.location.href = '/pages/soto-routes-login.html';
                     return;
                 }
 
-                try {
-                    console.log('Loading user data for:', user.uid);
-                    const userDoc = await window.getDoc(window.doc(window.db, 'users', user.uid));
-                    if (!userDoc.exists()) {
-                        console.log('User document not found');
-                        window.location.href = '/pages/soto-routes-login.html';
-                        return;
-                    }
-
-                    currentUser = { uid: user.uid, ...userDoc.data() };
-                    console.log('Current user:', currentUser);
-                    
-                    // Only office and admin can access
-                    if (currentUser.role !== 'office' && currentUser.role !== 'admin') {
-                        alert('Access denied. This page is for office staff only.');
-                        window.location.href = '/pages/soto-routes-login.html';
-                        return;
-                    }
-
-                    console.log('Loading expense batches...');
-                    await loadAllBatches();
-                    document.getElementById('loadingOverlay').style.display = 'none';
-                    console.log('Loading complete!');
-                } catch (error) {
-                    console.error('Error loading user data:', error);
-                    console.error('Error message:', error.message);
-                    console.error('Error stack:', error.stack);
-                    alert('Error loading user data: ' + error.message);
-                }
-            });
+                // Load expense batches immediately
+                console.log('Loading expense batches...');
+                await loadAllBatches();
+                document.getElementById('loadingOverlay').style.display = 'none';
+                console.log('Loading complete!');
+                
+                // Verify with Firebase in background (don't wait - only check once after a delay)
+                setTimeout(() => {
+                    window.auth.onAuthStateChanged(async function(user) {
+                        if (!user) {
+                            // User logged out - redirect to login
+                            console.log('Background auth check: user logged out');
+                            localStorage.removeItem('soto_user_identity');
+                            window.location.href = '/pages/soto-routes-login.html';
+                            return;
+                        }
+                    });
+                }, 1000);
+                
+            } catch (error) {
+                console.error('Initialization error:', error);
+                alert('Error initializing app: ' + error.message);
+                window.location.href = '/pages/soto-routes-login.html';
+            }
         }
 
         // Load all expense batches

@@ -623,7 +623,7 @@
                 
                 // Group jobs by routeId for efficient lookup
                 const jobsByRoute = {};
-                jobsSnapshot.forEach(jobDoc => {
+                    jobsSnapshot.forEach(jobDoc => {
                     const jobData = jobDoc.data();
                     const routeId = jobData.assignedRouteId;
                     if (routeId) {
@@ -635,8 +635,8 @@
                             ...jobData
                         });
                     }
-                });
-                
+                    });
+                    
                 // Sort jobs within each route by jobNumber
                 Object.keys(jobsByRoute).forEach(routeId => {
                     jobsByRoute[routeId].sort((a, b) => (a.jobNumber || 0) - (b.jobNumber || 0));
