@@ -1,0 +1,22 @@
+[
+  {
+    "origin": [
+      "https://sotogroup.uk",
+      "https://www.sotogroup.uk",
+      "http://localhost:8001",
+      "http://localhost:8000",
+      "http://127.0.0.1:8001",
+      "http://127.0.0.1:8000"
+    ],
+    "method": ["GET", "HEAD", "POST", "PUT", "DELETE"],
+    "responseHeader": [
+      "Content-Type",
+      "Content-Length",
+      "Authorization",
+      "x-goog-resumable",
+      "x-goog-meta-*"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]
+

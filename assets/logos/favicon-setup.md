@@ -37,3 +37,7 @@ I'll add the favicon links to all your HTML pages.
 ├── apple-touch-icon.png (iOS version)
 └── soto-favicon.png     (your original SG logo)
 ```
+
+
+
+
