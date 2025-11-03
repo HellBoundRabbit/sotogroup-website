@@ -859,8 +859,7 @@
                 
                 const notificationsQuery = window.firebaseQuery(
                     window.firebaseCollection(window.firestore, 'availabilityNotifications'),
-                    window.firebaseWhere('officeId', '==', officeId),
-                    window.firebaseWhere('seen', '==', false)
+                    window.firebaseWhere('officeId', '==', officeId)
                 );
                 
                 const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
@@ -917,8 +916,7 @@
                 
                 const notificationsQuery = window.firebaseQuery(
                     window.firebaseCollection(window.firestore, 'availabilityNotifications'),
-                    window.firebaseWhere('officeId', '==', officeId),
-                    window.firebaseWhere('seen', '==', false)
+                    window.firebaseWhere('officeId', '==', officeId)
                 );
                 
                 const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);

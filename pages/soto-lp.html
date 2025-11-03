@@ -1238,11 +1238,10 @@ async function updateNotificationCount() {
         const userData = JSON.parse(storedUser);
         const officeId = userData.officeId;
         
-        // Get all availability change notifications for this office that haven't been seen
+        // Get all availability change notifications for this office (we delete them when seen, so no filter needed)
         const notificationsQuery = window.firebaseQuery(
             window.firebaseCollection(window.firestore, 'availabilityNotifications'),
-            window.firebaseWhere('officeId', '==', officeId),
-            window.firebaseWhere('seen', '==', false)
+            window.firebaseWhere('officeId', '==', officeId)
         );
         
         const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
@@ -1315,11 +1314,10 @@ async function loadNotifications() {
         const userData = JSON.parse(storedUser);
         const officeId = userData.officeId;
         
-        // Get all unseen availability change notifications for this office
+        // Get all availability change notifications for this office (we delete them when seen, so no filter needed)
         const notificationsQuery = window.firebaseQuery(
             window.firebaseCollection(window.firestore, 'availabilityNotifications'),
-            window.firebaseWhere('officeId', '==', officeId),
-            window.firebaseWhere('seen', '==', false)
+            window.firebaseWhere('officeId', '==', officeId)
         );
         
         const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);

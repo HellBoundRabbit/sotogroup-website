@@ -465,8 +465,7 @@
                 // Get all availability change notifications for this office that haven't been seen
                 const notificationsQuery = window.firebaseQuery(
                     window.firebaseCollection(window.firestore, 'availabilityNotifications'),
-                    window.firebaseWhere('officeId', '==', officeId),
-                    window.firebaseWhere('seen', '==', false)
+                    window.firebaseWhere('officeId', '==', officeId)
                 );
                 
                 const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
@@ -545,8 +544,7 @@
                 // Get all unseen availability change notifications for this office
                 const notificationsQuery = window.firebaseQuery(
                     window.firebaseCollection(window.firestore, 'availabilityNotifications'),
-                    window.firebaseWhere('officeId', '==', officeId),
-                    window.firebaseWhere('seen', '==', false)
+                    window.firebaseWhere('officeId', '==', officeId)
                 );
                 
                 const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);

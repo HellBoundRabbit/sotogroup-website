@@ -34,6 +34,7 @@
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, where, updateDoc, doc, deleteDoc, getDoc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getStorage, ref, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
         
         // Firebase configuration
         const firebaseConfig = {
@@ -50,11 +51,13 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
+        const storage = getStorage(app);
         
         // Make Firebase available globally
         window.firebaseApp = app;
         window.db = db;
         window.auth = auth;
+        window.storage = storage;
         window.firebaseCollection = collection;
         window.firebaseAddDoc = addDoc;
         window.firebaseGetDocs = getDocs;
@@ -97,7 +100,7 @@
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', function() {
                 console.log('🔴 DOM loaded, initializing expenses app...');
-                initializeExpensesApp();
+        initializeExpensesApp();
             });
         } else {
             // DOM is already loaded
@@ -171,10 +174,10 @@
 <div class="flex items-center gap-4">
 <div class="relative">
     <button class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors relative" onclick="showNotifications()">
-        <span class="material-symbols-outlined text-xl">notifications</span>
+<span class="material-symbols-outlined text-xl">notifications</span>
         <!-- Notification Badge -->
         <span class="notification-badge absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold hidden">0</span>
-    </button>
+</button>
     <!-- Notifications Dropdown -->
     <div id="notificationDropdown" class="hidden absolute right-0 mt-2 w-80 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
         <div class="px-4 py-3 border-b border-[#283039]">
@@ -429,8 +432,8 @@
                         console.log('Redirect URL:', redirectUrl);
                         window.location.href = `/pages/soto-routes-login.html?redirect=${redirectUrl}`;
                     }, 2000);
-                    return;
-                }
+                        return;
+                    }
 
                 // Parse stored user identity
                 console.log('✅ Found stored user identity, parsing...');
@@ -438,35 +441,45 @@
                 console.log('Parsed user identity:', currentUser);
                 console.log('User role:', currentUser.role);
                 console.log('User officeId:', currentUser.officeId);
-                
-                // Only office and admin can access
-                if (currentUser.role !== 'office' && currentUser.role !== 'admin') {
-                    alert('Access denied. This page is for office staff only.');
+                    
+                    // Only office and admin can access
+                    if (currentUser.role !== 'office' && currentUser.role !== 'admin') {
+                        alert('Access denied. This page is for office staff only.');
+                        window.location.href = '/pages/soto-routes-login.html';
+                        return;
+                    }
+
+                // Verify Firebase Auth is active (required for Storage access)
+                console.log('Verifying Firebase Auth...');
+                const authUser = await new Promise((resolve) => {
+                    const unsubscribe = window.auth.onAuthStateChanged((user) => {
+                        unsubscribe();
+                        resolve(user);
+                    });
+                    // Timeout after 3 seconds
+                    setTimeout(() => {
+                        unsubscribe();
+                        resolve(null);
+                    }, 3000);
+                });
+
+                if (!authUser) {
+                    console.warn('⚠️ Firebase Auth not active - redirecting to login');
+                    localStorage.removeItem('soto_user_identity');
                     window.location.href = '/pages/soto-routes-login.html';
                     return;
                 }
+
+                console.log('✅ Firebase Auth verified:', authUser.uid);
 
                 // Load office logo
                 await loadOfficeLogo(currentUser.officeId);
                 
                 // Load expense batches immediately
-                console.log('Loading expense batches...');
-                await loadAllBatches();
-                document.getElementById('loadingOverlay').style.display = 'none';
-                console.log('Loading complete!');
-                
-                // Verify with Firebase in background (don't wait - only check once after a delay)
-                setTimeout(() => {
-                    window.auth.onAuthStateChanged(async function(user) {
-                        if (!user) {
-                            // User logged out - redirect to login
-                            console.log('Background auth check: user logged out');
-                            localStorage.removeItem('soto_user_identity');
-                            window.location.href = '/pages/soto-routes-login.html';
-                            return;
-                        }
-                    });
-                }, 1000);
+                    console.log('Loading expense batches...');
+                    await loadAllBatches();
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                    console.log('Loading complete!');
                 
             } catch (error) {
                 console.error('Initialization error:', error);
@@ -543,8 +556,8 @@
                 // Load batches and expenses in parallel (fixes N+1 query problem)
                 const [batchesSnapshot, expensesSnapshot] = await Promise.all([
                     window.getDocs(window.query(
-                        window.collection(window.db, 'expenseBatches'),
-                        window.where('officeId', '==', currentUser.officeId)
+                    window.collection(window.db, 'expenseBatches'),
+                    window.where('officeId', '==', currentUser.officeId)
                     )),
                     window.getDocs(window.query(
                         window.collection(window.db, 'expenses'),
@@ -560,7 +573,7 @@
                 // Group expenses by batchId for efficient lookup
                 const expensesByBatch = {};
                 expensesSnapshot.docs.forEach(expDoc => {
-                    const expData = { id: expDoc.id, ...expDoc.data() };
+                        const expData = { id: expDoc.id, ...expDoc.data() };
                     const batchId = expData.batchId;
                     if (batchId) {
                         if (!expensesByBatch[batchId]) {
@@ -698,7 +711,7 @@
                 filtered = filtered.filter(b => b.status === 'paid');
             }
             
-            list.innerHTML = filtered.map(batch => {
+                list.innerHTML = filtered.map(batch => {
                     const date = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
                     
                     // Calculate working hours for pending and validated expenses
@@ -764,14 +777,14 @@
                 other: '📝'
             };
 
-            document.getElementById('modal-expenses').innerHTML = currentBatch.expenses.map(exp => `
+            document.getElementById('modal-expenses').innerHTML = currentBatch.expenses.map((exp, index) => `
                 <div class="bg-[#283039] rounded-lg p-3 flex items-center justify-between">
                     <div class="flex items-center gap-3">
                         <span class="text-2xl">${categoryEmojis[exp.category] || '📝'}</span>
                         <div>
                             <div class="font-medium capitalize">${exp.category}</div>
                             ${exp.photos && exp.photos.length > 0 ? `
-                                <button onclick="viewExpensePhotos(${currentBatch.expenses.indexOf(exp)})" class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1">
+                                <button onclick="viewExpensePhotos(${index})" class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1">
                                     <span class="material-symbols-outlined text-xs">photo_camera</span>
                                     ${exp.photos.length} photo${exp.photos.length !== 1 ? 's' : ''}
                                 </button>
@@ -887,30 +900,75 @@
         async function viewExpensePhotos(expenseIndex) {
             const expense = currentBatch.expenses[expenseIndex];
             if (!expense || !expense.photos || expense.photos.length === 0) {
+                console.warn('No photos found for expense:', expense);
+                alert('No photos available for this expense');
                 return;
             }
 
+            console.log('Viewing photos for expense:', expense);
+            console.log('Photo URLs:', expense.photos);
+
             const grid = document.getElementById('photoViewerGrid');
             
-            // Photos are URLs (from Firebase Storage) - display with beautiful styling
-            grid.innerHTML = expense.photos.map((url, index) => `
-                <div class="w-full max-w-4xl mx-auto">
-                    <div class="bg-[#1a1f24] rounded-xl p-4 shadow-2xl border border-[#283039]">
-                        <img 
-                            src="${url}" 
-                            alt="Expense photo ${index + 1}" 
-                            class="w-full h-auto rounded-lg shadow-lg object-contain max-h-[70vh] mx-auto"
-                            loading="lazy"
-                            style="display: block;"
-                        >
-                        <div class="text-center mt-3 text-sm text-gray-400">
-                            Photo ${index + 1} of ${expense.photos.length}
+            // Firebase Storage download URLs include signed tokens and should work directly
+            // Use them directly in img tags - no need to fetch
+            grid.innerHTML = expense.photos.map((url, index) => {
+                // Ensure URL is a string
+                const photoUrl = typeof url === 'string' ? url : (url.url || url);
+                
+                if (!photoUrl) {
+                    console.error('Invalid photo URL at index', index, ':', url);
+                    return `
+                        <div class="w-full max-w-4xl mx-auto">
+                            <div class="bg-[#1a1f24] rounded-xl p-4 shadow-2xl border border-[#283039]">
+                                <div class="text-center text-red-400 py-8">
+                                    <span class="material-symbols-outlined text-4xl mb-2">error</span>
+                                    <p>Photo ${index + 1} could not be loaded</p>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                return `
+                    <div class="w-full max-w-4xl mx-auto">
+                        <div class="bg-[#1a1f24] rounded-xl p-4 shadow-2xl border border-[#283039]">
+                            <img 
+                                src="${photoUrl}" 
+                                alt="Expense photo ${index + 1}" 
+                                class="w-full h-auto rounded-lg shadow-lg object-contain max-h-[70vh] mx-auto"
+                                loading="lazy"
+                                style="display: block;"
+                                crossorigin="anonymous"
+                                data-photo-index="${index + 1}"
+                                data-photo-url="${photoUrl}"
+                                onerror="handlePhotoError(this)"
+                            >
+                            <div class="text-center mt-3 text-sm text-gray-400">
+                                Photo ${index + 1} of ${expense.photos.length}
+                            </div>
                         </div>
                     </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
 
             document.getElementById('photoViewerModal').classList.remove('hidden');
+        }
+
+        // Handle photo loading errors
+        function handlePhotoError(imgElement) {
+            const photoIndex = imgElement.getAttribute('data-photo-index') || '?';
+            const photoUrl = imgElement.getAttribute('data-photo-url') || '';
+            const truncatedUrl = photoUrl.length > 50 ? photoUrl.substring(0, 50) + '...' : photoUrl;
+            
+            imgElement.onerror = null; // Prevent infinite loop
+            imgElement.parentElement.innerHTML = `
+                <div class="text-center text-red-400 py-8">
+                    <span class="material-symbols-outlined text-4xl mb-2">error</span>
+                    <p>Photo ${photoIndex} failed to load</p>
+                    <p class="text-xs text-gray-500 mt-2">URL: ${truncatedUrl}</p>
+                </div>
+            `;
         }
 
         // Close photo viewer
@@ -965,7 +1023,7 @@
         async function checkOldExpenses(officeId) {
             try {
                 const batchesQuery = window.firebaseQuery(
-                    window.firebaseCollection(window.firestore, 'expenseBatches'),
+                    window.firebaseCollection(window.db, 'expenseBatches'),
                     window.firebaseWhere('officeId', '==', officeId)
                 );
                 
@@ -1002,9 +1060,8 @@
                 const officeId = userData.officeId;
                 
                 const notificationsQuery = window.firebaseQuery(
-                    window.firebaseCollection(window.firestore, 'availabilityNotifications'),
-                    window.firebaseWhere('officeId', '==', officeId),
-                    window.firebaseWhere('seen', '==', false)
+                    window.firebaseCollection(window.db, 'availabilityNotifications'),
+                    window.firebaseWhere('officeId', '==', officeId)
                 );
                 
                 const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
@@ -1061,9 +1118,8 @@
                 const officeId = userData.officeId;
                 
                 const notificationsQuery = window.firebaseQuery(
-                    window.firebaseCollection(window.firestore, 'availabilityNotifications'),
-                    window.firebaseWhere('officeId', '==', officeId),
-                    window.firebaseWhere('seen', '==', false)
+                    window.firebaseCollection(window.db, 'availabilityNotifications'),
+                    window.firebaseWhere('officeId', '==', officeId)
                 );
                 
                 const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);

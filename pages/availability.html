@@ -832,34 +832,68 @@
                 const userData = JSON.parse(storedUser);
                 const officeId = userData.officeId;
                 
-                // Get all availability change notifications for this office that haven't been seen
+                // Get all availability change notifications for this office (we delete them when seen, so no filter needed)
                 const notificationsQuery = window.firebaseQuery(
                     window.firebaseCollection(window.firestore, 'availabilityNotifications'),
-                    window.firebaseWhere('officeId', '==', officeId),
-                    window.firebaseWhere('seen', '==', false)
+                    window.firebaseWhere('officeId', '==', officeId)
                 );
                 
                 const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
                 
-                // Count unique drivers with unread changes
-                const driverChanges = {};
-                notificationsSnapshot.docs.forEach(doc => {
+                // Only count most recent batch of changes per driver (same logic as loadNotifications)
+                const allNotifications = notificationsSnapshot.docs.map(doc => {
                     const data = doc.data();
-                    if (!driverChanges[data.driverId]) {
-                        driverChanges[data.driverId] = {
+                    return {
+                        id: doc.id,
+                        ...data,
+                        createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt)
+                    };
+                });
+                
+                // Sort by date (most recent first)
+                allNotifications.sort((a, b) => b.createdAt - a.createdAt);
+                
+                // Group by driver and only count the most recent batch
+                const driverChanges = {};
+                allNotifications.forEach(notification => {
+                    const driverId = notification.driverId;
+                    if (!driverChanges[driverId]) {
+                        // Initialize with this driver's most recent change
+                        driverChanges[driverId] = {
                             daysOff: 0,
                             daysAvailable: 0,
-                            driverName: data.driverName
+                            driverName: notification.driverName,
+                            earliestDate: notification.createdAt
                         };
-                    }
-                    if (data.changeType === 'unavailable') {
-                        driverChanges[data.driverId].daysOff++;
+                        
+                        // Count this first notification
+                        if (notification.changeType === 'unavailable') {
+                            driverChanges[driverId].daysOff = 1;
+                        } else {
+                            driverChanges[driverId].daysAvailable = 1;
+                        }
                     } else {
-                        driverChanges[data.driverId].daysAvailable++;
+                        // Check if this notification is part of the same "recent batch" (within 1 hour)
+                        const timeDiff = Math.abs(driverChanges[driverId].earliestDate - notification.createdAt);
+                        const oneHour = 60 * 60 * 1000;
+                        
+                        if (timeDiff <= oneHour) {
+                            // Same batch - add to counts
+                            if (notification.changeType === 'unavailable') {
+                                driverChanges[driverId].daysOff++;
+                            } else {
+                                driverChanges[driverId].daysAvailable++;
+                            }
+                            // Update earliest date if this is older
+                            if (notification.createdAt < driverChanges[driverId].earliestDate) {
+                                driverChanges[driverId].earliestDate = notification.createdAt;
+                            }
+                        }
+                        // If outside the batch window, ignore it (only count most recent batch)
                     }
                 });
                 
-                // Count total number of drivers with changes
+                // Count total number of drivers with changes (only most recent batch per driver)
                 const availabilityCount = Object.keys(driverChanges).length;
                 
                 // Check for old expenses (>24 working hours)
@@ -912,11 +946,10 @@
                 const userData = JSON.parse(storedUser);
                 const officeId = userData.officeId;
                 
-                // Get all unseen availability change notifications for this office
+                // Get all availability change notifications for this office (no seen filter since we delete them now)
                 const notificationsQuery = window.firebaseQuery(
                     window.firebaseCollection(window.firestore, 'availabilityNotifications'),
-                    window.firebaseWhere('officeId', '==', officeId),
-                    window.firebaseWhere('seen', '==', false)
+                    window.firebaseWhere('officeId', '==', officeId)
                 );
                 
                 const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
@@ -925,35 +958,62 @@
                 // Check for old expenses
                 const oldExpenseCount = await checkOldExpenses(officeId);
                 
-                // Aggregate notifications by driver
+                // Aggregate notifications by driver - only count most recent changes
                 const driverChanges = {};
-                const allNotifications = notificationsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                const allNotifications = notificationsSnapshot.docs.map(doc => {
+                    const data = doc.data();
+                    return {
+                        id: doc.id,
+                        ...data,
+                        createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt)
+                    };
+                });
                 
+                // Sort all notifications by date (most recent first)
+                allNotifications.sort((a, b) => b.createdAt - a.createdAt);
+                
+                // Group by driver and only count the most recent batch of changes
+                // A "batch" is changes that happened within a short time window (e.g., same hour)
                 allNotifications.forEach(notification => {
                     const driverId = notification.driverId;
                     if (!driverChanges[driverId]) {
+                        // Initialize with this driver's most recent change
                         driverChanges[driverId] = {
                             driverId: driverId,
                             driverName: notification.driverName,
                             daysOff: 0,
                             daysAvailable: 0,
-                            notifications: [],
-                            latestDate: null
+                            notifications: [notification],
+                            latestDate: notification.createdAt,
+                            earliestDate: notification.createdAt
                         };
-                    }
-                    
-                    if (notification.changeType === 'unavailable') {
-                        driverChanges[driverId].daysOff++;
+                        
+                        // Count this first notification
+                        if (notification.changeType === 'unavailable') {
+                            driverChanges[driverId].daysOff = 1;
+                        } else {
+                            driverChanges[driverId].daysAvailable = 1;
+                        }
                     } else {
-                        driverChanges[driverId].daysAvailable++;
-                    }
-                    
-                    driverChanges[driverId].notifications.push(notification);
-                    
-                    // Track latest notification date
-                    const notifDate = notification.createdAt?.toDate ? notification.createdAt.toDate() : new Date(notification.createdAt);
-                    if (!driverChanges[driverId].latestDate || notifDate > driverChanges[driverId].latestDate) {
-                        driverChanges[driverId].latestDate = notifDate;
+                        // Check if this notification is part of the same "recent batch"
+                        // Consider it part of the batch if it's within 1 hour of the earliest in the batch
+                        const timeDiff = Math.abs(driverChanges[driverId].earliestDate - notification.createdAt);
+                        const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+                        
+                        if (timeDiff <= oneHour) {
+                            // Same batch - add to counts
+                            if (notification.changeType === 'unavailable') {
+                                driverChanges[driverId].daysOff++;
+                            } else {
+                                driverChanges[driverId].daysAvailable++;
+                            }
+                            driverChanges[driverId].notifications.push(notification);
+                            // Update earliest date if this is older
+                            if (notification.createdAt < driverChanges[driverId].earliestDate) {
+                                driverChanges[driverId].earliestDate = notification.createdAt;
+                            }
+                        }
+                        // If outside the batch window, ignore it (only count most recent batch)
                     }
                 });
                 
@@ -1107,31 +1167,29 @@
             }
         }
 
-        // Mark change as seen
+        // Mark change as seen (deletes notification from Firebase)
         async function markChangeAsSeen(notificationId, dateString, driverId, event) {
             event.stopPropagation();
             
             try {
-                // Update notification to seen
+                // Delete only this specific notification from Firebase
                 const notificationRef = window.firebaseDoc(window.firestore, 'availabilityNotifications', notificationId);
-                await window.firebaseUpdateDoc(notificationRef, { seen: true });
+                await window.firebaseDeleteDoc(notificationRef);
                 
-                // Remove from unseenChanges
-                if (unseenChanges[dateString] && unseenChanges[dateString][driverId]) {
-                    delete unseenChanges[dateString][driverId];
-                    // Clean up empty date entry
-                    if (Object.keys(unseenChanges[dateString]).length === 0) {
-                        delete unseenChanges[dateString];
-                    }
-                }
+                // Reload unseen changes from Firebase (this will remove the orange border for this specific change)
+                await loadUnseenChanges();
                 
-                // Refresh calendar and modal
+                // Refresh calendar to update orange borders (will only show if there are still unseen changes)
                 renderCalendar();
+                
+                // Reopen the modal to reflect the updated state
                 const date = new Date(dateString);
                 openDayModal(date);
                 
-                // Update notification count
+                // Update notification count and dropdown (will automatically adapt to show remaining changes)
+                // The notification will persist and update (e.g., "4 days" → "2 days" if 2 were marked as seen)
                 await updateNotificationCount();
+                await loadNotifications();
                 
             } catch (error) {
                 console.error('Error marking change as seen:', error);
@@ -1187,32 +1245,72 @@
                 const userData = JSON.parse(storedUser);
                 const officeId = userData.officeId;
                 
-                // Get all unseen availability change notifications
+                // Get all availability change notifications (we delete them when seen, so no filter needed)
                 const notificationsQuery = window.firebaseQuery(
                     window.firebaseCollection(window.firestore, 'availabilityNotifications'),
-                    window.firebaseWhere('officeId', '==', officeId),
-                    window.firebaseWhere('seen', '==', false)
+                    window.firebaseWhere('officeId', '==', officeId)
                 );
                 
                 const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
                 
-                unseenChanges = {};
-                notificationsSnapshot.docs.forEach(doc => {
+                // Process notifications to only include the most recent batch per driver
+                const allNotifications = notificationsSnapshot.docs.map(doc => {
                     const data = doc.data();
-                    const dateString = data.date;
-                    
-                    if (!unseenChanges[dateString]) {
-                        unseenChanges[dateString] = {};
-                    }
-                    
-                    unseenChanges[dateString][data.driverId] = {
-                        changeType: data.changeType,
-                        notificationId: doc.id,
-                        driverName: data.driverName
+                    return {
+                        id: doc.id,
+                        ...data,
+                        createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt)
                     };
                 });
                 
-                console.log('Loaded unseen changes:', unseenChanges);
+                // Sort by date (most recent first)
+                allNotifications.sort((a, b) => b.createdAt - a.createdAt);
+                
+                // Group by driver and only keep the most recent batch (within 1 hour)
+                const driverBatches = {};
+                allNotifications.forEach(notification => {
+                    const driverId = notification.driverId;
+                    if (!driverBatches[driverId]) {
+                        // Initialize with this driver's most recent change
+                        driverBatches[driverId] = {
+                            notifications: [notification],
+                            earliestDate: notification.createdAt
+                        };
+                    } else {
+                        // Check if this notification is part of the same "recent batch" (within 1 hour)
+                        const timeDiff = Math.abs(driverBatches[driverId].earliestDate - notification.createdAt);
+                        const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+                        
+                        if (timeDiff <= oneHour) {
+                            // Same batch - add to notifications
+                            driverBatches[driverId].notifications.push(notification);
+                            // Update earliest date if this is older
+                            if (notification.createdAt < driverBatches[driverId].earliestDate) {
+                                driverBatches[driverId].earliestDate = notification.createdAt;
+                            }
+                        }
+                        // If outside the batch window, ignore it (only keep most recent batch)
+                    }
+                });
+                
+                // Build unseenChanges object from only the most recent batch per driver
+                unseenChanges = {};
+                Object.values(driverBatches).forEach(batch => {
+                    batch.notifications.forEach(notification => {
+                        const dateString = notification.date;
+                        if (!unseenChanges[dateString]) {
+                            unseenChanges[dateString] = {};
+                        }
+                        
+                        unseenChanges[dateString][notification.driverId] = {
+                            changeType: notification.changeType,
+                            notificationId: notification.id,
+                            driverName: notification.driverName
+                        };
+                    });
+                });
+                
+                console.log('Loaded unseen changes (most recent batch only):', unseenChanges);
             } catch (error) {
                 console.error('Error loading unseen changes:', error);
             }

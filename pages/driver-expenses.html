@@ -289,7 +289,7 @@
                 <div class="p-6 pb-24">
                     
                     <!-- Category Selection -->
-                    <div class="mb-6">
+                    <div id="categorySection" class="mb-6">
                         <label class="text-sm text-gray-400 mb-3 block">CATEGORY</label>
                         <div class="grid grid-cols-2 gap-3">
                             <button onclick="selectCategory('Fuel')" class="category-btn p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-2">
@@ -369,7 +369,7 @@
                     </div>
 
                     <!-- Save Button -->
-                    <button onclick="saveExpense()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors touch-target">
+                    <button id="saveExpenseBtn" onclick="saveExpense()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors touch-target">
                         Save Expense
                     </button>
 
@@ -411,7 +411,7 @@
         // Check for unread messages
         async function checkForUnreadMessages() {
             try {
-                if (!currentUser || !currentUser.officeId) return false;
+                if (!currentUser || !currentUser.officeId || !currentUser.uid) return false;
                 
                 const messagesQuery = window.query(
                     window.collection(window.db, 'messages'),
@@ -421,7 +421,25 @@
                 const snapshot = await window.getDocs(messagesQuery);
                 const messages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 
-                const readMessages = JSON.parse(localStorage.getItem('driver_read_messages') || '[]');
+                // Get read messages from localStorage
+                let readMessages = JSON.parse(localStorage.getItem('driver_read_messages') || '[]');
+                
+                // Also get read messages from Firebase (for persistence across devices/sessions)
+                try {
+                    const userDocRef = window.doc(window.db, 'users', currentUser.uid);
+                    const userDoc = await window.firebaseGetDoc(userDocRef);
+                    if (userDoc.exists()) {
+                        const userData = userDoc.data();
+                        const firebaseReadMessages = userData.readMessages || [];
+                        // Merge Firebase read messages with localStorage (deduplicate)
+                        readMessages = [...new Set([...readMessages, ...firebaseReadMessages])];
+                        // Update localStorage with merged list
+                        localStorage.setItem('driver_read_messages', JSON.stringify(readMessages));
+                    }
+                } catch (firebaseError) {
+                    console.warn('Could not fetch read messages from Firebase, using localStorage only:', firebaseError);
+                }
+                
                 const unreadMessages = messages.filter(msg => !readMessages.includes(msg.id));
                 
                 return unreadMessages.length > 0;
@@ -1596,16 +1614,43 @@
         }
 
         function closeExpenseModal() {
-            document.getElementById('expenseModal').classList.add('hidden');
+            const modal = document.getElementById('expenseModal');
+            if (modal) {
+                modal.classList.add('hidden');
+            }
+            
             currentExpense = { category: null, amount: 0, photos: [] };
             
             // Reset modal state
-            document.getElementById('categorySection').classList.remove('hidden');
-            document.getElementById('amountInput').parentElement.classList.remove('hidden');
+            const categorySection = document.getElementById('categorySection');
+            if (categorySection) {
+                categorySection.classList.remove('hidden');
+            }
+            
+            const amountInput = document.getElementById('amountInput');
+            if (amountInput && amountInput.parentElement) {
+                amountInput.parentElement.classList.remove('hidden');
+            }
+            
             const saveBtn = document.getElementById('saveExpenseBtn');
-            saveBtn.textContent = 'Save Expense';
-            saveBtn.onclick = saveExpense;
-            document.getElementById('photoPreview').innerHTML = '';
+            if (saveBtn) {
+                saveBtn.textContent = 'Save Expense';
+                saveBtn.onclick = saveExpense;
+            }
+            
+            const photoPreview = document.getElementById('photoPreview');
+            if (photoPreview) {
+                photoPreview.innerHTML = '';
+            }
+            
+            // Reset amount input value
+            if (amountInput) {
+                amountInput.value = '';
+            }
+            
+            // Reset category selection
+            document.querySelectorAll('.category-btn').forEach(btn => btn.classList.remove('ring-2', 'ring-blue-500'));
+            
             window.editingExpenseIndex = undefined;
         }
 

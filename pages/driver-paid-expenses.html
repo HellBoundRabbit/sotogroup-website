@@ -14,7 +14,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, getDocs, query, where, deleteDoc, doc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, getDocs, query, where, deleteDoc, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         
         const firebaseConfig = {
@@ -39,6 +39,7 @@
         window.where = where;
         window.deleteDoc = deleteDoc;
         window.doc = doc;
+        window.getDoc = getDoc;
         
         initializePaidExpensesApp();
     </script>
@@ -127,7 +128,7 @@
         // Check for unread messages
         async function checkForUnreadMessages() {
             try {
-                if (!currentUser || !currentUser.officeId) return false;
+                if (!currentUser || !currentUser.officeId || !currentUser.uid) return false;
                 
                 const messagesQuery = window.query(
                     window.collection(window.db, 'messages'),
@@ -137,7 +138,25 @@
                 const snapshot = await window.getDocs(messagesQuery);
                 const messages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 
-                const readMessages = JSON.parse(localStorage.getItem('driver_read_messages') || '[]');
+                // Get read messages from localStorage
+                let readMessages = JSON.parse(localStorage.getItem('driver_read_messages') || '[]');
+                
+                // Also get read messages from Firebase (for persistence across devices/sessions)
+                try {
+                    const userDocRef = window.doc(window.db, 'users', currentUser.uid);
+                    const userDoc = await window.getDoc(userDocRef);
+                    if (userDoc.exists()) {
+                        const userData = userDoc.data();
+                        const firebaseReadMessages = userData.readMessages || [];
+                        // Merge Firebase read messages with localStorage (deduplicate)
+                        readMessages = [...new Set([...readMessages, ...firebaseReadMessages])];
+                        // Update localStorage with merged list
+                        localStorage.setItem('driver_read_messages', JSON.stringify(readMessages));
+                    }
+                } catch (firebaseError) {
+                    console.warn('Could not fetch read messages from Firebase, using localStorage only:', firebaseError);
+                }
+                
                 const unreadMessages = messages.filter(msg => !readMessages.includes(msg.id));
                 
                 return unreadMessages.length > 0;
