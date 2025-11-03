@@ -149,15 +149,13 @@
         </div>
 
         <!-- Calendar -->
-        <div class="grid grid-cols-7 gap-2 mb-6">
+        <div class="grid grid-cols-5 gap-2 mb-6">
             <!-- Day headers -->
             <div class="text-center text-sm text-gray-400 font-semibold py-2">Mon</div>
             <div class="text-center text-sm text-gray-400 font-semibold py-2">Tue</div>
             <div class="text-center text-sm text-gray-400 font-semibold py-2">Wed</div>
             <div class="text-center text-sm text-gray-400 font-semibold py-2">Thu</div>
             <div class="text-center text-sm text-gray-400 font-semibold py-2">Fri</div>
-            <div class="text-center text-sm text-gray-400 font-semibold py-2">Sat</div>
-            <div class="text-center text-sm text-gray-400 font-semibold py-2">Sun</div>
             
             <!-- Calendar days will be inserted here by renderCalendar() -->
         </div>
@@ -189,6 +187,29 @@
         let currentYear = new Date().getFullYear();
         let availability = {}; // { 'YYYY-MM-DD': true/false }
 
+        // Check for unread messages
+        async function checkForUnreadMessages() {
+            try {
+                if (!currentUser || !currentUser.officeId) return false;
+                
+                const messagesQuery = window.query(
+                    window.collection(window.db, 'messages'),
+                    window.where('officeId', '==', currentUser.officeId),
+                    window.where('published', '==', true)
+                );
+                const snapshot = await window.getDocs(messagesQuery);
+                const messages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                const readMessages = JSON.parse(localStorage.getItem('driver_read_messages') || '[]');
+                const unreadMessages = messages.filter(msg => !readMessages.includes(msg.id));
+                
+                return unreadMessages.length > 0;
+            } catch (error) {
+                console.error('Error checking messages:', error);
+                return false; // If check fails, allow access
+            }
+        }
+
         // Initialize function
         function initializeDriverAvailabilityApp() {
             console.log('Initializing driver availability app...');
@@ -217,6 +238,14 @@
                     if (currentUser.role !== 'driver') {
                         alert('Access denied. This page is for drivers only.');
                         window.location.href = '/pages/soto-lp.html';
+                        return;
+                    }
+
+                    // Check for unread messages
+                    const hasUnreadMessages = await checkForUnreadMessages();
+                    if (hasUnreadMessages) {
+                        alert('There are outstanding messages that need to be read before proceeding. Please read all messages first.');
+                        window.location.href = '/pages/driver-messages.html';
                         return;
                     }
 
@@ -287,31 +316,41 @@
             const today = new Date();
             today.setHours(0, 0, 0, 0);
 
-            // Get first Monday before or on first day of month
-            let startDay = new Date(firstDay);
-            const dayOfWeek = firstDay.getDay();
-            const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-            startDay.setDate(firstDay.getDate() - mondayOffset);
-
             const calendarHTML = [];
-            let currentDay = new Date(startDay);
-
-            // Generate calendar days
-            while (currentDay <= lastDay || calendarHTML.length % 7 !== 0) {
-                const dateString = currentDay.toISOString().split('T')[0];
-                const isCurrentMonth = currentDay.getMonth() === currentMonth;
-                const isPast = currentDay < today;
+            
+            // Get the day of week for the first day (0=Sunday, 1=Monday, etc.)
+            let firstDayOfWeek = firstDay.getDay();
+            // Convert to Monday=0 format (Mon=0, Tue=1, Wed=2, Thu=3, Fri=4)
+            firstDayOfWeek = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
+            // Ensure it's a weekday (0-4)
+            firstDayOfWeek = firstDayOfWeek > 4 ? 0 : firstDayOfWeek;
+            
+            // Add empty cells for days before the first weekday
+            for (let i = 0; i < firstDayOfWeek; i++) {
+                calendarHTML.push('<div></div>'); // Empty cell
+            }
+            
+            // Generate calendar days (weekdays only)
+            for (let day = 1; day <= lastDay.getDate(); day++) {
+                const cellDate = new Date(currentYear, currentMonth, day);
+                const dayOfWeek = cellDate.getDay();
+                
+                // Skip weekends (Saturday = 6, Sunday = 0)
+                if (dayOfWeek === 0 || dayOfWeek === 6) {
+                    continue;
+                }
+                
+                const dateString = cellDate.toISOString().split('T')[0];
+                const isPast = cellDate < today;
                 const isAvailable = availability[dateString] !== false;
                 
                 // Check if date is within 7 days (locked)
-                const daysFromToday = Math.floor((currentDay - today) / (1000 * 60 * 60 * 24));
+                const daysFromToday = Math.floor((cellDate - today) / (1000 * 60 * 60 * 24));
                 const isLocked = daysFromToday <= 7 && daysFromToday >= 0;
 
                 let className = 'day-card aspect-square rounded-lg border-2 flex flex-col items-center justify-center cursor-pointer transition-all relative';
                 
-                if (!isCurrentMonth) {
-                    className += ' bg-[#1a1f24] border-gray-800 opacity-30';
-                } else if (isPast) {
+                if (isPast) {
                     className += ' bg-[#283039] border-gray-700 cursor-not-allowed opacity-50';
                 } else if (isLocked) {
                     className += isAvailable ? ' available border-yellow-500' : ' unavailable border-yellow-500';
@@ -321,8 +360,8 @@
                     className += ' unavailable';
                 }
 
-                const dayNumber = currentDay.getDate();
-                const clickHandler = !isCurrentMonth || isPast || isLocked ? '' : `onclick="toggleAvailability('${dateString}')"`;
+                const dayNumber = cellDate.getDate();
+                const clickHandler = isPast || isLocked ? '' : `onclick="toggleAvailability('${dateString}')"`;
 
                 calendarHTML.push(`
                     <div class="${className}" ${clickHandler}>
@@ -330,12 +369,10 @@
                         ${isLocked ? '<span class="material-symbols-outlined text-xs text-yellow-500 absolute top-1 right-1">lock</span>' : ''}
                     </div>
                 `);
-
-                currentDay.setDate(currentDay.getDate() + 1);
             }
 
             // Get the calendar grid container
-            const calendarContainer = document.querySelector('.grid-cols-7');
+            const calendarContainer = document.querySelector('.grid-cols-5');
             if (!calendarContainer) return;
             
             // Remove the old calendar days div if it exists
@@ -395,6 +432,9 @@
                     updatedAt: window.serverTimestamp()
                 }, { merge: true });
 
+                // Create notification for availability change
+                await createAvailabilityChangeNotification(dateString, newAvailability);
+
                 console.log(`Updated availability for ${dateString}:`, newAvailability);
             } catch (error) {
                 console.error('Error updating availability:', error);
@@ -444,6 +484,61 @@
         // Go back to expenses
         function goToExpenses() {
             window.location.href = '/pages/driver-expenses.html';
+        }
+
+        // Create notification when driver changes availability
+        async function createAvailabilityChangeNotification(dateString, isNowAvailable) {
+            try {
+                if (!currentUser || !currentUser.officeId) {
+                    console.error('No user or officeId for notification');
+                    return;
+                }
+
+                // Get driver information from drivers collection
+                const driversQuery = window.query(
+                    window.collection(window.db, 'drivers'),
+                    window.where('uid', '==', currentUser.uid)
+                );
+                const driversSnapshot = await window.getDocs(driversQuery);
+                
+                let driverName = currentUser.name || `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim();
+                if (driversSnapshot.docs.length > 0) {
+                    const driverData = driversSnapshot.docs[0].data();
+                    driverName = `${driverData.firstName || ''} ${driverData.lastName || ''}`.trim() || driverName;
+                }
+
+                // Format date for display
+                const date = new Date(dateString);
+                const formattedDate = date.toLocaleDateString('en-GB', { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                });
+
+                // Create notification data
+                const notificationData = {
+                    type: 'availability_change',
+                    driverId: currentUser.uid,
+                    driverName: driverName,
+                    date: dateString,
+                    formattedDate: formattedDate,
+                    officeId: currentUser.officeId,
+                    createdAt: new Date(),
+                    seen: false, // Track if office has seen this specific change
+                    changeType: isNowAvailable ? 'available' : 'unavailable', // 'available' = changed back to working, 'unavailable' = booked off
+                    message: isNowAvailable 
+                        ? `${driverName} has changed ${formattedDate} back to available`
+                        : `${driverName} has booked ${formattedDate} off`
+                };
+
+                // Save notification to Firebase
+                await window.addDoc(window.collection(window.db, 'availabilityNotifications'), notificationData);
+
+                console.log('✅ Availability change notification created:', notificationData);
+            } catch (error) {
+                console.error('Error creating availability change notification:', error);
+            }
         }
     </script>
 </body>

@@ -43,7 +43,7 @@
         <!-- Main Options -->
         <div class="w-full max-w-md mx-auto space-y-4 flex-1">
             <!-- Expenses Card -->
-            <div class="glass-card rounded-2xl p-6 hover:border-green-500/50 transition-all duration-300 cursor-pointer group" onclick="window.location.href='/pages/driver-expenses.html'">
+            <div id="expensesCard" class="glass-card rounded-2xl p-6 transition-all duration-300 cursor-pointer group" onclick="handleFeatureClick('/pages/driver-expenses.html')">
                 <div class="flex items-center gap-4">
                     <div class="w-14 h-14 bg-gradient-to-br from-green-600 to-green-700 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
                         <span class="material-symbols-outlined text-3xl text-white">receipt</span>
@@ -56,8 +56,36 @@
                 </div>
             </div>
 
+            <!-- Wait Times Card -->
+            <div id="waitTimesCard" class="glass-card rounded-2xl p-6 transition-all duration-300 cursor-pointer group" onclick="handleFeatureClick(null, 'Wait times feature coming soon!')">
+                <div class="flex items-center gap-4">
+                    <div class="w-14 h-14 bg-gradient-to-br from-purple-600 to-purple-700 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                        <span class="material-symbols-outlined text-3xl text-white">schedule</span>
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="text-lg font-semibold text-white mb-1">Wait Times</h3>
+                        <p class="text-sm text-gray-400">Track waiting periods</p>
+                    </div>
+                    <span class="material-symbols-outlined text-gray-500 group-hover:text-purple-500 transition-colors">arrow_forward_ios</span>
+                </div>
+            </div>
+
+            <!-- Messages Card -->
+            <div class="glass-card rounded-2xl p-6 hover:border-blue-500/50 transition-all duration-300 cursor-pointer group" onclick="window.location.href='/pages/driver-messages.html'">
+                <div class="flex items-center gap-4">
+                    <div class="w-14 h-14 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                        <span class="material-symbols-outlined text-3xl text-white">message</span>
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="text-lg font-semibold text-white mb-1">Messages</h3>
+                        <p class="text-sm text-gray-400">View important messages</p>
+                    </div>
+                    <span class="material-symbols-outlined text-gray-500 group-hover:text-blue-500 transition-colors">arrow_forward_ios</span>
+                </div>
+            </div>
+
             <!-- Availability Card -->
-            <div class="glass-card rounded-2xl p-6 hover:border-blue-500/50 transition-all duration-300 cursor-pointer group" onclick="window.location.href='/pages/driver-availability.html'">
+            <div id="availabilityCard" class="glass-card rounded-2xl p-6 transition-all duration-300 cursor-pointer group" onclick="handleFeatureClick('/pages/driver-availability.html')">
                 <div class="flex items-center gap-4">
                     <div class="w-14 h-14 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
                         <span class="material-symbols-outlined text-3xl text-white">event</span>
@@ -166,6 +194,10 @@
 
                     // Display user email
                     document.getElementById('userEmail').textContent = currentUser.email;
+                    
+                    // Check for unread messages and grey out features if needed
+                    await checkAndDisableFeatures();
+                    
                     document.getElementById('loadingOverlay').style.display = 'none';
                     console.log('Loading complete!');
                 } catch (error) {
@@ -175,6 +207,73 @@
                     alert('Error loading user data. Please try again.');
                 }
             });
+        }
+
+        // Check for unread messages and disable/grey out features
+        async function checkAndDisableFeatures() {
+            try {
+                const messagesQuery = window.query(
+                    window.collection(window.db, 'messages'),
+                    window.where('officeId', '==', currentUser.officeId),
+                    window.where('published', '==', true)
+                );
+                const snapshot = await window.getDocs(messagesQuery);
+                const messages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                const readMessages = JSON.parse(localStorage.getItem('driver_read_messages') || '[]');
+                const unreadMessages = messages.filter(msg => !readMessages.includes(msg.id));
+                
+                if (unreadMessages.length > 0) {
+                    // Grey out feature cards
+                    document.getElementById('expensesCard').classList.add('opacity-50', 'cursor-not-allowed');
+                    document.getElementById('expensesCard').classList.remove('hover:border-green-500/50');
+                    
+                    document.getElementById('availabilityCard').classList.add('opacity-50', 'cursor-not-allowed');
+                    document.getElementById('availabilityCard').classList.remove('hover:border-blue-500/50');
+                    
+                    // Wait times card doesn't need to be disabled (it's just a dummy alert)
+                }
+            } catch (error) {
+                console.error('Error checking messages:', error);
+            }
+        }
+
+        // Handle feature card clicks
+        async function handleFeatureClick(url, alertMessage = null) {
+            // If it's wait times, just show alert
+            if (alertMessage) {
+                alert(alertMessage);
+                return;
+            }
+            
+            // Check for unread messages immediately (no navigation)
+            try {
+                const messagesQuery = window.query(
+                    window.collection(window.db, 'messages'),
+                    window.where('officeId', '==', currentUser.officeId),
+                    window.where('published', '==', true)
+                );
+                const snapshot = await window.getDocs(messagesQuery);
+                const messages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                const readMessages = JSON.parse(localStorage.getItem('driver_read_messages') || '[]');
+                const unreadMessages = messages.filter(msg => !readMessages.includes(msg.id));
+                
+                if (unreadMessages.length > 0) {
+                    alert('There are outstanding messages that need to be read before proceeding. Please read all messages first.');
+                    window.location.href = '/pages/driver-messages.html';
+                    return;
+                }
+                
+                // No unread messages, navigate normally
+                window.location.href = url;
+            } catch (error) {
+                console.error('Error checking messages:', error);
+                // If check fails, allow navigation
+                if (url) {
+                    window.location.href = url;
+                }
+            }
         }
 
         // Logout function

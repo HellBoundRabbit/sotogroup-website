@@ -20,8 +20,9 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, where, doc, getDoc, setDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, where, doc, getDoc, setDoc, deleteDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, createUserWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
         
         // Firebase configuration
         const firebaseConfig = {
@@ -38,11 +39,13 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
+        const storage = getStorage(app);
         
         // Make Firebase available globally
         window.firebaseApp = app;
         window.firestore = db;
         window.auth = auth;
+        window.storage = storage;
         window.firebaseCollection = collection;
         window.firebaseAddDoc = addDoc;
         window.firebaseGetDocs = getDocs;
@@ -53,9 +56,13 @@
         window.firebaseDoc = doc;
         window.firebaseGetDoc = getDoc;
         window.firebaseSetDoc = setDoc;
+        window.firebaseUpdateDoc = updateDoc;
         window.firebaseDeleteDoc = deleteDoc;
         window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
         window.signOut = signOut;
+        window.ref = ref;
+        window.uploadBytes = uploadBytes;
+        window.getDownloadURL = getDownloadURL;
         
         console.log('Firebase initialized successfully!');
     </script>
@@ -173,12 +180,78 @@
                     >
                 </div>
 
+                <div>
+                    <label for="officeLogo" class="block text-sm font-medium text-gray-300 mb-2">Office Display Picture (Optional)</label>
+                    <input 
+                        type="file" 
+                        id="officeLogo" 
+                        name="officeLogo" 
+                        accept="image/*"
+                        class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 file:cursor-pointer"
+                    >
+                    <div id="logoPreview" class="mt-2 hidden">
+                        <img id="logoPreviewImg" src="" alt="Logo preview" class="w-24 h-24 object-cover rounded-lg border border-gray-600">
+                    </div>
+                </div>
+
                 <div class="flex gap-3 pt-4">
                     <button type="button" onclick="hideAddOfficeModal()" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
                         Cancel
                     </button>
                     <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
                         Create Office
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Office Modal -->
+    <div id="editOfficeModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-[#1a1f24] rounded-lg border border-[#283039] p-6 w-full max-w-md mx-4">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-white">Edit Office</h3>
+                <button onclick="hideEditOfficeModal()" class="text-gray-400 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <form id="editOfficeForm" class="space-y-4">
+                <input type="hidden" id="editOfficeId">
+                
+                <div>
+                    <label for="editOfficeName" class="block text-sm font-medium text-gray-300 mb-2">Office Name</label>
+                    <input 
+                        type="text" 
+                        id="editOfficeName" 
+                        required 
+                        class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                </div>
+
+                <div>
+                    <label for="editOfficeLogo" class="block text-sm font-medium text-gray-300 mb-2">Office Display Picture (Optional)</label>
+                    <input 
+                        type="file" 
+                        id="editOfficeLogo" 
+                        accept="image/*"
+                        class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 file:cursor-pointer"
+                    >
+                    <p class="text-xs text-gray-400 mt-1">Leave empty to keep current logo, or upload a new one to replace it</p>
+                    <div id="editLogoPreview" class="mt-2 hidden">
+                        <img id="editLogoPreviewImg" src="" alt="Logo preview" class="w-24 h-24 object-cover rounded-lg border border-gray-600">
+                    </div>
+                    <div id="editCurrentLogo" class="mt-2"></div>
+                </div>
+
+                <div class="flex gap-3 pt-4">
+                    <button type="button" onclick="hideEditOfficeModal()" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                        Cancel
+                    </button>
+                    <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                        Update Office
                     </button>
                 </div>
             </form>
@@ -285,15 +358,23 @@
             const officeDiv = document.createElement('div');
             officeDiv.className = 'flex items-center justify-between bg-[#283039] rounded-lg p-4';
             
+            // Show logo if available
+            const logoHtml = officeData.logoUrl ? 
+                `<img src="${officeData.logoUrl}" alt="${officeData.name} Logo" class="w-12 h-12 rounded-full object-cover border-2 border-gray-600 mr-3">` : 
+                '<div class="w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center text-gray-400 font-semibold mr-3">' + (officeData.name ? officeData.name.charAt(0).toUpperCase() : 'O') + '</div>';
+            
             officeDiv.innerHTML = `
-                <div class="flex-1">
-                    <h3 class="font-semibold text-white">${officeData.name}</h3>
-                    <p class="text-sm text-gray-400">Admin: ${officeData.adminName} (${officeData.adminEmail})</p>
-                    <p class="text-xs text-gray-500">Created: ${new Date(officeData.createdAt?.toDate()).toLocaleDateString()}</p>
+                <div class="flex items-center flex-1">
+                    ${logoHtml}
+                    <div class="flex-1">
+                        <h3 class="font-semibold text-white">${officeData.name}</h3>
+                        <p class="text-sm text-gray-400">Admin: ${officeData.adminName} (${officeData.adminEmail})</p>
+                        <p class="text-xs text-gray-500">Created: ${new Date(officeData.createdAt?.toDate()).toLocaleDateString()}</p>
+                    </div>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button onclick="viewOfficeDetails('${officeId}')" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm transition-colors">
-                        View
+                    <button onclick="editOffice('${officeId}')" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm transition-colors">
+                        Edit
                     </button>
                     <button onclick="deleteOffice('${officeId}', '${officeData.name}')" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm transition-colors">
                         Delete
@@ -312,6 +393,7 @@
             const adminEmail = document.getElementById('adminEmail').value;
             const adminPassword = document.getElementById('adminPassword').value;
             const adminName = document.getElementById('adminName').value;
+            const logoFile = document.getElementById('officeLogo').files[0];
             
             const submitBtn = e.target.querySelector('button[type="submit"]');
             const originalText = submitBtn.textContent;
@@ -322,6 +404,24 @@
             
             try {
                 await waitForFirebase();
+                
+                // Upload logo if provided
+                let logoUrl = null;
+                if (logoFile) {
+                    try {
+                        console.log('Uploading logo file for new office:', logoFile.name);
+                        const timestamp = Date.now();
+                        const logoRef = window.ref(window.storage, `offices/${timestamp}_${logoFile.name}`);
+                        console.log('Uploading to storage path:', `offices/${timestamp}_${logoFile.name}`);
+                        await window.uploadBytes(logoRef, logoFile);
+                        console.log('Logo bytes uploaded successfully');
+                        logoUrl = await window.getDownloadURL(logoRef);
+                        console.log('Logo URL obtained:', logoUrl);
+                    } catch (error) {
+                        console.error('Error uploading logo:', error);
+                        showMessage('Warning: Logo upload failed, but office will be created without logo.', 'error');
+                    }
+                }
                 
                 // Create Firebase Auth user
                 const userCredential = await window.createUserWithEmailAndPassword(window.auth, adminEmail, adminPassword);
@@ -336,6 +436,16 @@
                     createdAt: new Date(),
                     isActive: true
                 };
+                
+                // Add logo URL if uploaded
+                if (logoUrl) {
+                    console.log('Adding logoUrl to office data:', logoUrl);
+                    officeData.logoUrl = logoUrl;
+                } else {
+                    console.log('No logoUrl to add to office data');
+                }
+                
+                console.log('Office data before save:', officeData);
                 
                 const officeDocRef = await window.firebaseAddDoc(window.firebaseCollection(window.firestore, 'offices'), officeData);
                 
@@ -355,6 +465,7 @@
                 
                 // Reset form
                 document.getElementById('addOfficeForm').reset();
+                document.getElementById('logoPreview').classList.add('hidden');
                 
                 // Reload offices list
                 await loadOffices();
@@ -387,6 +498,149 @@
         function hideAddOfficeModal() {
             document.getElementById('addOfficeModal').classList.add('hidden');
             document.getElementById('addOfficeForm').reset();
+            document.getElementById('logoPreview').classList.add('hidden');
+        }
+
+        // Edit office
+        async function editOffice(officeId) {
+            try {
+                await waitForFirebase();
+                
+                const officeDoc = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'offices', officeId));
+                if (!officeDoc.exists()) {
+                    showMessage('Office not found.', 'error');
+                    return;
+                }
+                
+                const officeData = officeDoc.data();
+                
+                // Populate form
+                document.getElementById('editOfficeId').value = officeId;
+                document.getElementById('editOfficeName').value = officeData.name || '';
+                
+                // Show current logo if exists
+                const currentLogoDiv = document.getElementById('editCurrentLogo');
+                if (officeData.logoUrl) {
+                    currentLogoDiv.innerHTML = `
+                        <p class="text-xs text-gray-400 mb-2">Current logo:</p>
+                        <img src="${officeData.logoUrl}" alt="Current logo" class="w-24 h-24 object-cover rounded-lg border border-gray-600">
+                    `;
+                } else {
+                    currentLogoDiv.innerHTML = '<p class="text-xs text-gray-400 mb-2">No logo currently set</p>';
+                }
+                
+                // Reset new logo preview
+                document.getElementById('editLogoPreview').classList.add('hidden');
+                document.getElementById('editOfficeLogo').value = '';
+                
+                // Show modal
+                document.getElementById('editOfficeModal').classList.remove('hidden');
+                
+            } catch (error) {
+                console.error('Error loading office:', error);
+                showMessage('Failed to load office details.', 'error');
+            }
+        }
+        
+        // Preview logo when file is selected in edit form
+        document.addEventListener('DOMContentLoaded', function() {
+            const editLogoInput = document.getElementById('editOfficeLogo');
+            if (editLogoInput) {
+                editLogoInput.addEventListener('change', function(e) {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = function(e) {
+                            document.getElementById('editLogoPreview').classList.remove('hidden');
+                            document.getElementById('editLogoPreviewImg').src = e.target.result;
+                        };
+                        reader.readAsDataURL(file);
+                    } else {
+                        document.getElementById('editLogoPreview').classList.add('hidden');
+                    }
+                });
+            }
+        });
+
+        // Edit office form submission
+        document.addEventListener('DOMContentLoaded', function() {
+            const editForm = document.getElementById('editOfficeForm');
+            if (editForm) {
+                editForm.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    
+                    const officeId = document.getElementById('editOfficeId').value;
+                    const officeName = document.getElementById('editOfficeName').value;
+                    const logoFile = document.getElementById('editOfficeLogo').files[0];
+                    
+                    const submitBtn = e.target.querySelector('button[type="submit"]');
+                    const originalText = submitBtn.textContent;
+                    
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Updating...';
+                    
+                    try {
+                        await waitForFirebase();
+                        
+                        // Get current office data
+                        const officeDoc = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'offices', officeId));
+                        const currentData = officeDoc.data();
+                        
+                        const updateData = {
+                            name: officeName
+                        };
+                        
+                        // Upload new logo if provided
+                        if (logoFile) {
+                            try {
+                                console.log('Uploading logo file:', logoFile.name);
+                                const timestamp = Date.now();
+                                const logoRef = window.ref(window.storage, `offices/${timestamp}_${logoFile.name}`);
+                                console.log('Uploading to storage path:', `offices/${timestamp}_${logoFile.name}`);
+                                await window.uploadBytes(logoRef, logoFile);
+                                console.log('Logo bytes uploaded successfully');
+                                const logoUrl = await window.getDownloadURL(logoRef);
+                                console.log('Logo URL obtained:', logoUrl);
+                                updateData.logoUrl = logoUrl;
+                                console.log('updateData before save:', updateData);
+                            } catch (error) {
+                                console.error('Error uploading logo:', error);
+                                showMessage('Warning: Logo upload failed, but office name was updated.', 'error');
+                            }
+                        }
+                        // If no new logo uploaded, keep existing logoUrl if it exists
+                        else if (currentData.logoUrl) {
+                            console.log('No new logo uploaded, keeping existing logoUrl:', currentData.logoUrl);
+                            updateData.logoUrl = currentData.logoUrl;
+                        } else {
+                            console.log('No logo file provided and no existing logoUrl');
+                        }
+                        
+                        console.log('Updating office document with data:', updateData);
+                        await window.firebaseUpdateDoc(window.firebaseDoc(window.firestore, 'offices', officeId), updateData);
+                        console.log('Office document updated successfully');
+                        
+                        showMessage(`Office "${officeName}" updated successfully!`, 'success');
+                        hideEditOfficeModal();
+                        await loadOffices();
+                        
+                    } catch (error) {
+                        console.error('Error updating office:', error);
+                        showMessage('Failed to update office. Please try again.', 'error');
+                    } finally {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = originalText;
+                    }
+                });
+            }
+        });
+
+        // Hide edit office modal
+        function hideEditOfficeModal() {
+            document.getElementById('editOfficeModal').classList.add('hidden');
+            document.getElementById('editOfficeForm').reset();
+            document.getElementById('editLogoPreview').classList.add('hidden');
+            document.getElementById('editCurrentLogo').innerHTML = '';
         }
 
         // View office details
@@ -441,9 +695,31 @@
             }
         }
 
+        // Preview logo when file is selected in add form
+        document.addEventListener('DOMContentLoaded', function() {
+            const logoInput = document.getElementById('officeLogo');
+            if (logoInput) {
+                logoInput.addEventListener('change', function(e) {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = function(e) {
+                            document.getElementById('logoPreview').classList.remove('hidden');
+                            document.getElementById('logoPreviewImg').src = e.target.result;
+                        };
+                        reader.readAsDataURL(file);
+                    } else {
+                        document.getElementById('logoPreview').classList.add('hidden');
+                    }
+                });
+            }
+        });
+
         // Make functions globally available
         window.showAddOfficeModal = showAddOfficeModal;
         window.hideAddOfficeModal = hideAddOfficeModal;
+        window.editOffice = editOffice;
+        window.hideEditOfficeModal = hideEditOfficeModal;
         window.viewOfficeDetails = viewOfficeDetails;
         window.deleteOffice = deleteOffice;
         window.logout = logout;

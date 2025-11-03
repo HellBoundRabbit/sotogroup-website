@@ -13,6 +13,11 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16x16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png">
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PDF Generation Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <!-- ZIP Creation Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script>
         // CACHE BUSTER - Force fresh load
         console.log('🔴 EXPENSES PAGE LOADING - CACHE BUSTER v2 - ' + new Date().getTime());
@@ -161,17 +166,28 @@
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/drivers.html">Drivers</a>
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/availability.html">Availability</a>
 <a class="bg-[#283039] text-white text-sm font-medium rounded-md px-4 py-2" href="/pages/expenses.html">Expenses</a>
+<a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/messages.html">Messages</a>
 </nav>
 <div class="flex items-center gap-4">
-<button class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors" onclick="showNotifications()">
-<span class="material-symbols-outlined text-xl">notifications</span>
-</button>
-<button class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors text-sm" onclick="logout()">
-Logout
-</button>
+<div class="relative">
+    <button class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors relative" onclick="showNotifications()">
+        <span class="material-symbols-outlined text-xl">notifications</span>
+        <!-- Notification Badge -->
+        <span class="notification-badge absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold hidden">0</span>
+    </button>
+    <!-- Notifications Dropdown -->
+    <div id="notificationDropdown" class="hidden absolute right-0 mt-2 w-80 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+        <div class="px-4 py-3 border-b border-[#283039]">
+            <h3 class="text-white font-semibold text-sm">Notifications</h3>
+        </div>
+        <div id="notificationsList" class="max-h-64 overflow-y-auto">
+            <!-- Notifications will be loaded here -->
+        </div>
+    </div>
+</div>
 <div class="relative">
     <button onclick="toggleProfileDropdown()" class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
-        <img src="/assets/logos/c-logo.svg" alt="C Logo" class="w-full h-full object-cover">
+        <img id="officeLogoImg" src="/assets/logos/c-logo.svg" alt="Office Logo" class="w-full h-full object-cover" onerror="this.src='/assets/logos/c-logo.svg'">
     </button>
     <!-- Profile Dropdown -->
     <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50">
@@ -179,9 +195,13 @@ Logout
             <span class="material-symbols-outlined inline-block align-middle text-base mr-2">lock</span>
             Change Password
         </button>
-        <button onclick="viewUsage()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors rounded-b-lg">
+        <button onclick="viewUsage()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors">
             <span class="material-symbols-outlined inline-block align-middle text-base mr-2">calendar_month</span>
             View Usage
+        </button>
+        <button onclick="logout()" class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-[#283039] transition-colors rounded-b-lg">
+            <span class="material-symbols-outlined inline-block align-middle text-base mr-2">logout</span>
+            Logout
         </button>
     </div>
 </div>
@@ -242,6 +262,14 @@ Logout
         </div>
 
         <div id="content-paid" class="tab-content hidden">
+            <!-- Generate PDFs Button (only shown if there are paid expenses) -->
+            <div id="paid-header" class="hidden mb-4">
+                <button id="generatePDFsBtn" onclick="generateAllPDFs()" 
+                    class="w-full px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2">
+                    <span class="material-symbols-outlined">description</span>
+                    Generate PDF's
+                </button>
+            </div>
             <div id="paid-list" class="space-y-3"></div>
             <div id="paid-empty" class="hidden text-center py-16 text-gray-500">
                 <span class="material-symbols-outlined text-6xl mb-4">payments</span>
@@ -418,6 +446,9 @@ Logout
                     return;
                 }
 
+                // Load office logo
+                await loadOfficeLogo(currentUser.officeId);
+                
                 // Load expense batches immediately
                 console.log('Loading expense batches...');
                 await loadAllBatches();
@@ -441,6 +472,66 @@ Logout
                 console.error('Initialization error:', error);
                 alert('Error initializing app: ' + error.message);
                 window.location.href = '/pages/soto-routes-login.html';
+            }
+        }
+
+        // Load office logo from Firebase
+        async function loadOfficeLogo(officeId) {
+            if (!officeId) {
+                console.log('No officeId provided, skipping logo load');
+                return;
+            }
+            
+            console.log('Loading office logo for officeId:', officeId);
+            
+            try {
+                // Wait for Firebase to be ready
+                let attempts = 0;
+                while (attempts < 20 && (!window.db || !window.getDoc || !window.doc)) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    attempts++;
+                }
+                
+                if (!window.db || !window.getDoc || !window.doc) {
+                    console.error('Firebase not ready after waiting');
+                    return;
+                }
+                
+                console.log('Fetching office document...');
+                const officeDoc = await window.getDoc(window.doc(window.db, 'offices', officeId));
+                
+                if (!officeDoc.exists()) {
+                    console.log('Office document does not exist');
+                    return;
+                }
+                
+                const officeData = officeDoc.data();
+                console.log('Office data:', officeData);
+                console.log('Office logoUrl:', officeData.logoUrl);
+                
+                const logoImg = document.getElementById('officeLogoImg');
+                if (!logoImg) {
+                    console.error('Logo image element not found');
+                    return;
+                }
+                
+                if (officeData.logoUrl) {
+                    console.log('Setting logo image source to:', officeData.logoUrl);
+                    logoImg.src = officeData.logoUrl;
+                    // Force reload if image is cached
+                    logoImg.onload = function() {
+                        console.log('Logo image loaded successfully');
+                    };
+                    logoImg.onerror = function() {
+                        console.error('Error loading logo image, falling back to default');
+                        logoImg.src = '/assets/logos/c-logo.svg';
+                    };
+                } else {
+                    console.log('No logoUrl in office data, keeping default logo');
+                }
+            } catch (error) {
+                console.error('Error loading office logo:', error);
+                // Fallback to default logo (already set in HTML)
             }
         }
 
@@ -594,16 +685,29 @@ Logout
                 empty.classList.remove('hidden');
             } else {
                 empty.classList.add('hidden');
-                list.innerHTML = filtered.map(batch => {
+                
+                // Show/hide generate PDFs button for paid tab
+                if (activeTab === 'paid') {
+                    document.getElementById('paid-header').classList.remove('hidden');
+                } else {
+                    document.getElementById('paid-header').classList.add('hidden');
+                }
+                
+                // Filter out transferred from paid tab (only show 'paid', not 'transferred')
+            if (activeTab === 'paid') {
+                filtered = filtered.filter(b => b.status === 'paid');
+            }
+            
+            list.innerHTML = filtered.map(batch => {
                     const date = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
                     
-                    // Calculate working hours for pending expenses
+                    // Calculate working hours for pending and validated expenses
                     let timerHTML = '';
-                    if (activeTab === 'pending') {
+                    if (activeTab === 'pending' || activeTab === 'validated') {
                         const workingHours = calculateWorkingHours(date, new Date());
                         const color = getTimerColor(workingHours);
                         const flashClass = getTimerClass(workingHours);
-                        timerHTML = `<div class="text-xs ${color} ${flashClass} font-semibold mt-1">${workingHours}h</div>`;
+                        timerHTML = `<div class="text-xs ${color} ${flashClass} font-semibold mt-1">${workingHours}h since submission</div>`;
                     }
                     
                     return `
@@ -855,10 +959,262 @@ Logout
         }
 
         // Helper functions for navigation
-        function showNotifications() {
-            // TODO: Implement notifications
-            console.log('Notifications clicked');
+        // Notification system functions (copied from availability.html)
+        
+        // Check for expenses over 24 working hours old
+        async function checkOldExpenses(officeId) {
+            try {
+                const batchesQuery = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'expenseBatches'),
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                
+                const batchesSnapshot = await window.firebaseGetDocs(batchesQuery);
+                const now = new Date();
+                let oldExpenseCount = 0;
+                
+                batchesSnapshot.docs.forEach(doc => {
+                    const batch = doc.data();
+                    if (batch.status === 'pending' || batch.status === 'validated') {
+                        const submittedAt = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date(batch.submittedAt);
+                        if (submittedAt) {
+                            const workingHours = calculateWorkingHours(submittedAt, now);
+                            if (workingHours > 24) {
+                                oldExpenseCount++;
+                            }
+                        }
+                    }
+                });
+                
+                return oldExpenseCount;
+            } catch (error) {
+                console.error('Error checking old expenses:', error);
+                return 0;
+            }
         }
+        
+        async function updateNotificationCount() {
+            try {
+                const storedUser = localStorage.getItem('soto_user_identity');
+                if (!storedUser) return;
+                
+                const userData = JSON.parse(storedUser);
+                const officeId = userData.officeId;
+                
+                const notificationsQuery = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'availabilityNotifications'),
+                    window.firebaseWhere('officeId', '==', officeId),
+                    window.firebaseWhere('seen', '==', false)
+                );
+                
+                const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
+                
+                const driverChanges = {};
+                notificationsSnapshot.docs.forEach(doc => {
+                    const data = doc.data();
+                    if (!driverChanges[data.driverId]) {
+                        driverChanges[data.driverId] = { daysOff: 0, daysAvailable: 0, driverName: data.driverName };
+                    }
+                    if (data.changeType === 'unavailable') {
+                        driverChanges[data.driverId].daysOff++;
+                    } else {
+                        driverChanges[data.driverId].daysAvailable++;
+                    }
+                });
+                
+                const availabilityCount = Object.keys(driverChanges).length;
+                const oldExpenseCount = await checkOldExpenses(officeId);
+                const unreadCount = availabilityCount + (oldExpenseCount > 0 ? 1 : 0);
+                
+                updateNotificationBadge(unreadCount);
+            } catch (error) {
+                console.error('Error updating notification count:', error);
+            }
+        }
+
+        function updateNotificationBadge(count) {
+            const badgeElements = document.querySelectorAll('.notification-badge');
+            badgeElements.forEach(badge => {
+                if (count > 0) {
+                    badge.textContent = count > 99 ? '99+' : count.toString();
+                    badge.classList.remove('hidden');
+                } else {
+                    badge.classList.add('hidden');
+                }
+            });
+        }
+
+        async function showNotifications() {
+            const dropdown = document.getElementById('notificationDropdown');
+            if (!dropdown) return;
+            dropdown.classList.toggle('hidden');
+            if (!dropdown.classList.contains('hidden')) {
+                await loadNotifications();
+            }
+        }
+
+        async function loadNotifications() {
+            try {
+                const storedUser = localStorage.getItem('soto_user_identity');
+                if (!storedUser) return;
+                const userData = JSON.parse(storedUser);
+                const officeId = userData.officeId;
+                
+                const notificationsQuery = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'availabilityNotifications'),
+                    window.firebaseWhere('officeId', '==', officeId),
+                    window.firebaseWhere('seen', '==', false)
+                );
+                
+                const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
+                const notificationsList = document.getElementById('notificationsList');
+                
+                const oldExpenseCount = await checkOldExpenses(officeId);
+                
+                const driverChanges = {};
+                const allNotifications = notificationsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                allNotifications.forEach(notification => {
+                    const driverId = notification.driverId;
+                    if (!driverChanges[driverId]) {
+                        driverChanges[driverId] = {
+                            driverId: driverId,
+                            driverName: notification.driverName,
+                            daysOff: 0,
+                            daysAvailable: 0,
+                            notifications: [],
+                            latestDate: null
+                        };
+                    }
+                    
+                    if (notification.changeType === 'unavailable') {
+                        driverChanges[driverId].daysOff++;
+                    } else {
+                        driverChanges[driverId].daysAvailable++;
+                    }
+                    
+                    driverChanges[driverId].notifications.push(notification);
+                    
+                    const notifDate = notification.createdAt?.toDate ? notification.createdAt.toDate() : new Date(notification.createdAt);
+                    if (!driverChanges[driverId].latestDate || notifDate > driverChanges[driverId].latestDate) {
+                        driverChanges[driverId].latestDate = notifDate;
+                    }
+                });
+                
+                const sortedDrivers = Object.values(driverChanges).sort((a, b) => b.latestDate - a.latestDate);
+                notificationsList.innerHTML = '';
+                
+                if (oldExpenseCount > 0) {
+                    const expenseNotification = createOldExpenseNotificationElement(oldExpenseCount);
+                    notificationsList.appendChild(expenseNotification);
+                }
+                
+                sortedDrivers.forEach(driverData => {
+                    const notificationElement = createAggregatedNotificationElement(driverData);
+                    notificationsList.appendChild(notificationElement);
+                });
+                
+                if (oldExpenseCount === 0 && sortedDrivers.length === 0) {
+                    notificationsList.innerHTML = '<div class="px-4 py-3 text-gray-400 text-sm text-center">No notifications yet</div>';
+                }
+            } catch (error) {
+                console.error('Error loading notifications:', error);
+            }
+        }
+
+        function createOldExpenseNotificationElement(count) {
+            const element = document.createElement('div');
+            element.className = 'px-4 py-3 border-b border-[#283039] cursor-pointer hover:bg-[#283039] transition-colors bg-[#283039]';
+            element.onclick = () => {
+                document.getElementById('notificationDropdown').classList.add('hidden');
+                window.location.href = '/pages/expenses.html';
+            };
+            
+            element.innerHTML = `
+                <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                        <div class="text-white text-sm font-medium">There are ${count} ${count === 1 ? 'expense' : 'expenses'} that are 24 working hours old</div>
+                        <div class="text-[#9cabba] text-xs mt-1">Click to view expenses</div>
+                    </div>
+                    <div class="w-2 h-2 bg-red-500 rounded-full ml-2 mt-1"></div>
+                </div>
+            `;
+            
+            return element;
+        }
+        
+        function createAggregatedNotificationElement(driverData) {
+            const element = document.createElement('div');
+            element.className = 'px-4 py-3 border-b border-[#283039] cursor-pointer hover:bg-[#283039] transition-colors bg-[#283039]';
+            element.onclick = () => handleAggregatedNotificationClick(driverData);
+            
+            let message = '';
+            if (driverData.daysOff > 0 && driverData.daysAvailable > 0) {
+                message = `${driverData.driverName} has booked ${driverData.daysOff} ${driverData.daysOff === 1 ? 'day' : 'days'} off and changed ${driverData.daysAvailable} ${driverData.daysAvailable === 1 ? 'day' : 'days'} back to available`;
+            } else if (driverData.daysOff > 0) {
+                message = `${driverData.driverName} has booked ${driverData.daysOff} ${driverData.daysOff === 1 ? 'day' : 'days'} off`;
+            } else if (driverData.daysAvailable > 0) {
+                message = `${driverData.driverName} has changed ${driverData.daysAvailable} ${driverData.daysAvailable === 1 ? 'day' : 'days'} back to available`;
+            }
+            
+            const timeAgo = getTimeAgo(driverData.latestDate);
+            
+            element.innerHTML = `
+                <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                        <div class="text-white text-sm font-medium">${message}</div>
+                        <div class="text-[#9cabba] text-xs mt-1">${timeAgo}</div>
+                    </div>
+                    <div class="w-2 h-2 bg-blue-500 rounded-full ml-2 mt-1"></div>
+                </div>
+            `;
+            
+            return element;
+        }
+
+        async function handleAggregatedNotificationClick(driverData) {
+            try {
+                document.getElementById('notificationDropdown').classList.add('hidden');
+                const dates = driverData.notifications.map(n => n.date).sort();
+                const earliestDate = dates[0] ? new Date(dates[0]) : new Date();
+                const year = earliestDate.getFullYear();
+                const month = earliestDate.getMonth() + 1;
+                window.location.href = `/pages/availability.html?year=${year}&month=${month}&showChanges=${driverData.driverId}`;
+            } catch (error) {
+                console.error('Error handling aggregated notification click:', error);
+            }
+        }
+
+        function getTimeAgo(date) {
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+            
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`;
+            if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
+            if (diffDays < 7) return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
+            return date.toLocaleDateString();
+        }
+
+        async function initializeNotifications() {
+            await updateNotificationCount();
+            document.addEventListener('click', function(event) {
+                const dropdown = document.getElementById('notificationDropdown');
+                const button = event.target.closest('button[onclick="showNotifications()"]');
+                if (!dropdown || !button) return;
+                if (!dropdown.contains(event.target) && !button.contains(event.target)) {
+                    dropdown.classList.add('hidden');
+                }
+            });
+        }
+
+        // Initialize notifications on page load
+        window.addEventListener('load', async function() {
+            await initializeNotifications();
+        });
 
         function toggleProfileDropdown() {
             const dropdown = document.getElementById('profileDropdown');
@@ -869,6 +1225,512 @@ Logout
             // TODO: Implement change password
             console.log('Change password clicked');
         }
+
+        // Generate PDFs for all paid expenses
+        async function generateAllPDFs() {
+            const paidBatches = allBatches.filter(b => b.status === 'paid');
+            
+            if (paidBatches.length === 0) {
+                alert('No paid expenses to generate PDFs for');
+                return;
+            }
+
+            const button = document.getElementById('generatePDFsBtn');
+            const originalText = button.innerHTML;
+            
+            // Check if File System Access API is supported
+            if (!('showDirectoryPicker' in window)) {
+                // Fallback: Ask user if they want to download ZIP to Downloads folder
+                const useDownloads = confirm('Your browser does not support selecting folders.\n\nWould you like to download a ZIP file to your Downloads folder instead?\n\n(For folder selection, please use Chrome or Edge)');
+                
+                if (useDownloads) {
+                    await downloadAllPDFsAsZIP(paidBatches, button, originalText);
+                }
+                return;
+            }
+
+            try {
+                button.disabled = true;
+                button.innerHTML = '<span class="material-symbols-outlined animate-spin">hourglass_empty</span> Selecting folder...';
+                
+                // Ask user to select a folder
+                const directoryHandle = await window.showDirectoryPicker({
+                    mode: 'readwrite'
+                });
+                
+                button.innerHTML = '<span class="material-symbols-outlined animate-spin">hourglass_empty</span> Generating PDFs...';
+                
+                let processed = 0;
+                let transferred = 0;
+                let total = paidBatches.length;
+                
+                // Process each paid batch
+                for (const batch of paidBatches) {
+                    try {
+                        await generateAndSaveExpensePDF(batch, directoryHandle);
+                        // Mark as transferred after successful generation (auto-delete in 5 days / 120 hours)
+                        const deleteAt = new Date();
+                        deleteAt.setHours(deleteAt.getHours() + 120); // 120 hours = 5 days
+                        
+                        await window.updateDoc(window.doc(window.db, 'expenseBatches', batch.id), {
+                            status: 'transferred',
+                            transferredAt: window.serverTimestamp(),
+                            deleteAt: deleteAt,
+                            updatedAt: window.serverTimestamp()
+                        });
+                        transferred++;
+                        processed++;
+                        button.innerHTML = `<span class="material-symbols-outlined animate-spin">hourglass_empty</span> Processing ${processed}/${total}...`;
+                    } catch (error) {
+                        console.error(`Error processing batch ${batch.registration}:`, error);
+                        // Continue with next batch
+                    }
+                }
+                
+                button.innerHTML = '<span class="material-symbols-outlined">check_circle</span> Complete!';
+                setTimeout(() => {
+                    button.disabled = false;
+                    button.innerHTML = originalText;
+                }, 2000);
+                
+                // Reload batches to reflect transferred status
+                await loadAllBatches();
+                
+                alert(`Successfully generated and transferred ${transferred} out of ${total} expense PDFs!`);
+                
+            } catch (error) {
+                if (error.name === 'AbortError' || error.message?.includes('canceled')) {
+                    // User cancelled folder selection - offer Downloads fallback
+                    const useDownloads = confirm('Folder selection cancelled.\n\nWould you like to download a ZIP file to your Downloads folder instead?');
+                    if (useDownloads) {
+                        await downloadAllPDFsAsZIP(paidBatches, button, originalText);
+                    } else {
+                        button.disabled = false;
+                        button.innerHTML = originalText;
+                    }
+                    return;
+                }
+                console.error('Error generating PDFs:', error);
+                alert('Error generating PDFs: ' + error.message);
+                button.disabled = false;
+                button.innerHTML = originalText;
+            }
+        }
+
+        // Generate PDF and save to folder structure (simplified: date/driverName/registration/)
+        async function generateAndSaveExpensePDF(batch, rootDirectoryHandle) {
+            // Get payment date for folder structure (use day's date)
+            const paymentDate = batch.paidAt?.toDate ? batch.paidAt.toDate() : 
+                               (batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date());
+            
+            const year = paymentDate.getFullYear();
+            const month = String(paymentDate.getMonth() + 1).padStart(2, '0');
+            const day = String(paymentDate.getDate()).padStart(2, '0');
+            
+            // Date folder name: DD_MM_YYYY
+            const dateFolderName = `${day}_${month}_${year}`;
+            
+            // Clean driver name for folder
+            const driverName = (batch.driverName || 'Unknown_Driver')
+                .replace(/[\/\\:]/g, '-')
+                .replace(/\s+/g, '_');
+            
+            // Clean registration for folder
+            const cleanedReg = batch.registration
+                .replace(/[\/\\:]/g, '-')
+                .replace(/\s+/g, '_');
+            
+            // Create simplified folder structure: dateFolderName/driverName/registration/
+            let currentHandle = rootDirectoryHandle;
+            
+            // Date folder
+            currentHandle = await getOrCreateFolder(currentHandle, dateFolderName);
+            // Driver folder
+            currentHandle = await getOrCreateFolder(currentHandle, driverName);
+            // Registration folder
+            currentHandle = await getOrCreateFolder(currentHandle, cleanedReg);
+            
+            // Generate PDF
+            const pdfBlob = await generateExpensePDF(batch);
+            
+            // Save PDF
+            const driverNameForFile = driverName.replace(/_/g, ' ');
+            const pdfFileName = `${cleanedReg}_${driverNameForFile}.pdf`;
+            const pdfFileHandle = await currentHandle.getFileHandle(pdfFileName, { create: true });
+            const pdfWritable = await pdfFileHandle.createWritable();
+            await pdfWritable.write(pdfBlob);
+            await pdfWritable.close();
+            
+            // Download and save photos
+            let photoIndex = 1;
+            for (const expense of batch.expenses || []) {
+                if (expense.photos && expense.photos.length > 0) {
+                    for (const photoURL of expense.photos) {
+                        try {
+                            // Fetch photo from Firebase Storage
+                            const response = await fetch(photoURL);
+                            const photoBlob = await response.blob();
+                            
+                            // Save photo
+                            const photoFileName = `photo_${photoIndex}.jpg`;
+                            const photoFileHandle = await currentHandle.getFileHandle(photoFileName, { create: true });
+                            const photoWritable = await photoFileHandle.createWritable();
+                            await photoWritable.write(photoBlob);
+                            await photoWritable.close();
+                            
+                            photoIndex++;
+                        } catch (error) {
+                            console.error('Error saving photo:', photoURL, error);
+                        }
+                    }
+                }
+            }
+            
+            console.log(`Saved PDF and photos for batch ${batch.registration} to folder structure`);
+        }
+
+        // Download all PDFs as ZIP (fallback for browsers without File System Access API)
+        async function downloadAllPDFsAsZIP(paidBatches, button, originalText) {
+            try {
+                button.disabled = true;
+                button.innerHTML = '<span class="material-symbols-outlined animate-spin">hourglass_empty</span> Generating ZIP...';
+                
+                const zip = new JSZip();
+                let processed = 0;
+                let transferred = 0;
+                const total = paidBatches.length;
+                
+                // Process each paid batch
+                for (const batch of paidBatches) {
+                    button.innerHTML = `<span class="material-symbols-outlined animate-spin">hourglass_empty</span> Processing ${processed + 1}/${total}...`;
+                    
+                    // Get payment date for folder structure
+                    const paymentDate = batch.paidAt?.toDate ? batch.paidAt.toDate() : 
+                                       (batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date());
+                    
+                    const year = paymentDate.getFullYear();
+                    const month = String(paymentDate.getMonth() + 1).padStart(2, '0');
+                    const day = String(paymentDate.getDate()).padStart(2, '0');
+                    const dateFolderName = `${day}_${month}_${year}`;
+                    
+                    // Clean driver name
+                    const driverName = (batch.driverName || 'Unknown_Driver')
+                        .replace(/[\/\\:]/g, '-')
+                        .replace(/\s+/g, '_');
+                    
+                    // Clean registration
+                    const cleanedReg = batch.registration
+                        .replace(/[\/\\:]/g, '-')
+                        .replace(/\s+/g, '_');
+                    
+                    // Folder path: dateFolderName/driverName/cleanedReg/
+                    const folderPath = `${dateFolderName}/${driverName}/${cleanedReg}/`;
+                    
+                    // Generate PDF
+                    const pdfBlob = await generateExpensePDF(batch);
+                    
+                    // Add PDF to ZIP
+                    const driverNameForFile = driverName.replace(/_/g, ' ');
+                    const pdfFileName = `${cleanedReg}_${driverNameForFile}.pdf`;
+                    zip.file(folderPath + pdfFileName, pdfBlob);
+                    
+                    // Download and add photos
+                    let photoIndex = 1;
+                    for (const expense of batch.expenses || []) {
+                        if (expense.photos && expense.photos.length > 0) {
+                            for (const photoURL of expense.photos) {
+                                try {
+                                    const response = await fetch(photoURL);
+                                    const photoBlob = await response.blob();
+                                    zip.file(folderPath + `photo_${photoIndex}.jpg`, photoBlob);
+                                    photoIndex++;
+                                } catch (error) {
+                                    console.error('Error downloading photo:', photoURL, error);
+                                }
+                            }
+                        }
+                    }
+                    
+                    processed++;
+                }
+                
+                // Generate and download ZIP
+                button.innerHTML = '<span class="material-symbols-outlined animate-spin">hourglass_empty</span> Creating ZIP...';
+                const zipBlob = await zip.generateAsync({ type: 'blob' });
+                const url = URL.createObjectURL(zipBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Expense_Reports_${new Date().toISOString().split('T')[0]}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                // Mark all batches as transferred after successful ZIP download
+                button.innerHTML = '<span class="material-symbols-outlined animate-spin">hourglass_empty</span> Updating status...';
+                for (const batch of paidBatches) {
+                    try {
+                        // Mark as transferred (auto-delete in 5 days / 120 hours)
+                        const deleteAt = new Date();
+                        deleteAt.setHours(deleteAt.getHours() + 120); // 120 hours = 5 days
+                        
+                        await window.updateDoc(window.doc(window.db, 'expenseBatches', batch.id), {
+                            status: 'transferred',
+                            transferredAt: window.serverTimestamp(),
+                            deleteAt: deleteAt,
+                            updatedAt: window.serverTimestamp()
+                        });
+                        transferred++;
+                    } catch (error) {
+                        console.error(`Error marking batch ${batch.id} as transferred:`, error);
+                    }
+                }
+                
+                // Reload batches to reflect transferred status
+                await loadAllBatches();
+                
+                button.innerHTML = '<span class="material-symbols-outlined">check_circle</span> Complete!';
+                setTimeout(() => {
+                    button.disabled = false;
+                    button.innerHTML = originalText;
+                }, 2000);
+                
+                alert(`Successfully generated and transferred ${transferred} expense PDFs!`);
+            } catch (error) {
+                console.error('Error generating ZIP:', error);
+                alert('Error generating ZIP: ' + error.message);
+                button.disabled = false;
+                button.innerHTML = originalText;
+            }
+        }
+
+        // Helper function to get or create a folder
+        async function getOrCreateFolder(parentHandle, folderName) {
+            try {
+                return await parentHandle.getDirectoryHandle(folderName, { create: true });
+            } catch (error) {
+                console.error(`Error creating folder ${folderName}:`, error);
+                throw error;
+            }
+        }
+
+        // Generate PDF for expense batch (matching app layout exactly)
+        async function generateExpensePDF(batch) {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // Get dates
+            const paymentDate = batch.paidAt?.toDate ? batch.paidAt.toDate() : 
+                               (batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date());
+            const submissionDate = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
+            const validationDate = batch.validatedAt?.toDate ? batch.validatedAt.toDate() : null;
+            
+            // Format dates (medium date style with short time)
+            const formatDate = (date) => {
+                if (!date) return 'Not set';
+                const options = { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                };
+                return date.toLocaleDateString('en-GB', options);
+            };
+            
+            const ptToMm = 0.352778; // Conversion factor: 1pt = 0.352778mm
+            let y = 32 * ptToMm; // Start at 32pt = 11.3mm (matching app)
+            
+            // Title - centered, 28pt bold
+            doc.setFontSize(28);
+            doc.setFont(undefined, 'bold');
+            const titleWidth = doc.getTextWidth('Expense Report');
+            doc.text('Expense Report', (210 - titleWidth) / 2, y);
+            y += 24 * ptToMm; // 24pt = 8.5mm
+            
+            // Information section - 16pt medium weight
+            doc.setFontSize(16);
+            doc.setFont(undefined, 'normal');
+            const infoStartX = 48 * ptToMm; // 48pt left margin = 17mm (matching app)
+            doc.text(`Registration: ${batch.registration}`, infoStartX, y);
+            y += 24 * ptToMm; // 24pt = 8.5mm
+            doc.text(`Driver: ${batch.driverName || 'Unknown'}`, infoStartX, y);
+            y += 24 * ptToMm;
+            doc.text(`Submitted on: ${formatDate(submissionDate)}`, infoStartX, y);
+            y += 24 * ptToMm;
+            doc.text(`Validated on: ${validationDate ? formatDate(validationDate) : 'Not validated'}`, infoStartX, y);
+            y += 24 * ptToMm;
+            doc.text(`Paid on: ${paymentDate ? formatDate(paymentDate) : 'Not paid'}`, infoStartX, y);
+            y += 24 * ptToMm;
+            doc.text(`Processed on: Not processed`, infoStartX, y);
+            y += 28 * ptToMm; // 28pt = 9.9mm before table
+            
+            // Table setup (matching app dimensions)
+            // App uses: pageWidth = 595.2pt (A4), left margin = 48pt, tableWidth = 595.2 - 96 = 499.2pt
+            // Column 0 (Category) = 120pt, remaining 5 columns = (499.2 - 120) / 5 = 75.84pt each
+            // Converting to mm (1pt = 0.352778mm): col0 = 42.33mm, colRest = 26.75mm each
+            const tableStartY = y;
+            const pageWidth = 210; // A4 width in mm
+            const leftMargin = 48 * 0.352778; // 48pt in mm ≈ 17mm
+            const tableWidth = pageWidth - (leftMargin * 2); // Total width minus margins
+            const col0 = 42.33; // Category column in mm
+            const colRest = (tableWidth - col0) / 5; // Remaining 5 columns equally divided
+            
+            // Category normalization map
+            const categoryMap = {
+                'fuel': 'Fuel',
+                'charge': 'Charge',
+                'train': 'Train',
+                'train fare': 'Train',
+                'bus': 'Bus',
+                'taxi': 'Taxi',
+                'car wash': 'Car Wash',
+                'carwash': 'Car Wash',
+                'toll': 'Tolls',
+                'tolls': 'Tolls',
+                'other': 'Other'
+            };
+            
+            const categories = ['Fuel', 'Charge', 'Train', 'Bus', 'Taxi', 'Car Wash', 'Tolls', 'Other'];
+            
+            // Group expenses by normalized category
+            const expensesByCategory = {};
+            batch.expenses?.forEach(exp => {
+                const rawCat = (exp.category || 'other').trim().toLowerCase();
+                const normalizedCat = categoryMap[rawCat] || 'Other';
+                if (!expensesByCategory[normalizedCat]) {
+                    expensesByCategory[normalizedCat] = [];
+                }
+                expensesByCategory[normalizedCat].push(exp);
+            });
+            
+            // Create table data matching app format
+            const tableData = [];
+            const headers = ['', '1', '2', '3', '4', 'TOTAL'];
+            
+            // Add header row
+            tableData.push(headers);
+            
+            // Add category rows
+            categories.forEach(category => {
+                const categoryExpenses = expensesByCategory[category] || [];
+                const row = [category];
+                
+                // Add up to 4 individual expenses
+                for (let i = 0; i < 4; i++) {
+                    if (i < categoryExpenses.length) {
+                        row.push(`£${parseFloat(categoryExpenses[i].amount || 0).toFixed(2)}`);
+                    } else {
+                        row.push('');
+                    }
+                }
+                
+                // Calculate category total
+                const categoryTotal = categoryExpenses.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0);
+                row.push(categoryTotal > 0 ? `£${categoryTotal.toFixed(2)}` : '');
+                
+                tableData.push(row);
+            });
+            
+            // Add total row
+            const totalRow = ['TOTAL', '', '', '', '', `£${batch.totalAmount?.toFixed(2) || '0.00'}`];
+            tableData.push(totalRow);
+            
+            // Draw table using autoTable with custom styling to match app
+            doc.autoTable({
+                startY: tableStartY,
+                head: [tableData[0]],
+                body: tableData.slice(1),
+                headStyles: { 
+                    fillColor: [217, 217, 217], // Gray background (0.85 white)
+                    textColor: 0,
+                    fontStyle: 'bold',
+                    fontSize: 15
+                },
+                bodyStyles: {
+                    fontSize: 15,
+                    textColor: 0
+                },
+                alternateRowStyles: {
+                    fillColor: [245, 245, 245] // Very light gray (0.96 white)
+                },
+                columnStyles: {
+                    0: { cellWidth: col0, fontStyle: 'bold' },
+                    1: { cellWidth: colRest, halign: 'left' },
+                    2: { cellWidth: colRest, halign: 'left' },
+                    3: { cellWidth: colRest, halign: 'left' },
+                    4: { cellWidth: colRest, halign: 'left' },
+                    5: { cellWidth: colRest, halign: 'left', fontStyle: 'bold' }
+                },
+                styles: {
+                    lineWidth: 1,
+                    lineColor: 0
+                },
+                margin: { left: infoStartX }
+            });
+            
+            y = doc.lastAutoTable.finalY + 40;
+            
+            // Generate expense summary lines (matching app format)
+            const primaryCategories = ['Fuel', 'Charge', 'Car Wash'];
+            const secondaryCategories = ['Bus', 'Train', 'Taxi', 'Tolls', 'Other'];
+            
+            // Primary line (bold)
+            const primaryAmounts = [];
+            primaryCategories.forEach(cat => {
+                const exp = expensesByCategory[cat] || [];
+                if (exp.length > 0) {
+                    const amounts = exp.map(e => `£${parseFloat(e.amount || 0).toFixed(2)}`).join(' + ');
+                    primaryAmounts.push(`${cat}:(${amounts})`);
+                }
+            });
+            
+            if (primaryAmounts.length > 0) {
+                doc.setFontSize(13);
+                doc.setFont(undefined, 'bold');
+                doc.text(primaryAmounts.join('  '), infoStartX, y);
+                y += 24 * ptToMm;
+            }
+            
+            // Secondary line (regular)
+            const secondaryAmounts = [];
+            secondaryCategories.forEach(cat => {
+                const exp = expensesByCategory[cat] || [];
+                if (exp.length > 0) {
+                    const amounts = exp.map(e => `£${parseFloat(e.amount || 0).toFixed(2)}`).join(' + ');
+                    secondaryAmounts.push(`${cat}: (${amounts})`);
+                }
+            });
+            
+            if (secondaryAmounts.length > 0) {
+                doc.setFontSize(14);
+                doc.setFont(undefined, 'normal');
+                doc.text(secondaryAmounts.join(' '), infoStartX, y);
+                y += 24 * ptToMm;
+            }
+            
+            // Total line (bold)
+            doc.setFontSize(16);
+            doc.setFont(undefined, 'bold');
+            doc.text(`Total: £${batch.totalAmount?.toFixed(2) || '0.00'}`, infoStartX, y);
+            y += 32 * ptToMm;
+            
+            // Footer text
+            doc.setFontSize(13);
+            doc.setFont(undefined, 'italic');
+            doc.setTextColor(105, 105, 105); // darkGray
+            const footerText = 'This report is for client records. Please retain for your files.\n\nIf you have any questions, contact SOTO support.';
+            doc.text(footerText, infoStartX, y, { maxWidth: 210 - (infoStartX * 2), align: 'left' });
+            
+            // Bottom footer
+            doc.setFontSize(12);
+            doc.setTextColor(128, 128, 128); // gray
+            doc.text('Generated using SOTO - Software for Oversight of Transport Operations', 
+                    105, 280, { align: 'center' });
+            
+            return doc.output('blob');
+        }
+
 
         function viewUsage() {
             if (currentUser && currentUser.officeId) {

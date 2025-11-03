@@ -43,16 +43,25 @@
                     </div>
                 </div>
                 <div class="flex items-center gap-4">
-                    <button class="flex max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-md h-10 w-10 bg-[#283039] text-white gap-2 text-sm font-bold leading-normal tracking-[0.015em] min-w-0" onclick="showNotifications()">
-                        <div class="text-white" data-icon="Bell" data-size="20px" data-weight="regular">
-                            <svg fill="currentColor" height="20px" viewBox="0 0 256 256" width="20px" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M221.8,175.94C216.25,166.38,208,139.33,208,104a80,80,0,1,0-160,0c0,35.34-8.26,62.38-13.81,71.94A16,16,0,0,0,48,200H88.81a40,40,0,0,0,78.38,0H208a16,16,0,0,0,13.8-24.06ZM128,216a24,24,0,0,1-22.62-16h45.24A24,24,0,0,1,128,216ZM48,184c7.7-13.24,16-43.92,16-80a64,64,0,1,1,128,0c0,36.05,8.28,66.73,16,80Z"></path>
-                            </svg>
+                    <div class="relative">
+                        <button class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors relative" onclick="showNotifications()">
+                            <span class="material-symbols-outlined text-xl">notifications</span>
+                            <!-- Notification Badge -->
+                            <span class="notification-badge absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold hidden">0</span>
+                        </button>
+                        <!-- Notifications Dropdown -->
+                        <div id="notificationDropdown" class="hidden absolute right-0 mt-2 w-80 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+                            <div class="px-4 py-3 border-b border-[#283039]">
+                                <h3 class="text-white font-semibold text-sm">Notifications</h3>
+                            </div>
+                            <div id="notificationsList" class="max-h-64 overflow-y-auto">
+                                <!-- Notifications will be loaded here -->
+                            </div>
                         </div>
-                    </button>
+                    </div>
                     <div class="relative">
                         <button onclick="toggleProfileDropdown()" class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
-                            <img src="/assets/logos/c-logo.svg" alt="C Logo" class="w-full h-full object-cover">
+                            <img id="officeLogoImg" src="/assets/logos/c-logo.svg" alt="Office Logo" class="w-full h-full object-cover" onerror="this.src='/assets/logos/c-logo.svg'">
                         </button>
                         <!-- Profile Dropdown -->
                         <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50">
@@ -786,8 +795,275 @@
             alert('Reports feature coming soon!');
         }
 
-        function showNotifications() {
-            alert('Notifications feature coming soon!');
+        // Notification system functions (same as other pages)
+        
+        // Calculate working hours between two dates (8am-5pm Mon-Fri only)
+        function calculateWorkingHours(startDate, endDate) {
+            let currentDate = new Date(startDate);
+            let workingHours = 0;
+            
+            while (currentDate < endDate) {
+                const dayOfWeek = currentDate.getDay();
+                const hour = currentDate.getHours();
+                
+                if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+                    if (hour >= 8 && hour < 17) {
+                        workingHours += 1;
+                    }
+                }
+                
+                currentDate.setHours(currentDate.getHours() + 1);
+            }
+            
+            return workingHours;
+        }
+
+        // Check for expenses over 24 working hours old
+        async function checkOldExpenses(officeId) {
+            try {
+                const batchesQuery = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'expenseBatches'),
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                
+                const batchesSnapshot = await window.firebaseGetDocs(batchesQuery);
+                const now = new Date();
+                let oldExpenseCount = 0;
+                
+                batchesSnapshot.docs.forEach(doc => {
+                    const batch = doc.data();
+                    if (batch.status === 'pending' || batch.status === 'validated') {
+                        const submittedAt = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date(batch.submittedAt);
+                        if (submittedAt) {
+                            const workingHours = calculateWorkingHours(submittedAt, now);
+                            if (workingHours > 24) {
+                                oldExpenseCount++;
+                            }
+                        }
+                    }
+                });
+                
+                return oldExpenseCount;
+            } catch (error) {
+                console.error('Error checking old expenses:', error);
+                return 0;
+            }
+        }
+        
+        async function updateNotificationCount() {
+            try {
+                const storedUser = localStorage.getItem('soto_user_identity');
+                if (!storedUser) return;
+                const userData = JSON.parse(storedUser);
+                const officeId = userData.officeId;
+                
+                const notificationsQuery = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'availabilityNotifications'),
+                    window.firebaseWhere('officeId', '==', officeId),
+                    window.firebaseWhere('seen', '==', false)
+                );
+                
+                const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
+                const driverChanges = {};
+                notificationsSnapshot.docs.forEach(doc => {
+                    const data = doc.data();
+                    if (!driverChanges[data.driverId]) {
+                        driverChanges[data.driverId] = { daysOff: 0, daysAvailable: 0, driverName: data.driverName };
+                    }
+                    if (data.changeType === 'unavailable') {
+                        driverChanges[data.driverId].daysOff++;
+                    } else {
+                        driverChanges[data.driverId].daysAvailable++;
+                    }
+                });
+                
+                const availabilityCount = Object.keys(driverChanges).length;
+                const oldExpenseCount = await checkOldExpenses(officeId);
+                const unreadCount = availabilityCount + (oldExpenseCount > 0 ? 1 : 0);
+                
+                updateNotificationBadge(unreadCount);
+            } catch (error) {
+                console.error('Error updating notification count:', error);
+            }
+        }
+
+        function updateNotificationBadge(count) {
+            const badgeElements = document.querySelectorAll('.notification-badge');
+            badgeElements.forEach(badge => {
+                if (count > 0) {
+                    badge.textContent = count > 99 ? '99+' : count.toString();
+                    badge.classList.remove('hidden');
+                } else {
+                    badge.classList.add('hidden');
+                }
+            });
+        }
+
+        async function showNotifications() {
+            const dropdown = document.getElementById('notificationDropdown');
+            if (!dropdown) return;
+            dropdown.classList.toggle('hidden');
+            if (!dropdown.classList.contains('hidden')) {
+                await loadNotifications();
+            }
+        }
+
+        async function loadNotifications() {
+            try {
+                const storedUser = localStorage.getItem('soto_user_identity');
+                if (!storedUser) return;
+                const userData = JSON.parse(storedUser);
+                const officeId = userData.officeId;
+                
+                const notificationsQuery = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'availabilityNotifications'),
+                    window.firebaseWhere('officeId', '==', officeId),
+                    window.firebaseWhere('seen', '==', false)
+                );
+                
+                const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
+                const notificationsList = document.getElementById('notificationsList');
+                
+                const oldExpenseCount = await checkOldExpenses(officeId);
+                
+                const driverChanges = {};
+                const allNotifications = notificationsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                allNotifications.forEach(notification => {
+                    const driverId = notification.driverId;
+                    if (!driverChanges[driverId]) {
+                        driverChanges[driverId] = {
+                            driverId: driverId,
+                            driverName: notification.driverName,
+                            daysOff: 0,
+                            daysAvailable: 0,
+                            notifications: [],
+                            latestDate: null
+                        };
+                    }
+                    
+                    if (notification.changeType === 'unavailable') {
+                        driverChanges[driverId].daysOff++;
+                    } else {
+                        driverChanges[driverId].daysAvailable++;
+                    }
+                    
+                    driverChanges[driverId].notifications.push(notification);
+                    
+                    const notifDate = notification.createdAt?.toDate ? notification.createdAt.toDate() : new Date(notification.createdAt);
+                    if (!driverChanges[driverId].latestDate || notifDate > driverChanges[driverId].latestDate) {
+                        driverChanges[driverId].latestDate = notifDate;
+                    }
+                });
+                
+                const sortedDrivers = Object.values(driverChanges).sort((a, b) => b.latestDate - a.latestDate);
+                notificationsList.innerHTML = '';
+                
+                if (oldExpenseCount > 0) {
+                    const expenseNotification = createOldExpenseNotificationElement(oldExpenseCount);
+                    notificationsList.appendChild(expenseNotification);
+                }
+                
+                sortedDrivers.forEach(driverData => {
+                    const notificationElement = createAggregatedNotificationElement(driverData);
+                    notificationsList.appendChild(notificationElement);
+                });
+                
+                if (oldExpenseCount === 0 && sortedDrivers.length === 0) {
+                    notificationsList.innerHTML = '<div class="px-4 py-3 text-gray-400 text-sm text-center">No notifications yet</div>';
+                }
+            } catch (error) {
+                console.error('Error loading notifications:', error);
+            }
+        }
+
+        function createOldExpenseNotificationElement(count) {
+            const element = document.createElement('div');
+            element.className = 'px-4 py-3 border-b border-[#283039] cursor-pointer hover:bg-[#283039] transition-colors bg-[#283039]';
+            element.onclick = () => {
+                document.getElementById('notificationDropdown').classList.add('hidden');
+                window.location.href = '/pages/expenses.html';
+            };
+            
+            element.innerHTML = `
+                <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                        <div class="text-white text-sm font-medium">There are ${count} ${count === 1 ? 'expense' : 'expenses'} that are 24 working hours old</div>
+                        <div class="text-[#9cabba] text-xs mt-1">Click to view expenses</div>
+                    </div>
+                    <div class="w-2 h-2 bg-red-500 rounded-full ml-2 mt-1"></div>
+                </div>
+            `;
+            
+            return element;
+        }
+        
+        function createAggregatedNotificationElement(driverData) {
+            const element = document.createElement('div');
+            element.className = 'px-4 py-3 border-b border-[#283039] cursor-pointer hover:bg-[#283039] transition-colors bg-[#283039]';
+            element.onclick = () => handleAggregatedNotificationClick(driverData);
+            
+            let message = '';
+            if (driverData.daysOff > 0 && driverData.daysAvailable > 0) {
+                message = `${driverData.driverName} has booked ${driverData.daysOff} ${driverData.daysOff === 1 ? 'day' : 'days'} off and changed ${driverData.daysAvailable} ${driverData.daysAvailable === 1 ? 'day' : 'days'} back to available`;
+            } else if (driverData.daysOff > 0) {
+                message = `${driverData.driverName} has booked ${driverData.daysOff} ${driverData.daysOff === 1 ? 'day' : 'days'} off`;
+            } else if (driverData.daysAvailable > 0) {
+                message = `${driverData.driverName} has changed ${driverData.daysAvailable} ${driverData.daysAvailable === 1 ? 'day' : 'days'} back to available`;
+            }
+            
+            const timeAgo = getTimeAgo(driverData.latestDate);
+            
+            element.innerHTML = `
+                <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                        <div class="text-white text-sm font-medium">${message}</div>
+                        <div class="text-[#9cabba] text-xs mt-1">${timeAgo}</div>
+                    </div>
+                    <div class="w-2 h-2 bg-blue-500 rounded-full ml-2 mt-1"></div>
+                </div>
+            `;
+            
+            return element;
+        }
+
+        async function handleAggregatedNotificationClick(driverData) {
+            try {
+                document.getElementById('notificationDropdown').classList.add('hidden');
+                const dates = driverData.notifications.map(n => n.date).sort();
+                const earliestDate = dates[0] ? new Date(dates[0]) : new Date();
+                const year = earliestDate.getFullYear();
+                const month = earliestDate.getMonth() + 1;
+                window.location.href = `/pages/availability.html?year=${year}&month=${month}&showChanges=${driverData.driverId}`;
+            } catch (error) {
+                console.error('Error handling aggregated notification click:', error);
+            }
+        }
+
+        function getTimeAgo(date) {
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+            
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`;
+            if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
+            if (diffDays < 7) return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
+            return date.toLocaleDateString();
+        }
+
+        async function initializeNotifications() {
+            await updateNotificationCount();
+            document.addEventListener('click', function(event) {
+                const dropdown = document.getElementById('notificationDropdown');
+                const button = event.target.closest('button[onclick="showNotifications()"]');
+                if (!dropdown || !button) return;
+                if (!dropdown.contains(event.target) && !button.contains(event.target)) {
+                    dropdown.classList.add('hidden');
+                }
+            });
         }
 
         // Optimize routes function
@@ -900,6 +1176,11 @@
         // Global variables for day selection
         let selectedDay = 'today';
         let selectedDate = new Date();
+
+        // Initialize notifications on page load
+        window.addEventListener('load', async function() {
+            await initializeNotifications();
+        });
 
         // Initialize dates and counts
         function initializeDateDisplay() {

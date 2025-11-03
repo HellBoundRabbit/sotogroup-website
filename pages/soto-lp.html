@@ -104,6 +104,9 @@ window.onload = async function() {
 
                 console.log('Routes system initialized successfully');
                 
+                // Load office logo
+                await loadOfficeLogo(userIdentity.officeId);
+                
                 // Hide loading overlay after initialization
                 setTimeout(() => {
                     const loadingOverlay = document.getElementById('loading-overlay');
@@ -209,17 +212,28 @@ window.onload = async function() {
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/drivers.html">Drivers</a>
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/availability.html">Availability</a>
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/expenses.html">Expenses</a>
+<a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/messages.html">Messages</a>
 </nav>
 <div class="flex items-center gap-4">
-<button class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors" onclick="showNotifications()">
+<div class="relative">
+    <button class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors relative" onclick="showNotifications()">
 <span class="material-symbols-outlined text-xl">notifications</span>
+        <!-- Notification Badge -->
+        <span class="notification-badge absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold hidden">0</span>
 </button>
-<button class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors text-sm" onclick="logout()">
-Logout
-</button>
+    <!-- Notifications Dropdown -->
+    <div id="notificationDropdown" class="hidden absolute right-0 mt-2 w-80 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+        <div class="px-4 py-3 border-b border-[#283039]">
+            <h3 class="text-white font-semibold text-sm">Notifications</h3>
+        </div>
+        <div id="notificationsList" class="max-h-64 overflow-y-auto">
+            <!-- Notifications will be loaded here -->
+        </div>
+    </div>
+</div>
 <div class="relative">
     <button onclick="toggleProfileDropdown()" class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
-        <img src="/assets/logos/c-logo.svg" alt="C Logo" class="w-full h-full object-cover">
+        <img id="officeLogoImg" src="/assets/logos/c-logo.svg" alt="Office Logo" class="w-full h-full object-cover" onerror="this.src='/assets/logos/c-logo.svg'">
     </button>
     <!-- Profile Dropdown -->
     <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50">
@@ -227,9 +241,13 @@ Logout
             <span class="material-symbols-outlined inline-block align-middle text-base mr-2">lock</span>
             Change Password
         </button>
-        <button onclick="viewUsage()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors rounded-b-lg">
+        <button onclick="viewUsage()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors">
             <span class="material-symbols-outlined inline-block align-middle text-base mr-2">calendar_month</span>
             View Usage
+        </button>
+        <button onclick="logout()" class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-[#283039] transition-colors rounded-b-lg">
+            <span class="material-symbols-outlined inline-block align-middle text-base mr-2">logout</span>
+            Logout
         </button>
     </div>
 </div>
@@ -583,6 +601,66 @@ function getWeekNumber(date) {
     const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
     const pastDaysOfYear = (date - firstDayOfYear) / 86400000;
     return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+}
+
+        // Load office logo from Firebase
+        async function loadOfficeLogo(officeId) {
+            if (!officeId) {
+                console.log('No officeId provided, skipping logo load');
+                return;
+            }
+            
+            console.log('Loading office logo for officeId:', officeId);
+            
+            try {
+                // Wait for Firebase to be ready with retries
+                let attempts = 0;
+                while (attempts < 20 && (!window.firestore || !window.firebaseGetDoc || !window.firebaseDoc)) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    attempts++;
+                }
+                
+                if (!window.firestore || !window.firebaseGetDoc || !window.firebaseDoc) {
+                    console.error('Firebase not ready after waiting');
+                    return;
+                }
+                
+                console.log('Fetching office document...');
+                const officeDoc = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'offices', officeId));
+                
+                if (!officeDoc.exists()) {
+                    console.log('Office document does not exist');
+                    return;
+                }
+                
+                const officeData = officeDoc.data();
+                console.log('Office data:', officeData);
+                console.log('Office logoUrl:', officeData.logoUrl);
+                
+                const logoImg = document.getElementById('officeLogoImg');
+                if (!logoImg) {
+                    console.error('Logo image element not found');
+                    return;
+                }
+                
+                if (officeData.logoUrl) {
+                    console.log('Setting logo image source to:', officeData.logoUrl);
+                    logoImg.src = officeData.logoUrl;
+                    // Force reload if image is cached
+                    logoImg.onload = function() {
+                        console.log('Logo image loaded successfully');
+                    };
+                    logoImg.onerror = function() {
+                        console.error('Error loading logo image, falling back to default');
+                        logoImg.src = '/assets/logos/c-logo.svg';
+                    };
+                } else {
+                    console.log('No logoUrl in office data, keeping default logo');
+                }
+            } catch (error) {
+                console.error('Error loading office logo:', error);
+                // Fallback to default logo (already set in HTML)
+            }
 }
 
 async function loadTotalDrivers() {
@@ -1092,9 +1170,333 @@ function updateStatusIndicator(state = null, routeCount = null) {
 }
 
 // Navigation functions
-function showNotifications() {
-    alert('Notifications feature coming soon!');
+// Notification system functions (copied from availability.html)
+
+// Calculate working hours between two dates (8am-5pm Mon-Fri only)
+function calculateWorkingHours(startDate, endDate) {
+    let currentDate = new Date(startDate);
+    let workingHours = 0;
+    
+    while (currentDate < endDate) {
+        const dayOfWeek = currentDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
+        const hour = currentDate.getHours();
+        
+        // Check if it's a weekday (Monday = 1 to Friday = 5)
+        if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+            // Check if it's within working hours (8am to 5pm)
+            if (hour >= 8 && hour < 17) {
+                workingHours += 1;
+            }
+        }
+        
+        // Move to next hour
+        currentDate.setHours(currentDate.getHours() + 1);
+    }
+    
+    return workingHours;
 }
+
+// Check for expenses over 24 working hours old
+async function checkOldExpenses(officeId) {
+    try {
+        // Get all expense batches that are pending or validated (not paid/transferred)
+        const batchesQuery = window.firebaseQuery(
+            window.firebaseCollection(window.firestore, 'expenseBatches'),
+            window.firebaseWhere('officeId', '==', officeId)
+        );
+        
+        const batchesSnapshot = await window.firebaseGetDocs(batchesQuery);
+        const now = new Date();
+        let oldExpenseCount = 0;
+        
+        batchesSnapshot.docs.forEach(doc => {
+            const batch = doc.data();
+            // Only check pending and validated expenses (not paid or transferred)
+            if (batch.status === 'pending' || batch.status === 'validated') {
+                const submittedAt = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date(batch.submittedAt);
+                if (submittedAt) {
+                    const workingHours = calculateWorkingHours(submittedAt, now);
+                    if (workingHours > 24) {
+                        oldExpenseCount++;
+                    }
+                }
+            }
+        });
+        
+        return oldExpenseCount;
+    } catch (error) {
+        console.error('Error checking old expenses:', error);
+        return 0;
+    }
+}
+
+async function updateNotificationCount() {
+    try {
+        const storedUser = localStorage.getItem('soto_user_identity');
+        if (!storedUser) return;
+        
+        const userData = JSON.parse(storedUser);
+        const officeId = userData.officeId;
+        
+        // Get all availability change notifications for this office that haven't been seen
+        const notificationsQuery = window.firebaseQuery(
+            window.firebaseCollection(window.firestore, 'availabilityNotifications'),
+            window.firebaseWhere('officeId', '==', officeId),
+            window.firebaseWhere('seen', '==', false)
+        );
+        
+        const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
+        
+        // Count unique drivers with unread changes
+        const driverChanges = {};
+        notificationsSnapshot.docs.forEach(doc => {
+            const data = doc.data();
+            if (!driverChanges[data.driverId]) {
+                driverChanges[data.driverId] = {
+                    daysOff: 0,
+                    daysAvailable: 0,
+                    driverName: data.driverName
+                };
+            }
+            if (data.changeType === 'unavailable') {
+                driverChanges[data.driverId].daysOff++;
+            } else {
+                driverChanges[data.driverId].daysAvailable++;
+            }
+        });
+        
+        // Count total number of drivers with changes
+        const availabilityCount = Object.keys(driverChanges).length;
+        
+        // Check for old expenses (>24 working hours)
+        const oldExpenseCount = await checkOldExpenses(officeId);
+        
+        // Total notification count (availability changes + old expenses)
+        const unreadCount = availabilityCount + (oldExpenseCount > 0 ? 1 : 0);
+        
+        // Update notification badge on all pages
+        updateNotificationBadge(unreadCount);
+        
+    } catch (error) {
+        console.error('Error updating notification count:', error);
+    }
+}
+
+function updateNotificationBadge(count) {
+    const badgeElements = document.querySelectorAll('.notification-badge');
+    badgeElements.forEach(badge => {
+        if (count > 0) {
+            badge.textContent = count > 99 ? '99+' : count.toString();
+            badge.classList.remove('hidden');
+        } else {
+            badge.classList.add('hidden');
+        }
+    });
+}
+
+async function showNotifications() {
+    const dropdown = document.getElementById('notificationDropdown');
+    if (!dropdown) return;
+    
+    // Toggle dropdown visibility
+    dropdown.classList.toggle('hidden');
+    
+    if (!dropdown.classList.contains('hidden')) {
+        // Load and display notifications
+        await loadNotifications();
+    }
+}
+
+async function loadNotifications() {
+    try {
+        const storedUser = localStorage.getItem('soto_user_identity');
+        if (!storedUser) return;
+        
+        const userData = JSON.parse(storedUser);
+        const officeId = userData.officeId;
+        
+        // Get all unseen availability change notifications for this office
+        const notificationsQuery = window.firebaseQuery(
+            window.firebaseCollection(window.firestore, 'availabilityNotifications'),
+            window.firebaseWhere('officeId', '==', officeId),
+            window.firebaseWhere('seen', '==', false)
+        );
+        
+        const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
+        const notificationsList = document.getElementById('notificationsList');
+        
+        // Check for old expenses
+        const oldExpenseCount = await checkOldExpenses(officeId);
+        
+        // Aggregate notifications by driver
+        const driverChanges = {};
+        const allNotifications = notificationsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        allNotifications.forEach(notification => {
+            const driverId = notification.driverId;
+            if (!driverChanges[driverId]) {
+                driverChanges[driverId] = {
+                    driverId: driverId,
+                    driverName: notification.driverName,
+                    daysOff: 0,
+                    daysAvailable: 0,
+                    notifications: [],
+                    latestDate: null
+                };
+            }
+            
+            if (notification.changeType === 'unavailable') {
+                driverChanges[driverId].daysOff++;
+            } else {
+                driverChanges[driverId].daysAvailable++;
+            }
+            
+            driverChanges[driverId].notifications.push(notification);
+            
+            // Track latest notification date
+            const notifDate = notification.createdAt?.toDate ? notification.createdAt.toDate() : new Date(notification.createdAt);
+            if (!driverChanges[driverId].latestDate || notifDate > driverChanges[driverId].latestDate) {
+                driverChanges[driverId].latestDate = notifDate;
+            }
+        });
+        
+        // Sort by latest date (most recent first)
+        const sortedDrivers = Object.values(driverChanges).sort((a, b) => b.latestDate - a.latestDate);
+        
+        // Clear existing notifications
+        notificationsList.innerHTML = '';
+        
+        // Add old expenses notification at the top if there are any
+        if (oldExpenseCount > 0) {
+            const expenseNotification = createOldExpenseNotificationElement(oldExpenseCount);
+            notificationsList.appendChild(expenseNotification);
+        }
+        
+        // Add driver availability notifications
+        sortedDrivers.forEach(driverData => {
+            const notificationElement = createAggregatedNotificationElement(driverData);
+            notificationsList.appendChild(notificationElement);
+        });
+        
+        // Show empty state if no notifications
+        if (oldExpenseCount === 0 && sortedDrivers.length === 0) {
+            notificationsList.innerHTML = `
+                <div class="px-4 py-3 text-gray-400 text-sm text-center">
+                    No notifications yet
+                </div>
+            `;
+        }
+        
+    } catch (error) {
+        console.error('Error loading notifications:', error);
+    }
+}
+
+// Create old expense notification element
+function createOldExpenseNotificationElement(count) {
+    const element = document.createElement('div');
+    element.className = 'px-4 py-3 border-b border-[#283039] cursor-pointer hover:bg-[#283039] transition-colors bg-[#283039]';
+    element.onclick = () => {
+        document.getElementById('notificationDropdown').classList.add('hidden');
+        window.location.href = '/pages/expenses.html';
+    };
+    
+    element.innerHTML = `
+        <div class="flex items-start justify-between">
+            <div class="flex-1">
+                <div class="text-white text-sm font-medium">There are ${count} ${count === 1 ? 'expense' : 'expenses'} that are 24 working hours old</div>
+                <div class="text-[#9cabba] text-xs mt-1">Click to view expenses</div>
+            </div>
+            <div class="w-2 h-2 bg-red-500 rounded-full ml-2 mt-1"></div>
+        </div>
+    `;
+    
+    return element;
+}
+
+function createAggregatedNotificationElement(driverData) {
+    const element = document.createElement('div');
+    element.className = 'px-4 py-3 border-b border-[#283039] cursor-pointer hover:bg-[#283039] transition-colors bg-[#283039]';
+    element.onclick = () => handleAggregatedNotificationClick(driverData);
+    
+    // Build message based on changes
+    let message = '';
+    if (driverData.daysOff > 0 && driverData.daysAvailable > 0) {
+        message = `${driverData.driverName} has booked ${driverData.daysOff} ${driverData.daysOff === 1 ? 'day' : 'days'} off and changed ${driverData.daysAvailable} ${driverData.daysAvailable === 1 ? 'day' : 'days'} back to available`;
+    } else if (driverData.daysOff > 0) {
+        message = `${driverData.driverName} has booked ${driverData.daysOff} ${driverData.daysOff === 1 ? 'day' : 'days'} off`;
+    } else if (driverData.daysAvailable > 0) {
+        message = `${driverData.driverName} has changed ${driverData.daysAvailable} ${driverData.daysAvailable === 1 ? 'day' : 'days'} back to available`;
+    }
+    
+    const timeAgo = getTimeAgo(driverData.latestDate);
+    
+    element.innerHTML = `
+        <div class="flex items-start justify-between">
+            <div class="flex-1">
+                <div class="text-white text-sm font-medium">${message}</div>
+                <div class="text-[#9cabba] text-xs mt-1">${timeAgo}</div>
+            </div>
+            <div class="w-2 h-2 bg-blue-500 rounded-full ml-2 mt-1"></div>
+        </div>
+    `;
+    
+    return element;
+}
+
+async function handleAggregatedNotificationClick(driverData) {
+    try {
+        // Hide dropdown
+        document.getElementById('notificationDropdown').classList.add('hidden');
+        
+        // Navigate to availability page
+        const dates = driverData.notifications.map(n => n.date).sort();
+        const earliestDate = dates[0] ? new Date(dates[0]) : new Date();
+        const year = earliestDate.getFullYear();
+        const month = earliestDate.getMonth() + 1;
+        
+        window.location.href = `/pages/availability.html?year=${year}&month=${month}&showChanges=${driverData.driverId}`;
+        
+    } catch (error) {
+        console.error('Error handling aggregated notification click:', error);
+    }
+}
+
+function getTimeAgo(date) {
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`;
+    if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
+    if (diffDays < 7) return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
+    return date.toLocaleDateString();
+}
+
+// Initialize notification system on page load
+async function initializeNotifications() {
+    await updateNotificationCount();
+    
+    // Set up click outside to close dropdown
+    document.addEventListener('click', function(event) {
+        const dropdown = document.getElementById('notificationDropdown');
+        const button = event.target.closest('button[onclick="showNotifications()"]');
+        
+        if (!dropdown || !button) return;
+        
+        if (!dropdown.contains(event.target) && !button.contains(event.target)) {
+            dropdown.classList.add('hidden');
+        }
+    });
+}
+
+// Initialize on page load
+window.addEventListener('load', async function() {
+    await initializeNotifications();
+});
 
 // Job selection functionality
 function selectJob(jobNumber) {
