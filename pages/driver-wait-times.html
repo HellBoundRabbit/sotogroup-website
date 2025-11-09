@@ -283,11 +283,159 @@
         let unsubscribeWaitTimes = null;
         let selectedWaitCategory = null;
         let isSaving = false;
+        const WAIT_TIME_SUBMISSION_QUEUE_KEY = 'wait_time_submission_queue_v1';
+        let remoteWaitTimes = [];
+        let localWaitTimes = [];
 
         const notifyError = (message, title = 'Error') => uiDialogs.showAlert({ title, message, tone: 'danger' });
         const notifyWarning = (message, title = 'Heads Up') => uiDialogs.showAlert({ title, message, tone: 'warning' });
         const notifySuccess = (message, title = 'Success') => uiDialogs.showAlert({ title, message, tone: 'success' });
         const notifyInfo = (message, title = 'Notice') => uiDialogs.showAlert({ title, message, tone: 'info' });
+
+        function loadWaitTimeQueue() {
+            try {
+                const raw = localStorage.getItem(WAIT_TIME_SUBMISSION_QUEUE_KEY);
+                return raw ? JSON.parse(raw) : [];
+            } catch (error) {
+                console.error('Error reading wait time submission queue:', error);
+                return [];
+            }
+        }
+
+        function saveWaitTimeQueue(queue) {
+            try {
+                localStorage.setItem(WAIT_TIME_SUBMISSION_QUEUE_KEY, JSON.stringify(queue));
+            } catch (error) {
+                console.error('Error saving wait time submission queue:', error);
+            }
+        }
+
+        function convertQueueEntryToLocalWaitTime(entry) {
+            const base = entry.data || {};
+            return {
+                id: entry.localId,
+                registration: base.registration,
+                category: base.category,
+                categoryLabel: base.categoryLabel,
+                hours: base.hours,
+                minutes: base.minutes,
+                totalMinutes: base.totalMinutes,
+                notes: base.notes || '',
+                driverId: base.driverId,
+                driverEmail: base.driverEmail,
+                driverName: base.driverName,
+                officeId: base.officeId,
+                processingStatus: 'pending',
+                createdAt: entry.createdAt,
+                updatedAt: entry.createdAt,
+                isLocal: true
+            };
+        }
+
+        function loadLocalWaitTimesFromQueue() {
+            const queue = loadWaitTimeQueue();
+            localWaitTimes = queue.map(convertQueueEntryToLocalWaitTime);
+        }
+
+        function addLocalWaitTimeEntry(queueEntry) {
+            const localEntry = convertQueueEntryToLocalWaitTime(queueEntry);
+            localWaitTimes.push(localEntry);
+        }
+
+        function removeLocalWaitTime(localId) {
+            const index = localWaitTimes.findIndex(item => item.id === localId);
+            if (index >= 0) {
+                localWaitTimes.splice(index, 1);
+            }
+        }
+
+        function queueWaitTimeForSync(baseData, options = {}) {
+            if (!currentUser) return;
+
+            const localId = `local-wait-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+            const createdAt = Date.now();
+            const entry = {
+                localId,
+                createdAt,
+                data: {
+                    ...baseData,
+                    driverId: currentUser.uid,
+                    driverEmail: currentUser.email || '',
+                    driverName: baseData.driverName,
+                    officeId: currentUser.officeId || ''
+                }
+            };
+
+            const queue = loadWaitTimeQueue();
+            queue.push(entry);
+            saveWaitTimeQueue(queue);
+            addLocalWaitTimeEntry(entry);
+            renderWaitTimes();
+
+            if (!options?.silent) {
+                notifyInfo('Saved offline. We will sync this wait time when you are back online.', 'Queued Offline');
+            }
+
+            if (navigator.onLine) {
+                syncWaitTimeQueue({ showToast: false });
+            }
+        }
+
+        async function syncWaitTimeQueue(options = {}) {
+            if (!navigator.onLine || !currentUser) {
+                return;
+            }
+
+            const queue = loadWaitTimeQueue();
+            if (!queue.length) {
+                return;
+            }
+
+            const remaining = [];
+            let processedCount = 0;
+
+            for (const entry of queue) {
+                try {
+                    const data = entry.data || {};
+                    const firestoreData = {
+                        driverId: currentUser.uid,
+                        driverEmail: data.driverEmail || currentUser.email || '',
+                        driverName: data.driverName ||
+                            currentUser.name ||
+                            `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() ||
+                            'Driver',
+                        officeId: currentUser.officeId || '',
+                        registration: data.registration,
+                        category: data.category,
+                        categoryLabel: data.categoryLabel,
+                        hours: data.hours,
+                        minutes: data.minutes,
+                        totalMinutes: data.totalMinutes,
+                        notes: data.notes || '',
+                        processingStatus: 'pending',
+                        createdAt: entry.createdAt ?
+                            window.Timestamp.fromMillis(entry.createdAt) :
+                            window.serverTimestamp(),
+                        updatedAt: window.serverTimestamp()
+                    };
+
+                    await window.addDoc(window.collection(window.db, 'waitTimes'), firestoreData);
+                    removeLocalWaitTime(entry.localId);
+                    processedCount += 1;
+                } catch (error) {
+                    console.error('Error syncing queued wait time:', error);
+                    remaining.push(entry);
+                }
+            }
+
+            saveWaitTimeQueue(remaining);
+            if (processedCount > 0) {
+                renderWaitTimes();
+                if (options?.showToast) {
+                    notifySuccess(`${processedCount} wait time${processedCount === 1 ? '' : 's'} synced successfully.`, 'Back Online');
+                }
+            }
+        }
 
         function initializeDriverWaitTimesApp() {
             console.log('Initializing driver wait times page...');
@@ -311,6 +459,11 @@
                         window.location.href = '/pages/soto-lp.html';
                         return;
                     }
+
+                    loadLocalWaitTimesFromQueue();
+                    renderWaitTimes();
+                    syncWaitTimeQueue({ showToast: false });
+                    window.addEventListener('online', () => syncWaitTimeQueue({ showToast: true }));
 
                     document.getElementById('loadingOverlay').style.display = 'none';
                     attachFormInteractions();
@@ -351,20 +504,23 @@
             );
 
             unsubscribeWaitTimes = window.onSnapshot(waitTimesQuery, (snapshot) => {
-                const waitTimes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                waitTimes.sort((a, b) => {
-                    const aTime = toDate(a.createdAt)?.getTime() || 0;
-                    const bTime = toDate(b.createdAt)?.getTime() || 0;
-                    return bTime - aTime;
-                });
-                renderWaitTimes(waitTimes);
+                remoteWaitTimes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderWaitTimes();
             }, (error) => {
                 console.error('Error listening for wait times:', error);
-                notifyError('Could not load wait times.');
+                if (navigator.onLine) {
+                    notifyError('Could not load wait times.');
+                }
             });
         }
 
-        function renderWaitTimes(waitTimes) {
+        function renderWaitTimes() {
+            const waitTimes = [...localWaitTimes, ...remoteWaitTimes];
+            waitTimes.sort((a, b) => {
+                const aTime = toDate(a.createdAt)?.getTime() || 0;
+                const bTime = toDate(b.createdAt)?.getTime() || 0;
+                return bTime - aTime;
+            });
             const pending = waitTimes.filter(item => (item.processingStatus || 'pending') !== 'processed');
             const processed = waitTimes.filter(item => {
                 if ((item.processingStatus || 'pending') !== 'processed') return false;
@@ -405,11 +561,6 @@
             const submittedText = createdAt ? `Submitted ${formatRelativeTime(createdAt)}` : 'Submission time unavailable';
             const processedText = processedAt ? `Processed ${formatRelativeTime(processedAt)}` : '';
             const processedBy = item.processedByName || item.processedBy || '';
-            const deleteButton = options.allowDelete ? `
-                <button onclick="deleteWaitTime('${item.id}')" class="touch-target text-red-400 hover:text-red-300 transition-colors" aria-label="Delete wait time">
-                    <span class="material-symbols-outlined">delete</span>
-                </button>
-            ` : '';
             const processedMeta = options.showProcessedMeta && processedText ? `
                 <div class="flex items-center gap-2 text-sm text-green-400">
                     <span class="material-symbols-outlined text-base">task_alt</span>
@@ -427,8 +578,10 @@
                                 <span>${category.icon}</span>
                                 ${category.label}
                             </span>
+                            ${item.isLocal ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold text-orange-300 bg-orange-500/10">
+                                <span class="material-symbols-outlined text-sm">cloud_off</span>Awaiting Sync
+                            </span>` : ''}
                         </div>
-                        ${deleteButton}
                     </div>
                     <div class="mt-4 flex flex-wrap items-center gap-4 text-sm text-gray-300">
                         <div class="flex items-center gap-1">
@@ -527,6 +680,17 @@
                 `${currentUser?.firstName || ''} ${currentUser?.lastName || ''}`.trim() ||
                 'Driver';
 
+            const baseData = {
+                driverName,
+                registration,
+                category: selectedWaitCategory,
+                categoryLabel: WAIT_CATEGORIES[selectedWaitCategory]?.label || selectedWaitCategory,
+                hours,
+                minutes,
+                totalMinutes,
+                notes
+            };
+
             const waitTimeData = {
                 driverId: currentUser.uid,
                 driverEmail: currentUser.email || '',
@@ -549,38 +713,25 @@
             saveBtn.textContent = 'Saving...';
 
             try {
+                if (!navigator.onLine) {
+                    queueWaitTimeForSync(baseData);
+                    closeWaitTimeModal();
+                    return;
+                }
+
                 await window.addDoc(window.collection(window.db, 'waitTimes'), waitTimeData);
                 notifySuccess('Wait time saved.');
                 closeWaitTimeModal();
             } catch (error) {
                 console.error('Error saving wait time:', error);
-                notifyError('Could not save wait time. Please try again.');
+                queueWaitTimeForSync(baseData, { silent: true });
+                notifyWarning('No connection detected. Saved locally and will sync when online.', 'Saved Offline');
+                closeWaitTimeModal();
             } finally {
                 isSaving = false;
+                saveBtn.disabled = false;
                 saveBtn.textContent = 'Save Wait Time';
                 validateWaitTimeForm();
-            }
-        }
-
-        async function deleteWaitTime(waitTimeId) {
-            try {
-                const confirmed = await showConfirmation({
-                    title: 'Delete wait time?',
-                    message: 'This will remove the wait time entry permanently.',
-                    confirmText: 'Delete',
-                    cancelText: 'Cancel',
-                    tone: 'danger'
-                });
-
-                if (!confirmed) {
-                    return;
-                }
-
-                await window.deleteDoc(window.doc(window.db, 'waitTimes', waitTimeId));
-                notifySuccess('Wait time deleted.');
-            } catch (error) {
-                console.error('Error deleting wait time:', error);
-                notifyError('Unable to delete wait time.');
             }
         }
 
