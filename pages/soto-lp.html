@@ -7,11 +7,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
 <title>SOTO Routes - Logistics Planner</title>
 <!-- Favicon -->
-<link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
-<link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32x32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16.png">
+    <link rel="icon" type="image/svg+xml" href="/assets/logos/favicon.svg">
+    <link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png">
-<script src="https://cdn.tailwindcss.com"></script>
+<script src="/assets/js/tailwind-runtime.js"></script>
 <script>
     tailwind.config = {
         plugins: {
@@ -20,6 +21,7 @@
         }
     }
 </script>
+<script src="../js/ui-dialogs.js"></script>
 <!-- Firebase SDK -->
 <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
@@ -77,111 +79,85 @@
 </script>
 <script>
 // Wait for window to fully load before initializing Firebase
-window.onload = async function() {
-    console.log('Window loaded, checking Firebase...');
-        
-        // Check authentication first
-        async function checkAuthentication() {
-            try {
-                // Check if user identity is stored in localStorage
-                const storedUser = localStorage.getItem('soto_user_identity');
-                if (!storedUser) {
-                    console.log('No user identity found, redirecting to login');
-                    window.location.href = '/pages/soto-routes-login.html';
-                    return false;
-                }
-
-                // Parse stored user identity
-                const userIdentity = JSON.parse(storedUser);
-                console.log('Found stored user identity:', userIdentity);
-                
-                // Check if user has office role
-                if (userIdentity.role !== 'office') {
-                    console.log('User is not an office user, redirecting to login');
-                    window.location.href = '/pages/soto-routes-login.html';
-                    return false;
-                }
-
-                console.log('Routes system initialized successfully');
-                
-                // Load office logo
-                await loadOfficeLogo(userIdentity.officeId);
-                
-                // Hide loading overlay after initialization
-                setTimeout(() => {
-                    const loadingOverlay = document.getElementById('loading-overlay');
-                    if (loadingOverlay) {
-                        loadingOverlay.style.opacity = '0';
-                        loadingOverlay.style.transition = 'opacity 0.3s ease-out';
-                        setTimeout(() => {
-                            loadingOverlay.style.display = 'none';
-                        }, 300);
-                    }
-                }, 500);
-                
-                return true;
-                
-            } catch (error) {
-                console.error('Authentication check failed:', error);
-                window.location.href = '/pages/soto-routes-login.html';
-                return false;
-            }
+async function checkAuthentication() {
+    try {
+        const storedUser = localStorage.getItem('soto_user_identity');
+        if (!storedUser) {
+            console.log('No user identity found, redirecting to login');
+            window.location.href = '/pages/soto-routes-login.html';
+            return null;
         }
 
-    // Wait for Firebase to be ready
-    function waitForFirebaseReady() {
-            const maxAttempts = 10;
-            let attempts = 0;
-            
-            while (attempts < maxAttempts) {
-                try {
-                if (window.firestore && window.firebaseCollection) {
-                    console.log('Firebase is ready!');
-                        return true;
-                    }
-                } catch (error) {
-                console.log(`Firebase not ready yet, attempt ${attempts + 1}/${maxAttempts}`);
-                }
-                
-                // Small synchronous delay
-                const start = Date.now();
-                while (Date.now() - start < 100) {
-                    // Busy wait for 100ms
-                }
-                attempts++;
-            }
-            
-        console.error('Firebase failed to initialize after maximum attempts');
-            return false;
+        const userIdentity = JSON.parse(storedUser);
+        console.log('Found stored user identity:', userIdentity);
+
+        if (userIdentity.role !== 'office') {
+            console.log('User is not an office user, redirecting to login');
+            window.location.href = '/pages/soto-routes-login.html';
+            return null;
         }
 
-        // Initialize authentication
-        const authSuccess = await checkAuthentication();
-        if (!authSuccess) {
-            return;
-        }
+        console.log('Routes system initialized successfully');
+        return userIdentity;
+    } catch (error) {
+        console.error('Authentication check failed:', error);
+        window.location.href = '/pages/soto-routes-login.html';
+        return null;
+    }
+}
 
-    // Wait for Firebase to be ready
-    const firebaseReady = waitForFirebaseReady();
+async function waitForFirebaseReady(maxAttempts = 20, delayMs = 150) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        if (window.firestore && window.firebaseCollection) {
+            console.log('Firebase is ready!');
+            return true;
+        }
+        console.log(`Firebase not ready yet, attempt ${attempt + 1}/${maxAttempts}`);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    console.error('Firebase failed to initialize after maximum attempts');
+    return false;
+}
+
+async function initializeRoutesApp() {
+    console.log('Initializing routes app...');
+
+    const userIdentity = await checkAuthentication();
+    if (!userIdentity) {
+        return;
+    }
+
+    const firebaseReady = await waitForFirebaseReady();
     if (!firebaseReady) {
         console.error('Firebase is not available after window load');
         return;
     }
 
+    await loadOfficeLogo(userIdentity.officeId);
+
+    const loadingOverlay = document.getElementById('loading-overlay');
+    if (loadingOverlay) {
+        loadingOverlay.style.opacity = '0';
+        loadingOverlay.style.transition = 'opacity 0.3s ease-out';
+        setTimeout(() => {
+            loadingOverlay.style.display = 'none';
+        }, 300);
+    }
+
     console.log('Firebase initialization complete');
-    
-    // Initialize day display
+
     initializeRouteCounter();
-    
-    // Initialize day selection
     await initializeDaySelection();
-    
-    // Show loading indicator for minimized routes
     showMinimizedRoutesLoading();
-    
-    // Load existing routes and jobs for the selected date (async)
     loadRoutesForSelectedDate();
-};
+    await initializeNotifications();
+}
+
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    initializeRoutesApp();
+} else {
+    document.addEventListener('DOMContentLoaded', initializeRoutesApp);
+}
 </script>
 <style type="text/tailwindcss">
       :root {
@@ -212,6 +188,7 @@ window.onload = async function() {
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/drivers.html">Drivers</a>
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/availability.html">Availability</a>
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/expenses.html">Expenses</a>
+<a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/wait-times.html">Wait Times</a>
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/messages.html">Messages</a>
 </nav>
 <div class="flex items-center gap-4">
@@ -233,7 +210,7 @@ window.onload = async function() {
 </div>
 <div class="relative">
     <button onclick="toggleProfileDropdown()" class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
-        <img id="officeLogoImg" src="/assets/logos/c-logo.svg" alt="Office Logo" class="w-full h-full object-cover" onerror="this.src='/assets/logos/c-logo.svg'">
+        <img id="officeLogoImg" src="/assets/logos/favicon.svg" alt="Office Logo" class="w-full h-full object-cover" onerror="this.src='/assets/logos/favicon.svg'">
     </button>
     <!-- Profile Dropdown -->
     <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50">
@@ -435,6 +412,11 @@ let minimizedRoutes = []; // Store minimized routes
 let savedJobs = {}; // Track jobs that have been saved to Firebase
 let localJobs = {}; // Store all parsed jobs locally (before Firebase save)
 let nextRouteId = 1; // Counter for assigning route IDs when saving
+
+const notifyError = (message, title = 'Error') => uiDialogs.showAlert({ title, message, tone: 'danger' });
+const notifyWarning = (message, title = 'Heads Up') => uiDialogs.showAlert({ title, message, tone: 'warning' });
+const notifySuccess = (message, title = 'Success') => uiDialogs.showAlert({ title, message, tone: 'success' });
+const notifyInfo = (message, title = 'Notice') => uiDialogs.showAlert({ title, message, tone: 'info' });
 
 // Day selection variables
 let selectedDay = null;
@@ -652,7 +634,7 @@ function getWeekNumber(date) {
                     };
                     logoImg.onerror = function() {
                         console.error('Error loading logo image, falling back to default');
-                        logoImg.src = '/assets/logos/c-logo.svg';
+                        logoImg.src = '/assets/logos/favicon.svg';
                     };
                 } else {
                     console.log('No logoUrl in office data, keeping default logo');
@@ -725,7 +707,13 @@ async function startFresh() {
     console.log('Start Fresh button clicked');
     
     // First confirmation
-    const firstConfirm = confirm('⚠️ WARNING: This will permanently delete ALL routes and jobs from the database.\n\nAre you sure you want to continue?');
+    const firstConfirm = await showConfirmation({
+        title: 'Delete All Routes',
+        message: '⚠️ WARNING: This will permanently delete ALL routes and jobs from the database.\n\nAre you sure you want to continue?',
+        confirmText: 'Yes, delete everything',
+        cancelText: 'Cancel',
+        tone: 'danger'
+    });
     
     if (!firstConfirm) {
         console.log('Start Fresh cancelled at first confirmation');
@@ -733,7 +721,13 @@ async function startFresh() {
     }
     
     // Second confirmation with stronger warning
-    const secondConfirm = confirm('🚨 FINAL WARNING 🚨\n\nThis action CANNOT be undone!\n\nAll routes and jobs will be permanently deleted.\n\nType "YES" in your mind and click OK to confirm deletion.');
+    const secondConfirm = await showConfirmation({
+        title: 'Final Warning',
+        message: '🚨 FINAL WARNING 🚨\n\nThis action CANNOT be undone!\n\nAll routes and jobs will be permanently deleted.\n\nType "YES" in your mind and click Confirm to proceed.',
+        confirmText: 'Delete All Data',
+        cancelText: 'Cancel',
+        tone: 'danger'
+    });
     
     if (!secondConfirm) {
         console.log('Start Fresh cancelled at second confirmation');
@@ -751,8 +745,8 @@ async function startFresh() {
         
         // Delete all routes
         console.log('Deleting all routes...');
-        const routesQuery = window.query(window.collection(window.db, 'routes'));
-        const routesSnapshot = await window.getDocs(routesQuery);
+        const routesQuery = window.firebaseQuery(window.firebaseCollection(window.firestore, 'routes'));
+        const routesSnapshot = await window.firebaseGetDocs(routesQuery);
         
         let routesDeleted = 0;
         for (const doc of routesSnapshot.docs) {
@@ -763,8 +757,8 @@ async function startFresh() {
         
         // Delete all jobs
         console.log('Deleting all jobs...');
-        const jobsQuery = window.query(window.collection(window.db, 'jobs'));
-        const jobsSnapshot = await window.getDocs(jobsQuery);
+        const jobsQuery = window.firebaseQuery(window.firebaseCollection(window.firestore, 'jobs'));
+        const jobsSnapshot = await window.firebaseGetDocs(jobsQuery);
         
         let jobsDeleted = 0;
         for (const doc of jobsSnapshot.docs) {
@@ -801,13 +795,13 @@ async function startFresh() {
         }, 500);
         
         // Show success message
-        alert(`✅ Successfully deleted ${routesDeleted} routes and ${jobsDeleted} jobs!\n\nAll data has been cleared and you can start fresh.`);
+        await notifySuccess(`Successfully deleted ${routesDeleted} routes and ${jobsDeleted} jobs!\n\nAll data has been cleared and you can start fresh.`, 'Data Deleted');
         
         console.log(`Start Fresh completed: ${routesDeleted} routes and ${jobsDeleted} jobs deleted`);
         
     } catch (error) {
         console.error('Error during Start Fresh:', error);
-        alert('❌ Error deleting data. Please check console for details and try again.');
+        await notifyError('Error deleting data. Please check console for details and try again.', 'Deletion Failed');
     } finally {
         // Reset button
         const startFreshBtn = document.getElementById('start-fresh-btn');
@@ -857,9 +851,9 @@ async function loadRoutesForSelectedDate() {
         }
         
         // Load all routes from Firebase
-        const routesQuery = window.query(window.collection(window.db, 'routes'));
+        const routesQuery = window.firebaseQuery(window.firebaseCollection(window.firestore, 'routes'));
         
-        const routesSnapshot = await window.getDocs(routesQuery);
+        const routesSnapshot = await window.firebaseGetDocs(routesQuery);
         console.log(`Found ${routesSnapshot.size} routes`);
         
         if (routesSnapshot.empty) {
@@ -875,12 +869,12 @@ async function loadRoutesForSelectedDate() {
             console.log('Loading route:', routeData);
             
             // Load jobs for this route
-            const jobsQuery = window.query(
-                window.collection(window.db, 'jobs'),
+            const jobsQuery = window.firebaseQuery(
+                window.firebaseCollection(window.firestore, 'jobs'),
                 window.where('assignedRouteId', '==', routeData.routeId)
             );
             
-            const jobsSnapshot = await window.getDocs(jobsQuery);
+            const jobsSnapshot = await window.firebaseGetDocs(jobsQuery);
             console.log(`Found ${jobsSnapshot.size} jobs for route ${routeData.routeId}`);
             
             const jobs = [];
@@ -1077,8 +1071,8 @@ async function updateRouteCount() {
     
     try {
         // Query Firebase for all routes
-        const routesQuery = window.query(window.collection(window.db, 'routes'));
-        const routesSnapshot = await window.getDocs(routesQuery);
+        const routesQuery = window.firebaseQuery(window.firebaseCollection(window.firestore, 'routes'));
+        const routesSnapshot = await window.firebaseGetDocs(routesQuery);
         routesCount = routesSnapshot.size;
         
         console.log('Routes found in Firebase:', routesCount);
@@ -1248,19 +1242,62 @@ async function updateNotificationCount() {
         
         // Count unique drivers with unread changes
         const driverChanges = {};
-        notificationsSnapshot.docs.forEach(doc => {
-            const data = doc.data();
-            if (!driverChanges[data.driverId]) {
-                driverChanges[data.driverId] = {
+        // Filter to only unseen notifications and convert dates
+        const allNotifications = notificationsSnapshot.docs
+            .map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    ...data,
+                    createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt)
+                };
+            })
+            .filter(notification => notification.seen !== true) // Only include unseen notifications
+            .sort((a, b) => b.createdAt - a.createdAt); // Sort by date (most recent first)
+        
+        // Group by driver and only count the most recent batch (within 1 hour of latest)
+        allNotifications.forEach(notification => {
+            const driverId = notification.driverId;
+            
+            if (!driverChanges[driverId]) {
+                // This is the first (most recent) unseen notification for this driver
+                driverChanges[driverId] = {
+                    driverId: driverId,
+                    driverName: notification.driverName,
                     daysOff: 0,
                     daysAvailable: 0,
-                    driverName: data.driverName
+                    notifications: [notification],
+                    latestDate: notification.createdAt,
+                    earliestDate: notification.createdAt
                 };
-            }
-            if (data.changeType === 'unavailable') {
-                driverChanges[data.driverId].daysOff++;
+                
+                // Count this first notification
+                if (notification.changeType === 'unavailable') {
+                    driverChanges[driverId].daysOff = 1;
+                } else {
+                    driverChanges[driverId].daysAvailable = 1;
+                }
             } else {
-                driverChanges[data.driverId].daysAvailable++;
+                // Check if this notification is within 1 hour of the latest (most recent) one
+                // This ensures we only count the most recent batch, not old unseen notifications
+                const timeDiffFromLatest = Math.abs(driverChanges[driverId].latestDate - notification.createdAt);
+                const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+                
+                if (timeDiffFromLatest <= oneHour) {
+                    // Same batch - add to counts
+                    if (notification.changeType === 'unavailable') {
+                        driverChanges[driverId].daysOff++;
+                    } else {
+                        driverChanges[driverId].daysAvailable++;
+                    }
+                    driverChanges[driverId].notifications.push(notification);
+                    // Update earliest date if this is older
+                    if (notification.createdAt < driverChanges[driverId].earliestDate) {
+                        driverChanges[driverId].earliestDate = notification.createdAt;
+                    }
+                    // latestDate stays as the most recent (first one we found)
+                }
+                // If outside the batch window (more than 1 hour from latest), ignore it
             }
         });
         
@@ -1328,33 +1365,62 @@ async function loadNotifications() {
         
         // Aggregate notifications by driver
         const driverChanges = {};
-        const allNotifications = notificationsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Filter to only unseen notifications and convert dates
+        const allNotifications = notificationsSnapshot.docs
+            .map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    ...data,
+                    createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt)
+                };
+            })
+            .filter(notification => notification.seen !== true) // Only include unseen notifications
+            .sort((a, b) => b.createdAt - a.createdAt); // Sort by date (most recent first)
         
+        // Group by driver and only count the most recent batch (within 1 hour of latest)
         allNotifications.forEach(notification => {
             const driverId = notification.driverId;
+            
             if (!driverChanges[driverId]) {
+                // This is the first (most recent) unseen notification for this driver
                 driverChanges[driverId] = {
                     driverId: driverId,
                     driverName: notification.driverName,
                     daysOff: 0,
                     daysAvailable: 0,
-                    notifications: [],
-                    latestDate: null
+                    notifications: [notification],
+                    latestDate: notification.createdAt,
+                    earliestDate: notification.createdAt
                 };
-            }
-            
-            if (notification.changeType === 'unavailable') {
-                driverChanges[driverId].daysOff++;
+                
+                // Count this first notification
+                if (notification.changeType === 'unavailable') {
+                    driverChanges[driverId].daysOff = 1;
+                } else {
+                    driverChanges[driverId].daysAvailable = 1;
+                }
             } else {
-                driverChanges[driverId].daysAvailable++;
-            }
-            
-            driverChanges[driverId].notifications.push(notification);
-            
-            // Track latest notification date
-            const notifDate = notification.createdAt?.toDate ? notification.createdAt.toDate() : new Date(notification.createdAt);
-            if (!driverChanges[driverId].latestDate || notifDate > driverChanges[driverId].latestDate) {
-                driverChanges[driverId].latestDate = notifDate;
+                // Check if this notification is within 1 hour of the latest (most recent) one
+                // This ensures we only count the most recent batch, not old unseen notifications
+                const timeDiffFromLatest = Math.abs(driverChanges[driverId].latestDate - notification.createdAt);
+                const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+                
+                if (timeDiffFromLatest <= oneHour) {
+                    // Same batch - add to counts
+                    if (notification.changeType === 'unavailable') {
+                        driverChanges[driverId].daysOff++;
+                    } else {
+                        driverChanges[driverId].daysAvailable++;
+                    }
+                    driverChanges[driverId].notifications.push(notification);
+                    // Update earliest date if this is older
+                    if (notification.createdAt < driverChanges[driverId].earliestDate) {
+                        driverChanges[driverId].earliestDate = notification.createdAt;
+                    }
+                    // latestDate stays as the most recent (first one we found)
+                }
+                // If outside the batch window (more than 1 hour from latest), ignore it
             }
         });
         
@@ -1490,11 +1556,6 @@ async function initializeNotifications() {
         }
     });
 }
-
-// Initialize on page load
-window.addEventListener('load', async function() {
-    await initializeNotifications();
-});
 
 // Job selection functionality
 function selectJob(jobNumber) {
@@ -2006,11 +2067,11 @@ async function createRouteSummary(routeId) {
 
         // Check if route summary already exists
         console.log(`Checking for existing route summary with routeId: route_${routeId}`);
-        const routesQuery = window.query(
-            window.collection(window.db, 'routes'),
+        const routesQuery = window.firebaseQuery(
+            window.firebaseCollection(window.firestore, 'routes'),
             window.where('routeId', '==', `route_${routeId}`)
         );
-        const existingRoutes = await window.getDocs(routesQuery);
+        const existingRoutes = await window.firebaseGetDocs(routesQuery);
         console.log(`Found ${existingRoutes.size} existing routes`);
         
         if (!existingRoutes.empty) {
@@ -2020,11 +2081,11 @@ async function createRouteSummary(routeId) {
             const existingData = existingRoute.data();
             
             // Get all jobs for this route from Firebase
-            const jobsQuery = window.query(
-                window.collection(window.db, 'jobs'),
+            const jobsQuery = window.firebaseQuery(
+                window.firebaseCollection(window.firestore, 'jobs'),
                 window.where('assignedRouteId', '==', `route_${routeId}`)
             );
-            const jobsSnapshot = await window.getDocs(jobsQuery);
+            const jobsSnapshot = await window.firebaseGetDocs(jobsQuery);
             
             const jobs = [];
             jobsSnapshot.forEach(doc => {
@@ -2051,11 +2112,11 @@ async function createRouteSummary(routeId) {
 
         // Get all jobs for this route from Firebase
         console.log(`Getting jobs for route_${routeId}...`);
-        const jobsQuery = window.query(
-            window.collection(window.db, 'jobs'),
+        const jobsQuery = window.firebaseQuery(
+            window.firebaseCollection(window.firestore, 'jobs'),
             window.where('assignedRouteId', '==', `route_${routeId}`)
         );
-        const jobsSnapshot = await window.getDocs(jobsQuery);
+        const jobsSnapshot = await window.firebaseGetDocs(jobsQuery);
         console.log(`Found ${jobsSnapshot.size} jobs for route_${routeId}`);
         
         if (jobsSnapshot.empty) {
@@ -2085,7 +2146,7 @@ async function createRouteSummary(routeId) {
         };
         
         console.log('Creating new route summary with data:', routeData);
-        await window.addDoc(window.collection(window.db, 'routes'), routeData);
+        await window.firebaseAddDoc(window.firebaseCollection(window.firestore, 'routes'), routeData);
         console.log('Route summary created successfully in Firebase:', routeData);
         
         // Update route count after route summary is created (with small delay to ensure Firebase is updated)
@@ -2714,24 +2775,24 @@ async function deleteRoute(routeId) {
         const routeIdStr = `route_${routeId}`;
         
         // Delete the route document
-        const routeQuery = window.query(
-            window.collection(window.db, 'routes'),
+        const routeQuery = window.firebaseQuery(
+            window.firebaseCollection(window.firestore, 'routes'),
             window.where('routeId', '==', routeIdStr)
         );
         
-        const routeSnapshot = await window.getDocs(routeQuery);
+        const routeSnapshot = await window.firebaseGetDocs(routeQuery);
         routeSnapshot.forEach(async (doc) => {
             await window.firebaseDeleteDoc(doc.ref);
             console.log('Deleted route document:', doc.id);
         });
         
         // Delete all jobs for this route
-        const jobsQuery = window.query(
-            window.collection(window.db, 'jobs'),
+        const jobsQuery = window.firebaseQuery(
+            window.firebaseCollection(window.firestore, 'jobs'),
             window.where('assignedRouteId', '==', routeIdStr)
         );
         
-        const jobsSnapshot = await window.getDocs(jobsQuery);
+        const jobsSnapshot = await window.firebaseGetDocs(jobsQuery);
         jobsSnapshot.forEach(async (doc) => {
             await window.firebaseDeleteDoc(doc.ref);
             console.log('Deleted job document:', doc.id);

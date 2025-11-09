@@ -8,16 +8,18 @@
     <link as="style" href="https://fonts.googleapis.com/css2?display=swap&amp;family=Inter%3Awght%40400%3B500%3B700%3B900&amp;family=Noto+Sans%3Awght%40400%3B500%3B700%3B900" onload="this.rel='stylesheet'" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
     <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16.png">
+    <link rel="icon" type="image/svg+xml" href="/assets/logos/favicon.svg">
     <link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
-    <link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16x16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png">
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/assets/js/tailwind-runtime.js"></script>
     <!-- PDF Generation Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <!-- ZIP Creation Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="../js/ui-dialogs.js"></script>
     <script>
         // CACHE BUSTER - Force fresh load
         console.log('🔴 EXPENSES PAGE LOADING - CACHE BUSTER v2 - ' + new Date().getTime());
@@ -34,7 +36,6 @@
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, where, updateDoc, doc, deleteDoc, getDoc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-        import { getStorage, ref, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
         
         // Firebase configuration
         const firebaseConfig = {
@@ -51,13 +52,11 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
-        const storage = getStorage(app);
         
         // Make Firebase available globally
         window.firebaseApp = app;
         window.db = db;
         window.auth = auth;
-        window.storage = storage;
         window.firebaseCollection = collection;
         window.firebaseAddDoc = addDoc;
         window.firebaseGetDocs = getDocs;
@@ -100,7 +99,7 @@
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', function() {
                 console.log('🔴 DOM loaded, initializing expenses app...');
-        initializeExpensesApp();
+                initializeExpensesApp();
             });
         } else {
             // DOM is already loaded
@@ -169,15 +168,16 @@
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/drivers.html">Drivers</a>
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/availability.html">Availability</a>
 <a class="bg-[#283039] text-white text-sm font-medium rounded-md px-4 py-2" href="/pages/expenses.html">Expenses</a>
+<a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/wait-times.html">Wait Times</a>
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/messages.html">Messages</a>
 </nav>
 <div class="flex items-center gap-4">
 <div class="relative">
     <button class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors relative" onclick="showNotifications()">
-<span class="material-symbols-outlined text-xl">notifications</span>
+        <span class="material-symbols-outlined text-xl">notifications</span>
         <!-- Notification Badge -->
         <span class="notification-badge absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold hidden">0</span>
-</button>
+    </button>
     <!-- Notifications Dropdown -->
     <div id="notificationDropdown" class="hidden absolute right-0 mt-2 w-80 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
         <div class="px-4 py-3 border-b border-[#283039]">
@@ -190,7 +190,7 @@
 </div>
 <div class="relative">
     <button onclick="toggleProfileDropdown()" class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
-        <img id="officeLogoImg" src="/assets/logos/c-logo.svg" alt="Office Logo" class="w-full h-full object-cover" onerror="this.src='/assets/logos/c-logo.svg'">
+        <img id="officeLogoImg" src="/assets/logos/favicon.svg" alt="Office Logo" class="w-full h-full object-cover" onerror="this.src='/assets/logos/favicon.svg'">
     </button>
     <!-- Profile Dropdown -->
     <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50">
@@ -224,14 +224,27 @@
     <div class="max-w-7xl mx-auto px-4 py-6">
         
         <!-- Page Header -->
-        <div class="mb-6">
+        <div class="mb-6 text-center">
             <h1 class="text-3xl font-bold mb-2">Expense Management</h1>
-            <p class="text-gray-400">Review and manage driver expense submissions</p>
+            <p class="text-gray-400 mb-4">Review and manage driver expense submissions</p>
+            
+            <!-- Search Bar -->
+            <div class="flex justify-center mb-6">
+                <div class="relative w-96">
+                    <input type="text" id="expenseSearch" placeholder="Search expenses..." 
+                        class="w-full bg-[#1a1f24] border border-gray-800 rounded-lg px-4 py-2 pl-10 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors">
+                    <span class="material-symbols-outlined absolute left-3 top-2.5 text-gray-500">search</span>
+                    <!-- Search Results Dropdown -->
+                    <div id="searchResults" class="hidden absolute top-full left-0 right-0 mt-2 bg-[#1a1f24] border border-gray-800 rounded-lg shadow-lg max-h-96 overflow-y-auto z-50">
+                        <!-- Results will be populated here -->
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Tabs -->
         <div class="border-b border-gray-800 mb-6">
-            <div class="flex gap-8">
+            <div class="flex gap-8 justify-center">
                 <button onclick="switchTab('pending')" id="tab-pending" class="tab-active py-3 px-1 font-semibold transition-colors">
                     Pending <span id="pending-count" class="ml-2 px-2 py-0.5 bg-orange-500 text-white text-xs rounded-full">0</span>
                 </button>
@@ -249,6 +262,14 @@
 
         <!-- Tab Content -->
         <div id="content-pending" class="tab-content">
+            <!-- Group by Driver Toggle -->
+            <div id="pending-header" class="mb-4 flex items-center justify-between">
+                <button id="groupByDriverPendingBtn" onclick="toggleGroupByDriverPending()" 
+                    class="px-4 py-2 bg-[#283039] hover:bg-[#3a444e] text-white rounded-lg transition-colors flex items-center gap-2">
+                    <span class="material-symbols-outlined text-lg">group</span>
+                    <span id="groupByDriverPendingText">Group by Driver</span>
+                </button>
+            </div>
             <div id="pending-list" class="space-y-3"></div>
             <div id="pending-empty" class="hidden text-center py-16 text-gray-500">
                 <span class="material-symbols-outlined text-6xl mb-4">check_circle</span>
@@ -257,6 +278,14 @@
         </div>
 
         <div id="content-validated" class="tab-content hidden">
+            <!-- Group by Driver Toggle -->
+            <div id="validated-header" class="mb-4 flex items-center justify-between">
+                <button id="groupByDriverBtn" onclick="toggleGroupByDriver()" 
+                    class="px-4 py-2 bg-[#283039] hover:bg-[#3a444e] text-white rounded-lg transition-colors flex items-center gap-2">
+                    <span class="material-symbols-outlined text-lg">group</span>
+                    <span id="groupByDriverText">Group by Driver</span>
+                </button>
+            </div>
             <div id="validated-list" class="space-y-3"></div>
             <div id="validated-empty" class="hidden text-center py-16 text-gray-500">
                 <span class="material-symbols-outlined text-6xl mb-4">task_alt</span>
@@ -379,7 +408,7 @@
     </div>
 
     <!-- Photo Viewer Modal -->
-    <div id="photoViewerModal" class="hidden fixed inset-0 bg-black bg-opacity-95 z-50 flex items-center justify-center" onclick="if(event.target === this) closePhotoViewer()">
+    <div id="photoViewer" class="hidden fixed inset-0 bg-black bg-opacity-90 z-50">
         <div class="w-full h-full flex flex-col max-w-7xl mx-auto">
             <!-- Header -->
             <div class="flex items-center justify-between px-6 py-4 bg-[#1a1f24] border-b border-[#283039]">
@@ -389,10 +418,9 @@
                 <h3 class="text-white font-semibold text-lg">View Photos</h3>
                 <div class="w-10"></div>
             </div>
-            
-            <!-- Photo Container - Centered with nice layout -->
-            <div id="photoViewerGrid" class="flex-1 overflow-y-auto p-6 flex flex-col items-center gap-6">
-                <!-- Photos will be loaded here -->
+            <!-- Photo container -->
+            <div class="flex-1 bg-black flex items-center justify-center" id="photoViewerContent">
+                <!-- Photos will be injected here -->
             </div>
         </div>
     </div>
@@ -402,6 +430,12 @@
         let allBatches = [];
         let currentBatch = null;
         let activeTab = 'pending';
+        let groupByDriver = false; // Toggle for grouping validated expenses by driver
+        let groupByDriverPending = false; // Toggle for grouping pending expenses by driver
+        const notifyError = (message, title = 'Error') => uiDialogs.showAlert({ title, message, tone: 'danger' });
+        const notifyWarning = (message, title = 'Heads Up') => uiDialogs.showAlert({ title, message, tone: 'warning' });
+        const notifySuccess = (message, title = 'Success') => uiDialogs.showAlert({ title, message, tone: 'success' });
+        const notifyInfo = (message, title = 'Notice') => uiDialogs.showAlert({ title, message, tone: 'info' });
 
         // Initialize function
         async function initializeExpensesApp() {
@@ -432,8 +466,8 @@
                         console.log('Redirect URL:', redirectUrl);
                         window.location.href = `/pages/soto-routes-login.html?redirect=${redirectUrl}`;
                     }, 2000);
-                        return;
-                    }
+                    return;
+                }
 
                 // Parse stored user identity
                 console.log('✅ Found stored user identity, parsing...');
@@ -441,106 +475,62 @@
                 console.log('Parsed user identity:', currentUser);
                 console.log('User role:', currentUser.role);
                 console.log('User officeId:', currentUser.officeId);
-                    
-                    // Only office and admin can access
-                    if (currentUser.role !== 'office' && currentUser.role !== 'admin') {
-                        alert('Access denied. This page is for office staff only.');
-                        window.location.href = '/pages/soto-routes-login.html';
-                        return;
-                    }
-
-                // Verify Firebase Auth is active (required for Storage access)
-                console.log('Verifying Firebase Auth...');
-                const authUser = await new Promise((resolve) => {
-                    const unsubscribe = window.auth.onAuthStateChanged((user) => {
-                        unsubscribe();
-                        resolve(user);
-                    });
-                    // Timeout after 3 seconds
-                    setTimeout(() => {
-                        unsubscribe();
-                        resolve(null);
-                    }, 3000);
-                });
-
-                if (!authUser) {
-                    console.warn('⚠️ Firebase Auth not active - redirecting to login');
-                    localStorage.removeItem('soto_user_identity');
+                
+                // Only office and admin can access
+                if (currentUser.role !== 'office' && currentUser.role !== 'admin') {
+                    notifyWarning('This page is for office staff only.', 'Access Denied');
                     window.location.href = '/pages/soto-routes-login.html';
                     return;
                 }
 
-                console.log('✅ Firebase Auth verified:', authUser.uid);
-
                 // Load office logo
                 await loadOfficeLogo(currentUser.officeId);
                 
+                // Initialize notifications
+                await initializeNotifications();
+                
+                // Initialize search functionality
+                initializeSearch();
+                
                 // Load expense batches immediately
-                    console.log('Loading expense batches...');
-                    await loadAllBatches();
-                    document.getElementById('loadingOverlay').style.display = 'none';
-                    console.log('Loading complete!');
+                console.log('Loading expense batches...');
+                await loadAllBatches();
+                document.getElementById('loadingOverlay').style.display = 'none';
+                console.log('Loading complete!');
+                
+                // Verify with Firebase in background (don't wait - only check once after a delay)
+                setTimeout(() => {
+                    window.auth.onAuthStateChanged(async function(user) {
+                        if (!user) {
+                            // User logged out - redirect to login
+                            console.log('Background auth check: user logged out');
+                            localStorage.removeItem('soto_user_identity');
+                            window.location.href = '/pages/soto-routes-login.html';
+                            return;
+                        }
+                    });
+                }, 1000);
                 
             } catch (error) {
                 console.error('Initialization error:', error);
-                alert('Error initializing app: ' + error.message);
+                notifyError('Error initializing app: ' + error.message);
                 window.location.href = '/pages/soto-routes-login.html';
             }
         }
 
         // Load office logo from Firebase
         async function loadOfficeLogo(officeId) {
-            if (!officeId) {
-                console.log('No officeId provided, skipping logo load');
-                return;
-            }
-            
-            console.log('Loading office logo for officeId:', officeId);
+            if (!officeId) return;
             
             try {
-                // Wait for Firebase to be ready
-                let attempts = 0;
-                while (attempts < 20 && (!window.db || !window.getDoc || !window.doc)) {
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                    attempts++;
-                }
-                
-                if (!window.db || !window.getDoc || !window.doc) {
-                    console.error('Firebase not ready after waiting');
-                    return;
-                }
-                
-                console.log('Fetching office document...');
                 const officeDoc = await window.getDoc(window.doc(window.db, 'offices', officeId));
-                
-                if (!officeDoc.exists()) {
-                    console.log('Office document does not exist');
-                    return;
-                }
-                
-                const officeData = officeDoc.data();
-                console.log('Office data:', officeData);
-                console.log('Office logoUrl:', officeData.logoUrl);
-                
-                const logoImg = document.getElementById('officeLogoImg');
-                if (!logoImg) {
-                    console.error('Logo image element not found');
-                    return;
-                }
-                
-                if (officeData.logoUrl) {
-                    console.log('Setting logo image source to:', officeData.logoUrl);
-                    logoImg.src = officeData.logoUrl;
-                    // Force reload if image is cached
-                    logoImg.onload = function() {
-                        console.log('Logo image loaded successfully');
-                    };
-                    logoImg.onerror = function() {
-                        console.error('Error loading logo image, falling back to default');
-                        logoImg.src = '/assets/logos/c-logo.svg';
-                    };
-                } else {
-                    console.log('No logoUrl in office data, keeping default logo');
+                if (officeDoc.exists()) {
+                    const officeData = officeDoc.data();
+                    const logoImg = document.getElementById('officeLogoImg');
+                    if (logoImg && officeData.logoUrl) {
+                        logoImg.src = officeData.logoUrl;
+                        console.log('Office logo loaded:', officeData.logoUrl);
+                    }
                 }
             } catch (error) {
                 console.error('Error loading office logo:', error);
@@ -556,8 +546,8 @@
                 // Load batches and expenses in parallel (fixes N+1 query problem)
                 const [batchesSnapshot, expensesSnapshot] = await Promise.all([
                     window.getDocs(window.query(
-                    window.collection(window.db, 'expenseBatches'),
-                    window.where('officeId', '==', currentUser.officeId)
+                        window.collection(window.db, 'expenseBatches'),
+                        window.where('officeId', '==', currentUser.officeId)
                     )),
                     window.getDocs(window.query(
                         window.collection(window.db, 'expenses'),
@@ -573,7 +563,7 @@
                 // Group expenses by batchId for efficient lookup
                 const expensesByBatch = {};
                 expensesSnapshot.docs.forEach(expDoc => {
-                        const expData = { id: expDoc.id, ...expDoc.data() };
+                    const expData = { id: expDoc.id, ...expDoc.data() };
                     const batchId = expData.batchId;
                     if (batchId) {
                         if (!expensesByBatch[batchId]) {
@@ -604,7 +594,7 @@
                 console.error('Error loading batches:', error);
                 console.error('Error details:', error.message);
                 console.error('Error stack:', error.stack);
-                alert('Error loading expense batches: ' + error.message);
+                notifyError('Error loading expense batches: ' + error.message);
             }
         }
 
@@ -677,10 +667,227 @@
             return '';
         }
         
+        // Toggle group by driver for validated expenses
+        function toggleGroupByDriver() {
+            groupByDriver = !groupByDriver;
+            const btn = document.getElementById('groupByDriverBtn');
+            const text = document.getElementById('groupByDriverText');
+            
+            if (groupByDriver) {
+                btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                btn.classList.remove('bg-[#283039]', 'hover:bg-[#3a444e]');
+                text.textContent = 'Ungroup';
+            } else {
+                btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                btn.classList.add('bg-[#283039]', 'hover:bg-[#3a444e]');
+                text.textContent = 'Group by Driver';
+            }
+            
+            displayBatches();
+        }
+
+        // Toggle group by driver for pending expenses
+        function toggleGroupByDriverPending() {
+            groupByDriverPending = !groupByDriverPending;
+            const btn = document.getElementById('groupByDriverPendingBtn');
+            const text = document.getElementById('groupByDriverPendingText');
+            
+            if (groupByDriverPending) {
+                btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                btn.classList.remove('bg-[#283039]', 'hover:bg-[#3a444e]');
+                text.textContent = 'Ungroup';
+            } else {
+                btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                btn.classList.add('bg-[#283039]', 'hover:bg-[#3a444e]');
+                text.textContent = 'Group by Driver';
+            }
+            
+            displayBatches();
+        }
+
         // Display batches
         function displayBatches() {
             let filtered = allBatches.filter(b => b.status === activeTab);
             
+            // Handle grouping by driver for validated expenses
+            if (activeTab === 'validated' && groupByDriver) {
+                // Group by driver
+                const driverGroups = {};
+                filtered.forEach(batch => {
+                    const driverId = batch.driverId || batch.driverEmail || 'unknown';
+                    if (!driverGroups[driverId]) {
+                        driverGroups[driverId] = {
+                            driverId: driverId,
+                            driverName: batch.driverName || 'Unknown Driver',
+                            driverEmail: batch.driverEmail || '',
+                            batches: [],
+                            earliestDate: null
+                        };
+                    }
+                    driverGroups[driverId].batches.push(batch);
+                    
+                    // Track earliest submission date
+                    const batchDate = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date(batch.submittedAt);
+                    if (!driverGroups[driverId].earliestDate || batchDate < driverGroups[driverId].earliestDate) {
+                        driverGroups[driverId].earliestDate = batchDate;
+                    }
+                });
+                
+                // Sort drivers by earliest submission date (oldest first)
+                const sortedDrivers = Object.values(driverGroups).sort((a, b) => {
+                    return a.earliestDate - b.earliestDate;
+                });
+                
+                // Render grouped
+                const list = document.getElementById(`${activeTab}-list`);
+                const empty = document.getElementById(`${activeTab}-empty`);
+                
+                if (sortedDrivers.length === 0) {
+                    list.innerHTML = '';
+                    empty.classList.remove('hidden');
+                } else {
+                    empty.classList.add('hidden');
+                    
+                    list.innerHTML = sortedDrivers.map(driverGroup => {
+                        // Calculate total for this driver
+                        const totalAmount = driverGroup.batches.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+                        const totalExpenses = driverGroup.batches.reduce((sum, b) => sum + (b.expenses?.length || 0), 0);
+                        
+                        const batchesHTML = driverGroup.batches.map(batch => {
+                            const date = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
+                            const workingHours = calculateWorkingHours(date, new Date());
+                            const color = getTimerColor(workingHours);
+                            const flashClass = getTimerClass(workingHours);
+                            
+                            return `
+                                <div onclick="openBatchDetail('${batch.id}')" class="bg-[#283039] border border-gray-700 hover:border-gray-600 rounded-lg p-3 cursor-pointer transition-colors ml-4">
+                                    <div class="flex items-start justify-between mb-2">
+                                        <div class="flex-1">
+                                            <p class="text-sm text-gray-300 mb-1">${batch.registration || 'No Reg'}</p>
+                                            <p class="text-xs text-gray-400">${date.toLocaleDateString()}</p>
+                                            <div class="text-xs ${color} ${flashClass} font-semibold mt-1">${workingHours}h since submission</div>
+                                        </div>
+                                        <span class="text-green-400 font-semibold">£${batch.totalAmount?.toFixed(2) || '0.00'}</span>
+                                    </div>
+                                    <div class="text-xs text-gray-500 ml-4">${batch.expenses?.length || 0} expense${batch.expenses?.length !== 1 ? 's' : ''}</div>
+                                </div>
+                            `;
+                        }).join('');
+                        
+                        return `
+                            <div class="mb-6">
+                                <div class="bg-[#1a1f24] border border-gray-800 rounded-lg p-4 mb-3">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <div>
+                                            <p class="font-semibold text-lg">${driverGroup.driverName}</p>
+                                            <p class="text-sm text-gray-400">${driverGroup.driverEmail}</p>
+                                        </div>
+                                        <div class="text-right">
+                                            <p class="text-green-500 font-semibold text-xl">£${totalAmount.toFixed(2)}</p>
+                                            <p class="text-xs text-gray-400">${totalExpenses} expense${totalExpenses !== 1 ? 's' : ''}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="space-y-2">
+                                    ${batchesHTML}
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+                return;
+            }
+            
+            // Handle grouping by driver for pending expenses
+            if (activeTab === 'pending' && groupByDriverPending) {
+                // Group by driver
+                const driverGroups = {};
+                filtered.forEach(batch => {
+                    const driverId = batch.driverId || batch.driverEmail || 'unknown';
+                    if (!driverGroups[driverId]) {
+                        driverGroups[driverId] = {
+                            driverId: driverId,
+                            driverName: batch.driverName || 'Unknown Driver',
+                            driverEmail: batch.driverEmail || '',
+                            batches: [],
+                            earliestDate: null
+                        };
+                    }
+                    driverGroups[driverId].batches.push(batch);
+                    
+                    // Track earliest submission date
+                    const batchDate = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date(batch.submittedAt);
+                    if (!driverGroups[driverId].earliestDate || batchDate < driverGroups[driverId].earliestDate) {
+                        driverGroups[driverId].earliestDate = batchDate;
+                    }
+                });
+                
+                // Sort drivers by earliest submission date (oldest first)
+                const sortedDrivers = Object.values(driverGroups).sort((a, b) => {
+                    return a.earliestDate - b.earliestDate;
+                });
+                
+                // Render grouped
+                const list = document.getElementById(`${activeTab}-list`);
+                const empty = document.getElementById(`${activeTab}-empty`);
+                
+                if (sortedDrivers.length === 0) {
+                    list.innerHTML = '';
+                    empty.classList.remove('hidden');
+                } else {
+                    empty.classList.add('hidden');
+                    
+                    list.innerHTML = sortedDrivers.map(driverGroup => {
+                        // Calculate total for this driver
+                        const totalAmount = driverGroup.batches.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+                        const totalExpenses = driverGroup.batches.reduce((sum, b) => sum + (b.expenses?.length || 0), 0);
+                        
+                        const batchesHTML = driverGroup.batches.map(batch => {
+                            const date = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
+                            const workingHours = calculateWorkingHours(date, new Date());
+                            const color = getTimerColor(workingHours);
+                            const flashClass = getTimerClass(workingHours);
+                            
+                            return `
+                                <div onclick="openBatchDetail('${batch.id}')" class="bg-[#283039] border border-gray-700 hover:border-gray-600 rounded-lg p-3 cursor-pointer transition-colors ml-4">
+                                    <div class="flex items-start justify-between mb-2">
+                                        <div class="flex-1">
+                                            <p class="text-sm text-gray-300 mb-1">${batch.registration || 'No Reg'}</p>
+                                            <p class="text-xs text-gray-400">${date.toLocaleDateString()}</p>
+                                            <div class="text-xs ${color} ${flashClass} font-semibold mt-1">${workingHours}h since submission</div>
+                                        </div>
+                                        <span class="text-green-400 font-semibold">£${batch.totalAmount?.toFixed(2) || '0.00'}</span>
+                                    </div>
+                                    <div class="text-xs text-gray-500 ml-4">${batch.expenses?.length || 0} expense${batch.expenses?.length !== 1 ? 's' : ''}</div>
+                                </div>
+                            `;
+                        }).join('');
+                        
+                        return `
+                            <div class="mb-6">
+                                <div class="bg-[#1a1f24] border border-gray-800 rounded-lg p-4 mb-3">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <div>
+                                            <p class="font-semibold text-lg">${driverGroup.driverName}</p>
+                                            <p class="text-sm text-gray-400">${driverGroup.driverEmail}</p>
+                                        </div>
+                                        <div class="text-right">
+                                            <p class="text-green-500 font-semibold text-xl">£${totalAmount.toFixed(2)}</p>
+                                            <p class="text-xs text-gray-400">${totalExpenses} expense${totalExpenses !== 1 ? 's' : ''}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="space-y-2">
+                                    ${batchesHTML}
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+                return;
+            }
+            
+            // Regular display (not grouped)
             // Sort pending by oldest to newest
             if (activeTab === 'pending') {
                 filtered.sort((a, b) => {
@@ -711,7 +918,7 @@
                 filtered = filtered.filter(b => b.status === 'paid');
             }
             
-                list.innerHTML = filtered.map(batch => {
+            list.innerHTML = filtered.map(batch => {
                     const date = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
                     
                     // Calculate working hours for pending and validated expenses
@@ -777,14 +984,14 @@
                 other: '📝'
             };
 
-            document.getElementById('modal-expenses').innerHTML = currentBatch.expenses.map((exp, index) => `
+            document.getElementById('modal-expenses').innerHTML = currentBatch.expenses.map(exp => `
                 <div class="bg-[#283039] rounded-lg p-3 flex items-center justify-between">
                     <div class="flex items-center gap-3">
                         <span class="text-2xl">${categoryEmojis[exp.category] || '📝'}</span>
                         <div>
                             <div class="font-medium capitalize">${exp.category}</div>
                             ${exp.photos && exp.photos.length > 0 ? `
-                                <button onclick="viewExpensePhotos(${index})" class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1">
+                                <button onclick="viewExpensePhotos(${currentBatch.expenses.indexOf(exp)})" class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1">
                                     <span class="material-symbols-outlined text-xs">photo_camera</span>
                                     ${exp.photos.length} photo${exp.photos.length !== 1 ? 's' : ''}
                                 </button>
@@ -824,7 +1031,15 @@
 
         // Validate batch
         async function validateBatch() {
-            if (!confirm('Validate this expense batch?')) return;
+            const confirmed = await showConfirmation({
+                title: 'Validate Expense Batch',
+                message: 'Are you sure you want to validate this expense batch?',
+                confirmText: 'Validate',
+                cancelText: 'Cancel',
+                confirmClass: 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500'
+            });
+
+            if (!confirmed) return;
 
             try {
                 await window.updateDoc(window.doc(window.db, 'expenseBatches', currentBatch.id), {
@@ -834,12 +1049,11 @@
                     updatedAt: window.serverTimestamp()
                 });
 
-                alert('Batch validated successfully');
                 closeModal();
                 await loadAllBatches();
             } catch (error) {
                 console.error('Error validating batch:', error);
-                alert('Error validating batch. Please try again.');
+                notifyError('Error validating batch. Please try again.');
             }
         }
 
@@ -852,7 +1066,7 @@
         async function confirmReturn() {
             const reason = document.getElementById('returnReason').value.trim();
             if (!reason) {
-                alert('Please provide a reason for returning this batch');
+                notifyWarning('Please provide a reason for returning this batch.', 'Action Required');
                 return;
             }
 
@@ -865,19 +1079,27 @@
                     updatedAt: window.serverTimestamp()
                 });
 
-                alert('Batch returned to driver');
+            notifySuccess('Batch returned to the driver.');
                 closeReturnModal();
                 closeModal();
                 await loadAllBatches();
             } catch (error) {
                 console.error('Error returning batch:', error);
-                alert('Error returning batch. Please try again.');
+            notifyError('Error returning batch. Please try again.');
             }
         }
 
         // Mark as paid
         async function markAsPaid() {
-            if (!confirm('Mark this batch as paid?')) return;
+            const confirmed = await showConfirmation({
+                title: 'Mark Expense Batch as Paid',
+                message: 'Confirm that this expense batch has been paid?',
+                confirmText: 'Mark as Paid',
+                cancelText: 'Cancel',
+                confirmClass: 'bg-green-600 hover:bg-green-700 focus:ring-green-500'
+            });
+
+            if (!confirmed) return;
 
             try {
                 await window.updateDoc(window.doc(window.db, 'expenseBatches', currentBatch.id), {
@@ -887,12 +1109,11 @@
                     updatedAt: window.serverTimestamp()
                 });
 
-                alert('Batch marked as paid');
                 closeModal();
                 await loadAllBatches();
             } catch (error) {
-                console.error('Error marking as paid:', error);
-                alert('Error updating batch. Please try again.');
+                console.error('Error updating batch:', error);
+                notifyError('Error updating batch. Please try again.');
             }
         }
 
@@ -900,86 +1121,53 @@
         async function viewExpensePhotos(expenseIndex) {
             const expense = currentBatch.expenses[expenseIndex];
             if (!expense || !expense.photos || expense.photos.length === 0) {
-                console.warn('No photos found for expense:', expense);
-                alert('No photos available for this expense');
                 return;
             }
 
-            console.log('Viewing photos for expense:', expense);
-            console.log('Photo URLs:', expense.photos);
-
-            const grid = document.getElementById('photoViewerGrid');
+            const viewer = document.getElementById('photoViewer');
+            const content = document.getElementById('photoViewerContent');
+            if (!viewer || !content) {
+                console.error('Photo viewer elements not found.');
+                return;
+            }
             
-            // Firebase Storage download URLs include signed tokens and should work directly
-            // Use them directly in img tags - no need to fetch
-            grid.innerHTML = expense.photos.map((url, index) => {
-                // Ensure URL is a string
-                const photoUrl = typeof url === 'string' ? url : (url.url || url);
-                
-                if (!photoUrl) {
-                    console.error('Invalid photo URL at index', index, ':', url);
-                    return `
-                        <div class="w-full max-w-4xl mx-auto">
-                            <div class="bg-[#1a1f24] rounded-xl p-4 shadow-2xl border border-[#283039]">
-                                <div class="text-center text-red-400 py-8">
-                                    <span class="material-symbols-outlined text-4xl mb-2">error</span>
-                                    <p>Photo ${index + 1} could not be loaded</p>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                }
-                
-                return `
-                    <div class="w-full max-w-4xl mx-auto">
-                        <div class="bg-[#1a1f24] rounded-xl p-4 shadow-2xl border border-[#283039]">
-                            <img 
-                                src="${photoUrl}" 
-                                alt="Expense photo ${index + 1}" 
-                                class="w-full h-auto rounded-lg shadow-lg object-contain max-h-[70vh] mx-auto"
-                                loading="lazy"
-                                style="display: block;"
-                                crossorigin="anonymous"
-                                data-photo-index="${index + 1}"
-                                data-photo-url="${photoUrl}"
-                                onerror="handlePhotoError(this)"
-                            >
-                            <div class="text-center mt-3 text-sm text-gray-400">
-                                Photo ${index + 1} of ${expense.photos.length}
-                            </div>
+            // Photos are URLs (from Firebase Storage) - display with beautiful styling
+            content.innerHTML = expense.photos.map((url, index) => `
+                <div class="w-full max-w-4xl mx-auto">
+                    <div class="bg-[#1a1f24] rounded-xl p-4 shadow-2xl border border-[#283039]">
+                        <img 
+                            src="${url}" 
+                            alt="Expense photo ${index + 1}" 
+                            class="w-full h-auto rounded-lg shadow-lg object-contain max-h-[70vh] mx-auto"
+                            loading="lazy"
+                            style="display: block;"
+                        >
+                        <div class="text-center mt-3 text-sm text-gray-400">
+                            Photo ${index + 1} of ${expense.photos.length}
                         </div>
                     </div>
-                `;
-            }).join('');
-
-            document.getElementById('photoViewerModal').classList.remove('hidden');
-        }
-
-        // Handle photo loading errors
-        function handlePhotoError(imgElement) {
-            const photoIndex = imgElement.getAttribute('data-photo-index') || '?';
-            const photoUrl = imgElement.getAttribute('data-photo-url') || '';
-            const truncatedUrl = photoUrl.length > 50 ? photoUrl.substring(0, 50) + '...' : photoUrl;
-            
-            imgElement.onerror = null; // Prevent infinite loop
-            imgElement.parentElement.innerHTML = `
-                <div class="text-center text-red-400 py-8">
-                    <span class="material-symbols-outlined text-4xl mb-2">error</span>
-                    <p>Photo ${photoIndex} failed to load</p>
-                    <p class="text-xs text-gray-500 mt-2">URL: ${truncatedUrl}</p>
                 </div>
-            `;
+            `).join('');
+
+            viewer.classList.remove('hidden');
         }
 
         // Close photo viewer
         function closePhotoViewer() {
-            document.getElementById('photoViewerModal').classList.add('hidden');
-            document.getElementById('photoViewerGrid').innerHTML = '';
+            const viewer = document.getElementById('photoViewer');
+            const content = document.getElementById('photoViewerContent');
+            if (viewer) {
+                viewer.classList.add('hidden');
+            }
+            if (content) {
+                content.innerHTML = '';
+            }
         }
 
         // Close photo viewer on Escape key
         document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape' && !document.getElementById('photoViewerModal').classList.contains('hidden')) {
+            const viewer = document.getElementById('photoViewer');
+            if (e.key === 'Escape' && viewer && !viewer.classList.contains('hidden')) {
                 closePhotoViewer();
             }
         });
@@ -1017,260 +1205,18 @@
         }
 
         // Helper functions for navigation
-        // Notification system functions (copied from availability.html)
-        
-        // Check for expenses over 24 working hours old
-        async function checkOldExpenses(officeId) {
-            try {
-                const batchesQuery = window.firebaseQuery(
-                    window.firebaseCollection(window.db, 'expenseBatches'),
-                    window.firebaseWhere('officeId', '==', officeId)
-                );
-                
-                const batchesSnapshot = await window.firebaseGetDocs(batchesQuery);
-                const now = new Date();
-                let oldExpenseCount = 0;
-                
-                batchesSnapshot.docs.forEach(doc => {
-                    const batch = doc.data();
-                    if (batch.status === 'pending' || batch.status === 'validated') {
-                        const submittedAt = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date(batch.submittedAt);
-                        if (submittedAt) {
-                            const workingHours = calculateWorkingHours(submittedAt, now);
-                            if (workingHours > 24) {
-                                oldExpenseCount++;
-                            }
-                        }
-                    }
-                });
-                
-                return oldExpenseCount;
-            } catch (error) {
-                console.error('Error checking old expenses:', error);
-                return 0;
-            }
-        }
-        
-        async function updateNotificationCount() {
-            try {
-                const storedUser = localStorage.getItem('soto_user_identity');
-                if (!storedUser) return;
-                
-                const userData = JSON.parse(storedUser);
-                const officeId = userData.officeId;
-                
-                const notificationsQuery = window.firebaseQuery(
-                    window.firebaseCollection(window.db, 'availabilityNotifications'),
-                    window.firebaseWhere('officeId', '==', officeId)
-                );
-                
-                const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
-                
-                const driverChanges = {};
-                notificationsSnapshot.docs.forEach(doc => {
-                    const data = doc.data();
-                    if (!driverChanges[data.driverId]) {
-                        driverChanges[data.driverId] = { daysOff: 0, daysAvailable: 0, driverName: data.driverName };
-                    }
-                    if (data.changeType === 'unavailable') {
-                        driverChanges[data.driverId].daysOff++;
-                    } else {
-                        driverChanges[data.driverId].daysAvailable++;
-                    }
-                });
-                
-                const availabilityCount = Object.keys(driverChanges).length;
-                const oldExpenseCount = await checkOldExpenses(officeId);
-                const unreadCount = availabilityCount + (oldExpenseCount > 0 ? 1 : 0);
-                
-                updateNotificationBadge(unreadCount);
-            } catch (error) {
-                console.error('Error updating notification count:', error);
-            }
-        }
-
-        function updateNotificationBadge(count) {
-            const badgeElements = document.querySelectorAll('.notification-badge');
-            badgeElements.forEach(badge => {
-                if (count > 0) {
-                    badge.textContent = count > 99 ? '99+' : count.toString();
-                    badge.classList.remove('hidden');
-                } else {
-                    badge.classList.add('hidden');
-                }
-            });
-        }
-
         async function showNotifications() {
             const dropdown = document.getElementById('notificationDropdown');
             if (!dropdown) return;
+            
+            // Toggle dropdown visibility
             dropdown.classList.toggle('hidden');
+            
             if (!dropdown.classList.contains('hidden')) {
+                // Load and display notifications
                 await loadNotifications();
             }
         }
-
-        async function loadNotifications() {
-            try {
-                const storedUser = localStorage.getItem('soto_user_identity');
-                if (!storedUser) return;
-                const userData = JSON.parse(storedUser);
-                const officeId = userData.officeId;
-                
-                const notificationsQuery = window.firebaseQuery(
-                    window.firebaseCollection(window.db, 'availabilityNotifications'),
-                    window.firebaseWhere('officeId', '==', officeId)
-                );
-                
-                const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
-                const notificationsList = document.getElementById('notificationsList');
-                
-                const oldExpenseCount = await checkOldExpenses(officeId);
-                
-                const driverChanges = {};
-                const allNotifications = notificationsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                
-                allNotifications.forEach(notification => {
-                    const driverId = notification.driverId;
-                    if (!driverChanges[driverId]) {
-                        driverChanges[driverId] = {
-                            driverId: driverId,
-                            driverName: notification.driverName,
-                            daysOff: 0,
-                            daysAvailable: 0,
-                            notifications: [],
-                            latestDate: null
-                        };
-                    }
-                    
-                    if (notification.changeType === 'unavailable') {
-                        driverChanges[driverId].daysOff++;
-                    } else {
-                        driverChanges[driverId].daysAvailable++;
-                    }
-                    
-                    driverChanges[driverId].notifications.push(notification);
-                    
-                    const notifDate = notification.createdAt?.toDate ? notification.createdAt.toDate() : new Date(notification.createdAt);
-                    if (!driverChanges[driverId].latestDate || notifDate > driverChanges[driverId].latestDate) {
-                        driverChanges[driverId].latestDate = notifDate;
-                    }
-                });
-                
-                const sortedDrivers = Object.values(driverChanges).sort((a, b) => b.latestDate - a.latestDate);
-                notificationsList.innerHTML = '';
-                
-                if (oldExpenseCount > 0) {
-                    const expenseNotification = createOldExpenseNotificationElement(oldExpenseCount);
-                    notificationsList.appendChild(expenseNotification);
-                }
-                
-                sortedDrivers.forEach(driverData => {
-                    const notificationElement = createAggregatedNotificationElement(driverData);
-                    notificationsList.appendChild(notificationElement);
-                });
-                
-                if (oldExpenseCount === 0 && sortedDrivers.length === 0) {
-                    notificationsList.innerHTML = '<div class="px-4 py-3 text-gray-400 text-sm text-center">No notifications yet</div>';
-                }
-            } catch (error) {
-                console.error('Error loading notifications:', error);
-            }
-        }
-
-        function createOldExpenseNotificationElement(count) {
-            const element = document.createElement('div');
-            element.className = 'px-4 py-3 border-b border-[#283039] cursor-pointer hover:bg-[#283039] transition-colors bg-[#283039]';
-            element.onclick = () => {
-                document.getElementById('notificationDropdown').classList.add('hidden');
-                window.location.href = '/pages/expenses.html';
-            };
-            
-            element.innerHTML = `
-                <div class="flex items-start justify-between">
-                    <div class="flex-1">
-                        <div class="text-white text-sm font-medium">There are ${count} ${count === 1 ? 'expense' : 'expenses'} that are 24 working hours old</div>
-                        <div class="text-[#9cabba] text-xs mt-1">Click to view expenses</div>
-                    </div>
-                    <div class="w-2 h-2 bg-red-500 rounded-full ml-2 mt-1"></div>
-                </div>
-            `;
-            
-            return element;
-        }
-        
-        function createAggregatedNotificationElement(driverData) {
-            const element = document.createElement('div');
-            element.className = 'px-4 py-3 border-b border-[#283039] cursor-pointer hover:bg-[#283039] transition-colors bg-[#283039]';
-            element.onclick = () => handleAggregatedNotificationClick(driverData);
-            
-            let message = '';
-            if (driverData.daysOff > 0 && driverData.daysAvailable > 0) {
-                message = `${driverData.driverName} has booked ${driverData.daysOff} ${driverData.daysOff === 1 ? 'day' : 'days'} off and changed ${driverData.daysAvailable} ${driverData.daysAvailable === 1 ? 'day' : 'days'} back to available`;
-            } else if (driverData.daysOff > 0) {
-                message = `${driverData.driverName} has booked ${driverData.daysOff} ${driverData.daysOff === 1 ? 'day' : 'days'} off`;
-            } else if (driverData.daysAvailable > 0) {
-                message = `${driverData.driverName} has changed ${driverData.daysAvailable} ${driverData.daysAvailable === 1 ? 'day' : 'days'} back to available`;
-            }
-            
-            const timeAgo = getTimeAgo(driverData.latestDate);
-            
-            element.innerHTML = `
-                <div class="flex items-start justify-between">
-                    <div class="flex-1">
-                        <div class="text-white text-sm font-medium">${message}</div>
-                        <div class="text-[#9cabba] text-xs mt-1">${timeAgo}</div>
-                    </div>
-                    <div class="w-2 h-2 bg-blue-500 rounded-full ml-2 mt-1"></div>
-                </div>
-            `;
-            
-            return element;
-        }
-
-        async function handleAggregatedNotificationClick(driverData) {
-            try {
-                document.getElementById('notificationDropdown').classList.add('hidden');
-                const dates = driverData.notifications.map(n => n.date).sort();
-                const earliestDate = dates[0] ? new Date(dates[0]) : new Date();
-                const year = earliestDate.getFullYear();
-                const month = earliestDate.getMonth() + 1;
-                window.location.href = `/pages/availability.html?year=${year}&month=${month}&showChanges=${driverData.driverId}`;
-            } catch (error) {
-                console.error('Error handling aggregated notification click:', error);
-            }
-        }
-
-        function getTimeAgo(date) {
-            const now = new Date();
-            const diffMs = now - date;
-            const diffMins = Math.floor(diffMs / 60000);
-            const diffHours = Math.floor(diffMs / 3600000);
-            const diffDays = Math.floor(diffMs / 86400000);
-            
-            if (diffMins < 1) return 'Just now';
-            if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`;
-            if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
-            if (diffDays < 7) return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
-            return date.toLocaleDateString();
-        }
-
-        async function initializeNotifications() {
-            await updateNotificationCount();
-            document.addEventListener('click', function(event) {
-                const dropdown = document.getElementById('notificationDropdown');
-                const button = event.target.closest('button[onclick="showNotifications()"]');
-                if (!dropdown || !button) return;
-                if (!dropdown.contains(event.target) && !button.contains(event.target)) {
-                    dropdown.classList.add('hidden');
-                }
-            });
-        }
-
-        // Initialize notifications on page load
-        window.addEventListener('load', async function() {
-            await initializeNotifications();
-        });
 
         function toggleProfileDropdown() {
             const dropdown = document.getElementById('profileDropdown');
@@ -1282,12 +1228,33 @@
             console.log('Change password clicked');
         }
 
+        async function markBatchProcessed(batch) {
+            const processedAt = new Date();
+            if (!batch || !batch.id) {
+                console.warn('Unable to mark batch processed: missing batch or ID', batch);
+                batch.processedAt = processedAt;
+                return processedAt;
+            }
+
+            try {
+                await window.updateDoc(window.doc(window.db, 'expenseBatches', batch.id), {
+                    processedAt: window.serverTimestamp(),
+                    updatedAt: window.serverTimestamp()
+                });
+            } catch (error) {
+                console.error(`Error marking batch ${batch.id} as processed:`, error);
+            }
+
+            batch.processedAt = processedAt;
+            return processedAt;
+        }
+
         // Generate PDFs for all paid expenses
         async function generateAllPDFs() {
             const paidBatches = allBatches.filter(b => b.status === 'paid');
             
             if (paidBatches.length === 0) {
-                alert('No paid expenses to generate PDFs for');
+                notifyInfo('There are no paid expenses available for PDF generation.', 'Nothing To Export');
                 return;
             }
 
@@ -1297,7 +1264,13 @@
             // Check if File System Access API is supported
             if (!('showDirectoryPicker' in window)) {
                 // Fallback: Ask user if they want to download ZIP to Downloads folder
-                const useDownloads = confirm('Your browser does not support selecting folders.\n\nWould you like to download a ZIP file to your Downloads folder instead?\n\n(For folder selection, please use Chrome or Edge)');
+                const useDownloads = await showConfirmation({
+                    title: 'Download ZIP Instead?',
+                    message: 'Your browser does not support selecting folders.\n\nWould you like to download a ZIP file to your Downloads folder instead?\n\n(For folder selection, please use Chrome or Edge)',
+                    confirmText: 'Download ZIP',
+                    cancelText: 'Cancel',
+                    tone: 'info'
+                });
                 
                 if (useDownloads) {
                     await downloadAllPDFsAsZIP(paidBatches, button, originalText);
@@ -1323,6 +1296,7 @@
                 // Process each paid batch
                 for (const batch of paidBatches) {
                     try {
+                        await markBatchProcessed(batch);
                         await generateAndSaveExpensePDF(batch, directoryHandle);
                         // Mark as transferred after successful generation (auto-delete in 5 days / 120 hours)
                         const deleteAt = new Date();
@@ -1352,12 +1326,18 @@
                 // Reload batches to reflect transferred status
                 await loadAllBatches();
                 
-                alert(`Successfully generated and transferred ${transferred} out of ${total} expense PDFs!`);
+                notifySuccess(`Successfully generated and transferred ${transferred} out of ${total} expense PDFs!`, 'PDF Export Complete');
                 
             } catch (error) {
                 if (error.name === 'AbortError' || error.message?.includes('canceled')) {
                     // User cancelled folder selection - offer Downloads fallback
-                    const useDownloads = confirm('Folder selection cancelled.\n\nWould you like to download a ZIP file to your Downloads folder instead?');
+                    const useDownloads = await showConfirmation({
+                        title: 'Download ZIP Instead?',
+                        message: 'Folder selection cancelled.\n\nWould you like to download a ZIP file to your Downloads folder instead?',
+                        confirmText: 'Download ZIP',
+                        cancelText: 'Cancel',
+                        tone: 'warning'
+                    });
                     if (useDownloads) {
                         await downloadAllPDFsAsZIP(paidBatches, button, originalText);
                     } else {
@@ -1367,7 +1347,7 @@
                     return;
                 }
                 console.error('Error generating PDFs:', error);
-                alert('Error generating PDFs: ' + error.message);
+                notifyError('Error generating PDFs: ' + error.message);
                 button.disabled = false;
                 button.innerHTML = originalText;
             }
@@ -1483,6 +1463,7 @@
                     const folderPath = `${dateFolderName}/${driverName}/${cleanedReg}/`;
                     
                     // Generate PDF
+                    await markBatchProcessed(batch);
                     const pdfBlob = await generateExpensePDF(batch);
                     
                     // Add PDF to ZIP
@@ -1551,10 +1532,10 @@
                     button.innerHTML = originalText;
                 }, 2000);
                 
-                alert(`Successfully generated and transferred ${transferred} expense PDFs!`);
+                notifySuccess(`Successfully generated and transferred ${transferred} expense PDFs!`, 'PDF Export Complete');
             } catch (error) {
                 console.error('Error generating ZIP:', error);
-                alert('Error generating ZIP: ' + error.message);
+                notifyError('Error generating ZIP: ' + error.message);
                 button.disabled = false;
                 button.innerHTML = originalText;
             }
@@ -1562,8 +1543,14 @@
 
         // Helper function to get or create a folder
         async function getOrCreateFolder(parentHandle, folderName) {
+            const finalName = sanitizeName(folderName, { fallbackPrefix: 'Folder' });
+
+            if (finalName !== folderName) {
+                console.warn(`Sanitized folder name from "${folderName}" to "${finalName}"`);
+            }
+
             try {
-                return await parentHandle.getDirectoryHandle(folderName, { create: true });
+                return await parentHandle.getDirectoryHandle(finalName, { create: true });
             } catch (error) {
                 console.error(`Error creating folder ${folderName}:`, error);
                 throw error;
@@ -1580,6 +1567,11 @@
                                (batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date());
             const submissionDate = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
             const validationDate = batch.validatedAt?.toDate ? batch.validatedAt.toDate() : null;
+            const processedDate = batch.processedAt?.toDate
+                ? batch.processedAt.toDate()
+                : (batch.processedAt instanceof Date
+                    ? batch.processedAt
+                    : (batch.processedAt ? new Date(batch.processedAt) : null));
             
             // Format dates (medium date style with short time)
             const formatDate = (date) => {
@@ -1618,7 +1610,7 @@
             y += 24 * ptToMm;
             doc.text(`Paid on: ${paymentDate ? formatDate(paymentDate) : 'Not paid'}`, infoStartX, y);
             y += 24 * ptToMm;
-            doc.text(`Processed on: Not processed`, infoStartX, y);
+            doc.text(`Processed on: ${processedDate ? formatDate(processedDate) : 'Not processed'}`, infoStartX, y);
             y += 28 * ptToMm; // 28pt = 9.9mm before table
             
             // Table setup (matching app dimensions)
@@ -1781,19 +1773,527 @@
             // Bottom footer
             doc.setFontSize(12);
             doc.setTextColor(128, 128, 128); // gray
-            doc.text('Generated using SOTO - Software for Oversight of Transport Operations', 
+            doc.text('Expense report generated by - SOTORoutes', 
                     105, 280, { align: 'center' });
             
             return doc.output('blob');
         }
 
 
+        // Check for expenses over 24 working hours old
+        async function checkOldExpenses(officeId) {
+            try {
+                const batchesQuery = window.query(
+                    window.collection(window.db, 'expenseBatches'),
+                    window.where('officeId', '==', officeId)
+                );
+                
+                const batchesSnapshot = await window.getDocs(batchesQuery);
+                const now = new Date();
+                let oldExpenseCount = 0;
+                
+                batchesSnapshot.docs.forEach(doc => {
+                    const batch = doc.data();
+                    if (batch.status === 'pending' || batch.status === 'validated') {
+                        const submittedAt = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date(batch.submittedAt);
+                        if (submittedAt) {
+                            const workingHours = calculateWorkingHours(submittedAt, now);
+                            if (workingHours > 24) {
+                                oldExpenseCount++;
+                            }
+                        }
+                    }
+                });
+                
+                return oldExpenseCount;
+            } catch (error) {
+                console.error('Error checking old expenses:', error);
+                return 0;
+            }
+        }
+
+        // Update notification count across all office pages
+        async function updateNotificationCount() {
+            try {
+                console.log('[EXPENSES] updateNotificationCount called');
+                const storedUser = localStorage.getItem('soto_user_identity');
+                if (!storedUser) {
+                    console.log('[EXPENSES] No stored user found');
+                    return;
+                }
+                
+                const userData = JSON.parse(storedUser);
+                const officeId = userData.officeId;
+                console.log('[EXPENSES] Office ID:', officeId);
+                
+                // Get all availability change notifications for this office
+                const notificationsQuery = window.query(
+                    window.collection(window.db, 'availabilityNotifications'),
+                    window.where('officeId', '==', officeId)
+                );
+                
+                const notificationsSnapshot = await window.getDocs(notificationsQuery);
+                console.log('[EXPENSES] Total notifications found:', notificationsSnapshot.docs.length);
+                
+                // Aggregate notifications by driver
+                const driverChanges = {};
+                // Filter to only unseen notifications and convert dates
+                const allNotifications = notificationsSnapshot.docs
+                    .map(doc => {
+                        const data = doc.data();
+                        return {
+                            id: doc.id,
+                            ...data,
+                            createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt)
+                        };
+                    })
+                    .filter(notification => notification.seen !== true) // Only include unseen notifications
+                    .sort((a, b) => b.createdAt - a.createdAt); // Sort by date (most recent first)
+                
+                console.log('[EXPENSES] Unseen notifications:', allNotifications.length);
+                
+                // Group by driver and only count the most recent batch (within 1 hour of latest)
+                allNotifications.forEach(notification => {
+                    const driverId = notification.driverId;
+                    if (!driverId) return;
+                    
+                    if (!driverChanges[driverId]) {
+                        // First notification for this driver (most recent)
+                        driverChanges[driverId] = {
+                            driverId: driverId,
+                            driverName: notification.driverName || 'Unknown Driver',
+                            daysOff: 0,
+                            daysAvailable: 0,
+                            notifications: [],
+                            latestDate: notification.createdAt,
+                            earliestDate: notification.createdAt
+                        };
+                        
+                        if (notification.changeType === 'unavailable') {
+                            driverChanges[driverId].daysOff = 1;
+                        } else {
+                            driverChanges[driverId].daysAvailable = 1;
+                        }
+                        driverChanges[driverId].notifications.push(notification);
+                    } else {
+                        // Check if this notification is within 1 hour of the latest (most recent) one
+                        // This ensures we only count the most recent batch, not old unseen notifications
+                        const timeDiffFromLatest = Math.abs(driverChanges[driverId].latestDate - notification.createdAt);
+                        const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+
+                        if (timeDiffFromLatest <= oneHour) {
+                            // Same batch - add to counts
+                            if (notification.changeType === 'unavailable') {
+                                driverChanges[driverId].daysOff++;
+                            } else {
+                                driverChanges[driverId].daysAvailable++;
+                            }
+                            driverChanges[driverId].notifications.push(notification);
+                            // Update earliest date if this is older
+                            if (notification.createdAt < driverChanges[driverId].earliestDate) {
+                                driverChanges[driverId].earliestDate = notification.createdAt;
+                            }
+                            // latestDate stays as the most recent (first one we found)
+                        }
+                        // If outside the batch window (more than 1 hour from latest), ignore it
+                    }
+                });
+                
+                // Count total number of drivers with changes
+                const availabilityCount = Object.keys(driverChanges).length;
+                console.log('[EXPENSES] Drivers with changes:', availabilityCount);
+                
+                // Check for old expenses (>24 working hours)
+                const oldExpenseCount = await checkOldExpenses(officeId);
+                console.log('[EXPENSES] Old expenses count:', oldExpenseCount);
+                
+                // Total notification count (availability changes + old expenses)
+                const unreadCount = availabilityCount + (oldExpenseCount > 0 ? 1 : 0);
+                console.log('[EXPENSES] Total unread count:', unreadCount);
+                
+                // Update notification badge on all pages
+                updateNotificationBadge(unreadCount);
+                console.log('[EXPENSES] Badge updated');
+                
+            } catch (error) {
+                console.error('[EXPENSES] Error updating notification count:', error);
+            }
+        }
+
+        // Update notification badge display
+        function updateNotificationBadge(count) {
+            console.log('[EXPENSES] updateNotificationBadge called with count:', count);
+            const badgeElements = document.querySelectorAll('.notification-badge');
+            console.log('[EXPENSES] Found badge elements:', badgeElements.length);
+            badgeElements.forEach((badge, index) => {
+                console.log(`[EXPENSES] Badge ${index}:`, badge);
+                if (count > 0) {
+                    badge.textContent = count > 99 ? '99+' : count.toString();
+                    badge.classList.remove('hidden');
+                    console.log(`[EXPENSES] Badge ${index} shown with count:`, badge.textContent);
+                } else {
+                    badge.classList.add('hidden');
+                    console.log(`[EXPENSES] Badge ${index} hidden`);
+                }
+            });
+        }
+
+        // Load notifications for dropdown (aggregated by driver)
+        async function loadNotifications() {
+            try {
+                const storedUser = localStorage.getItem('soto_user_identity');
+                if (!storedUser) return;
+                
+                const userData = JSON.parse(storedUser);
+                const officeId = userData.officeId;
+                
+                // Get all availability change notifications for this office
+                const notificationsQuery = window.query(
+                    window.collection(window.db, 'availabilityNotifications'),
+                    window.where('officeId', '==', officeId)
+                );
+                
+                const notificationsSnapshot = await window.getDocs(notificationsQuery);
+                const notificationsList = document.getElementById('notificationsList');
+                
+                const oldExpenseCount = await checkOldExpenses(officeId);
+                
+                const driverChanges = {};
+                // Filter to only unseen notifications and convert dates
+                const allNotifications = notificationsSnapshot.docs
+                    .map(doc => {
+                        const data = doc.data();
+                        return {
+                            id: doc.id,
+                            ...data,
+                            createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt)
+                        };
+                    })
+                    .filter(notification => notification.seen !== true) // Only include unseen notifications
+                    .sort((a, b) => b.createdAt - a.createdAt); // Sort by date (most recent first)
+                
+                // Group by driver and only count the most recent batch (within 1 hour of latest)
+                allNotifications.forEach(notification => {
+                    const driverId = notification.driverId;
+                    if (!driverId) return;
+                    
+                    if (!driverChanges[driverId]) {
+                        // First notification for this driver (most recent)
+                        driverChanges[driverId] = {
+                            driverId: driverId,
+                            driverName: notification.driverName || 'Unknown Driver',
+                            daysOff: 0,
+                            daysAvailable: 0,
+                            notifications: [],
+                            latestDate: notification.createdAt,
+                            earliestDate: notification.createdAt
+                        };
+                        
+                        if (notification.changeType === 'unavailable') {
+                            driverChanges[driverId].daysOff = 1;
+                        } else {
+                            driverChanges[driverId].daysAvailable = 1;
+                        }
+                        driverChanges[driverId].notifications.push(notification);
+                    } else {
+                        // Check if this notification is within 1 hour of the latest (most recent) one
+                        const timeDiffFromLatest = Math.abs(driverChanges[driverId].latestDate - notification.createdAt);
+                        const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+
+                        if (timeDiffFromLatest <= oneHour) {
+                            // Same batch - add to counts
+                            if (notification.changeType === 'unavailable') {
+                                driverChanges[driverId].daysOff++;
+                            } else {
+                                driverChanges[driverId].daysAvailable++;
+                            }
+                            driverChanges[driverId].notifications.push(notification);
+                            // Update earliest date if this is older
+                            if (notification.createdAt < driverChanges[driverId].earliestDate) {
+                                driverChanges[driverId].earliestDate = notification.createdAt;
+                            }
+                            // latestDate stays as the most recent (first one we found)
+                        }
+                        // If outside the batch window (more than 1 hour from latest), ignore it
+                    }
+                });
+                
+                const sortedDrivers = Object.values(driverChanges).sort((a, b) => b.latestDate - a.latestDate);
+                notificationsList.innerHTML = '';
+                
+                if (oldExpenseCount > 0) {
+                    const expenseNotification = createOldExpenseNotificationElement(oldExpenseCount);
+                    notificationsList.appendChild(expenseNotification);
+                }
+                
+                sortedDrivers.forEach(driverData => {
+                    const notificationElement = createAggregatedNotificationElement(driverData);
+                    notificationsList.appendChild(notificationElement);
+                });
+                
+                if (oldExpenseCount === 0 && sortedDrivers.length === 0) {
+                    notificationsList.innerHTML = '<div class="px-4 py-3 text-gray-400 text-sm text-center">No notifications yet</div>';
+                }
+            } catch (error) {
+                console.error('Error loading notifications:', error);
+            }
+        }
+
+        // Create old expense notification element
+        function createOldExpenseNotificationElement(count) {
+            const element = document.createElement('div');
+            element.className = 'px-4 py-3 border-b border-[#283039] cursor-pointer hover:bg-[#283039] transition-colors bg-[#283039]';
+            element.onclick = () => {
+                document.getElementById('notificationDropdown').classList.add('hidden');
+                window.location.href = '/pages/expenses.html';
+            };
+            
+            element.innerHTML = `
+                <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                        <div class="text-white text-sm font-medium">There are ${count} ${count === 1 ? 'expense' : 'expenses'} that are 24 working hours old</div>
+                        <div class="text-[#9cabba] text-xs mt-1">Click to view expenses</div>
+                    </div>
+                    <div class="w-2 h-2 bg-red-500 rounded-full ml-2 mt-1"></div>
+                </div>
+            `;
+            
+            return element;
+        }
+
+        // Create aggregated notification element
+        function createAggregatedNotificationElement(driverData) {
+            const element = document.createElement('div');
+            element.className = 'px-4 py-3 border-b border-[#283039] cursor-pointer hover:bg-[#283039] transition-colors bg-[#283039]';
+            element.onclick = () => handleAggregatedNotificationClick(driverData);
+            
+            let message = '';
+            if (driverData.daysOff > 0 && driverData.daysAvailable > 0) {
+                message = `${driverData.driverName} has booked ${driverData.daysOff} ${driverData.daysOff === 1 ? 'day' : 'days'} off and is available for ${driverData.daysAvailable} ${driverData.daysAvailable === 1 ? 'day' : 'days'}`;
+            } else if (driverData.daysOff > 0) {
+                message = `${driverData.driverName} has booked ${driverData.daysOff} ${driverData.daysOff === 1 ? 'day' : 'days'} off`;
+            } else {
+                message = `${driverData.driverName} is available for ${driverData.daysAvailable} ${driverData.daysAvailable === 1 ? 'day' : 'days'}`;
+            }
+            
+            const timeAgo = getTimeAgo(driverData.latestDate);
+            
+            element.innerHTML = `
+                <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                        <div class="text-white text-sm font-medium">${message}</div>
+                        <div class="text-[#9cabba] text-xs mt-1">${timeAgo}</div>
+                    </div>
+                    <div class="w-2 h-2 bg-blue-500 rounded-full ml-2 mt-1"></div>
+                </div>
+            `;
+            
+            return element;
+        }
+
+        async function handleAggregatedNotificationClick(driverData) {
+            try {
+                // Hide dropdown
+                document.getElementById('notificationDropdown').classList.add('hidden');
+                
+                // Navigate to availability page
+                const dates = driverData.notifications.map(n => n.date).sort();
+                const earliestDate = dates[0] ? new Date(dates[0]) : new Date();
+                const year = earliestDate.getFullYear();
+                const month = earliestDate.getMonth() + 1;
+                
+                window.location.href = `/pages/availability.html?year=${year}&month=${month}&showChanges=${driverData.driverId}`;
+                
+            } catch (error) {
+                console.error('Error handling aggregated notification click:', error);
+            }
+        }
+
+        function getTimeAgo(date) {
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+            
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`;
+            if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
+            if (diffDays < 7) return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
+            return date.toLocaleDateString();
+        }
+
+        // Initialize notification system on page load
+        async function initializeNotifications() {
+            await updateNotificationCount();
+            
+            // Set up click outside to close dropdown
+            document.addEventListener('click', function(event) {
+                const dropdown = document.getElementById('notificationDropdown');
+                const button = event.target.closest('button[onclick="showNotifications()"]');
+                
+                if (!dropdown || !button) return;
+                
+                if (!dropdown.contains(event.target) && !button.contains(event.target)) {
+                    dropdown.classList.add('hidden');
+                }
+            });
+            
+            // Update notifications periodically
+            setInterval(async () => {
+                await updateNotificationCount();
+            }, 30000); // Every 30 seconds
+            
+            // Update when page becomes visible
+            document.addEventListener('visibilitychange', async () => {
+                if (!document.hidden) {
+                    await updateNotificationCount();
+                }
+            });
+        }
+
+        // Initialize search functionality
+        function initializeSearch() {
+            const searchInput = document.getElementById('expenseSearch');
+            const searchResults = document.getElementById('searchResults');
+            let searchTimeout;
+            
+            searchInput.addEventListener('input', (e) => {
+                const query = e.target.value.trim().toLowerCase();
+                
+                clearTimeout(searchTimeout);
+                
+                if (query.length < 2) {
+                    searchResults.classList.add('hidden');
+                    return;
+                }
+                
+                searchTimeout = setTimeout(() => {
+                    performSearch(query);
+                }, 300); // Debounce search
+            });
+            
+            // Close search results when clicking outside
+            document.addEventListener('click', (e) => {
+                const searchContainer = document.getElementById('expenseSearch').parentElement;
+                if (!searchContainer.contains(e.target)) {
+                    searchResults.classList.add('hidden');
+                }
+            });
+        }
+        
+        // Perform search across all batches
+        function performSearch(query) {
+            const searchResults = document.getElementById('searchResults');
+            const results = [];
+            
+            // Search through all batches
+            allBatches.forEach(batch => {
+                const driverName = (batch.driverName || '').toLowerCase();
+                const driverEmail = (batch.driverEmail || '').toLowerCase();
+                const registration = (batch.registration || '').toLowerCase();
+                const batchId = batch.id.toLowerCase();
+                
+                if (driverName.includes(query) || 
+                    driverEmail.includes(query) || 
+                    registration.includes(query) ||
+                    batchId.includes(query)) {
+                    results.push(batch);
+                }
+            });
+            
+            if (results.length === 0) {
+                searchResults.innerHTML = `
+                    <div class="px-4 py-3 text-gray-400 text-sm text-center">
+                        No expenses found
+                    </div>
+                `;
+            } else {
+                searchResults.innerHTML = results.slice(0, 10).map(batch => {
+                    const date = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
+                    const statusColors = {
+                        pending: 'bg-orange-500',
+                        validated: 'bg-blue-500',
+                        paid: 'bg-green-500',
+                        returned: 'bg-red-500'
+                    };
+                    const statusColor = statusColors[batch.status] || 'bg-gray-500';
+                    
+                    return `
+                        <div onclick="selectSearchResult('${batch.id}')" 
+                            class="px-4 py-3 border-b border-gray-800 hover:bg-[#283039] cursor-pointer transition-colors">
+                            <div class="flex items-center justify-between">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <span class="px-2 py-0.5 ${statusColor} text-white text-xs rounded-full font-semibold">${batch.status}</span>
+                                        <span class="font-semibold text-white">${batch.driverName || 'Unknown Driver'}</span>
+                                    </div>
+                                    <div class="text-sm text-gray-400">${batch.driverEmail || ''}</div>
+                                    <div class="text-xs text-gray-500 mt-1">${batch.registration || 'No Reg'} • ${date.toLocaleDateString()}</div>
+                                </div>
+                                <div class="text-right ml-4">
+                                    <div class="text-green-400 font-semibold">£${batch.totalAmount?.toFixed(2) || '0.00'}</div>
+                                    <div class="text-xs text-gray-500">${batch.expenses?.length || 0} expense${batch.expenses?.length !== 1 ? 's' : ''}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            searchResults.classList.remove('hidden');
+        }
+        
+        // Handle search result selection
+        function selectSearchResult(batchId) {
+            const batch = allBatches.find(b => b.id === batchId);
+            if (!batch) return;
+            
+            // Switch to the appropriate tab
+            switchTab(batch.status);
+            
+            // Close search
+            document.getElementById('expenseSearch').value = '';
+            document.getElementById('searchResults').classList.add('hidden');
+            
+            // Scroll to and highlight the batch (open modal)
+            setTimeout(() => {
+                openBatchDetail(batchId);
+            }, 100);
+        }
+
         function viewUsage() {
             if (currentUser && currentUser.officeId) {
                 window.location.href = `/pages/office-calendar.html?officeId=${currentUser.officeId}`;
             } else {
-                alert('Unable to determine office ID');
+                notifyWarning('Unable to determine office ID.');
             }
+        }
+
+        function sanitizeName(rawName, options = {}) {
+            if (!rawName) return '';
+
+            const { replaceSpaces = false, fallbackPrefix = 'Item', allowDot = false } = options;
+
+            let name = String(rawName)
+                .replace(/\*/g, '!')
+                .replace(/[<>:"/\\|?\x00-\x1F]/g, '');
+
+            if (replaceSpaces) {
+                name = name.replace(/\s+/g, '_');
+            }
+
+            name = name.trim();
+
+            if (!allowDot) {
+                name = name.replace(/[. ]+$/g, '');
+            }
+
+            if (!name) {
+                return `${fallbackPrefix}-${Date.now()}`;
+            }
+
+            return name;
         }
     </script>
 </div>

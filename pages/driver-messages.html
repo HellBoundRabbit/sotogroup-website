@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Messages - Driver Portal</title>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/assets/js/tailwind-runtime.js"></script>
+    <script src="../js/ui-dialogs.js"></script>
     <style>
         body {
             font-family: Inter, "Noto Sans", sans-serif;
@@ -100,6 +101,10 @@
 
     <script>
         let currentUser = null;
+        const notifyError = (message, title = 'Error') => uiDialogs.showAlert({ title, message, tone: 'danger' });
+        const notifyWarning = (message, title = 'Heads Up') => uiDialogs.showAlert({ title, message, tone: 'warning' });
+        const notifySuccess = (message, title = 'Success') => uiDialogs.showAlert({ title, message, tone: 'success' });
+        const notifyInfo = (message, title = 'Notice') => uiDialogs.showAlert({ title, message, tone: 'info' });
         let allMessages = [];
 
         async function initialize() {
@@ -234,7 +239,7 @@
                 checkAllMessagesRead();
             } catch (error) {
                 console.error('Error marking message as read:', error);
-                alert('Error saving read status. Please try again.');
+                notifyError('Error saving read status. Please try again.');
             }
         }
 

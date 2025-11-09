@@ -4,11 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>My Expenses - SOTO Routes</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/assets/js/tailwind-runtime.js"></script>
+    <script src="../js/ui-dialogs.js"></script>
     <!-- PDF Generation Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
+    <!-- Offline Storage & Upload Queue System -->
+    <script src="/js/expense-offline-storage.js"></script>
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
@@ -115,6 +118,15 @@
             border-radius: 6px;
             border: 2px solid #000;
         }
+        
+        /* Flash animation for overdue items */
+        @keyframes flash {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .flash-red {
+            animation: flash 1s infinite;
+        }
     </style>
 </head>
 <body class="bg-[#0f1419] text-white min-h-screen">
@@ -133,7 +145,13 @@
             <button onclick="goToPortal()" class="touch-target flex items-center text-gray-400 hover:text-white transition-colors">
                 <span class="material-symbols-outlined">arrow_back</span>
             </button>
-            <h1 class="text-xl font-semibold">My Expenses</h1>
+            <div class="flex items-center gap-3">
+                <h1 class="text-xl font-semibold">My Expenses</h1>
+                <div id="uploadStatusIndicator" class="hidden flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 px-2.5 py-1 rounded-lg text-white text-xs font-medium transition-colors shadow-lg">
+                    <span class="material-symbols-outlined text-sm animate-pulse">cloud_upload</span>
+                    <span class="text-xs"></span>
+                </div>
+            </div>
             <button onclick="window.location.href='/pages/driver-paid-expenses.html'" class="touch-target flex items-center text-green-500 hover:text-green-400 transition-colors text-sm font-semibold">
                 Processed Expenses
             </button>
@@ -289,7 +307,7 @@
                 <div class="p-6 pb-24">
                     
                     <!-- Category Selection -->
-                    <div id="categorySection" class="mb-6">
+                    <div class="mb-6">
                         <label class="text-sm text-gray-400 mb-3 block">CATEGORY</label>
                         <div class="grid grid-cols-2 gap-3">
                             <button onclick="selectCategory('Fuel')" class="category-btn p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-2">
@@ -369,7 +387,7 @@
                     </div>
 
                     <!-- Save Button -->
-                    <button id="saveExpenseBtn" onclick="saveExpense()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors touch-target">
+                    <button onclick="saveExpense()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors touch-target">
                         Save Expense
                     </button>
 
@@ -407,50 +425,197 @@
             photos: []
         };
         let allBatches = [];
+        const notifyError = (message, title = 'Error') => uiDialogs.showAlert({ title, message, tone: 'danger' });
+        const notifyWarning = (message, title = 'Heads Up') => uiDialogs.showAlert({ title, message, tone: 'warning' });
+        const notifySuccess = (message, title = 'Success') => uiDialogs.showAlert({ title, message, tone: 'success' });
+        const notifyInfo = (message, title = 'Notice') => uiDialogs.showAlert({ title, message, tone: 'info' });
+        const EXPENSE_SUBMISSION_QUEUE_KEY = 'expense_submission_queue_v1';
+        const MAX_PHOTOS_PER_EXPENSE = 4;
 
-        // Check for unread messages
-        async function checkForUnreadMessages() {
+        function loadSubmissionQueue() {
             try {
-                if (!currentUser || !currentUser.officeId || !currentUser.uid) return false;
-                
-                const messagesQuery = window.query(
-                    window.collection(window.db, 'messages'),
-                    window.where('officeId', '==', currentUser.officeId),
-                    window.where('published', '==', true)
-                );
-                const snapshot = await window.getDocs(messagesQuery);
-                const messages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                
-                // Get read messages from localStorage
-                let readMessages = JSON.parse(localStorage.getItem('driver_read_messages') || '[]');
-                
-                // Also get read messages from Firebase (for persistence across devices/sessions)
-                try {
-                    const userDocRef = window.doc(window.db, 'users', currentUser.uid);
-                    const userDoc = await window.firebaseGetDoc(userDocRef);
-                    if (userDoc.exists()) {
-                        const userData = userDoc.data();
-                        const firebaseReadMessages = userData.readMessages || [];
-                        // Merge Firebase read messages with localStorage (deduplicate)
-                        readMessages = [...new Set([...readMessages, ...firebaseReadMessages])];
-                        // Update localStorage with merged list
-                        localStorage.setItem('driver_read_messages', JSON.stringify(readMessages));
-                    }
-                } catch (firebaseError) {
-                    console.warn('Could not fetch read messages from Firebase, using localStorage only:', firebaseError);
-                }
-                
-                const unreadMessages = messages.filter(msg => !readMessages.includes(msg.id));
-                
-                return unreadMessages.length > 0;
+                const raw = localStorage.getItem(EXPENSE_SUBMISSION_QUEUE_KEY);
+                return raw ? JSON.parse(raw) : [];
             } catch (error) {
-                console.error('Error checking messages:', error);
-                return false; // If check fails, allow access
+                console.error('Error reading expense submission queue:', error);
+                return [];
             }
         }
 
+        function saveSubmissionQueue(queue) {
+            try {
+                localStorage.setItem(EXPENSE_SUBMISSION_QUEUE_KEY, JSON.stringify(queue));
+            } catch (error) {
+                console.error('Error saving expense submission queue:', error);
+            }
+        }
+
+        function removeSubmissionQueueEntry(localId) {
+            if (!localId) return;
+            const queue = loadSubmissionQueue();
+            const filtered = queue.filter(entry => entry.localId !== localId);
+            if (filtered.length !== queue.length) {
+                saveSubmissionQueue(filtered);
+            }
+        }
+
+        async function queueExpenseAction(targetStatus) {
+            if (!currentBatch) {
+                return;
+            }
+            currentBatch.status = targetStatus;
+            if (window.autoSaveDraft) {
+                await window.autoSaveDraft();
+            }
+            const localId = currentBatch.localId;
+            if (!localId) {
+                console.warn('Unable to queue expense action: missing localId.');
+                return;
+            }
+            const queue = loadSubmissionQueue();
+            const entry = {
+                localId,
+                status: targetStatus,
+                timestamp: Date.now()
+            };
+            const existingIndex = queue.findIndex(item => item.localId === localId);
+            if (existingIndex >= 0) {
+                queue[existingIndex] = entry;
+            } else {
+                queue.push(entry);
+            }
+            saveSubmissionQueue(queue);
+            console.log(`Queued expense batch ${localId} for ${targetStatus} sync when online.`);
+        }
+
+        async function syncDraftToFirestore(draft, targetStatus) {
+            if (!draft) {
+                throw new Error('No draft provided for sync.');
+            }
+            const driverId = draft.driverId || (currentUser && currentUser.uid);
+            const officeId = draft.officeId || (currentUser && currentUser.officeId);
+            if (!driverId || !officeId) {
+                throw new Error('Missing driver or office context for expense sync.');
+            }
+
+            let registration = (draft.registration || '').trim().toUpperCase();
+            if (!registration) {
+                throw new Error('Registration is required to sync.');
+            }
+
+            if (!draft.id) {
+                registration = await getUniqueReg(registration);
+            } else {
+                registration = normalizeReg(registration);
+            }
+
+            draft.registration = registration;
+            const totalAmount = (draft.expenses || []).reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0);
+            const driverName =
+                draft.driverName ||
+                currentUser?.name ||
+                `${currentUser?.firstName || ''} ${currentUser?.lastName || ''}`.trim() ||
+                'Unknown Driver';
+            const driverEmail = draft.driverEmail || currentUser?.email || '';
+
+            const batchData = {
+                driverId,
+                driverEmail,
+                driverName,
+                officeId,
+                registration,
+                status: targetStatus,
+                totalAmount,
+                notes: draft.notes || '',
+                updatedAt: window.serverTimestamp()
+            };
+
+            if (targetStatus === 'pending') {
+                if (!draft.submittedAt) {
+                    batchData.submittedAt = window.serverTimestamp();
+                    draft.submittedAt = Date.now();
+                }
+            }
+
+            let batchId = draft.id;
+            if (batchId) {
+                await window.updateDoc(window.doc(window.db, 'expenseBatches', batchId), batchData);
+            } else {
+                batchData.createdAt = window.serverTimestamp();
+                if (targetStatus === 'pending' && !batchData.submittedAt) {
+                    batchData.submittedAt = window.serverTimestamp();
+                    draft.submittedAt = Date.now();
+                }
+                const batchRef = await window.addDoc(window.collection(window.db, 'expenseBatches'), batchData);
+                batchId = batchRef.id;
+                draft.id = batchId;
+            }
+
+            await saveExpenses(batchId, draft);
+
+            draft.status = targetStatus;
+            draft.driverId = driverId;
+            draft.officeId = officeId;
+            draft.driverName = driverName;
+            draft.driverEmail = driverEmail;
+            draft.totalAmount = totalAmount;
+            await window.expenseDraftDB.saveDraft(draft);
+
+            removeSubmissionQueueEntry(draft.localId);
+
+            return draft;
+        }
+
+        async function processSubmissionQueue(options = {}) {
+            const { showToast = true } = options;
+            if (!navigator.onLine || !currentUser) {
+                return;
+            }
+            const queue = loadSubmissionQueue();
+            if (!queue.length) {
+                return;
+            }
+            console.log('Processing queued expense submissions:', queue.length);
+            const remaining = [];
+            let processed = 0;
+
+            for (const entry of queue) {
+                try {
+                    const draft = await window.expenseDraftDB.getDraft(entry.localId);
+                    if (!draft) {
+                        console.warn('Draft not found for queued submission:', entry.localId);
+                        continue;
+                    }
+                    await syncDraftToFirestore(draft, entry.status);
+                    processed++;
+                } catch (error) {
+                    console.error('Error syncing queued expense submission:', entry, error);
+                    remaining.push(entry);
+                }
+            }
+
+            saveSubmissionQueue(remaining);
+
+            if (processed > 0) {
+                await loadExpenseBatches();
+                if (showToast) {
+                    notifySuccess(
+                        `${processed} expense batch${processed === 1 ? '' : 'es'} synced successfully.`,
+                        'Back Online'
+                    );
+                }
+            }
+
+            if (remaining.length > 0) {
+                console.warn('Some expense submissions could not sync and remain queued.');
+            }
+        }
+
+        window.processExpenseSubmissionQueue = processSubmissionQueue;
+        window.addEventListener('online', () => processSubmissionQueue({ showToast: true }));
+
         // Initialize function
-        function initializeDriverExpensesApp() {
+        async function initializeDriverExpensesApp() {
             console.log('Initializing driver expenses app...');
             
             window.auth.onAuthStateChanged(async function(user) {
@@ -473,30 +638,33 @@
                     currentUser = { uid: user.uid, ...userDoc.data() };
                     console.log('Current user:', currentUser);
                     
+                    // Update global reference for offline storage
+                    window.currentUser = currentUser;
+                    
                     // Only drivers can access this page
                     if (currentUser.role !== 'driver') {
-                        alert('Access denied. This page is for drivers only.');
+                        notifyWarning('This page is for drivers only.', 'Access Denied');
                         window.location.href = '/pages/soto-lp.html';
                         return;
                     }
 
-                    // Check for unread messages
-                    const hasUnreadMessages = await checkForUnreadMessages();
-                    if (hasUnreadMessages) {
-                        alert('There are outstanding messages that need to be read before proceeding. Please read all messages first.');
-                        window.location.href = '/pages/driver-messages.html';
-                        return;
-                    }
-
                     console.log('Loading expense batches...');
+                    await processSubmissionQueue({ showToast: false });
                     await loadExpenseBatches();
                     document.getElementById('loadingOverlay').style.display = 'none';
                     console.log('Loading complete!');
+                    
+                    // Initialize upload queue and start processing
+                    if (window.uploadQueue) {
+                        await window.uploadQueue.init();
+                        await window.uploadQueue.processQueue();
+                        await window.uploadQueue.updateGlobalUploadStatus();
+                    }
                 } catch (error) {
                     console.error('Error loading user data:', error);
                     console.error('Error details:', error.message);
                     console.error('Error stack:', error.stack);
-                    alert('Error loading user data. Please try again.');
+                    notifyError('Error loading user data. Please try again.');
                 }
             });
         }
@@ -543,7 +711,7 @@
                 console.error('Error loading batches:', error);
                 console.error('Error details:', error.message);
                 console.error('Error stack:', error.stack);
-                alert('Error loading expense batches: ' + error.message);
+                notifyError('Error loading expense batches: ' + error.message);
             }
         }
 
@@ -571,6 +739,43 @@
             if (paid.length > 0) renderPaidBatchList(paid, 'paidBatches');
         }
 
+        // Calculate working hours between two dates (8am-5pm Mon-Fri only)
+        function calculateWorkingHours(startDate, endDate) {
+            let currentDate = new Date(startDate);
+            let workingHours = 0;
+            
+            while (currentDate < endDate) {
+                const dayOfWeek = currentDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
+                const hour = currentDate.getHours();
+                
+                // Check if it's a weekday (Monday = 1 to Friday = 5)
+                if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+                    // Check if it's within working hours (8am to 5pm)
+                    if (hour >= 8 && hour < 17) {
+                        workingHours += 1;
+                    }
+                }
+                
+                // Move to next hour
+                currentDate.setHours(currentDate.getHours() + 1);
+            }
+            
+            return workingHours;
+        }
+        
+        // Get timer color based on working hours
+        function getTimerColor(hours) {
+            if (hours <= 6) return 'text-green-500';
+            if (hours <= 18) return 'text-orange-500';
+            return 'text-red-500';
+        }
+        
+        // Get timer class based on working hours (for flashing)
+        function getTimerClass(hours) {
+            if (hours > 18) return 'flash-red';
+            return '';
+        }
+
         // Render batch list
         function renderBatchList(batches, containerId) {
             const container = document.getElementById(containerId);
@@ -584,6 +789,18 @@
                 };
                 const statusColor = statusColors[batch.status] || 'bg-gray-600';
                 
+                // Calculate working hours for pending and validated batches
+                let timerHTML = '';
+                if (batch.status === 'pending' || batch.status === 'validated') {
+                    const submittedAt = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date(batch.submittedAt);
+                    if (submittedAt) {
+                        const workingHours = calculateWorkingHours(submittedAt, new Date());
+                        const color = getTimerColor(workingHours);
+                        const flashClass = getTimerClass(workingHours);
+                        timerHTML = `<div class="text-xs ${color} ${flashClass} font-semibold mt-2">${workingHours}h since submission</div>`;
+                    }
+                }
+                
                 return `
                     <div onclick="openBatch('${batch.id}')" class="bg-[#1a1f24] rounded-lg p-4 border border-gray-800 hover:border-gray-700 transition-colors cursor-pointer fade-in">
                         <div class="flex items-start justify-between mb-2">
@@ -594,6 +811,7 @@
                             <span class="text-gray-400 text-sm">${batch.expenses?.length || 0} expense${batch.expenses?.length !== 1 ? 's' : ''}</span>
                             <span class="text-green-500 font-semibold text-lg">£${batch.totalAmount?.toFixed(2) || '0.00'}</span>
                         </div>
+                        ${timerHTML}
                         ${batch.status === 'returned' ? `
                             <div class="mt-2 text-red-400 text-sm">
                                 <span class="material-symbols-outlined text-sm">error</span>
@@ -668,6 +886,9 @@
             if (!batch) return;
 
             currentBatch = batch;
+            
+            // Update global reference for offline storage
+            window.currentBatch = currentBatch;
             
             // Set title to status with styling
             setStatusTitle(batch.status);
@@ -751,27 +972,44 @@
         // Render expenses in batch modal
         function renderExpenses() {
             const container = document.getElementById('expensesList');
+            if (!container) {
+                console.error('expensesList container not found');
+                return;
+            }
             const expenses = currentBatch.expenses || [];
             
             if (expenses.length === 0) {
                 container.innerHTML = '<p class="text-gray-500 text-center py-4">No expenses added yet</p>';
             } else {
+                const categoryEmojis = {
+                    'Fuel': '⛽',
+                    'Charge': '🔌',
+                    'Train': '🚂',
+                    'Bus': '🚌',
+                    'Taxi': '🚕',
+                    'Car Wash': '🧼',
+                    'Tolls': '🛣️',
+                    'Parking': '🅿️',
+                    'Other': '📝',
+                    // Lowercase fallbacks
+                    'fuel': '⛽',
+                    'charge': '🔌',
+                    'train': '🚂',
+                    'bus': '🚌',
+                    'taxi': '🚕',
+                    'car wash': '🧼',
+                    'tolls': '🛣️',
+                    'parking': '🅿️',
+                    'other': '📝'
+                };
+                
                 container.innerHTML = expenses.map((exp, index) => {
-                    const categoryEmojis = {
-                        fuel: '⛽',
-                        parking: '🅿️',
-                        toll: '🛣️',
-                        food: '🍔',
-                        maintenance: '🔧',
-                        other: '📝'
-                    };
-                    
                     return `
                         <div class="bg-[#283039] rounded-lg p-3 flex items-center justify-between">
                             <div class="flex items-center gap-3">
                                 <span class="text-2xl">${categoryEmojis[exp.category] || '📝'}</span>
                                 <div>
-                                    <div class="font-medium capitalize">${exp.category}</div>
+                                    <div class="font-medium capitalize">${exp.category || 'Other'}</div>
                                     ${exp.photos && exp.photos.length > 0 ? `
                                         <button onclick="viewExpensePhotos(${index})" class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1">
                                             <span class="material-symbols-outlined text-xs">photo_camera</span>
@@ -781,7 +1019,7 @@
                                 </div>
                             </div>
                             <div class="flex items-center gap-3">
-                                <span class="font-semibold text-green-500">£${parseFloat(exp.amount).toFixed(2)}</span>
+                                <span class="font-semibold text-green-500">£${parseFloat(exp.amount || 0).toFixed(2)}</span>
                                 ${currentBatch.status === 'returned' ? `
                                     <button onclick="addPhotosToExpense(${index})" class="text-blue-500 hover:text-blue-400 transition-colors" title="Add Photos">
                                         <span class="material-symbols-outlined">add_a_photo</span>
@@ -803,14 +1041,17 @@
 
             // Update total
             const total = expenses.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0);
-            document.getElementById('totalAmount').textContent = `£${total.toFixed(2)}`;
+            const totalAmountEl = document.getElementById('totalAmount');
+            if (totalAmountEl) {
+                totalAmountEl.textContent = `£${total.toFixed(2)}`;
+            }
         }
 
         // Add expense button
         function addExpense() {
             // Only allow adding expenses if batch is draft (not returned)
             if (currentBatch.status !== 'draft') {
-                alert('Cannot add new expenses to this batch. For returned batches, you can only add photos to existing expenses.');
+            notifyWarning('Cannot add new expenses to this batch. For returned batches, you can only add photos to existing expenses.', 'Action Not Allowed');
                 return;
             }
 
@@ -891,26 +1132,57 @@
         function handlePhotoSelect(event) {
             const files = Array.from(event.target.files);
             
-            // Merge with existing photos if any
             if (!currentExpense.photos) {
                 currentExpense.photos = [];
             }
-            currentExpense.photos = currentExpense.photos.concat(files);
+
+            const remainingSlots = MAX_PHOTOS_PER_EXPENSE - currentExpense.photos.length;
+            if (remainingSlots <= 0) {
+                notifyWarning(`Each expense can include up to ${MAX_PHOTOS_PER_EXPENSE} photos. Remove one to add another.`, 'Photo Limit Reached');
+                event.target.value = '';
+                document.getElementById('photoInputCamera').value = '';
+                document.getElementById('photoInputGallery').value = '';
+                return;
+            }
+
+            let filesToAdd = files;
+            if (files.length > remainingSlots) {
+                filesToAdd = files.slice(0, remainingSlots);
+                notifyWarning(`Only the first ${remainingSlots} photo${remainingSlots === 1 ? '' : 's'} were added. Each expense can include up to ${MAX_PHOTOS_PER_EXPENSE} photos.`, 'Photo Limit Reached');
+            }
+
+            currentExpense.photos = currentExpense.photos.concat(filesToAdd);
             
             // Update preview
             const preview = document.getElementById('photoPreview');
-            preview.innerHTML = currentExpense.photos.map((file, index) => `
-                <div class="relative">
-                    <img src="${URL.createObjectURL(file)}" class="w-full h-24 object-cover rounded-lg">
-                    <button onclick="removePhoto(${index})" class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">
-                        ×
-                    </button>
-                </div>
-            `).join('');
+            preview.innerHTML = currentExpense.photos.map((photo, index) => {
+                if (photo instanceof File) {
+                    return `
+                        <div class="relative">
+                            <img src="${URL.createObjectURL(photo)}" class="w-full h-24 object-cover rounded-lg">
+                            <button onclick="removePhoto(${index})" class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">
+                                ×
+                            </button>
+                        </div>
+                    `;
+                }
+
+                return `
+                    <div class="relative">
+                        <img src="${photo}" class="w-full h-24 object-cover rounded-lg">
+                        <span class="absolute top-1 right-1 bg-gray-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">✓</span>
+                    </div>
+                `;
+            }).join('');
             
             // Reset both inputs so same file can be selected again if needed
             document.getElementById('photoInputCamera').value = '';
             document.getElementById('photoInputGallery').value = '';
+            
+            // Trigger auto-save if we're editing a batch
+            if (currentBatch && window.scheduleAutoSave) {
+                window.scheduleAutoSave();
+            }
         }
 
         // Remove photo
@@ -948,7 +1220,7 @@
         // Add photos to an existing expense (for returned batches)
         function addPhotosToExpense(expenseIndex) {
             if (currentBatch.status !== 'returned') {
-                alert('This feature is only available for returned batches.');
+            notifyWarning('This feature is only available for returned batches.', 'Unavailable Action');
                 return;
             }
             
@@ -1002,12 +1274,12 @@
         // Save photos to existing expense
         async function savePhotosToExpense() {
             if (window.editingExpenseIndex === undefined) {
-                alert('Error: No expense selected for editing');
+        notifyError('No expense selected for editing.', 'Selection Required');
                 return;
             }
             
             if (!currentExpense.photos || currentExpense.photos.length === 0) {
-                alert('Please add at least one photo');
+        notifyWarning('Please add at least one photo.', 'Photo Required');
                 return;
             }
             
@@ -1015,16 +1287,25 @@
             
             // Get existing photos (URLs from Firebase)
             const existingPhotos = expense.photos ? expense.photos.filter(p => typeof p === 'string') : [];
+            if (existingPhotos.length > MAX_PHOTOS_PER_EXPENSE) {
+                notifyWarning(`This expense already has more than ${MAX_PHOTOS_PER_EXPENSE} photos. Please contact support.`, 'Photo Limit Reached');
+                return;
+            }
             
             // Get new photos (File objects)
             const newPhotos = currentExpense.photos.filter(p => p instanceof File);
+            const totalPhotos = existingPhotos.length + newPhotos.length;
+            if (totalPhotos > MAX_PHOTOS_PER_EXPENSE) {
+                notifyWarning(`Each expense can include up to ${MAX_PHOTOS_PER_EXPENSE} photos. Remove some existing photos before adding new ones.`, 'Photo Limit Reached');
+                return;
+            }
             
             // Upload new photos and get URLs
             if (newPhotos.length > 0) {
                 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
                 
                 if (isLocalhost) {
-                    alert('Photo upload is disabled on localhost. Please test on production.');
+                notifyInfo('Photo upload is disabled on localhost. Please test on production.', 'Upload Disabled');
                     return;
                 }
                 
@@ -1071,7 +1352,7 @@
                 }
             } catch (error) {
                 console.error('Error updating expense photos:', error);
-                alert('Error saving photos. Please try again.');
+            notifyError('Error saving photos. Please try again.');
                 return;
             }
             
@@ -1083,7 +1364,7 @@
             // Update local batch
             currentBatch.expenses[window.editingExpenseIndex] = expense;
             
-            alert('Photos added successfully!');
+        notifySuccess('Photos added successfully!', 'Photos Added');
             
             // Close modal and refresh display
             document.getElementById('expenseModal').classList.add('hidden');
@@ -1105,31 +1386,75 @@
         // Save expense
         function saveExpense() {
             if (!currentExpense.category) {
-                alert('Please select a category');
+        notifyWarning('Please select a category.', 'Missing Category');
                 return;
             }
             
-            const amount = parseFloat(document.getElementById('amountInput').value);
-            if (!amount || amount <= 0) {
-                alert('Please enter a valid amount');
+            const amountInput = document.getElementById('amountInput');
+            if (!amountInput) {
+                console.error('amountInput element not found');
+                return;
+            }
+            
+            const amount = parseFloat(amountInput.value);
+            if (isNaN(amount) || amount <= 0) {
+        notifyWarning('Please enter a valid amount.', 'Invalid Amount');
+                return;
+            }
+            
+            currentExpense.amount = amount;
+            
+            if (currentExpense.photos && currentExpense.photos.length > MAX_PHOTOS_PER_EXPENSE) {
+                notifyWarning(`Each expense can include up to ${MAX_PHOTOS_PER_EXPENSE} photos. Remove some before saving.`, 'Photo Limit Reached');
+                return;
+            }
+            
+            const normalizedSelectedCategory = (currentExpense.category || '').trim().toLowerCase();
+            const existingCount = (currentBatch.expenses || []).reduce((count, exp, idx) => {
+                if (!exp || !exp.category) return count;
+                const matchesCategory = exp.category.trim().toLowerCase() === normalizedSelectedCategory;
+                const isEditingCurrent = window.editingExpenseIndex !== undefined && idx === window.editingExpenseIndex;
+                return matchesCategory && !isEditingCurrent ? count + 1 : count;
+            }, 0);
+
+            if (existingCount >= 4) {
+                notifyWarning('You have hit your limit of that type of expense', 'Limit Reached');
                 return;
             }
 
-            currentExpense.amount = amount;
-            
-            if (!currentBatch.expenses) {
-                currentBatch.expenses = [];
+            // If editing, update existing expense
+            if (window.editingExpenseIndex !== undefined) {
+                currentBatch.expenses[window.editingExpenseIndex] = { ...currentExpense };
+            } else {
+                // Add new expense
+                if (!currentBatch.expenses) {
+                    currentBatch.expenses = [];
+                }
+                currentBatch.expenses.push({ ...currentExpense });
             }
             
-            currentBatch.expenses.push({ ...currentExpense });
+            // Update global reference
+            window.currentBatch = currentBatch;
             
             closeExpenseModal();
             renderExpenses();
+            
+            // Auto-save draft to IndexedDB
+            if (window.scheduleAutoSave) {
+                window.scheduleAutoSave();
+            }
         }
 
         // Delete expense
         async function deleteExpense(index) {
-            if (!confirm('Delete this expense? This action cannot be undone.')) {
+            const confirmed = await showConfirmation({
+                title: 'Delete Expense',
+                message: 'Delete this expense? This action cannot be undone.',
+                confirmText: 'Delete Expense',
+                cancelText: 'Cancel',
+                tone: 'danger'
+            });
+            if (!confirmed) {
                 return;
             }
             
@@ -1142,7 +1467,7 @@
                     console.log('Expense deleted from Firebase:', expense.id);
                 } catch (error) {
                     console.error('Error deleting expense from Firebase:', error);
-                    alert('Error deleting expense from database. It has been removed locally but may still appear until refreshed.');
+                    notifyWarning('Error deleting expense from the database. It has been removed locally but may still appear until refreshed.', 'Partial Deletion');
                 }
             }
             
@@ -1175,7 +1500,7 @@
             return reg.replace(/\s+/g, '');
         }
 
-        // Helper function to check if a registration exists and add asterisk if needed
+        // Helper function to check if a registration exists and add ! suffix if needed
         async function getUniqueReg(baseReg, excludeBatchId = null) {
             const normalizedReg = normalizeReg(baseReg);
             
@@ -1204,10 +1529,11 @@
                 return normalizedReg;
             }
             
-            // Otherwise, add asterisk and check again
+            // Otherwise, add ! (and incrementing suffix if needed)
             let counter = 1;
             while (true) {
-                const newReg = `${normalizedReg}*`;
+                const suffix = counter === 1 ? '!' : `!${counter}`;
+                const newReg = `${normalizedReg}${suffix}`;
                 if (!existingRegs.has(newReg)) {
                     return newReg;
                 }
@@ -1218,47 +1544,40 @@
         async function saveDraft() {
             let registration = document.getElementById('regInput').value.trim().toUpperCase();
             if (!registration) {
-                alert('Please enter a registration number');
+        notifyWarning('Please enter a registration number.', 'Missing Registration');
                 return;
             }
 
-            // Get unique registration (will add * if needed)
-            if (!currentBatch.id) {
-                // Only check for duplicates when creating new batches
-                registration = await getUniqueReg(registration);
-            } else {
-                // For existing batches, just normalize
-                registration = normalizeReg(registration);
-            }
-
             try {
-                const notes = document.getElementById('notesInput').value.trim();
-                const batchData = {
-                    driverId: currentUser.uid,
-                    driverEmail: currentUser.email,
-                    driverName: currentUser.name || `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || 'Unknown Driver',
-                    officeId: currentUser.officeId,
-                    registration: registration,
-                    status: 'draft',
-                    totalAmount: currentBatch.expenses.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0),
-                    notes: notes || '',
-                    updatedAt: window.serverTimestamp()
-                };
-
-                let batchId = currentBatch.id;
-                
-                if (batchId) {
-                    await window.updateDoc(window.doc(window.db, 'expenseBatches', batchId), batchData);
-                } else {
-                    batchData.createdAt = window.serverTimestamp();
-                    const batchRef = await window.addDoc(window.collection(window.db, 'expenseBatches'), batchData);
-                    batchId = batchRef.id;
+                if (window.autoSaveDraft) {
+                    await window.autoSaveDraft();
                 }
 
-                // Save expenses
-                await saveExpenses(batchId);
+                if (!navigator.onLine) {
+                    currentBatch.registration = registration;
+                    currentBatch.status = 'draft';
+                    await queueExpenseAction('draft');
+                    notifyInfo('Draft saved locally. It will sync automatically once you reconnect.', 'Offline Mode');
+                    document.getElementById('batchModal').classList.add('hidden');
+                    currentBatch = null;
+                    return;
+                }
 
-                alert('Draft saved successfully');
+                // Prepare batch details
+                currentBatch.registration = registration;
+                currentBatch.driverId = currentUser.uid;
+                currentBatch.driverEmail = currentUser.email;
+                currentBatch.driverName =
+                    currentUser.name || `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || 'Unknown Driver';
+                currentBatch.officeId = currentUser.officeId;
+                currentBatch.status = 'draft';
+
+                const notes = document.getElementById('notesInput').value.trim();
+                currentBatch.notes = notes || '';
+
+                await syncDraftToFirestore(currentBatch, 'draft');
+
+                notifySuccess('Draft saved successfully.', 'Draft Saved');
                 
                 // Close modal and clear batch before reloading
                 document.getElementById('batchModal').classList.add('hidden');
@@ -1267,7 +1586,8 @@
                 await loadExpenseBatches();
             } catch (error) {
                 console.error('Error saving draft:', error);
-                alert('Error saving draft. Please try again.');
+                await queueExpenseAction('draft');
+                notifyWarning('Unable to sync right now. Draft saved locally and will retry automatically.', 'Offline Mode');
             }
         }
 
@@ -1275,67 +1595,53 @@
         async function submitBatch() {
             let registration = document.getElementById('regInput').value.trim().toUpperCase();
             if (!registration) {
-                alert('Please enter a registration number');
+        notifyWarning('Please enter a registration number.', 'Missing Registration');
                 return;
-            }
-
-            // Get unique registration (will add * if needed)
-            if (!currentBatch.id) {
-                // Only check for duplicates when creating new batches
-                registration = await getUniqueReg(registration);
-            } else {
-                // For existing batches, just normalize
-                registration = normalizeReg(registration);
             }
 
             if (!currentBatch.expenses || currentBatch.expenses.length === 0) {
-                alert('Please add at least one expense');
+        notifyWarning('Please add at least one expense.', 'No Expenses Added');
                 return;
             }
 
-            if (!confirm('Submit this batch for review? You won\'t be able to edit it after submission.')) {
+            const confirmed = await showConfirmation({
+                title: 'Submit Expense Batch',
+                message: 'Submit this batch for review? You won\'t be able to edit it after submission.',
+                confirmText: 'Submit Batch',
+                cancelText: 'Cancel',
+                tone: 'info'
+            });
+            if (!confirmed) {
                 return;
             }
 
             try {
+                if (window.autoSaveDraft) {
+                    await window.autoSaveDraft();
+                }
+
+                if (!navigator.onLine) {
+                    currentBatch.registration = registration;
+                    currentBatch.status = 'pending';
+                    await queueExpenseAction('pending');
+                    notifyInfo('Submission saved locally. It will be submitted automatically once you are back online.', 'Offline Mode');
+                    closeBatchModal();
+                    return;
+                }
+
                 const notes = document.getElementById('notesInput').value.trim();
-                const batchData = {
-                    driverId: currentUser.uid,
-                    driverEmail: currentUser.email,
-                    driverName: currentUser.name || `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || 'Unknown Driver',
-                    officeId: currentUser.officeId,
-                    registration: registration,
-                    status: 'pending',
-                    totalAmount: currentBatch.expenses.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0),
-                    notes: notes || '',
-                    updatedAt: window.serverTimestamp()
-                };
+                currentBatch.registration = registration;
+                currentBatch.driverId = currentUser.uid;
+                currentBatch.driverEmail = currentUser.email;
+                currentBatch.driverName =
+                    currentUser.name || `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || 'Unknown Driver';
+                currentBatch.officeId = currentUser.officeId;
+                currentBatch.status = 'pending';
+                currentBatch.notes = notes || '';
 
-                // Preserve original submission time if this is a resubmission
-                // Only set submittedAt if it doesn't already exist
-                if (!currentBatch.submittedAt) {
-                    batchData.submittedAt = window.serverTimestamp();
-                }
-                // If submittedAt already exists, don't include it in batchData so it won't be overwritten
+                await syncDraftToFirestore(currentBatch, 'pending');
 
-                let batchId = currentBatch.id;
-                
-                if (batchId) {
-                    await window.updateDoc(window.doc(window.db, 'expenseBatches', batchId), batchData);
-                } else {
-                    batchData.createdAt = window.serverTimestamp();
-                    // Only set submittedAt for new batches if not already set
-                    if (!batchData.submittedAt) {
-                        batchData.submittedAt = window.serverTimestamp();
-                    }
-                    const batchRef = await window.addDoc(window.collection(window.db, 'expenseBatches'), batchData);
-                    batchId = batchRef.id;
-                }
-
-                // Save expenses
-                await saveExpenses(batchId);
-
-                alert('Batch submitted successfully!');
+            notifySuccess('Batch submitted successfully!', 'Submitted');
                 
                 // Clear currentBatch before closing modal to prevent "unsaved changes" prompt
                 currentBatch = null;
@@ -1343,12 +1649,16 @@
                 await loadExpenseBatches();
             } catch (error) {
                 console.error('Error submitting batch:', error);
-                alert('Error submitting batch. Please try again.');
+                await queueExpenseAction('pending');
+            notifyWarning('Unable to submit right now. This batch will submit automatically when you reconnect.', 'Offline Mode');
             }
         }
 
         // Save expenses to Firebase
-        async function saveExpenses(batchId) {
+        async function saveExpenses(batchId, sourceBatch = currentBatch) {
+            const batchRef = sourceBatch || currentBatch;
+            const expensesToSave = (batchRef && Array.isArray(batchRef.expenses)) ? batchRef.expenses : [];
+
             // Delete existing expenses for this batch
             const existingExpensesQuery = window.query(
                 window.collection(window.db, 'expenses'),
@@ -1359,70 +1669,81 @@
             await Promise.all(deletePromises);
 
             // Add new expenses
-            const addPromises = currentBatch.expenses.map(async (expense) => {
+            const addPromises = expensesToSave.map(async (expense, expenseIndex) => {
                 const expenseData = {
                     batchId: batchId,
-                    driverId: currentUser.uid,
-                    officeId: currentUser.officeId,
+                    driverId: batchRef.driverId || currentUser.uid,
+                    officeId: batchRef.officeId || currentUser.officeId,
                     category: expense.category,
                     amount: parseFloat(expense.amount),
-                    photos: [], // Will be populated if photos are uploaded
+                    photos: [], // Will be populated as photos upload via queue
                     createdAt: window.serverTimestamp()
                 };
 
-                // Upload photos to Firebase Storage and add URLs to expenseData.photos
+                // Create expense document first (with empty photos array)
+                const expenseDocRef = await window.addDoc(window.collection(window.db, 'expenses'), expenseData);
+
+                // Handle photo uploads using the upload queue system
                 if (expense.photos && expense.photos.length > 0) {
-                    // Check if running on localhost (development environment)
                     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
                     
                     if (isLocalhost) {
                         console.warn('Running on localhost: Photo upload is disabled due to CORS restrictions.');
-                        console.log(`Note: ${expense.photos.length} photo(s) were selected but not uploaded. Photos will upload on production (GitHub Pages).`);
-                        expenseData.photos = []; // Empty array - photos won't be uploaded
+                        console.log(`Note: ${expense.photos.length} photo(s) were selected but will be queued for upload on production.`);
                     } else {
-                        console.log(`Uploading ${expense.photos.length} photos for expense ${expense.category}...`);
-                        const photoPromises = expense.photos.map(async (photoFile, index) => {
-                            try {
-                                // Create unique filename
-                                const timestamp = Date.now();
-                                const filename = `expenses/${batchId}/${expense.category}_${timestamp}_${index}.jpg`;
-                                
-                                console.log(`Uploading photo ${index + 1}/${expense.photos.length}: ${filename}`);
-                                
-                                // Upload to Firebase Storage
-                                const photoRef = window.ref(window.storage, filename);
-                                await window.uploadBytes(photoRef, photoFile);
-                                
-                                // Get download URL
-                                const downloadURL = await window.getDownloadURL(photoRef);
-                                console.log(`Photo ${index + 1} uploaded successfully: ${downloadURL}`);
-                                return downloadURL;
-                            } catch (error) {
-                                console.error(`Error uploading photo ${index + 1}:`, error);
-                                alert(`Warning: Failed to upload photo ${index + 1}. The expense will be saved without this photo.`);
-                                return null;
-                            }
-                        });
-
-                        // Wait for all photos to upload
-                        const uploadedPhotos = await Promise.all(photoPromises);
-                        expenseData.photos = uploadedPhotos.filter(url => url !== null);
+                        console.log(`Queueing ${expense.photos.length} photos for expense ${expense.category}...`);
                         
-                        if (expenseData.photos.length !== expense.photos.length) {
-                            console.warn(`Only ${expenseData.photos.length} out of ${expense.photos.length} photos uploaded successfully`);
+                        // Queue each photo for upload (in background)
+                        for (let photoIndex = 0; photoIndex < expense.photos.length; photoIndex++) {
+                            const photoFile = expense.photos[photoIndex];
+                            
+                            // Skip if already a URL (already uploaded)
+                            if (typeof photoFile === 'string') {
+                                continue;
+                            }
+                            
+                            // Only queue File/Blob objects
+                            if (photoFile instanceof File || photoFile instanceof Blob) {
+                                const timestamp = Date.now();
+                                const filename = `expenses/${batchId}/${expense.category}_${timestamp}_${photoIndex}.jpg`;
+                                
+                                // Queue the upload - will process in background
+                                if (window.uploadQueue) {
+                                    await window.uploadQueue.enqueue({
+                                        batchId: batchId,
+                                        batchLocalId: batchRef.localId || null,
+                                        expenseIndex: expenseIndex,
+                                        photoIndex: photoIndex,
+                                        photoFile: photoFile,
+                                        filename: filename
+                                    });
+                                }
+                            }
                         }
                     }
                 }
                 
-                return window.addDoc(window.collection(window.db, 'expenses'), expenseData);
+                return expenseDocRef;
             });
 
             await Promise.all(addPromises);
+            
+            // Update upload status indicator
+            if (window.uploadQueue && window.uploadQueue.updateGlobalUploadStatus) {
+                await window.uploadQueue.updateGlobalUploadStatus();
+            }
         }
 
         // Delete batch
         async function deleteBatch() {
-            if (!confirm('Delete this expense batch? This cannot be undone.')) {
+            const confirmed = await showConfirmation({
+                title: 'Delete Expense Batch',
+                message: 'Delete this expense batch? This cannot be undone.',
+                confirmText: 'Delete Batch',
+                cancelText: 'Cancel',
+                tone: 'danger'
+            });
+            if (!confirmed) {
                 return;
             }
 
@@ -1439,18 +1760,25 @@
                 // Delete the batch
                 await window.deleteDoc(window.doc(window.db, 'expenseBatches', currentBatch.id));
 
-                alert('Batch deleted successfully');
+            notifySuccess('Batch deleted successfully.', 'Batch Deleted');
                 closeBatchModal();
                 await loadExpenseBatches();
             } catch (error) {
                 console.error('Error deleting batch:', error);
-                alert('Error deleting batch. Please try again.');
+            notifyError('Error deleting batch. Please try again.');
             }
         }
 
         // Discard returned batch
         async function discardReturnedBatch() {
-            if (!confirm('Discard this returned expense? This will permanently delete it and cannot be undone.')) {
+            const confirmed = await showConfirmation({
+                title: 'Discard Returned Expense',
+                message: 'Discard this returned expense? This will permanently delete it and cannot be undone.',
+                confirmText: 'Discard Expense',
+                cancelText: 'Cancel',
+                tone: 'danger'
+            });
+            if (!confirmed) {
                 return;
             }
 
@@ -1467,27 +1795,34 @@
                 // Delete the batch
                 await window.deleteDoc(window.doc(window.db, 'expenseBatches', currentBatch.id));
 
-                alert('Expense discarded successfully');
+            notifySuccess('Expense discarded successfully.', 'Expense Discarded');
                 closeBatchModal();
                 await loadExpenseBatches();
             } catch (error) {
                 console.error('Error discarding batch:', error);
-                alert('Error discarding expense. Please try again.');
+            notifyError('Error discarding expense. Please try again.');
             }
         }
 
         // Add additional expenses (creates new batch with same reg + *)
         async function addAdditionalExpenses() {
-            if (!confirm('Create a new expense batch with the same registration? This will allow you to add additional expenses.')) {
+            const confirmed = await showConfirmation({
+                title: 'Add Additional Expenses',
+                message: 'Create a new expense batch with the same registration? This will allow you to add additional expenses.',
+                confirmText: 'Create New Batch',
+                cancelText: 'Cancel',
+                tone: 'info'
+            });
+            if (!confirmed) {
                 return;
             }
 
             try {
                 // Get the base registration (remove asterisk if present)
                 let baseReg = normalizeReg(currentBatch.registration);
-                baseReg = baseReg.replace(/\*$/, ''); // Remove trailing asterisk if present
+                baseReg = baseReg.replace(/[*!]\d*$/, ''); // Remove trailing suffix if present
                 
-                // Get unique reg (will add asterisk)
+                // Get unique reg (will add ! if needed)
                 const newReg = await getUniqueReg(baseReg);
 
                 // Create new batch
@@ -1530,7 +1865,7 @@
                 `;
             } catch (error) {
                 console.error('Error creating additional expenses batch:', error);
-                alert('Error creating additional expenses batch. Please try again.');
+            notifyError('Error creating additional expenses batch. Please try again.');
             }
         }
 
@@ -1596,7 +1931,13 @@
             // Check if there are unsaved changes
             if (hasUnsavedChanges()) {
                 // Show custom modal for save/discard choice
-                const shouldSave = confirm('You have unsaved changes. Click OK to save as draft, or Cancel to discard.');
+                const shouldSave = await showConfirmation({
+                    title: 'Save Draft?',
+                    message: 'You have unsaved changes. Save them as a draft before closing?',
+                    confirmText: 'Save Draft',
+                    cancelText: 'Discard',
+                    tone: 'warning'
+                });
                 if (shouldSave) {
                     // User wants to save
                     await saveDraft();
@@ -1614,18 +1955,14 @@
         }
 
         function closeExpenseModal() {
-            const modal = document.getElementById('expenseModal');
-            if (modal) {
-                modal.classList.add('hidden');
-            }
+            const expenseModal = document.getElementById('expenseModal');
+            if (expenseModal) expenseModal.classList.add('hidden');
             
             currentExpense = { category: null, amount: 0, photos: [] };
             
             // Reset modal state
             const categorySection = document.getElementById('categorySection');
-            if (categorySection) {
-                categorySection.classList.remove('hidden');
-            }
+            if (categorySection) categorySection.classList.remove('hidden');
             
             const amountInput = document.getElementById('amountInput');
             if (amountInput && amountInput.parentElement) {
@@ -1639,17 +1976,7 @@
             }
             
             const photoPreview = document.getElementById('photoPreview');
-            if (photoPreview) {
-                photoPreview.innerHTML = '';
-            }
-            
-            // Reset amount input value
-            if (amountInput) {
-                amountInput.value = '';
-            }
-            
-            // Reset category selection
-            document.querySelectorAll('.category-btn').forEach(btn => btn.classList.remove('ring-2', 'ring-blue-500'));
+            if (photoPreview) photoPreview.innerHTML = '';
             
             window.editingExpenseIndex = undefined;
         }
@@ -1710,6 +2037,11 @@
                                (batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date());
             const submissionDate = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
             const validationDate = batch.validatedAt?.toDate ? batch.validatedAt.toDate() : null;
+            const processedDate = batch.processedAt?.toDate
+                ? batch.processedAt.toDate()
+                : (batch.processedAt instanceof Date
+                    ? batch.processedAt
+                    : (batch.processedAt ? new Date(batch.processedAt) : null));
             
             // Format dates (medium date style with short time)
             const formatDate = (date) => {
@@ -1748,7 +2080,7 @@
             y += 24 * ptToMm;
             doc.text(`Paid on: ${paymentDate ? formatDate(paymentDate) : 'Not paid'}`, infoStartX, y);
             y += 24 * ptToMm;
-            doc.text(`Processed on: Not processed`, infoStartX, y);
+            doc.text(`Processed on: ${processedDate ? formatDate(processedDate) : 'Not processed'}`, infoStartX, y);
             y += 28 * ptToMm; // 28pt = 9.9mm before table
             
             // Table setup (matching app dimensions)
@@ -1911,7 +2243,7 @@
             // Bottom footer
             doc.setFontSize(12);
             doc.setTextColor(128, 128, 128); // gray
-            doc.text('Generated using SOTO - Software for Oversight of Transport Operations', 
+            doc.text('Expense report generated by - SOTORoutes', 
                     105, 280, { align: 'center' });
             
             return doc;
@@ -1930,7 +2262,7 @@
                 setTimeout(() => URL.revokeObjectURL(url), 100);
             } catch (error) {
                 console.error('Error generating PDF:', error);
-                alert('Error generating PDF: ' + error.message);
+                notifyError('Error generating PDF: ' + error.message);
             }
         }
 
@@ -1962,7 +2294,7 @@
                 }
             } catch (error) {
                 console.error('Error generating PDF:', error);
-                alert('Error generating PDF: ' + error.message);
+                notifyError('Error generating PDF: ' + error.message);
             }
         }
 
@@ -1981,7 +2313,7 @@
             });
 
             if (allPhotos.length === 0) {
-                alert('No photos available for this expense batch');
+        notifyInfo('No photos available for this expense batch.', 'No Photos');
                 return;
             }
 

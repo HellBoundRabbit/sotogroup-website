@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>My Availability - SOTO Routes</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/assets/js/tailwind-runtime.js"></script>
+    <script src="../js/ui-dialogs.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
     <!-- Firebase SDK -->
     <script type="module">
@@ -31,6 +32,7 @@
         // Make Firebase available globally
         window.firebaseApp = app;
         window.db = db;
+        window.firestore = db;
         window.auth = auth;
         window.firebaseCollection = collection;
         window.firebaseAddDoc = addDoc;
@@ -59,9 +61,12 @@
         window.signOut = signOut;
         
         console.log('Firebase initialized successfully!');
-        
-        // Initialize the app after Firebase is ready
-        initializeDriverAvailabilityApp();
+
+        if (document.readyState === 'complete' || document.readyState === 'interactive') {
+            initializeDriverAvailabilityApp();
+        } else {
+            document.addEventListener('DOMContentLoaded', initializeDriverAvailabilityApp);
+        }
     </script>
     <style>
         .touch-target { min-height: 44px; min-width: 44px; }
@@ -115,10 +120,17 @@
             <button onclick="window.location.href='/pages/driver-portal.html'" class="touch-target flex items-center text-gray-400 hover:text-white transition-colors">
                 <span class="material-symbols-outlined">arrow_back</span>
             </button>
-            <h1 class="text-xl font-semibold">My Availability</h1>
-            <button onclick="location.reload()" class="touch-target flex items-center text-gray-400 hover:text-white transition-colors">
-                <span class="material-symbols-outlined">refresh</span>
-            </button>
+            <h1 class="text-xl font-semibold flex-1 text-center">My Availability</h1>
+            <div class="flex items-center gap-2">
+                <div id="availabilityUploadStatusIndicator" class="hidden flex items-center gap-2 text-sm">
+                    <span class="material-symbols-outlined animate-spin text-blue-400" style="font-size: 18px;">sync</span>
+                    <span class="text-blue-400 text-xs" id="uploadStatusText">Syncing...</span>
+                </div>
+                <button id="saveChangesBtn" onclick="saveAllChanges()" class="hidden touch-target flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">
+                    <span class="material-symbols-outlined" style="font-size: 18px;">check</span>
+                    <span class="text-sm font-medium">Save</span>
+                </button>
+            </div>
         </div>
     </div>
 
@@ -186,6 +198,165 @@
         let currentMonth = new Date().getMonth();
         let currentYear = new Date().getFullYear();
         let availability = {}; // { 'YYYY-MM-DD': true/false }
+        let pendingChanges = {}; // Track unsaved changes: { 'YYYY-MM-DD': true/false }
+        let unseenChanges = {}; // Notifications currently unseen, keyed by date/driver
+        let isSaving = false;
+        const AVAILABILITY_QUEUE_KEY = 'driver_availability_queue_v1';
+        const notifyError = (message, title = 'Error') => uiDialogs.showAlert({ title, message, tone: 'danger' });
+        const notifyWarning = (message, title = 'Heads Up') => uiDialogs.showAlert({ title, message, tone: 'warning' });
+        const notifySuccess = (message, title = 'Success') => uiDialogs.showAlert({ title, message, tone: 'success' });
+        const notifyInfo = (message, title = 'Notice') => uiDialogs.showAlert({ title, message, tone: 'info' });
+
+        function loadAvailabilityQueue() {
+            try {
+                const raw = localStorage.getItem(AVAILABILITY_QUEUE_KEY);
+                return raw ? JSON.parse(raw) : [];
+            } catch (error) {
+                console.error('Error reading availability queue:', error);
+                return [];
+            }
+        }
+
+        function saveAvailabilityQueue(queue) {
+            try {
+                localStorage.setItem(AVAILABILITY_QUEUE_KEY, JSON.stringify(queue));
+            } catch (error) {
+                console.error('Error saving availability queue:', error);
+            }
+        }
+
+        function queueAvailabilityChanges(changes) {
+            if (!currentUser) {
+                console.warn('No current user to queue availability changes.');
+                return;
+            }
+
+            const queue = loadAvailabilityQueue();
+            const driverContext = {
+                driverId: currentUser.uid,
+                driverName: currentUser.name || `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || 'Unknown Driver',
+                officeId: currentUser.officeId,
+                timestamp: Date.now()
+            };
+
+            Object.entries(changes).forEach(([dateString, newAvailability]) => {
+                const existingIndex = queue.findIndex(
+                    item => item.date === dateString && item.driverId === driverContext.driverId
+                );
+
+                const entry = {
+                    ...driverContext,
+                    date: dateString,
+                    newAvailability
+                };
+
+                if (existingIndex >= 0) {
+                    queue[existingIndex] = entry;
+                } else {
+                    queue.push(entry);
+                }
+            });
+
+            saveAvailabilityQueue(queue);
+            console.log('Queued availability changes for offline sync:', changes);
+        }
+
+        async function applyAvailabilityChange(dateString, newAvailability, context = {}) {
+            const driverId = context.driverId || (currentUser && currentUser.uid);
+            const driverName =
+                context.driverName ||
+                (currentUser && (currentUser.name || `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim())) ||
+                'Unknown Driver';
+            const officeId = context.officeId || (currentUser && currentUser.officeId);
+
+            if (!driverId || !officeId) {
+                throw new Error('Missing driver or office context for availability change.');
+            }
+
+            const calendarRef = window.firebaseDoc(window.firestore, 'calendar', dateString);
+            const calendarDoc = await window.firebaseGetDoc(calendarRef);
+
+            let driversOff = [];
+            if (calendarDoc.exists()) {
+                driversOff = calendarDoc.data().driversOff || [];
+            }
+
+            if (newAvailability) {
+                driversOff = driversOff.filter(id => id !== driverId);
+            } else if (!driversOff.includes(driverId)) {
+                driversOff.push(driverId);
+            }
+
+            await window.setDoc(
+                calendarRef,
+                {
+                    date: dateString,
+                    driversOff,
+                    updatedAt: window.serverTimestamp()
+                },
+                { merge: true }
+            );
+
+            await createAvailabilityChangeNotification(dateString, newAvailability, {
+                driverId,
+                driverName,
+                officeId
+            });
+        }
+
+        async function processAvailabilityQueue(options = {}) {
+            const { showToast = true } = options;
+
+            if (!navigator.onLine) {
+                return;
+            }
+
+            if (!currentUser) {
+                return;
+            }
+
+            const queue = loadAvailabilityQueue();
+            if (!queue.length) {
+                return;
+            }
+
+            console.log('Processing queued availability changes:', queue.length);
+            const remaining = [];
+            let processed = 0;
+
+            for (const change of queue) {
+                try {
+                    await applyAvailabilityChange(change.date, change.newAvailability, change);
+                    processed++;
+                } catch (error) {
+                    console.error('Error syncing queued availability change:', change, error);
+                    remaining.push(change);
+                }
+            }
+
+            saveAvailabilityQueue(remaining);
+
+            if (processed > 0) {
+                await loadAvailability();
+                renderCalendar();
+                if (showToast) {
+                    notifySuccess(
+                        `${processed} availability change${processed === 1 ? '' : 's'} synced.`,
+                        'Back Online'
+                    );
+                }
+                if (typeof window.loadUnseenChanges === 'function') {
+                    await window.loadUnseenChanges();
+                }
+            }
+
+            if (remaining.length > 0) {
+                console.warn('Some availability changes could not be synced and remain queued.');
+            }
+        }
+
+        window.processAvailabilityQueue = processAvailabilityQueue;
+        window.addEventListener('online', () => processAvailabilityQueue({ showToast: true }));
 
         // Check for unread messages
         async function checkForUnreadMessages() {
@@ -193,11 +364,11 @@
                 if (!currentUser || !currentUser.officeId || !currentUser.uid) return false;
                 
                 const messagesQuery = window.query(
-                    window.collection(window.db, 'messages'),
+                    window.firebaseCollection(window.firestore, 'messages'),
                     window.where('officeId', '==', currentUser.officeId),
                     window.where('published', '==', true)
                 );
-                const snapshot = await window.getDocs(messagesQuery);
+                const snapshot = await window.firebaseGetDocs(messagesQuery);
                 const messages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 
                 // Get read messages from localStorage
@@ -205,8 +376,8 @@
                 
                 // Also get read messages from Firebase (for persistence across devices/sessions)
                 try {
-                    const userDocRef = window.doc(window.db, 'users', currentUser.uid);
-                    const userDoc = await window.getDoc(userDocRef);
+                    const userDocRef = window.firebaseDoc(window.firestore, 'users', currentUser.uid);
+                    const userDoc = await window.firebaseGetDoc(userDocRef);
                     if (userDoc.exists()) {
                         const userData = userDoc.data();
                         const firebaseReadMessages = userData.readMessages || [];
@@ -228,75 +399,98 @@
             }
         }
 
+        async function waitForFirebaseReady(maxAttempts = 20, delayMs = 150) {
+            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                if (window.firestore && window.firebaseCollection) {
+                    return true;
+                }
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+            }
+            console.error('Firebase did not become ready in time');
+            return false;
+        }
+
         // Initialize function
-        function initializeDriverAvailabilityApp() {
+        async function initializeDriverAvailabilityApp() {
             console.log('Initializing driver availability app...');
-            
-            window.auth.onAuthStateChanged(async function(user) {
-                console.log('Auth state changed:', user ? 'User logged in' : 'No user');
-                
-                if (!user) {
+
+            const storedUser = localStorage.getItem('soto_user_identity');
+            if (!storedUser) {
+                console.log('No stored user identity, redirecting to login');
+                window.location.href = '/pages/soto-routes-login.html';
+                return;
+            }
+
+            try {
+                currentUser = JSON.parse(storedUser);
+            } catch (error) {
+                console.error('Error parsing stored user identity:', error);
+                window.location.href = '/pages/soto-routes-login.html';
+                return;
+            }
+
+            if (!currentUser || currentUser.role !== 'driver') {
+                notifyWarning('This page is for drivers only.', 'Access Denied');
+                window.location.href = '/pages/driver-portal.html';
+                return;
+            }
+
+            const ready = await waitForFirebaseReady();
+            if (!ready) {
+                notifyError('Firebase is unavailable. Please refresh and try again.');
+                return;
+            }
+
+            try {
+                const userDoc = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'users', currentUser.uid));
+                if (!userDoc.exists()) {
+                    console.log('Driver document not found');
                     window.location.href = '/pages/soto-routes-login.html';
                     return;
                 }
 
-                try {
-                    console.log('Loading user data for:', user.uid);
-                    const userDoc = await window.getDoc(window.doc(window.db, 'users', user.uid));
-                    if (!userDoc.exists()) {
-                        console.log('User document not found');
-                        window.location.href = '/pages/soto-routes-login.html';
-                        return;
-                    }
+                currentUser = { ...currentUser, ...userDoc.data() };
+                console.log('Current user:', currentUser);
 
-                    currentUser = { uid: user.uid, ...userDoc.data() };
-                    console.log('Current user:', currentUser);
-                    
-                    // Only drivers can access
-                    if (currentUser.role !== 'driver') {
-                        alert('Access denied. This page is for drivers only.');
-                        window.location.href = '/pages/soto-lp.html';
-                        return;
-                    }
-
-                    // Check for unread messages
-                    const hasUnreadMessages = await checkForUnreadMessages();
-                    if (hasUnreadMessages) {
-                        alert('There are outstanding messages that need to be read before proceeding. Please read all messages first.');
-                        window.location.href = '/pages/driver-messages.html';
-                        return;
-                    }
-
-                    console.log('Loading availability...');
-                    await loadAvailability();
-                    renderCalendar();
-                    document.getElementById('loadingOverlay').style.display = 'none';
-                    console.log('Loading complete!');
-                } catch (error) {
-                    console.error('Error loading user data:', error);
-                    console.error('Error details:', error.message);
-                    console.error('Error stack:', error.stack);
-                    alert('Error loading user data. Please try again.');
+                const hasUnreadMessages = await checkForUnreadMessages();
+                if (hasUnreadMessages) {
+                    notifyInfo('There are outstanding messages that need to be read before proceeding. Please read all messages first.', 'Unread Messages');
+                    window.location.href = '/pages/driver-messages.html';
+                    return;
                 }
-            });
+
+                await processAvailabilityQueue({ showToast: false });
+
+                console.log('Loading availability...');
+                await loadAvailability();
+                renderCalendar();
+                document.getElementById('loadingOverlay').style.display = 'none';
+                console.log('Loading complete!');
+            } catch (error) {
+                console.error('Error loading user data:', error);
+                notifyError('Error loading user data. Please try again.');
+            }
         }
 
         // Load availability from Firebase
         async function loadAvailability() {
             try {
+                pendingChanges = {}; // Clear any pending changes when loading
+                updateSaveButtonVisibility(); // Hide save button
+                
                 // Load availability for this month and next month
                 const startDate = new Date(currentYear, currentMonth, 1);
                 const endDate = new Date(currentYear, currentMonth + 2, 0); // Last day of next month
 
                 // Get all dates in range
-                const dateStrings = [];
-                for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-                    dateStrings.push(d.toISOString().split('T')[0]); // YYYY-MM-DD
+            const dateStrings = [];
+            for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+                dateStrings.push(d.toISOString().split('T')[0]); // YYYY-MM-DD
                 }
 
                 // Batch read all documents at once
                 const docPromises = dateStrings.map(dateStr => 
-                    window.getDoc(window.doc(window.db, 'calendar', dateStr))
+                    window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'calendar', dateStr))
                 );
                 const docSnapshots = await Promise.all(docPromises);
 
@@ -321,6 +515,39 @@
                 console.error('Error loading availability:', error);
             }
         }
+
+        async function loadUnseenChanges() {
+            try {
+                const storedUser = localStorage.getItem('soto_user_identity');
+                const officeId = storedUser ? JSON.parse(storedUser).officeId : currentUser?.officeId;
+                if (!officeId) return;
+
+                const notificationsQuery = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'availabilityNotifications'),
+                    window.where('officeId', '==', officeId)
+                );
+                const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
+
+                unseenChanges = {};
+                notificationsSnapshot.docs.forEach((doc) => {
+                    const data = doc.data();
+                    if (data.seen !== true && data.date && data.driverId) {
+                        if (!unseenChanges[data.date]) {
+                            unseenChanges[data.date] = {};
+                        }
+                        unseenChanges[data.date][data.driverId] = {
+                            id: doc.id,
+                            changeType: data.changeType || 'unavailable',
+                        };
+                    }
+                });
+
+                console.log('Loaded unseen changes:', unseenChanges);
+            } catch (error) {
+                console.error('Error loading unseen changes:', error);
+            }
+        }
+        window.loadUnseenChanges = loadUnseenChanges;
 
         // Render calendar
         function renderCalendar() {
@@ -414,54 +641,95 @@
         }
 
         // Toggle availability for a specific day
-        async function toggleAvailability(dateString) {
+        function toggleAvailability(dateString) {
+            if (isSaving) return; // Don't allow changes while saving
+            
             const isCurrentlyAvailable = availability[dateString] !== false;
             const newAvailability = !isCurrentlyAvailable;
 
+            // Update local state immediately for responsiveness
+            availability[dateString] = newAvailability;
+            pendingChanges[dateString] = newAvailability; // Track pending changes
+            renderCalendar();
+            updateSaveButtonVisibility();
+        }
+
+        // Update save button visibility based on pending changes
+        function updateSaveButtonVisibility() {
+            const saveBtn = document.getElementById('saveChangesBtn');
+            const hasPending = Object.keys(pendingChanges).length > 0;
+            
+            if (saveBtn) {
+                if (hasPending && !isSaving) {
+                    saveBtn.classList.remove('hidden');
+                } else {
+                    saveBtn.classList.add('hidden');
+                }
+            }
+        }
+
+        // Save all pending changes
+        async function saveAllChanges() {
+            if (isSaving || Object.keys(pendingChanges).length === 0) return;
+            
+            isSaving = true;
+            const saveBtn = document.getElementById('saveChangesBtn');
+            const statusIndicator = document.getElementById('availabilityUploadStatusIndicator');
+            const statusText = document.getElementById('uploadStatusText');
+            
+            if (saveBtn) saveBtn.classList.add('hidden');
+            if (statusIndicator) {
+                statusIndicator.classList.remove('hidden');
+                if (statusText) statusText.textContent = 'Syncing...';
+            }
+
+            const changesToSave = { ...pendingChanges };
+            pendingChanges = {};
+            updateSaveButtonVisibility();
+
             try {
-                // Update local state immediately for responsiveness
-                availability[dateString] = newAvailability;
-                renderCalendar();
-
-                // Update Firebase
-                const calendarRef = window.doc(window.db, 'calendar', dateString);
-                const calendarDoc = await window.getDoc(calendarRef);
-
-                let driversOff = [];
-                if (calendarDoc.exists()) {
-                    driversOff = calendarDoc.data().driversOff || [];
+                if (!navigator.onLine) {
+                    queueAvailabilityChanges(changesToSave);
+                    if (statusText) statusText.textContent = 'Saved offline';
+                    setTimeout(() => statusIndicator && statusIndicator.classList.add('hidden'), 1500);
+                    notifyInfo('No network connection detected. Changes saved locally and will sync once you reconnect.', 'Offline Mode');
+                    return;
                 }
 
-                // Add or remove driver from driversOff array
-                if (newAvailability) {
-                    // Driver is now available, remove from driversOff
-                    driversOff = driversOff.filter(id => id !== currentUser.uid);
-                } else {
-                    // Driver is now unavailable, add to driversOff
-                    if (!driversOff.includes(currentUser.uid)) {
-                        driversOff.push(currentUser.uid);
+                const failedChanges = {};
+
+                for (const [dateString, newAvailability] of Object.entries(changesToSave)) {
+                    try {
+                        await applyAvailabilityChange(dateString, newAvailability);
+                    } catch (error) {
+                        console.error('Error saving availability change for', dateString, error);
+                        failedChanges[dateString] = newAvailability;
                     }
                 }
 
-                // Save to Firebase
-                await window.setDoc(calendarRef, {
-                    date: dateString,
-                    driversOff: driversOff,
-                    updatedAt: window.serverTimestamp()
-                }, { merge: true });
-
-                // Create notification for availability change
-                await createAvailabilityChangeNotification(dateString, newAvailability);
-
-                console.log(`Updated availability for ${dateString}:`, newAvailability);
+                if (Object.keys(failedChanges).length > 0) {
+                    queueAvailabilityChanges(failedChanges);
+                    if (statusText) statusText.textContent = 'Saved offline';
+                    notifyWarning('Some changes could not sync. They have been saved locally and will retry automatically.', 'Partial Sync');
+                } else {
+                    if (statusText) statusText.textContent = 'Saved!';
+                    setTimeout(() => statusIndicator && statusIndicator.classList.add('hidden'), 1500);
+                    notifySuccess('Availability updated successfully.');
+                }
             } catch (error) {
-                console.error('Error updating availability:', error);
-                // Revert local state on error
-                availability[dateString] = isCurrentlyAvailable;
-                renderCalendar();
-                alert('Error updating availability. Please try again.');
+                console.error('Error saving changes:', error);
+                queueAvailabilityChanges(changesToSave);
+                if (statusText) statusText.textContent = 'Saved offline';
+                setTimeout(() => statusIndicator && statusIndicator.classList.add('hidden'), 1500);
+                notifyWarning('Unable to sync right now. Changes were saved locally and will retry when you are online.', 'Offline Mode');
+            } finally {
+                isSaving = false;
+                await processAvailabilityQueue({ showToast: false });
             }
         }
+
+        // Make saveAllChanges globally available
+        window.saveAllChanges = saveAllChanges;
 
         // Previous month
         async function previousMonth() {
@@ -505,24 +773,31 @@
         }
 
         // Create notification when driver changes availability
-        async function createAvailabilityChangeNotification(dateString, isNowAvailable) {
+        async function createAvailabilityChangeNotification(dateString, isNowAvailable, context = {}) {
             try {
-                if (!currentUser || !currentUser.officeId) {
+                const driverId = context.driverId || (currentUser && currentUser.uid);
+                const officeId = context.officeId || (currentUser && currentUser.officeId);
+
+                if (!driverId || !officeId) {
                     console.error('No user or officeId for notification');
                     return;
                 }
 
                 // Get driver information from drivers collection
-                const driversQuery = window.query(
-                    window.collection(window.db, 'drivers'),
-                    window.where('uid', '==', currentUser.uid)
-                );
-                const driversSnapshot = await window.getDocs(driversQuery);
-                
-                let driverName = currentUser.name || `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim();
-                if (driversSnapshot.docs.length > 0) {
-                    const driverData = driversSnapshot.docs[0].data();
-                    driverName = `${driverData.firstName || ''} ${driverData.lastName || ''}`.trim() || driverName;
+                let driverName =
+                    context.driverName ||
+                    (currentUser && (currentUser.name || `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim()));
+
+                if (!driverName) {
+                    const driversQuery = window.firebaseQuery(
+                        window.firebaseCollection(window.firestore, 'drivers'),
+                        window.where('uid', '==', driverId)
+                    );
+                    const driversSnapshot = await window.firebaseGetDocs(driversQuery);
+                    if (driversSnapshot.docs.length > 0) {
+                        const driverData = driversSnapshot.docs[0].data();
+                        driverName = `${driverData.firstName || ''} ${driverData.lastName || ''}`.trim() || driverName;
+                    }
                 }
 
                 // Format date for display
@@ -534,14 +809,42 @@
                     day: 'numeric' 
                 });
 
+                // Check for existing unseen notifications for this driver/date
+                const existingSnapshot = await window.firebaseGetDocs(
+                    window.firebaseQuery(
+                        window.firebaseCollection(window.firestore, 'availabilityNotifications'),
+                        window.where('officeId', '==', officeId),
+                        window.where('driverId', '==', driverId),
+                        window.where('date', '==', dateString),
+                        window.where('seen', '==', false)
+                    )
+                );
+
+                if (!existingSnapshot.empty) {
+                    await Promise.all(existingSnapshot.docs.map(docSnap => window.firebaseDeleteDoc(docSnap.ref)));
+
+                    // Keep local cache in sync so highlights disappear immediately
+                    if (unseenChanges[dateString] && unseenChanges[dateString][driverId]) {
+                        delete unseenChanges[dateString][driverId];
+                        if (Object.keys(unseenChanges[dateString]).length === 0) {
+                            delete unseenChanges[dateString];
+                        }
+                    }
+
+                    if (isNowAvailable) {
+                        console.log('ℹ️ Availability changed back to available before being reviewed; notification cleared.');
+                        return;
+                    }
+                }
+
                 // Create notification data
                 const notificationData = {
                     type: 'availability_change',
-                    driverId: currentUser.uid,
+                    driverId,
                     driverName: driverName,
                     date: dateString,
                     formattedDate: formattedDate,
-                    officeId: currentUser.officeId,
+                    officeId,
                     createdAt: new Date(),
                     seen: false, // Track if office has seen this specific change
                     changeType: isNowAvailable ? 'available' : 'unavailable', // 'available' = changed back to working, 'unavailable' = booked off
@@ -551,7 +854,7 @@
                 };
 
                 // Save notification to Firebase
-                await window.addDoc(window.collection(window.db, 'availabilityNotifications'), notificationData);
+                await window.firebaseAddDoc(window.firebaseCollection(window.firestore, 'availabilityNotifications'), notificationData);
 
                 console.log('✅ Availability change notification created:', notificationData);
             } catch (error) {

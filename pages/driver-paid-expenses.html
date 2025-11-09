@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Paid Expenses - SOTO Routes</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/assets/js/tailwind-runtime.js"></script>
+    <script src="../js/ui-dialogs.js"></script>
     <!-- PDF Generation Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
@@ -100,6 +101,12 @@
         </div>
 
         <div id="paidBatches" class="space-y-3"></div>
+        <div id="loadMoreSection" class="hidden mt-6">
+            <button onclick="loadMorePaidExpenses()" class="w-full py-3 bg-[#1a1f24] hover:bg-[#27303a] text-white rounded-lg border border-gray-700 transition-colors touch-target flex items-center justify-center gap-2">
+                <span class="material-symbols-outlined text-base">expand_more</span>
+                Load 5 more expenses
+            </button>
+        </div>
     </div>
 
     <!-- Photo Viewer Modal -->
@@ -123,7 +130,12 @@
 
     <script>
         let currentUser = null;
+        const notifyError = (message, title = 'Error') => uiDialogs.showAlert({ title, message, tone: 'danger' });
+        const notifyWarning = (message, title = 'Heads Up') => uiDialogs.showAlert({ title, message, tone: 'warning' });
+        const notifySuccess = (message, title = 'Success') => uiDialogs.showAlert({ title, message, tone: 'success' });
+        const notifyInfo = (message, title = 'Notice') => uiDialogs.showAlert({ title, message, tone: 'info' });
         let allPaidBatches = [];
+        let visibleBatchCount = 5;
 
         // Check for unread messages
         async function checkForUnreadMessages() {
@@ -183,7 +195,7 @@
                     currentUser = { uid: user.uid, ...userDoc.data() };
                     
                     if (currentUser.role !== 'driver') {
-                        alert('Access denied.');
+                        notifyWarning('Access denied.', 'Access Denied');
                         window.location.href = '/pages/soto-lp.html';
                         return;
                     }
@@ -191,7 +203,7 @@
                     // Check for unread messages
                     const hasUnreadMessages = await checkForUnreadMessages();
                     if (hasUnreadMessages) {
-                        alert('There are outstanding messages that need to be read before proceeding. Please read all messages first.');
+                        notifyInfo('There are outstanding messages that need to be read before proceeding. Please read all messages first.', 'Unread Messages');
                         window.location.href = '/pages/driver-messages.html';
                         return;
                     }
@@ -200,7 +212,7 @@
                     document.getElementById('loadingOverlay').style.display = 'none';
                 } catch (error) {
                     console.error('Error loading user data:', error);
-                    alert('Error loading user data.');
+                    notifyError('Error loading user data.');
                 }
             });
         }
@@ -237,6 +249,7 @@
                 });
 
                 allPaidBatches = batches;
+                visibleBatchCount = 5;
                 displayPaidExpenses(batches);
                 
                 // Start countdown timers and auto-delete check
@@ -244,7 +257,7 @@
                 checkAndDeleteExpiredExpenses();
             } catch (error) {
                 console.error('Error loading paid expenses:', error);
-                alert('Error loading paid expenses.');
+                notifyError('Error loading paid expenses.');
             }
         }
         
@@ -352,17 +365,22 @@
         function displayPaidExpenses(batches) {
             const container = document.getElementById('paidBatches');
             const emptyState = document.getElementById('emptyState');
+            const loadMoreSection = document.getElementById('loadMoreSection');
             
             if (batches.length === 0) {
                 container.classList.add('hidden');
                 emptyState.classList.remove('hidden');
+                if (loadMoreSection) {
+                    loadMoreSection.classList.add('hidden');
+                }
                 return;
             }
 
             container.classList.remove('hidden');
             emptyState.classList.add('hidden');
 
-            container.innerHTML = batches.map(batch => {
+            const batchesToRender = batches.slice(0, visibleBatchCount);
+            container.innerHTML = batchesToRender.map(batch => {
                 const paidDate = batch.paidAt?.toDate ? batch.paidAt.toDate() : new Date();
                 const dateStr = paidDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
                 const timeStr = paidDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
@@ -425,7 +443,18 @@
                     </div>
                 `;
             }).join('');
+
+            if (loadMoreSection) {
+                const hasMore = batches.length > visibleBatchCount;
+                loadMoreSection.classList.toggle('hidden', !hasMore);
+            }
         }
+
+    function loadMorePaidExpenses() {
+        visibleBatchCount += 5;
+        displayPaidExpenses(allPaidBatches);
+        startCountdownTimers();
+    }
 
         // Generate PDF for expense batch (matching app layout exactly)
         function generateExpensePDF(batch) {
@@ -437,6 +466,11 @@
                                (batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date());
             const submissionDate = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
             const validationDate = batch.validatedAt?.toDate ? batch.validatedAt.toDate() : null;
+            const processedDate = batch.processedAt?.toDate
+                ? batch.processedAt.toDate()
+                : (batch.processedAt instanceof Date
+                    ? batch.processedAt
+                    : (batch.processedAt ? new Date(batch.processedAt) : null));
             
             // Format dates (medium date style with short time)
             const formatDate = (date) => {
@@ -475,7 +509,7 @@
             y += 24 * ptToMm;
             doc.text(`Paid on: ${paymentDate ? formatDate(paymentDate) : 'Not paid'}`, infoStartX, y);
             y += 24 * ptToMm;
-            doc.text(`Processed on: Not processed`, infoStartX, y);
+            doc.text(`Processed on: ${processedDate ? formatDate(processedDate) : 'Not processed'}`, infoStartX, y);
             y += 28 * ptToMm; // 28pt = 9.9mm before table
             
             // Table setup (matching app dimensions)
@@ -638,7 +672,7 @@
             // Bottom footer
             doc.setFontSize(12);
             doc.setTextColor(128, 128, 128); // gray
-            doc.text('Generated using SOTO - Software for Oversight of Transport Operations', 
+            doc.text('Expense report generated by - SOTORoutes', 
                     105, 280, { align: 'center' });
             
             return doc;
@@ -648,7 +682,7 @@
         function viewExpensePDF(batchId) {
             const batch = allPaidBatches.find(b => b.id === batchId);
             if (!batch) {
-                alert('Batch not found');
+                notifyError('Batch not found.', 'Missing Batch');
                 return;
             }
 
@@ -661,7 +695,7 @@
                 setTimeout(() => URL.revokeObjectURL(url), 100);
             } catch (error) {
                 console.error('Error generating PDF:', error);
-                alert('Error generating PDF: ' + error.message);
+                notifyError('Error generating PDF: ' + error.message);
             }
         }
 
@@ -669,14 +703,20 @@
         async function downloadExpensePDFAndPhotos(batchId) {
             const batch = allPaidBatches.find(b => b.id === batchId);
             if (!batch) {
-                alert('Batch not found');
+                notifyError('Batch not found.', 'Missing Batch');
                 return;
             }
 
             // Check if File System Access API is supported
             if (!('showDirectoryPicker' in window)) {
                 // Fallback: Download as ZIP
-                const useDownloads = confirm('Your browser does not support selecting folders.\n\nWould you like to download a ZIP file to your Downloads folder instead?\n\n(For folder selection, please use Chrome or Edge)');
+                const useDownloads = await showConfirmation({
+                    title: 'Download ZIP Instead?',
+                    message: 'Your browser does not support selecting folders.\n\nWould you like to download a ZIP file to your Downloads folder instead?\n\n(For folder selection, please use Chrome or Edge)',
+                    confirmText: 'Download ZIP',
+                    cancelText: 'Cancel',
+                    tone: 'info'
+                });
                 
                 if (useDownloads) {
                     await downloadExpenseAsZIP(batch);
@@ -736,18 +776,24 @@
                     }
                 }
                 
-                alert(`Successfully saved PDF and photos to ${dateFolderName}/${cleanedReg}/`);
+                notifySuccess(`Successfully saved PDF and photos to ${dateFolderName}/${cleanedReg}/`, 'Files Saved');
             } catch (error) {
                 if (error.name === 'AbortError' || error.message?.includes('canceled')) {
                     // User cancelled folder selection - offer ZIP fallback
-                    const useDownloads = confirm('Folder selection cancelled.\n\nWould you like to download a ZIP file to your Downloads folder instead?');
+                    const useDownloads = await showConfirmation({
+                        title: 'Download ZIP Instead?',
+                        message: 'Folder selection cancelled.\n\nWould you like to download a ZIP file to your Downloads folder instead?',
+                        confirmText: 'Download ZIP',
+                        cancelText: 'Cancel',
+                        tone: 'warning'
+                    });
                     if (useDownloads) {
                         await downloadExpenseAsZIP(batch);
                     }
                     return;
                 }
                 console.error('Error downloading expense:', error);
-                alert('Error downloading expense: ' + error.message);
+                notifyError('Error downloading expense: ' + error.message);
             }
         }
 
@@ -804,10 +850,10 @@
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
                 
-                alert(`Successfully downloaded PDF and photos as ZIP file!`);
+                notifySuccess('Successfully downloaded PDF and photos as ZIP file!', 'ZIP Downloaded');
             } catch (error) {
                 console.error('Error generating ZIP:', error);
-                alert('Error generating ZIP: ' + error.message);
+                notifyError('Error generating ZIP: ' + error.message);
             }
         }
 
@@ -839,7 +885,7 @@
             });
 
             if (allPhotos.length === 0) {
-                alert('No photos available for this expense batch');
+        notifyInfo('No photos available for this expense batch.', 'No Photos');
                 return;
             }
 

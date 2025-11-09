@@ -5,13 +5,14 @@
     <link crossorigin="" href="https://fonts.gstatic.com/" rel="preconnect"/>
     <link as="style" href="https://fonts.googleapis.com/css2?display=swap&amp;family=Inter%3Awght%40400%3B500%3B700%3B900&amp;family=Noto+Sans%3Awght%40400%3B500%3B700%3B900" onload="this.rel='stylesheet'" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16.png">
+    <link rel="icon" type="image/svg+xml" href="/assets/logos/favicon.svg">
     <link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
-<link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32x32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16x16.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png">
 <title>SOTO Routes - Logistics Planning</title>
     <link href="data:image/x-icon;base64," rel="icon" type="image/x-icon"/>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/assets/js/tailwind-runtime.js"></script>
     <script>
         tailwind.config = {
             plugins: {
@@ -109,6 +110,7 @@
                 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/drivers.html">Drivers</a>
                 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/availability.html">Availability</a>
                 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/expenses.html">Expenses</a>
+                <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/wait-times.html">Wait Times</a>
                 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/messages.html">Messages</a>
             </nav>
             <div class="flex items-center gap-4">
@@ -130,7 +132,7 @@
                 </div>
                 <div class="relative">
                     <button onclick="toggleProfileDropdown()" class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
-                        <img id="officeLogoImg" src="/assets/logos/c-logo.svg" alt="Office Logo" class="w-full h-full object-cover" onerror="this.src='/assets/logos/c-logo.svg'">
+                        <img id="officeLogoImg" src="/assets/logos/favicon.svg" alt="Office Logo" class="w-full h-full object-cover" onerror="this.src='/assets/logos/favicon.svg'">
                     </button>
                     <!-- Profile Dropdown -->
                     <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50">
@@ -456,11 +458,16 @@
         // Update notification count across all office pages
         async function updateNotificationCount() {
             try {
+                console.log('[OPTIMISATION] updateNotificationCount called');
                 const storedUser = localStorage.getItem('soto_user_identity');
-                if (!storedUser) return;
+                if (!storedUser) {
+                    console.log('[OPTIMISATION] No stored user found');
+                    return;
+                }
                 
                 const userData = JSON.parse(storedUser);
                 const officeId = userData.officeId;
+                console.log('[OPTIMISATION] Office ID:', officeId);
                 
                 // Get all availability change notifications for this office that haven't been seen
                 const notificationsQuery = window.firebaseQuery(
@@ -469,51 +476,104 @@
                 );
                 
                 const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
+                console.log('[OPTIMISATION] Total notifications found:', notificationsSnapshot.docs.length);
                 
                 // Count unique drivers with unread changes
                 const driverChanges = {};
-                notificationsSnapshot.docs.forEach(doc => {
-                    const data = doc.data();
-                    if (!driverChanges[data.driverId]) {
-                        driverChanges[data.driverId] = {
+                // Filter to only unseen notifications and convert dates
+                const allNotifications = notificationsSnapshot.docs
+                    .map(doc => {
+                        const data = doc.data();
+                        return {
+                            id: doc.id,
+                            ...data,
+                            createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt)
+                        };
+                    })
+                    .filter(notification => notification.seen !== true) // Only include unseen notifications
+                    .sort((a, b) => b.createdAt - a.createdAt); // Sort by date (most recent first)
+                
+                // Group by driver and only count the most recent batch (within 1 hour of latest)
+                allNotifications.forEach(notification => {
+                    const driverId = notification.driverId;
+                    
+                    if (!driverChanges[driverId]) {
+                        // This is the first (most recent) unseen notification for this driver
+                        driverChanges[driverId] = {
+                            driverId: driverId,
+                            driverName: notification.driverName,
                             daysOff: 0,
                             daysAvailable: 0,
-                            driverName: data.driverName
+                            notifications: [notification],
+                            latestDate: notification.createdAt,
+                            earliestDate: notification.createdAt
                         };
-                    }
-                    if (data.changeType === 'unavailable') {
-                        driverChanges[data.driverId].daysOff++;
+                        
+                        // Count this first notification
+                        if (notification.changeType === 'unavailable') {
+                            driverChanges[driverId].daysOff = 1;
+                        } else {
+                            driverChanges[driverId].daysAvailable = 1;
+                        }
                     } else {
-                        driverChanges[data.driverId].daysAvailable++;
+                        // Check if this notification is within 1 hour of the latest (most recent) one
+                        // This ensures we only count the most recent batch, not old unseen notifications
+                        const timeDiffFromLatest = Math.abs(driverChanges[driverId].latestDate - notification.createdAt);
+                        const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+                        
+                        if (timeDiffFromLatest <= oneHour) {
+                            // Same batch - add to counts
+                            if (notification.changeType === 'unavailable') {
+                                driverChanges[driverId].daysOff++;
+                            } else {
+                                driverChanges[driverId].daysAvailable++;
+                            }
+                            driverChanges[driverId].notifications.push(notification);
+                            // Update earliest date if this is older
+                            if (notification.createdAt < driverChanges[driverId].earliestDate) {
+                                driverChanges[driverId].earliestDate = notification.createdAt;
+                            }
+                            // latestDate stays as the most recent (first one we found)
+                        }
+                        // If outside the batch window (more than 1 hour from latest), ignore it
                     }
                 });
                 
                 // Count total number of drivers with changes
                 const availabilityCount = Object.keys(driverChanges).length;
+                console.log('[OPTIMISATION] Drivers with changes:', availabilityCount);
                 
                 // Check for old expenses (>24 working hours)
                 const oldExpenseCount = await checkOldExpenses(officeId);
+                console.log('[OPTIMISATION] Old expenses count:', oldExpenseCount);
                 
                 // Total notification count (availability changes + old expenses)
                 const unreadCount = availabilityCount + (oldExpenseCount > 0 ? 1 : 0);
+                console.log('[OPTIMISATION] Total unread count:', unreadCount);
                 
                 // Update notification badge on all pages
                 updateNotificationBadge(unreadCount);
+                console.log('[OPTIMISATION] Badge updated');
                 
             } catch (error) {
-                console.error('Error updating notification count:', error);
+                console.error('[OPTIMISATION] Error updating notification count:', error);
             }
         }
 
         // Update notification badge display
         function updateNotificationBadge(count) {
+            console.log('[OPTIMISATION] updateNotificationBadge called with count:', count);
             const badgeElements = document.querySelectorAll('.notification-badge');
-            badgeElements.forEach(badge => {
+            console.log('[OPTIMISATION] Found badge elements:', badgeElements.length);
+            badgeElements.forEach((badge, index) => {
+                console.log(`[OPTIMISATION] Badge ${index}:`, badge);
                 if (count > 0) {
                     badge.textContent = count > 99 ? '99+' : count.toString();
                     badge.classList.remove('hidden');
+                    console.log(`[OPTIMISATION] Badge ${index} shown with count:`, badge.textContent);
                 } else {
                     badge.classList.add('hidden');
+                    console.log(`[OPTIMISATION] Badge ${index} hidden`);
                 }
             });
         }
@@ -683,8 +743,8 @@
         async function handleNotificationClick(notificationId, notification) {
             try {
                 // Mark notification as read
-                const notificationRef = window.firebaseDoc(window.firestore, 'notifications', notificationId);
-                await window.firebaseUpdateDoc(notificationRef, { read: true });
+                const notificationRef = window.firebaseDoc(window.firestore, 'availabilityNotifications', notificationId);
+                await window.firebaseUpdateDoc(notificationRef, { seen: true });
                 
                 // Hide dropdown
                 document.getElementById('notificationDropdown').classList.add('hidden');
@@ -1881,7 +1941,7 @@
                     };
                     logoImg.onerror = function() {
                         console.error('Error loading logo image, falling back to default');
-                        logoImg.src = '/assets/logos/c-logo.svg';
+                        logoImg.src = '/assets/logos/favicon.svg';
                     };
                 } else {
                     console.log('No logoUrl in office data, keeping default logo');

@@ -3,13 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16.png">
+    <link rel="icon" type="image/svg+xml" href="/assets/logos/favicon.svg">
     <link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
-<link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32x32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16x16.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png">
 <title>Office Usage Calendar - SOTO Routes</title>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/assets/js/tailwind-runtime.js"></script>
+    <script src="../js/ui-dialogs.js"></script>
     <script>
         tailwind.config = {
             plugins: {
@@ -157,6 +159,10 @@
         let officeId = null;
         let officeName = null;
         let usageData = {}; // Store usage counts by date
+        const notifyError = (message, title = 'Error') => uiDialogs.showAlert({ title, message, tone: 'danger' });
+        const notifyWarning = (message, title = 'Heads Up') => uiDialogs.showAlert({ title, message, tone: 'warning' });
+        const notifySuccess = (message, title = 'Success') => uiDialogs.showAlert({ title, message, tone: 'success' });
+        const notifyInfo = (message, title = 'Notice') => uiDialogs.showAlert({ title, message, tone: 'info' });
 
         // Check authentication (admin OR office user)
         function checkAuth() {
@@ -169,7 +175,7 @@
             try {
                 const userData = JSON.parse(storedUser);
                 if (userData.role !== 'admin' && userData.role !== 'office') {
-                    alert('Access denied. You must be an admin or office user to view this page.');
+                    notifyWarning('You must be an admin or office user to view this page.', 'Access Denied');
                     window.location.href = '/pages/soto-routes-login.html';
                     return false;
                 }
@@ -196,12 +202,12 @@
                     officeName = data.name;
                     document.getElementById('office-name').textContent = data.name;
                 } else {
-                    alert('Office not found');
+                    notifyError('Office not found.', 'Not Found');
                     goBack();
                 }
             } catch (error) {
                 console.error('Error loading office details:', error);
-                alert('Error loading office details');
+                notifyError('Error loading office details.');
             }
         }
 
@@ -335,7 +341,7 @@
                 window.location.href = '/pages/soto-routes-login.html';
             } catch (error) {
                 console.error('Logout error:', error);
-                alert('Error logging out. Please try again.');
+                notifyError('Error logging out. Please try again.');
             }
         }
 
@@ -361,7 +367,7 @@
             }
             
             if (!officeId) {
-                alert('Office ID is required');
+                notifyWarning('Office ID is required.', 'Missing Office');
                 goBack();
                 return;
             }

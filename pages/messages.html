@@ -6,7 +6,8 @@
     <title>Messages - SOTO Routes</title>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
     <link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/assets/js/tailwind-runtime.js"></script>
+    <script src="../js/ui-dialogs.js"></script>
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
@@ -63,6 +64,7 @@
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/drivers.html">Drivers</a>
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/availability.html">Availability</a>
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/expenses.html">Expenses</a>
+<a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/wait-times.html">Wait Times</a>
 <a class="bg-[#283039] text-white text-sm font-medium rounded-md px-4 py-2" href="/pages/messages.html">Messages</a>
 </nav>
 <div class="flex items-center gap-4">
@@ -84,7 +86,7 @@
 </div>
 <div class="relative">
     <button onclick="toggleProfileDropdown()" class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
-        <img id="officeLogoImg" src="/assets/logos/c-logo.svg" alt="Office Logo" class="w-full h-full object-cover" onerror="this.src='/assets/logos/c-logo.svg'">
+        <img id="officeLogoImg" src="/assets/logos/favicon.svg" alt="Office Logo" class="w-full h-full object-cover" onerror="this.src='/assets/logos/favicon.svg'">
     </button>
     <!-- Profile Dropdown -->
     <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50">
@@ -157,6 +159,10 @@
         let currentUser = null;
         let allMessages = [];
         let allDrivers = [];
+        const notifyError = (message, title = 'Error') => uiDialogs.showAlert({ title, message, tone: 'danger' });
+        const notifyWarning = (message, title = 'Heads Up') => uiDialogs.showAlert({ title, message, tone: 'warning' });
+        const notifySuccess = (message, title = 'Success') => uiDialogs.showAlert({ title, message, tone: 'success' });
+        const notifyInfo = (message, title = 'Notice') => uiDialogs.showAlert({ title, message, tone: 'info' });
 
         async function initialize() {
             await initializeNotifications();
@@ -168,7 +174,7 @@
 
             currentUser = JSON.parse(storedUser);
             if (currentUser.role !== 'office' && currentUser.role !== 'admin') {
-                alert('Access denied. This page is for office staff only.');
+                notifyWarning('This page is for office staff only.', 'Access Denied');
                 window.location.href = '/pages/soto-routes-login.html';
                 return;
             }
@@ -406,19 +412,26 @@
                 await loadMessages();
             } catch (error) {
                 console.error('Error creating message:', error);
-                alert('Error creating message. Please try again.');
+                notifyError('Error creating message. Please try again.');
             }
         });
 
         async function deleteMessage(messageId) {
-            if (!confirm('Delete this message? Drivers will no longer see it.')) return;
+            const confirmed = await showConfirmation({
+                title: 'Delete Message',
+                message: 'Delete this message? Drivers will no longer see it.',
+                confirmText: 'Delete Message',
+                cancelText: 'Cancel',
+                tone: 'danger'
+            });
+            if (!confirmed) return;
 
             try {
                 await window.deleteDoc(window.doc(window.db, 'messages', messageId));
                 await loadMessages();
             } catch (error) {
                 console.error('Error deleting message:', error);
-                alert('Error deleting message. Please try again.');
+                notifyError('Error deleting message. Please try again.');
             }
         }
 
@@ -432,7 +445,7 @@
         }
 
         function showChangePassword() {
-            alert('Change password feature coming soon');
+            notifyInfo('Change password feature coming soon.', 'Coming Soon');
         }
 
         // Notification system functions (same as other pages)
@@ -461,12 +474,12 @@
         // Check for expenses over 24 working hours old
         async function checkOldExpenses(officeId) {
             try {
-                const batchesQuery = window.firebaseQuery(
-                    window.firebaseCollection(window.firestore, 'expenseBatches'),
-                    window.firebaseWhere('officeId', '==', officeId)
+                const batchesQuery = window.query(
+                    window.collection(window.db, 'expenseBatches'),
+                    window.where('officeId', '==', officeId)
                 );
                 
-                const batchesSnapshot = await window.firebaseGetDocs(batchesQuery);
+                const batchesSnapshot = await window.getDocs(batchesQuery);
                 const now = new Date();
                 let oldExpenseCount = 0;
                 
@@ -497,22 +510,69 @@
                 const userData = JSON.parse(storedUser);
                 const officeId = userData.officeId;
                 
-                const notificationsQuery = window.firebaseQuery(
-                    window.firebaseCollection(window.firestore, 'availabilityNotifications'),
-                    window.firebaseWhere('officeId', '==', officeId)
+                const notificationsQuery = window.query(
+                    window.collection(window.db, 'availabilityNotifications'),
+                    window.where('officeId', '==', officeId)
                 );
                 
-                const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
+                const notificationsSnapshot = await window.getDocs(notificationsQuery);
                 const driverChanges = {};
-                notificationsSnapshot.docs.forEach(doc => {
-                    const data = doc.data();
-                    if (!driverChanges[data.driverId]) {
-                        driverChanges[data.driverId] = { daysOff: 0, daysAvailable: 0, driverName: data.driverName };
-                    }
-                    if (data.changeType === 'unavailable') {
-                        driverChanges[data.driverId].daysOff++;
+                // Filter to only unseen notifications and convert dates
+                const allNotifications = notificationsSnapshot.docs
+                    .map(doc => {
+                        const data = doc.data();
+                        return {
+                            id: doc.id,
+                            ...data,
+                            createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt)
+                        };
+                    })
+                    .filter(notification => notification.seen !== true) // Only include unseen notifications
+                    .sort((a, b) => b.createdAt - a.createdAt); // Sort by date (most recent first)
+                
+                // Group by driver and only count the most recent batch (within 1 hour of latest)
+                allNotifications.forEach(notification => {
+                    const driverId = notification.driverId;
+                    
+                    if (!driverChanges[driverId]) {
+                        // This is the first (most recent) unseen notification for this driver
+                        driverChanges[driverId] = {
+                            driverId: driverId,
+                            driverName: notification.driverName,
+                            daysOff: 0,
+                            daysAvailable: 0,
+                            notifications: [notification],
+                            latestDate: notification.createdAt,
+                            earliestDate: notification.createdAt
+                        };
+                        
+                        // Count this first notification
+                        if (notification.changeType === 'unavailable') {
+                            driverChanges[driverId].daysOff = 1;
+                        } else {
+                            driverChanges[driverId].daysAvailable = 1;
+                        }
                     } else {
-                        driverChanges[data.driverId].daysAvailable++;
+                        // Check if this notification is within 1 hour of the latest (most recent) one
+                        // This ensures we only count the most recent batch, not old unseen notifications
+                        const timeDiffFromLatest = Math.abs(driverChanges[driverId].latestDate - notification.createdAt);
+                        const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+                        
+                        if (timeDiffFromLatest <= oneHour) {
+                            // Same batch - add to counts
+                            if (notification.changeType === 'unavailable') {
+                                driverChanges[driverId].daysOff++;
+                            } else {
+                                driverChanges[driverId].daysAvailable++;
+                            }
+                            driverChanges[driverId].notifications.push(notification);
+                            // Update earliest date if this is older
+                            if (notification.createdAt < driverChanges[driverId].earliestDate) {
+                                driverChanges[driverId].earliestDate = notification.createdAt;
+                            }
+                            // latestDate stays as the most recent (first one we found)
+                        }
+                        // If outside the batch window (more than 1 hour from latest), ignore it
                     }
                 });
                 
@@ -554,43 +614,73 @@
                 const userData = JSON.parse(storedUser);
                 const officeId = userData.officeId;
                 
-                const notificationsQuery = window.firebaseQuery(
-                    window.firebaseCollection(window.firestore, 'availabilityNotifications'),
-                    window.firebaseWhere('officeId', '==', officeId)
+                const notificationsQuery = window.query(
+                    window.collection(window.db, 'availabilityNotifications'),
+                    window.where('officeId', '==', officeId)
                 );
                 
-                const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
+                const notificationsSnapshot = await window.getDocs(notificationsQuery);
                 const notificationsList = document.getElementById('notificationsList');
                 
                 const oldExpenseCount = await checkOldExpenses(officeId);
                 
                 const driverChanges = {};
-                const allNotifications = notificationsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                // Filter to only unseen notifications and convert dates
+                const allNotifications = notificationsSnapshot.docs
+                    .map(doc => {
+                        const data = doc.data();
+                        return {
+                            id: doc.id,
+                            ...data,
+                            createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt)
+                        };
+                    })
+                    .filter(notification => notification.seen !== true) // Only include unseen notifications
+                    .sort((a, b) => b.createdAt - a.createdAt); // Sort by date (most recent first)
                 
+                // Group by driver and only count the most recent batch (within 1 hour of latest)
                 allNotifications.forEach(notification => {
                     const driverId = notification.driverId;
+                    
                     if (!driverChanges[driverId]) {
+                        // This is the first (most recent) unseen notification for this driver
                         driverChanges[driverId] = {
                             driverId: driverId,
                             driverName: notification.driverName,
                             daysOff: 0,
                             daysAvailable: 0,
-                            notifications: [],
-                            latestDate: null
+                            notifications: [notification],
+                            latestDate: notification.createdAt,
+                            earliestDate: notification.createdAt
                         };
-                    }
-                    
-                    if (notification.changeType === 'unavailable') {
-                        driverChanges[driverId].daysOff++;
+                        
+                        // Count this first notification
+                        if (notification.changeType === 'unavailable') {
+                            driverChanges[driverId].daysOff = 1;
+                        } else {
+                            driverChanges[driverId].daysAvailable = 1;
+                        }
                     } else {
-                        driverChanges[driverId].daysAvailable++;
-                    }
-                    
-                    driverChanges[driverId].notifications.push(notification);
-                    
-                    const notifDate = notification.createdAt?.toDate ? notification.createdAt.toDate() : new Date(notification.createdAt);
-                    if (!driverChanges[driverId].latestDate || notifDate > driverChanges[driverId].latestDate) {
-                        driverChanges[driverId].latestDate = notifDate;
+                        // Check if this notification is within 1 hour of the latest (most recent) one
+                        // This ensures we only count the most recent batch, not old unseen notifications
+                        const timeDiffFromLatest = Math.abs(driverChanges[driverId].latestDate - notification.createdAt);
+                        const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+                        
+                        if (timeDiffFromLatest <= oneHour) {
+                            // Same batch - add to counts
+                            if (notification.changeType === 'unavailable') {
+                                driverChanges[driverId].daysOff++;
+                            } else {
+                                driverChanges[driverId].daysAvailable++;
+                            }
+                            driverChanges[driverId].notifications.push(notification);
+                            // Update earliest date if this is older
+                            if (notification.createdAt < driverChanges[driverId].earliestDate) {
+                                driverChanges[driverId].earliestDate = notification.createdAt;
+                            }
+                            // latestDate stays as the most recent (first one we found)
+                        }
+                        // If outside the batch window (more than 1 hour from latest), ignore it
                     }
                 });
                 
