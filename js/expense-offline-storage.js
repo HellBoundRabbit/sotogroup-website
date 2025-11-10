@@ -405,6 +405,7 @@ class UploadQueue {
                 req.onsuccess = () => r(req.result); req.onerror = () => r(0);
             })
         ]);
+        console.debug('[UploadQueue] status counts', {pending, uploading, failed});
         const indicator = document.getElementById('uploadStatusIndicator');
         if (indicator) {
             const icon = indicator.querySelector('.material-symbols-outlined');
@@ -440,6 +441,7 @@ class UploadQueue {
             console.error('Database not initialized in clearAll');
             return;
         }
+        console.debug('[UploadQueue] Clearing queue');
         await new Promise((resolve, reject) => {
             const tx = this.db.transaction(['uploadQueue'], 'readwrite');
             const store = tx.objectStore('uploadQueue');
