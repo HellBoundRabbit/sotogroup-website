@@ -221,54 +221,53 @@ class UploadQueue {
         }
         this.isProcessing = true;
         try {
-            const transaction = this.db.transaction(['uploadQueue'], 'readwrite');
-            const store = transaction.objectStore('uploadQueue');
-            const statusIndex = store.index('status');
-            let cursorRequest = statusIndex.openCursor(IDBKeyRange.only('pending'));
+            const pendingTasks = await new Promise((resolve, reject) => {
+                const transaction = this.db.transaction(['uploadQueue'], 'readonly');
+                const store = transaction.objectStore('uploadQueue');
+                const statusIndex = store.index('status');
+                const tasks = [];
+                const request = statusIndex.openCursor(IDBKeyRange.only('pending'));
+                request.onsuccess = (event) => {
+                    const cursor = event.target.result;
+                    if (cursor) {
+                        tasks.push(cursor.value);
+                        cursor.continue();
+                    } else {
+                        resolve(tasks);
+                    }
+                };
+                request.onerror = () => reject(request.error);
+            });
 
-            cursorRequest.onsuccess = async (event) => {
-                const cursor = event.target.result;
-                if (!cursor) {
-                    await this.updateGlobalUploadStatus();
-                    this.isProcessing = false;
-                    return;
-                }
-
-                const task = cursor.value;
+            for (const task of pendingTasks) {
                 console.debug('[UploadQueue] Processing task', task.uploadId, task.filename);
 
                 if (task.retries >= this.maxRetries) {
                     console.warn('[UploadQueue] Task exceeded max retries, marking failed', task.uploadId);
                     await this.markFailed(task.uploadId, 'Max retries exceeded');
-                    cursor.delete();
-                    cursor.continue();
-                    return;
+                    continue;
                 }
 
                 try {
                     await this.uploadPhoto(task);
                     console.debug('[UploadQueue] Upload succeeded', task.uploadId);
-                    cursor.delete();
+                    await this.deleteTask(task.uploadId);
                 } catch (error) {
                     console.error('[UploadQueue] Upload failed', task.uploadId, error);
                     task.retries++;
                     task.status = 'pending';
                     task.error = error.message;
                     task.lastRetryAt = Date.now();
-                    cursor.update(task);
+                    await this.saveTask(task);
                 }
 
                 await this.updateGlobalUploadStatus();
-                cursor.continue();
-            };
-
-            cursorRequest.onerror = (error) => {
-                console.error('[UploadQueue] Cursor error', error);
-                this.isProcessing = false;
-            };
+            }
         } catch (error) {
             console.error('Error processing queue:', error);
+        } finally {
             this.isProcessing = false;
+            await this.updateGlobalUploadStatus();
         }
     }
 
@@ -342,12 +341,15 @@ class UploadQueue {
         await this.init();
         const transaction = this.db.transaction(['uploadQueue'], 'readwrite');
         const store = transaction.objectStore('uploadQueue');
-        const task = await store.get(uploadId);
-        if (task) {
-            task.status = 'failed';
-            task.error = error;
-            await store.put(task);
-        }
+        store.openCursor(IDBKeyRange.only(uploadId)).onsuccess = (event) => {
+            const cursor = event.target.result;
+            if (cursor) {
+                const task = cursor.value;
+                task.status = 'failed';
+                task.error = error;
+                cursor.update(task);
+            }
+        };
     }
 
     async getBatchUploadStatus(batchId) {
@@ -446,6 +448,28 @@ class UploadQueue {
             req.onerror = () => reject(req.error);
         });
         await this.updateGlobalUploadStatus();
+    }
+
+    async deleteTask(uploadId) {
+        await this.init();
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['uploadQueue'], 'readwrite');
+            const store = transaction.objectStore('uploadQueue');
+            const request = store.delete(uploadId);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async saveTask(task) {
+        await this.init();
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['uploadQueue'], 'readwrite');
+            const store = transaction.objectStore('uploadQueue');
+            const request = store.put(task);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
     }
 }
 
