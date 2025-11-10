@@ -455,6 +455,30 @@
             }
         }
 
+        async function backfillWaitTimesOffice() {
+            const officeId = getCurrentOfficeId();
+            if (!officeId) return;
+
+            try {
+                const legacyQuery = window.query(
+                    window.collection(window.db, "waitTimes"),
+                    window.where("driverId", "==", currentUser.uid)
+                );
+                const snapshot = await window.getDocs(legacyQuery);
+                const updates = snapshot.docs
+                    .filter((doc) => {
+                        const data = doc.data();
+                        return !data.officeId;
+                    })
+                    .map((doc) => window.updateDoc(doc.ref, {officeId}));
+                if (updates.length > 0) {
+                    await Promise.allSettled(updates);
+                }
+            } catch (error) {
+                console.warn("Failed to backfill wait time office IDs:", error);
+            }
+        }
+
         async function initializeDriverWaitTimesApp() {
             console.log('Initializing driver wait times page...');
 
@@ -491,30 +515,6 @@
                 attachFormInteractions();
                 startWaitTimesListener();
             } catch (error) {
-        async function backfillWaitTimesOffice() {
-            const officeId = getCurrentOfficeId();
-            if (!officeId) return;
-
-            try {
-                const legacyQuery = window.query(
-                    window.collection(window.db, 'waitTimes'),
-                    window.where('driverId', '==', currentUser.uid)
-                );
-                const snapshot = await window.getDocs(legacyQuery);
-                const updates = snapshot.docs
-                    .filter(doc => {
-                        const data = doc.data();
-                        return !data.officeId;
-                    })
-                    .map(doc => window.updateDoc(doc.ref, { officeId }));
-                if (updates.length > 0) {
-                    await Promise.allSettled(updates);
-                }
-            } catch (error) {
-                console.warn('Failed to backfill wait time office IDs:', error);
-            }
-        }
-
                 console.error('Error loading driver profile:', error);
                 notifyError('Unable to load your profile. Please try again.');
             }
