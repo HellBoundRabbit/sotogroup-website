@@ -224,46 +224,45 @@ class UploadQueue {
             const transaction = this.db.transaction(['uploadQueue'], 'readwrite');
             const store = transaction.objectStore('uploadQueue');
             const statusIndex = store.index('status');
-            const request = statusIndex.openCursor(IDBKeyRange.only('pending'));
-            request.onsuccess = async (e) => {
-                const cursor = e.target.result;
-                if (cursor) {
-                    const task = cursor.value;
-                    console.debug('[UploadQueue] Processing task', task.uploadId, task.filename);
-                    if (task.retries >= this.maxRetries) {
-                        console.warn('[UploadQueue] Task exceeded max retries, marking failed', task.uploadId);
-                        await this.markFailed(task.uploadId, 'Max retries exceeded');
-                        cursor.continue();
-                        return;
-                    }
-                    task.status = 'uploading';
-                    await cursor.update(task);
-                    try {
-                        await this.uploadPhoto(task);
-                        console.debug('[UploadQueue] Upload succeeded', task.uploadId);
-                        task.status = 'completed';
-                        task.completedAt = Date.now();
-                        await cursor.update(task);
-                        await cursor.delete();
-                        this.updateUploadStatus(task.batchId, task.expenseIndex);
-                        await this.updateGlobalUploadStatus();
-                    } catch (error) {
-                        console.error('[UploadQueue] Upload failed', task.uploadId, error);
-                        task.retries++;
-                        task.status = 'pending';
-                        task.error = error.message;
-                        task.lastRetryAt = Date.now();
-                        await cursor.update(task);
-                        this.updateUploadStatus(task.batchId, task.expenseIndex);
-                        await this.updateGlobalUploadStatus();
-                    }
-                    cursor.continue();
-                } else {
-                    this.isProcessing = false;
+            let cursorRequest = statusIndex.openCursor(IDBKeyRange.only('pending'));
+
+            cursorRequest.onsuccess = async (event) => {
+                const cursor = event.target.result;
+                if (!cursor) {
                     await this.updateGlobalUploadStatus();
+                    this.isProcessing = false;
+                    return;
                 }
+
+                const task = cursor.value;
+                console.debug('[UploadQueue] Processing task', task.uploadId, task.filename);
+
+                if (task.retries >= this.maxRetries) {
+                    console.warn('[UploadQueue] Task exceeded max retries, marking failed', task.uploadId);
+                    await this.markFailed(task.uploadId, 'Max retries exceeded');
+                    cursor.delete();
+                    cursor.continue();
+                    return;
+                }
+
+                try {
+                    await this.uploadPhoto(task);
+                    console.debug('[UploadQueue] Upload succeeded', task.uploadId);
+                    cursor.delete();
+                } catch (error) {
+                    console.error('[UploadQueue] Upload failed', task.uploadId, error);
+                    task.retries++;
+                    task.status = 'pending';
+                    task.error = error.message;
+                    task.lastRetryAt = Date.now();
+                    cursor.update(task);
+                }
+
+                await this.updateGlobalUploadStatus();
+                cursor.continue();
             };
-            request.onerror = (error) => {
+
+            cursorRequest.onerror = (error) => {
                 console.error('[UploadQueue] Cursor error', error);
                 this.isProcessing = false;
             };
