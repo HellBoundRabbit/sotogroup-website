@@ -1757,6 +1757,11 @@
 
             await Promise.all(addPromises);
             
+            // Kick the upload queue (just in case setTimeout is throttled)
+            if (window.uploadQueue) {
+                window.uploadQueue.processQueue();
+            }
+            
             // Update upload status indicator
             if (window.uploadQueue && window.uploadQueue.updateGlobalUploadStatus) {
                 await window.uploadQueue.updateGlobalUploadStatus();

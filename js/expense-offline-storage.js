@@ -199,6 +199,7 @@ class UploadQueue {
         };
         const transaction = this.db.transaction(['uploadQueue'], 'readwrite');
         await transaction.objectStore('uploadQueue').put(task);
+        console.log('[UploadQueue] Enqueued task', task);
         if (navigator.onLine) {
             setTimeout(() => this.processQueue(), 100);
         }
@@ -284,6 +285,7 @@ class UploadQueue {
         const blob = task.photoFile instanceof File ? task.photoFile : task.photoFile;
         await window.uploadBytes(photoRef, blob);
         const downloadURL = await window.getDownloadURL(photoRef);
+        console.log('[UploadQueue] Upload complete, updating expense', {expenseDocId: task.expenseDocId, batchId: task.batchId, expenseIndex: task.expenseIndex});
         const updated = await this.updateExpensePhotoUrl(task, downloadURL);
         if (!updated) {
             const error = new Error('Expense document missing');
@@ -336,6 +338,7 @@ class UploadQueue {
                 photos: expenseData.photos,
                 updatedAt: window.serverTimestamp ? window.serverTimestamp() : new Date()
             });
+            console.log('[UploadQueue] Expense photo array updated in Firestore', {expenseDocId: expenseDocRef.id, photoIndex});
 
             if (window.currentBatch && window.currentBatch.id === batchId && window.currentBatch.expenses && window.currentBatch.expenses[expenseIndex]) {
                 const localExpense = window.currentBatch.expenses[expenseIndex];
