@@ -431,6 +431,22 @@ class UploadQueue {
             }
         }
     }
+
+    async clearAll() {
+        await this.init();
+        if (!this.db) {
+            console.error('Database not initialized in clearAll');
+            return;
+        }
+        await new Promise((resolve, reject) => {
+            const tx = this.db.transaction(['uploadQueue'], 'readwrite');
+            const store = tx.objectStore('uploadQueue');
+            const req = store.clear();
+            req.onsuccess = () => resolve();
+            req.onerror = () => reject(req.error);
+        });
+        await this.updateGlobalUploadStatus();
+    }
 }
 
 // Initialize storage systems
@@ -481,4 +497,15 @@ window.scheduleAutoSave = function() {
     autoSaveTimeout = setTimeout(() => {
         if (window.autoSaveDraft) window.autoSaveDraft();
     }, 2000);
+};
+
+window.clearUploadQueue = async function() {
+    if (window.uploadQueue) {
+        try {
+            await window.uploadQueue.clearAll();
+            console.log('[UploadQueue] Cleared all queued uploads');
+        } catch (error) {
+            console.error('[UploadQueue] Failed to clear queue', error);
+        }
+    }
 };
