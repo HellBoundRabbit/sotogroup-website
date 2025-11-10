@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Favicon Generator</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+        .step { margin: 20px 0; padding: 15px; background: #f8f9fa; border-left: 4px solid #007bff; }
+        .code { background: #e9ecef; padding: 10px; border-radius: 4px; font-family: monospace; }
+        .button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        .button:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Favicon Setup for SOTO Routes</h1>
+        
+        <div class="step">
+            <h3>Step 1: Save Your SG Logo</h3>
+            <p>Save your SG logo image as <code>soto-favicon.png</code> in the <code>/assets/logos/</code> folder.</p>
+        </div>
+        
+        <div class="step">
+            <h3>Step 2: Convert to Favicon Format</h3>
+            <p>Use one of these online tools to convert your PNG to favicon format:</p>
+            <ul>
+                <li><a href="https://favicon.io/favicon-converter/" target="_blank">Favicon.io Converter</a></li>
+                <li><a href="https://realfavicongenerator.net/" target="_blank">Real Favicon Generator</a></li>
+                <li><a href="https://www.favicon-generator.org/" target="_blank">Favicon Generator</a></li>
+            </ul>
+        </div>
+        
+        <div class="step">
+            <h3>Step 3: Download Favicon Files</h3>
+            <p>Download these files and place them in <code>/assets/logos/</code>:</p>
+            <ul>
+                <li><code>favicon.ico</code> (main favicon)</li>
+                <li><code>favicon-16x16.png</code> (16x16 pixels)</li>
+                <li><code>favicon-32x32.png</code> (32x32 pixels)</li>
+                <li><code>apple-touch-icon.png</code> (180x180 pixels for iOS)</li>
+            </ul>
+        </div>
+        
+        <div class="step">
+            <h3>Step 4: Test Your Favicon</h3>
+            <p>Once you've added the favicon files:</p>
+            <ol>
+                <li>Hard refresh your browser (CMD+SHIFT+R)</li>
+                <li>Check the browser tab - you should see your SG logo</li>
+                <li>Check bookmarks - favicon should appear there too</li>
+            </ol>
+        </div>
+        
+        <div class="step">
+            <h3>Current Favicon Links (Already Added)</h3>
+            <p>All your HTML pages now have these favicon links:</p>
+            <div class="code">
+&lt;!-- Favicon --&gt;<br>
+&lt;link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico"&gt;<br>
+&lt;link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32x32.png"&gt;<br>
+&lt;link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16x16.png"&gt;<br>
+&lt;link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png"&gt;
+            </div>
+        </div>
+        
+        <div class="step">
+            <h3>📁 File Structure</h3>
+            <div class="code">
+/assets/logos/<br>
+├── favicon.ico          (main favicon)<br>
+├── favicon-16x16.png    (16x16 version)<br>
+├── favicon-32x32.png    (32x32 version)<br>
+├── apple-touch-icon.png (iOS version)<br>
+└── soto-favicon.png     (your original SG logo)
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+
+
+
+
+

@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Paid Expenses - SOTO Routes</title>
+    <script src="/assets/js/tailwind-runtime.js"></script>
+    <script src="/js/session-manager.js"></script>
+    <script src="../js/ui-dialogs.js"></script>
+    <!-- PDF Generation Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <!-- ZIP Creation Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, getDocs, query, where, deleteDoc, doc, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA",
+            authDomain: "soto-routes.firebaseapp.com",
+            projectId: "soto-routes",
+            storageBucket: "soto-routes.firebasestorage.app",
+            messagingSenderId: "440989695549",
+            appId: "1:440989695549:web:0bce8b92a46f7f79953454",
+            measurementId: "G-4E3G40QQ9L"
+        };
+        
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        
+        window.db = db;
+        window.auth = auth;
+        window.query = query;
+        window.collection = collection;
+        window.getDocs = getDocs;
+        window.where = where;
+        window.deleteDoc = deleteDoc;
+        window.doc = doc;
+        window.getDoc = getDoc;
+        window.updateDoc = updateDoc;
+        
+        initializePaidExpensesApp();
+    </script>
+    <style>
+        .touch-target { min-height: 44px; min-width: 44px; }
+        .license-plate {
+            background: #FFD500;
+            color: #000;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            letter-spacing: 2px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: 2px solid #000;
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 20, 25, 0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-[#0f1419] text-white min-h-screen">
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="text-center">
+            <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <p class="text-gray-400">Loading paid expenses...</p>
+        </div>
+    </div>
+
+    <div class="bg-[#1a1f24] border-b border-gray-800 sticky top-0 z-50">
+        <div class="flex items-center justify-between px-4 py-3">
+            <button onclick="window.location.href='/pages/driver-expenses.html'" class="touch-target flex items-center text-gray-400 hover:text-white transition-colors">
+                <span class="material-symbols-outlined">arrow_back</span>
+            </button>
+            <h1 class="text-xl font-semibold">Paid Expenses</h1>
+            <div class="w-10"></div>
+        </div>
+    </div>
+
+    <div class="container max-w-2xl mx-auto px-4 py-6 pb-24">
+        <div id="emptyState" class="hidden text-center py-16">
+            <span class="material-symbols-outlined text-6xl text-gray-600 mb-4">check_circle</span>
+            <p class="text-gray-400 text-lg mb-6">No paid expenses yet</p>
+            <p class="text-gray-500 text-sm">Your paid expense batches will appear here</p>
+        </div>
+
+        <div id="paidBatches" class="space-y-3"></div>
+        <div id="loadMoreSection" class="hidden mt-6">
+            <button onclick="loadMorePaidExpenses()" class="w-full py-3 bg-[#1a1f24] hover:bg-[#27303a] text-white rounded-lg border border-gray-700 transition-colors touch-target flex items-center justify-center gap-2">
+                <span class="material-symbols-outlined text-base">expand_more</span>
+                Load 5 more expenses
+            </button>
+        </div>
+    </div>
+
+    <!-- Photo Viewer Modal -->
+    <div id="photoViewerModal" class="hidden fixed inset-0 bg-black bg-opacity-90 z-50">
+        <div class="w-full h-full flex flex-col">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-4 py-3 bg-black bg-opacity-50">
+                <button onclick="closePhotoViewer()" class="text-white hover:text-gray-300 transition-colors touch-target">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+                <h3 class="text-white font-semibold">View Photos</h3>
+                <div class="w-8"></div>
+            </div>
+            
+            <!-- Photo Grid -->
+            <div id="photoViewerGrid" class="flex-1 overflow-y-auto p-4">
+                <!-- Photos will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentSession = null;
+        let currentUser = null;
+        const notifyError = (message, title = 'Error') => uiDialogs.showAlert({ title, message, tone: 'danger' });
+        const notifyWarning = (message, title = 'Heads Up') => uiDialogs.showAlert({ title, message, tone: 'warning' });
+        const notifySuccess = (message, title = 'Success') => uiDialogs.showAlert({ title, message, tone: 'success' });
+        const notifyInfo = (message, title = 'Notice') => uiDialogs.showAlert({ title, message, tone: 'info' });
+        let allPaidBatches = [];
+        let visibleBatchCount = 5;
+        const getCurrentOfficeId = () => currentUser?.officeId || currentSession?.officeId || null;
+
+        // Check for unread messages
+        async function checkForUnreadMessages() {
+            try {
+                if (!currentUser || !currentUser.officeId || !currentUser.uid) return false;
+                
+                const messagesQuery = window.query(
+                    window.collection(window.db, 'messages'),
+                    window.where('officeId', '==', currentUser.officeId),
+                    window.where('published', '==', true)
+                );
+                const snapshot = await window.getDocs(messagesQuery);
+                const messages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                // Get read messages from localStorage
+                let readMessages = JSON.parse(localStorage.getItem('driver_read_messages') || '[]');
+                
+                // Also get read messages from Firebase (for persistence across devices/sessions)
+                try {
+                    const userDocRef = window.doc(window.db, 'users', currentUser.uid);
+                    const userDoc = await window.getDoc(userDocRef);
+                    if (userDoc.exists()) {
+                        const userData = userDoc.data();
+                        const firebaseReadMessages = userData.readMessages || [];
+                        // Merge Firebase read messages with localStorage (deduplicate)
+                        readMessages = [...new Set([...readMessages, ...firebaseReadMessages])];
+                        // Update localStorage with merged list
+                        localStorage.setItem('driver_read_messages', JSON.stringify(readMessages));
+                    }
+                } catch (firebaseError) {
+                    console.warn('Could not fetch read messages from Firebase, using localStorage only:', firebaseError);
+                }
+                
+                const unreadMessages = messages.filter(msg => !readMessages.includes(msg.id));
+                
+                return unreadMessages.length > 0;
+            } catch (error) {
+                console.error('Error checking messages:', error);
+                return false; // If check fails, allow access
+            }
+        }
+
+        function initializePaidExpensesApp() {
+            (async () => {
+                try {
+                    const session = await window.sotoSession.bootstrap(['driver']);
+                    if (!session) {
+                        window.location.href = '/pages/soto-routes-login.html';
+                        return;
+                    }
+
+                    currentSession = session;
+                    currentUser = { uid: session.uid, ...session };
+
+                    try {
+                        const userDoc = await window.getDoc(window.doc(window.db, 'users', session.uid));
+                        if (!userDoc.exists()) {
+                            window.location.href = '/pages/soto-routes-login.html';
+                            return;
+                        }
+                        currentUser = { ...currentUser, ...userDoc.data() };
+                    } catch (profileError) {
+                        console.warn('Unable to load driver profile for paid expenses:', profileError);
+                    }
+
+                    if (currentUser.role !== 'driver') {
+                        notifyWarning('Access denied.', 'Access Denied');
+                        window.location.href = '/pages/soto-lp.html';
+                        return;
+                    }
+
+                    const hasUnreadMessages = await checkForUnreadMessages();
+                    if (hasUnreadMessages) {
+                        notifyInfo('There are outstanding messages that need to be read before proceeding. Please read all messages first.', 'Unread Messages');
+                        window.location.href = '/pages/driver-messages.html';
+                        return;
+                    }
+
+                    await loadPaidExpenses();
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                } catch (error) {
+                    console.error('Error initializing paid expenses:', error);
+                    notifyError('Error loading user data.');
+                    window.location.href = '/pages/soto-routes-login.html';
+                }
+            })();
+        }
+
+        async function loadPaidExpenses() {
+            try {
+                const officeId = getCurrentOfficeId();
+                if (!officeId) {
+                    notifyWarning('Unable to determine office context.');
+                    return;
+                }
+                // Load transferred expenses (not paid - those show at bottom of main page)
+                const batchesQuery = window.query(
+                    window.collection(window.db, 'expenseBatches'),
+                    window.where('driverId', '==', currentUser.uid),
+                    window.where('status', '==', 'transferred'),
+                    window.where('officeId', '==', officeId)
+                );
+
+                const batchesSnapshot = await window.getDocs(batchesQuery);
+                const batches = [];
+
+                for (const doc of batchesSnapshot.docs) {
+                    const batchData = { id: doc.id, ...doc.data() };
+                    if (!batchData.officeId) {
+                        try {
+                            await window.updateDoc(window.doc(window.db, 'expenseBatches', doc.id), { officeId });
+                            batchData.officeId = officeId;
+                        } catch (error) {
+                            console.warn(`Failed to backfill officeId for batch ${doc.id}:`, error);
+                        }
+                    }
+                    
+                    const expensesQuery = window.query(
+                        window.collection(window.db, 'expenses'),
+                        window.where('batchId', '==', doc.id),
+                        window.where('officeId', '==', officeId)
+                    );
+                    const expensesSnapshot = await window.getDocs(expensesQuery);
+                    batchData.expenses = expensesSnapshot.docs.map(expDoc => {
+                        const expenseData = expDoc.data();
+                        if (!expenseData.officeId) {
+                            try {
+                                window.updateDoc(window.doc(window.db, 'expenses', expDoc.id), { officeId });
+                            } catch (error) {
+                                console.warn(`Failed to backfill officeId for expense ${expDoc.id}:`, error);
+                            }
+                        }
+                        return expenseData;
+                    });
+                    
+                    batches.push(batchData);
+                }
+
+                batches.sort((a, b) => {
+                    const aTime = a.paidAt?.toDate ? a.paidAt.toDate().getTime() : a.submittedAt?.toDate ? a.submittedAt.toDate().getTime() : 0;
+                    const bTime = b.paidAt?.toDate ? b.paidAt.toDate().getTime() : b.submittedAt?.toDate ? b.submittedAt.toDate().getTime() : 0;
+                    return bTime - aTime;
+                });
+
+                allPaidBatches = batches;
+                visibleBatchCount = 5;
+                displayPaidExpenses(batches);
+                
+                // Start countdown timers and auto-delete check
+                startCountdownTimers();
+                checkAndDeleteExpiredExpenses();
+            } catch (error) {
+                console.error('Error loading paid expenses:', error);
+                notifyError('Error loading paid expenses.');
+            }
+        }
+        
+        // Format countdown timer (hours only)
+        function formatCountdown(deleteAt) {
+            const now = new Date();
+            const diff = deleteAt.getTime() - now.getTime();
+            
+            if (diff <= 0) {
+                return '0';
+            }
+            
+            const totalHours = Math.floor(diff / (1000 * 60 * 60));
+            
+            return `${totalHours}`;
+        }
+        
+        // Start countdown timers for all displayed expenses
+        function startCountdownTimers() {
+            // Clear any existing intervals
+            if (window.countdownInterval) {
+                clearInterval(window.countdownInterval);
+            }
+            
+            // Update timers every 30 seconds for better UX
+            window.countdownInterval = setInterval(() => {
+                const expensePanels = document.querySelectorAll('[data-batch-id][data-delete-at]');
+                let hasExpired = false;
+                
+                expensePanels.forEach(panel => {
+                    const deleteAtTimestamp = parseInt(panel.getAttribute('data-delete-at'));
+                    if (!deleteAtTimestamp) return;
+                    
+                    const deleteAt = new Date(deleteAtTimestamp);
+                    const countdownId = `countdown-${panel.getAttribute('data-batch-id')}`;
+                    const countdownElement = document.getElementById(countdownId);
+                    
+                    if (countdownElement) {
+                        const now = new Date();
+                        if (now >= deleteAt) {
+                            countdownElement.textContent = '0 hours until automatic deletion.';
+                            hasExpired = true;
+                        } else {
+                            const remaining = formatCountdown(deleteAt);
+                            countdownElement.textContent = `${remaining} hours until automatic deletion.`;
+                        }
+                    }
+                });
+                
+                // Check and delete expired expenses if any are expired
+                if (hasExpired) {
+                    checkAndDeleteExpiredExpenses();
+                }
+            }, 30000); // Update every 30 seconds
+        }
+        
+        // Check and delete expired expenses
+        async function checkAndDeleteExpiredExpenses() {
+            try {
+                const now = new Date();
+                const batchesToDelete = [];
+                
+                // Check all batches for expiration
+                for (const batch of allPaidBatches) {
+                    if (batch.deleteAt) {
+                        const deleteAt = batch.deleteAt.toDate ? batch.deleteAt.toDate() : new Date(batch.deleteAt);
+                        if (now >= deleteAt) {
+                            batchesToDelete.push(batch);
+                        }
+                    }
+                }
+                
+                // Delete expired batches
+                for (const batch of batchesToDelete) {
+                    try {
+                        // Delete all expenses in this batch
+                        const expensesQuery = window.query(
+                            window.collection(window.db, 'expenses'),
+                            window.where('batchId', '==', batch.id)
+                        );
+                        const expensesSnapshot = await window.getDocs(expensesQuery);
+                        
+                        // Delete expenses
+                        const deletePromises = expensesSnapshot.docs.map(expDoc => window.deleteDoc(window.doc(window.db, 'expenses', expDoc.id)));
+                        await Promise.all(deletePromises);
+                        
+                        // Delete the batch
+                        await window.deleteDoc(window.doc(window.db, 'expenseBatches', batch.id));
+                        
+                        console.log(`Auto-deleted expired batch: ${batch.registration}`);
+                    } catch (error) {
+                        console.error(`Error deleting expired batch ${batch.id}:`, error);
+                    }
+                }
+                
+                // Reload if any were deleted
+                if (batchesToDelete.length > 0) {
+                    await loadPaidExpenses();
+                }
+            } catch (error) {
+                console.error('Error checking expired expenses:', error);
+            }
+        }
+
+        function displayPaidExpenses(batches) {
+            const container = document.getElementById('paidBatches');
+            const emptyState = document.getElementById('emptyState');
+            const loadMoreSection = document.getElementById('loadMoreSection');
+            
+            if (batches.length === 0) {
+                container.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                if (loadMoreSection) {
+                    loadMoreSection.classList.add('hidden');
+                }
+                return;
+            }
+
+            container.classList.remove('hidden');
+            emptyState.classList.add('hidden');
+
+            const batchesToRender = batches.slice(0, visibleBatchCount);
+            container.innerHTML = batchesToRender.map(batch => {
+                const paidDate = batch.paidAt?.toDate ? batch.paidAt.toDate() : new Date();
+                const dateStr = paidDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                const timeStr = paidDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                
+                // Count total photos
+                const totalPhotos = batch.expenses?.reduce((sum, exp) => sum + (exp.photos?.length || 0), 0) || 0;
+                
+                const transferredDate = batch.transferredAt?.toDate ? batch.transferredAt.toDate() : 
+                                       (batch.paidAt?.toDate ? batch.paidAt.toDate() : new Date());
+                const transferredDateStr = transferredDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                const transferredTimeStr = transferredDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                
+                // Calculate delete time
+                const deleteAt = batch.deleteAt?.toDate ? batch.deleteAt.toDate() : 
+                               (batch.transferredAt?.toDate ? (() => {
+                                   const dt = batch.transferredAt.toDate();
+                                   dt.setHours(dt.getHours() + 120);
+                                   return dt;
+                               })() : null);
+                
+                const countdownId = `countdown-${batch.id}`;
+                
+                return `
+                    <div class="bg-[#1a1f24] rounded-lg p-4 border border-gray-800 fade-in" data-batch-id="${batch.id}" data-delete-at="${deleteAt ? deleteAt.getTime() : ''}">
+                        <div class="flex items-start justify-between mb-2">
+                            <div class="license-plate">${batch.registration}</div>
+                            <span class="bg-green-500 px-3 py-1 rounded-full text-xs font-semibold uppercase">PDF READY</span>
+                        </div>
+                        <div class="flex items-center justify-between mt-3 mb-2">
+                            <span class="text-gray-400 text-sm">${batch.expenses?.length || 0} expense${batch.expenses?.length !== 1 ? 's' : ''}</span>
+                            <span class="text-green-500 font-semibold text-lg">£${batch.totalAmount?.toFixed(2) || '0.00'}</span>
+                        </div>
+                        <div class="text-gray-500 text-xs mb-3">
+                            Transferred: ${transferredDateStr} at ${transferredTimeStr}
+                        </div>
+                        ${deleteAt ? `
+                            <div id="${countdownId}" class="text-orange-500 text-xs mb-3 font-semibold">
+                                ${formatCountdown(deleteAt)} hours until automatic deletion.
+                            </div>
+                        ` : ''}
+                        <div class="flex gap-2 mt-3">
+                            <button onclick="viewExpensePDF('${batch.id}')" 
+                                class="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 touch-target">
+                                <span class="material-symbols-outlined text-sm">description</span>
+                                View PDF
+                            </button>
+                            ${totalPhotos > 0 ? `
+                                <button onclick="viewExpensePhotos('${batch.id}')" 
+                                    class="py-2 px-4 bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 touch-target">
+                                    <span class="material-symbols-outlined text-sm">photo_camera</span>
+                                    ${totalPhotos}
+                                </button>
+                            ` : ''}
+                            <button onclick="downloadExpensePDFAndPhotos('${batch.id}')" 
+                                class="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 touch-target">
+                                <span class="material-symbols-outlined text-sm">download</span>
+                                Download PDF & Photos
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            if (loadMoreSection) {
+                const hasMore = batches.length > visibleBatchCount;
+                loadMoreSection.classList.toggle('hidden', !hasMore);
+            }
+        }
+
+    function loadMorePaidExpenses() {
+        visibleBatchCount += 5;
+        displayPaidExpenses(allPaidBatches);
+        startCountdownTimers();
+    }
+
+        // Generate PDF for expense batch (matching app layout exactly)
+        function generateExpensePDF(batch) {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // Get dates
+            const paymentDate = batch.paidAt?.toDate ? batch.paidAt.toDate() : 
+                               (batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date());
+            const submissionDate = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
+            const validationDate = batch.validatedAt?.toDate ? batch.validatedAt.toDate() : null;
+            const processedDate = batch.processedAt?.toDate
+                ? batch.processedAt.toDate()
+                : (batch.processedAt instanceof Date
+                    ? batch.processedAt
+                    : (batch.processedAt ? new Date(batch.processedAt) : null));
+            
+            // Format dates (medium date style with short time)
+            const formatDate = (date) => {
+                if (!date) return 'Not set';
+                const options = { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                };
+                return date.toLocaleDateString('en-GB', options);
+            };
+            
+            const ptToMm = 0.352778; // Conversion factor: 1pt = 0.352778mm
+            let y = 32 * ptToMm; // Start at 32pt = 11.3mm (matching app)
+            
+            // Title - centered, 28pt bold
+            doc.setFontSize(28);
+            doc.setFont(undefined, 'bold');
+            const titleWidth = doc.getTextWidth('Expense Report');
+            doc.text('Expense Report', (210 - titleWidth) / 2, y);
+            y += 24 * ptToMm; // 24pt = 8.5mm
+            
+            // Information section - 16pt medium weight
+            doc.setFontSize(16);
+            doc.setFont(undefined, 'normal');
+            const infoStartX = 48 * ptToMm; // 48pt left margin = 17mm (matching app)
+            doc.text(`Registration: ${batch.registration}`, infoStartX, y);
+            y += 24 * ptToMm; // 24pt = 8.5mm
+            doc.text(`Driver: ${batch.driverName || 'Unknown'}`, infoStartX, y);
+            y += 24 * ptToMm;
+            doc.text(`Submitted on: ${formatDate(submissionDate)}`, infoStartX, y);
+            y += 24 * ptToMm;
+            doc.text(`Validated on: ${validationDate ? formatDate(validationDate) : 'Not validated'}`, infoStartX, y);
+            y += 24 * ptToMm;
+            doc.text(`Paid on: ${paymentDate ? formatDate(paymentDate) : 'Not paid'}`, infoStartX, y);
+            y += 24 * ptToMm;
+            doc.text(`Processed on: ${processedDate ? formatDate(processedDate) : 'Not processed'}`, infoStartX, y);
+            y += 28 * ptToMm; // 28pt = 9.9mm before table
+            
+            // Table setup (matching app dimensions)
+            // App uses: pageWidth = 595.2pt (A4), left margin = 48pt, tableWidth = 595.2 - 96 = 499.2pt
+            // Column 0 (Category) = 120pt, remaining 5 columns = (499.2 - 120) / 5 = 75.84pt each
+            // Converting to mm (1pt = 0.352778mm): col0 = 42.33mm, colRest = 26.75mm each
+            const tableStartY = y;
+            const pageWidth = 210; // A4 width in mm
+            const leftMargin = 48 * 0.352778; // 48pt in mm ≈ 17mm
+            const tableWidth = pageWidth - (leftMargin * 2); // Total width minus margins
+            const col0 = 42.33; // Category column in mm
+            const colRest = (tableWidth - col0) / 5; // Remaining 5 columns equally divided
+            
+            // Category normalization map
+            const categoryMap = {
+                'fuel': 'Fuel',
+                'charge': 'Charge',
+                'train': 'Train',
+                'train fare': 'Train',
+                'bus': 'Bus',
+                'taxi': 'Taxi',
+                'car wash': 'Car Wash',
+                'carwash': 'Car Wash',
+                'toll': 'Tolls',
+                'tolls': 'Tolls',
+                'other': 'Other'
+            };
+            
+            const categories = ['Fuel', 'Charge', 'Train', 'Bus', 'Taxi', 'Car Wash', 'Tolls', 'Other'];
+            
+            // Group expenses by normalized category
+            const expensesByCategory = {};
+            batch.expenses?.forEach(exp => {
+                const rawCat = (exp.category || 'other').trim().toLowerCase();
+                const normalizedCat = categoryMap[rawCat] || 'Other';
+                if (!expensesByCategory[normalizedCat]) {
+                    expensesByCategory[normalizedCat] = [];
+                }
+                expensesByCategory[normalizedCat].push(exp);
+            });
+            
+            // Create table data matching app format
+            const tableData = [];
+            const headers = ['', '1', '2', '3', '4', 'TOTAL'];
+            
+            // Add header row
+            tableData.push(headers);
+            
+            // Add category rows
+            categories.forEach(category => {
+                const categoryExpenses = expensesByCategory[category] || [];
+                const row = [category];
+                
+                // Add up to 4 individual expenses
+                for (let i = 0; i < 4; i++) {
+                    if (i < categoryExpenses.length) {
+                        row.push(`£${parseFloat(categoryExpenses[i].amount || 0).toFixed(2)}`);
+                    } else {
+                        row.push('');
+                    }
+                }
+                
+                // Calculate category total
+                const categoryTotal = categoryExpenses.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0);
+                row.push(categoryTotal > 0 ? `£${categoryTotal.toFixed(2)}` : '');
+                
+                tableData.push(row);
+            });
+            
+            // Add total row
+            const totalRow = ['TOTAL', '', '', '', '', `£${batch.totalAmount?.toFixed(2) || '0.00'}`];
+            tableData.push(totalRow);
+            
+            // Draw table using autoTable with custom styling to match app
+            doc.autoTable({
+                startY: tableStartY,
+                head: [tableData[0]],
+                body: tableData.slice(1),
+                headStyles: { 
+                    fillColor: [217, 217, 217], // Gray background (0.85 white)
+                    textColor: 0,
+                    fontStyle: 'bold',
+                    fontSize: 15
+                },
+                bodyStyles: {
+                    fontSize: 15,
+                    textColor: 0
+                },
+                alternateRowStyles: {
+                    fillColor: [245, 245, 245] // Very light gray (0.96 white)
+                },
+                columnStyles: {
+                    0: { cellWidth: col0, fontStyle: 'bold' },
+                    1: { cellWidth: colRest, halign: 'left' },
+                    2: { cellWidth: colRest, halign: 'left' },
+                    3: { cellWidth: colRest, halign: 'left' },
+                    4: { cellWidth: colRest, halign: 'left' },
+                    5: { cellWidth: colRest, halign: 'left', fontStyle: 'bold' }
+                },
+                styles: {
+                    lineWidth: 1,
+                    lineColor: 0
+                },
+                margin: { left: infoStartX }
+            });
+            
+            y = doc.lastAutoTable.finalY + 40;
+            
+            // Generate expense summary lines (matching app format)
+            const primaryCategories = ['Fuel', 'Charge', 'Car Wash'];
+            const secondaryCategories = ['Bus', 'Train', 'Taxi', 'Tolls', 'Other'];
+            
+            // Primary line (bold)
+            const primaryAmounts = [];
+            primaryCategories.forEach(cat => {
+                const exp = expensesByCategory[cat] || [];
+                if (exp.length > 0) {
+                    const amounts = exp.map(e => `£${parseFloat(e.amount || 0).toFixed(2)}`).join(' + ');
+                    primaryAmounts.push(`${cat}:(${amounts})`);
+                }
+            });
+            
+            if (primaryAmounts.length > 0) {
+                doc.setFontSize(13);
+                doc.setFont(undefined, 'bold');
+                doc.text(primaryAmounts.join('  '), infoStartX, y);
+                y += 24 * ptToMm;
+            }
+            
+            // Secondary line (regular)
+            const secondaryAmounts = [];
+            secondaryCategories.forEach(cat => {
+                const exp = expensesByCategory[cat] || [];
+                if (exp.length > 0) {
+                    const amounts = exp.map(e => `£${parseFloat(e.amount || 0).toFixed(2)}`).join(' + ');
+                    secondaryAmounts.push(`${cat}: (${amounts})`);
+                }
+            });
+            
+            if (secondaryAmounts.length > 0) {
+                doc.setFontSize(14);
+                doc.setFont(undefined, 'normal');
+                doc.text(secondaryAmounts.join(' '), infoStartX, y);
+                y += 24 * ptToMm;
+            }
+            
+            // Total line (bold)
+            doc.setFontSize(16);
+            doc.setFont(undefined, 'bold');
+            doc.text(`Total: £${batch.totalAmount?.toFixed(2) || '0.00'}`, infoStartX, y);
+            y += 32 * ptToMm;
+            
+            // Footer text
+            doc.setFontSize(13);
+            doc.setFont(undefined, 'italic');
+            doc.setTextColor(105, 105, 105); // darkGray
+            const footerText = 'This report is for client records. Please retain for your files.\n\nIf you have any questions, contact SOTO support.';
+            doc.text(footerText, infoStartX, y, { maxWidth: 210 - (infoStartX * 2), align: 'left' });
+            
+            // Bottom footer
+            doc.setFontSize(12);
+            doc.setTextColor(128, 128, 128); // gray
+            doc.text('Expense report generated by - SOTORoutes', 
+                    105, 280, { align: 'center' });
+            
+            return doc;
+        }
+
+        // View PDF in new window
+        function viewExpensePDF(batchId) {
+            const batch = allPaidBatches.find(b => b.id === batchId);
+            if (!batch) {
+                notifyError('Batch not found.', 'Missing Batch');
+                return;
+            }
+
+            try {
+                const doc = generateExpensePDF(batch);
+                const pdfBlob = doc.output('blob');
+                const url = URL.createObjectURL(pdfBlob);
+                window.open(url, '_blank');
+                // Clean up the URL after a delay
+                setTimeout(() => URL.revokeObjectURL(url), 100);
+            } catch (error) {
+                console.error('Error generating PDF:', error);
+                notifyError('Error generating PDF: ' + error.message);
+            }
+        }
+
+        // Download PDF and Photos with folder structure
+        async function downloadExpensePDFAndPhotos(batchId) {
+            const batch = allPaidBatches.find(b => b.id === batchId);
+            if (!batch) {
+                notifyError('Batch not found.', 'Missing Batch');
+                return;
+            }
+
+            // Check if File System Access API is supported
+            if (!('showDirectoryPicker' in window)) {
+                // Fallback: Download as ZIP
+                const useDownloads = await showConfirmation({
+                    title: 'Download ZIP Instead?',
+                    message: 'Your browser does not support selecting folders.\n\nWould you like to download a ZIP file to your Downloads folder instead?\n\n(For folder selection, please use Chrome or Edge)',
+                    confirmText: 'Download ZIP',
+                    cancelText: 'Cancel',
+                    tone: 'info'
+                });
+                
+                if (useDownloads) {
+                    await downloadExpenseAsZIP(batch);
+                }
+                return;
+            }
+
+            try {
+                // Ask user to select a folder
+                const directoryHandle = await window.showDirectoryPicker({
+                    mode: 'readwrite'
+                });
+                
+                // Get current date for folder structure
+                const today = new Date();
+                const year = today.getFullYear();
+                const month = String(today.getMonth() + 1).padStart(2, '0');
+                const day = String(today.getDate()).padStart(2, '0');
+                const dateFolderName = `${day}_${month}_${year}`;
+                
+                // Clean registration
+                const cleanedReg = batch.registration.replace(/[\/\\:]/g, '-').replace(/\s+/g, '_');
+                
+                // Create folder structure: dateFolderName/cleanedReg/
+                let currentHandle = directoryHandle;
+                currentHandle = await getOrCreateFolder(currentHandle, dateFolderName);
+                currentHandle = await getOrCreateFolder(currentHandle, cleanedReg);
+                
+                // Generate and save PDF
+                const doc = generateExpensePDF(batch);
+                const pdfBlob = doc.output('blob');
+                const driverNameForFile = (batch.driverName || 'Unknown_Driver').replace(/_/g, ' ');
+                const pdfFileName = `${cleanedReg}_${driverNameForFile}.pdf`;
+                const pdfFileHandle = await currentHandle.getFileHandle(pdfFileName, { create: true });
+                const pdfWritable = await pdfFileHandle.createWritable();
+                await pdfWritable.write(pdfBlob);
+                await pdfWritable.close();
+                
+                // Download and save photos
+                let photoIndex = 1;
+                for (const expense of batch.expenses || []) {
+                    if (expense.photos && expense.photos.length > 0) {
+                        for (const photoURL of expense.photos) {
+                            try {
+                                const response = await fetch(photoURL);
+                                const photoBlob = await response.blob();
+                                const photoFileName = `photo_${photoIndex}.jpg`;
+                                const photoFileHandle = await currentHandle.getFileHandle(photoFileName, { create: true });
+                                const photoWritable = await photoFileHandle.createWritable();
+                                await photoWritable.write(photoBlob);
+                                await photoWritable.close();
+                                photoIndex++;
+                            } catch (error) {
+                                console.error('Error saving photo:', photoURL, error);
+                            }
+                        }
+                    }
+                }
+                
+                notifySuccess(`Successfully saved PDF and photos to ${dateFolderName}/${cleanedReg}/`, 'Files Saved');
+            } catch (error) {
+                if (error.name === 'AbortError' || error.message?.includes('canceled')) {
+                    // User cancelled folder selection - offer ZIP fallback
+                    const useDownloads = await showConfirmation({
+                        title: 'Download ZIP Instead?',
+                        message: 'Folder selection cancelled.\n\nWould you like to download a ZIP file to your Downloads folder instead?',
+                        confirmText: 'Download ZIP',
+                        cancelText: 'Cancel',
+                        tone: 'warning'
+                    });
+                    if (useDownloads) {
+                        await downloadExpenseAsZIP(batch);
+                    }
+                    return;
+                }
+                console.error('Error downloading expense:', error);
+                notifyError('Error downloading expense: ' + error.message);
+            }
+        }
+
+        // Download expense as ZIP (fallback)
+        async function downloadExpenseAsZIP(batch) {
+            try {
+                const zip = new JSZip();
+                
+                // Get current date for folder structure
+                const today = new Date();
+                const year = today.getFullYear();
+                const month = String(today.getMonth() + 1).padStart(2, '0');
+                const day = String(today.getDate()).padStart(2, '0');
+                const dateFolderName = `${day}_${month}_${year}`;
+                
+                // Clean registration
+                const cleanedReg = batch.registration.replace(/[\/\\:]/g, '-').replace(/\s+/g, '_');
+                
+                // Folder path: dateFolderName/cleanedReg/
+                const folderPath = `${dateFolderName}/${cleanedReg}/`;
+                
+                // Generate PDF
+                const doc = generateExpensePDF(batch);
+                const pdfBlob = doc.output('blob');
+                const driverNameForFile = (batch.driverName || 'Unknown_Driver').replace(/_/g, ' ');
+                const pdfFileName = `${cleanedReg}_${driverNameForFile}.pdf`;
+                zip.file(folderPath + pdfFileName, pdfBlob);
+                
+                // Download and add photos
+                let photoIndex = 1;
+                for (const expense of batch.expenses || []) {
+                    if (expense.photos && expense.photos.length > 0) {
+                        for (const photoURL of expense.photos) {
+                            try {
+                                const response = await fetch(photoURL);
+                                const photoBlob = await response.blob();
+                                zip.file(folderPath + `photo_${photoIndex}.jpg`, photoBlob);
+                                photoIndex++;
+                            } catch (error) {
+                                console.error('Error downloading photo:', photoURL, error);
+                            }
+                        }
+                    }
+                }
+                
+                // Generate and download ZIP
+                const zipBlob = await zip.generateAsync({ type: 'blob' });
+                const url = URL.createObjectURL(zipBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${cleanedReg}_${dateFolderName}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                notifySuccess('Successfully downloaded PDF and photos as ZIP file!', 'ZIP Downloaded');
+            } catch (error) {
+                console.error('Error generating ZIP:', error);
+                notifyError('Error generating ZIP: ' + error.message);
+            }
+        }
+
+        // Helper function to get or create a folder
+        async function getOrCreateFolder(parentHandle, folderName) {
+            try {
+                return await parentHandle.getDirectoryHandle(folderName, { create: true });
+            } catch (error) {
+                console.error(`Error creating folder ${folderName}:`, error);
+                throw error;
+            }
+        }
+
+        // View all photos for an expense batch
+        function viewExpensePhotos(batchId) {
+            const batch = allPaidBatches.find(b => b.id === batchId);
+            if (!batch || !batch.expenses) {
+                return;
+            }
+
+            // Collect all photos from all expenses
+            const allPhotos = [];
+            batch.expenses.forEach(expense => {
+                if (expense.photos && expense.photos.length > 0) {
+                    expense.photos.forEach(photoURL => {
+                        allPhotos.push(photoURL);
+                    });
+                }
+            });
+
+            if (allPhotos.length === 0) {
+        notifyInfo('No photos available for this expense batch.', 'No Photos');
+                return;
+            }
+
+            const grid = document.getElementById('photoViewerGrid');
+            grid.innerHTML = allPhotos.map((url, index) => `
+                <div class="w-full max-w-4xl mx-auto mb-6">
+                    <div class="bg-[#1a1f24] rounded-xl p-4 shadow-2xl border border-[#283039]">
+                        <img 
+                            src="${url}" 
+                            alt="Expense photo ${index + 1}" 
+                            class="w-full h-auto rounded-lg shadow-lg object-contain max-h-[70vh] mx-auto"
+                            loading="lazy"
+                            style="display: block;"
+                        >
+                        <div class="text-center mt-3 text-sm text-gray-400">
+                            Photo ${index + 1} of ${allPhotos.length}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            document.getElementById('photoViewerModal').classList.remove('hidden');
+        }
+
+        // Close photo viewer
+        function closePhotoViewer() {
+            document.getElementById('photoViewerModal').classList.add('hidden');
+            document.getElementById('photoViewerGrid').innerHTML = '';
+        }
+
+        // Close photo viewer on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && !document.getElementById('photoViewerModal').classList.contains('hidden')) {
+                closePhotoViewer();
+            }
+        });
+    </script>
+</body>
+</html>
+
+
+
+

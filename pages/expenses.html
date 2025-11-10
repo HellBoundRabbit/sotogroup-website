@@ -1,0 +1,2328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expenses - SOTO Routes</title>
+    <link crossorigin="" href="https://fonts.gstatic.com/" rel="preconnect"/>
+    <link as="style" href="https://fonts.googleapis.com/css2?display=swap&amp;family=Inter%3Awght%40400%3B500%3B700%3B900&amp;family=Noto+Sans%3Awght%40400%3B500%3B700%3B900" onload="this.rel='stylesheet'" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16.png">
+    <link rel="icon" type="image/svg+xml" href="/assets/logos/favicon.svg">
+    <link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png">
+    <script src="/assets/js/tailwind-runtime.js"></script>
+    <script src="/js/session-manager.js"></script>
+    <!-- PDF Generation Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <!-- ZIP Creation Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="../js/ui-dialogs.js"></script>
+    <script>
+        // CACHE BUSTER - Force fresh load
+        console.log('🔴 EXPENSES PAGE LOADING - CACHE BUSTER v2 - ' + new Date().getTime());
+        
+        tailwind.config = {
+            plugins: {
+                forms: {},
+                containerQueries: {}
+            }
+        }
+    </script>
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, where, updateDoc, doc, deleteDoc, getDoc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA",
+            authDomain: "soto-routes.firebaseapp.com",
+            projectId: "soto-routes",
+            storageBucket: "soto-routes.firebasestorage.app",
+            messagingSenderId: "440989695549",
+            appId: "1:440989695549:web:0bce8b92a46f7f79953454",
+            measurementId: "G-4E3G40QQ9L"
+        };
+        
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        
+        // Make Firebase available globally
+        window.firebaseApp = app;
+        window.db = db;
+        window.auth = auth;
+        window.firebaseCollection = collection;
+        window.firebaseAddDoc = addDoc;
+        window.firebaseGetDocs = getDocs;
+        window.firebaseQuery = query;
+        window.firebaseOrderBy = orderBy;
+        window.firebaseLimit = limit;
+        window.firebaseWhere = where;
+        window.firebaseUpdateDoc = updateDoc;
+        window.firebaseDoc = doc;
+        window.firebaseDeleteDoc = deleteDoc;
+        window.firebaseGetDoc = getDoc;
+        window.firebaseSetDoc = setDoc;
+        window.serverTimestamp = serverTimestamp;
+        
+        // Make individual functions globally accessible
+        window.query = query;
+        window.collection = collection;
+        window.addDoc = addDoc;
+        window.getDocs = getDocs;
+        window.updateDoc = updateDoc;
+        window.where = where;
+        window.orderBy = orderBy;
+        window.doc = doc;
+        window.getDoc = getDoc;
+        window.setDoc = setDoc;
+        window.signOut = signOut;
+        
+        // Make auth object globally accessible
+        window.auth = auth;
+        
+        console.log('Firebase initialized successfully!');
+        
+        // Wait for DOM to be ready before initializing
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                console.log('🔴 DOM loaded, initializing expenses app...');
+                initializeExpensesApp();
+            });
+        } else {
+            // DOM is already loaded
+            console.log('🔴 DOM already loaded, initializing expenses app...');
+            initializeExpensesApp();
+        }
+    </script>
+    <style>
+        .tab-active {
+            border-bottom: 3px solid #3b82f6;
+            color: #3b82f6;
+        }
+        
+        .license-plate {
+            background: #FFD500;
+            color: #000;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            letter-spacing: 2px;
+            padding: 6px 12px;
+            border-radius: 4px;
+            border: 2px solid #000;
+            display: inline-block;
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 20, 25, 0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        
+        @keyframes flash {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+        
+        .flash-red {
+            animation: flash 1s infinite;
+        }
+    </style>
+</head>
+<body class="bg-[#111418] text-white" style='font-family: Inter, "Noto Sans", sans-serif;'>
+<div class="relative flex h-auto min-h-screen w-full flex-col dark group/design-root overflow-x-hidden">
+<div class="flex h-full grow flex-col">
+
+<header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-b-[#283039] px-6 py-3">
+<div class="flex items-center gap-4">
+<div class="size-8 text-[var(--primary-color)]">
+<svg fill="none" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+<path d="M13.8261 17.4264C16.7203 18.1174 20.2244 18.5217 24 18.5217C27.7756 18.5217 31.2797 18.1174 34.1739 17.4264C36.9144 16.7722 39.9967 15.2331 41.3563 14.1648L24.8486 40.6391C24.4571 41.267 23.5429 41.267 23.1514 40.6391L6.64374 14.1648C8.00331 15.2331 11.0856 16.7722 13.8261 17.4264Z" fill="currentColor"></path>
+<path clip-rule="evenodd" d="M39.998 12.236C39.9944 12.2537 39.9875 12.2845 39.9748 12.3294C39.9436 12.4399 39.8949 12.5741 39.8346 12.7175C39.8168 12.7597 39.7989 12.8007 39.7813 12.8398C38.5103 13.7113 35.9788 14.9393 33.7095 15.4811C30.9875 16.131 27.6413 16.5217 24 16.5217C20.3587 16.5217 17.0125 16.131 14.2905 15.4811C12.0012 14.9346 9.44505 13.6897 8.18538 12.8168C8.17384 12.7925 8.16216 12.767 8.15052 12.7408C8.09919 12.6249 8.05721 12.5114 8.02977 12.411C8.00356 12.3152 8.00039 12.2667 8.00004 12.2612C8.00004 12.261 8 12.2607 8.00004 12.2612C8.00004 12.2359 8.0104 11.9233 8.68485 11.3686C9.34546 10.8254 10.4222 10.2469 11.9291 9.72276C14.9242 8.68098 19.1919 8 24 8C28.8081 8 33.0758 8.68098 36.0709 9.72276C37.5778 10.2469 38.6545 10.8254 39.3151 11.3686C39.9006 11.8501 39.9857 12.1489 39.998 12.236ZM4.95178 15.2312L21.4543 41.6973C22.6288 43.5809 25.3712 43.5809 26.5457 41.6973L43.0534 15.223C43.0709 15.1948 43.0878 15.1662 43.104 15.1371L41.3563 14.1648C43.104 15.1371 43.1038 15.1374 43.104 15.1371L43.1051 15.135L43.1065 15.1325L43.1101 15.1261L43.1199 15.1082C43.1276 15.094 43.1377 15.0754 43.1497 15.0527C43.1738 15.0075 43.2062 14.9455 43.244 14.8701C43.319 14.7208 43.4196 14.511 43.5217 14.2683C43.6901 13.8679 44 13.0689 44 12.2609C44 10.5573 43.003 9.22254 41.8558 8.2791C40.6947 7.32427 39.1354 6.55361 37.385 5.94477C33.8654 4.72057 29.133 4 24 4C18.867 4 14.1346 4.72057 10.615 5.94478C8.86463 6.55361 7.30529 7.32428 6.14419 8.27911C4.99695 9.22255 3.99999 10.5573 3.99999 12.2609C3.99999 13.1275 4.29264 13.9078 4.49321 14.3607C4.60375 14.6102 4.71348 14.8196 4.79687 14.9689C4.83898 15.0444 4.87547 15.1065 4.9035 15.1529C4.91754 15.1762 4.92954 15.1957 4.93916 15.2111L4.94662 15.223L4.95178 15.2312ZM35.9868 18.996L24 38.22L12.0131 18.996C12.4661 19.1391 12.9179 19.2658 13.3617 19.3718C16.4281 20.1039 20.0901 20.5217 24 20.5217C27.9099 20.5217 31.5719 20.1039 34.6383 19.3718C35.082 19.2658 35.5339 19.1391 35.9868 18.996Z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+<h2 class="text-xl font-bold">SOTO Routes</h2>
+</div>
+<nav class="flex flex-1 justify-center gap-2">
+<a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/soto-lp.html">Routes</a>
+<a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/optimisation.html">Optimisation</a>
+<a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/drivers.html">Drivers</a>
+<a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/availability.html">Availability</a>
+<a class="bg-[#283039] text-white text-sm font-medium rounded-md px-4 py-2" href="/pages/expenses.html">Expenses</a>
+<a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/wait-times.html">Wait Times</a>
+<a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/messages.html">Messages</a>
+</nav>
+<div class="flex items-center gap-4">
+<div class="relative">
+    <button class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors relative" onclick="showNotifications()">
+        <span class="material-symbols-outlined text-xl">notifications</span>
+        <!-- Notification Badge -->
+        <span class="notification-badge absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold hidden">0</span>
+    </button>
+    <!-- Notifications Dropdown -->
+    <div id="notificationDropdown" class="hidden absolute right-0 mt-2 w-80 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+        <div class="px-4 py-3 border-b border-[#283039]">
+            <h3 class="text-white font-semibold text-sm">Notifications</h3>
+        </div>
+        <div id="notificationsList" class="max-h-64 overflow-y-auto">
+            <!-- Notifications will be loaded here -->
+        </div>
+    </div>
+</div>
+<div class="relative">
+    <button onclick="toggleProfileDropdown()" class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
+        <img id="officeLogoImg" src="/assets/logos/favicon.svg" alt="Office Logo" class="w-full h-full object-cover" onerror="this.src='/assets/logos/favicon.svg'">
+    </button>
+    <!-- Profile Dropdown -->
+    <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50">
+        <button onclick="showChangePassword()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors rounded-t-lg">
+            <span class="material-symbols-outlined inline-block align-middle text-base mr-2">lock</span>
+            Change Password
+        </button>
+        <button onclick="viewUsage()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors">
+            <span class="material-symbols-outlined inline-block align-middle text-base mr-2">calendar_month</span>
+            View Usage
+        </button>
+        <button onclick="logout()" class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-[#283039] transition-colors rounded-b-lg">
+            <span class="material-symbols-outlined inline-block align-middle text-base mr-2">logout</span>
+            Logout
+        </button>
+    </div>
+</div>
+</div>
+</header>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="flex items-center gap-4">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            <span class="text-gray-400">Loading...</span>
+        </div>
+    </div>
+
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-4 py-6">
+        
+        <!-- Page Header -->
+        <div class="mb-6 text-center">
+            <h1 class="text-3xl font-bold mb-2">Expense Management</h1>
+            <p class="text-gray-400 mb-4">Review and manage driver expense submissions</p>
+            
+            <!-- Search Bar -->
+            <div class="flex justify-center mb-6">
+                <div class="relative w-96">
+                    <input type="text" id="expenseSearch" placeholder="Search expenses..." 
+                        class="w-full bg-[#1a1f24] border border-gray-800 rounded-lg px-4 py-2 pl-10 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors">
+                    <span class="material-symbols-outlined absolute left-3 top-2.5 text-gray-500">search</span>
+                    <!-- Search Results Dropdown -->
+                    <div id="searchResults" class="hidden absolute top-full left-0 right-0 mt-2 bg-[#1a1f24] border border-gray-800 rounded-lg shadow-lg max-h-96 overflow-y-auto z-50">
+                        <!-- Results will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="border-b border-gray-800 mb-6">
+            <div class="flex gap-8 justify-center">
+                <button onclick="switchTab('pending')" id="tab-pending" class="tab-active py-3 px-1 font-semibold transition-colors">
+                    Pending <span id="pending-count" class="ml-2 px-2 py-0.5 bg-orange-500 text-white text-xs rounded-full">0</span>
+                </button>
+                <button onclick="switchTab('validated')" id="tab-validated" class="py-3 px-1 text-gray-400 hover:text-white font-semibold transition-colors">
+                    Validated <span id="validated-count" class="ml-2 px-2 py-0.5 bg-blue-500 text-white text-xs rounded-full">0</span>
+                </button>
+                <button onclick="switchTab('paid')" id="tab-paid" class="py-3 px-1 text-gray-400 hover:text-white font-semibold transition-colors">
+                    Paid <span id="paid-count" class="ml-2 px-2 py-0.5 bg-green-500 text-white text-xs rounded-full">0</span>
+                </button>
+                <button onclick="switchTab('returned')" id="tab-returned" class="py-3 px-1 text-gray-400 hover:text-white font-semibold transition-colors">
+                    Returned <span id="returned-count" class="ml-2 px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">0</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Tab Content -->
+        <div id="content-pending" class="tab-content">
+            <!-- Group by Driver Toggle -->
+            <div id="pending-header" class="mb-4 flex items-center justify-between">
+                <button id="groupByDriverPendingBtn" onclick="toggleGroupByDriverPending()" 
+                    class="px-4 py-2 bg-[#283039] hover:bg-[#3a444e] text-white rounded-lg transition-colors flex items-center gap-2">
+                    <span class="material-symbols-outlined text-lg">group</span>
+                    <span id="groupByDriverPendingText">Group by Driver</span>
+                </button>
+            </div>
+            <div id="pending-list" class="space-y-3"></div>
+            <div id="pending-empty" class="hidden text-center py-16 text-gray-500">
+                <span class="material-symbols-outlined text-6xl mb-4">check_circle</span>
+                <p class="text-xl">No pending expenses</p>
+            </div>
+        </div>
+
+        <div id="content-validated" class="tab-content hidden">
+            <!-- Group by Driver Toggle -->
+            <div id="validated-header" class="mb-4 flex items-center justify-between">
+                <button id="groupByDriverBtn" onclick="toggleGroupByDriver()" 
+                    class="px-4 py-2 bg-[#283039] hover:bg-[#3a444e] text-white rounded-lg transition-colors flex items-center gap-2">
+                    <span class="material-symbols-outlined text-lg">group</span>
+                    <span id="groupByDriverText">Group by Driver</span>
+                </button>
+            </div>
+            <div id="validated-list" class="space-y-3"></div>
+            <div id="validated-empty" class="hidden text-center py-16 text-gray-500">
+                <span class="material-symbols-outlined text-6xl mb-4">task_alt</span>
+                <p class="text-xl">No validated expenses</p>
+            </div>
+        </div>
+
+        <div id="content-paid" class="tab-content hidden">
+            <!-- Generate PDFs Button (only shown if there are paid expenses) -->
+            <div id="paid-header" class="hidden mb-4">
+                <button id="generatePDFsBtn" onclick="generateAllPDFs()" 
+                    class="w-full px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2">
+                    <span class="material-symbols-outlined">description</span>
+                    Generate PDF's
+                </button>
+            </div>
+            <div id="paid-list" class="space-y-3"></div>
+            <div id="paid-empty" class="hidden text-center py-16 text-gray-500">
+                <span class="material-symbols-outlined text-6xl mb-4">payments</span>
+                <p class="text-xl">No paid expenses</p>
+            </div>
+        </div>
+
+        <div id="content-returned" class="tab-content hidden">
+            <div id="returned-list" class="space-y-3"></div>
+            <div id="returned-empty" class="hidden text-center py-16 text-gray-500">
+                <span class="material-symbols-outlined text-6xl mb-4">undo</span>
+                <p class="text-xl">No returned expenses</p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Batch Detail Modal -->
+    <div id="batchModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 overflow-y-auto">
+        <div class="min-h-screen px-4 py-8 flex items-center justify-center">
+            <div class="bg-[#1a1f24] rounded-lg w-full max-w-4xl">
+                
+                <!-- Modal Header -->
+                <div class="border-b border-gray-800 px-6 py-4">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-xl font-semibold">Expense Batch Details</h2>
+                        <button onclick="closeModal()" class="text-gray-400 hover:text-white transition-colors">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Modal Content -->
+                <div class="p-6">
+                    
+                    <!-- Batch Info -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                        <div class="bg-[#283039] rounded-lg p-4">
+                            <label class="text-sm text-gray-400 block mb-1">Driver</label>
+                            <p id="modal-driver" class="text-lg font-semibold"></p>
+                        </div>
+                        <div class="bg-[#283039] rounded-lg p-4">
+                            <label class="text-sm text-gray-400 block mb-1">Registration</label>
+                            <div id="modal-reg" class="license-plate text-lg"></div>
+                        </div>
+                        <div class="bg-[#283039] rounded-lg p-4">
+                            <label class="text-sm text-gray-400 block mb-1">Total Amount</label>
+                            <p id="modal-total" class="text-lg font-semibold text-green-500"></p>
+                        </div>
+                        <div class="bg-[#283039] rounded-lg p-4">
+                            <label class="text-sm text-gray-400 block mb-1">Submitted</label>
+                            <p id="modal-date" class="text-lg"></p>
+                        </div>
+                    </div>
+
+                    <!-- Return Notes (if applicable) -->
+                    <div id="modal-return-notes" class="hidden bg-red-900 bg-opacity-20 border border-red-500 rounded-lg p-4 mb-6">
+                        <label class="text-sm text-red-400 block mb-2">Return Reason</label>
+                        <p id="modal-return-text" class="text-white"></p>
+                    </div>
+
+                    <!-- Expenses List -->
+                    <div class="mb-6">
+                        <h3 class="text-lg font-semibold mb-3">Expenses</h3>
+                        <div id="modal-expenses" class="space-y-2"></div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div id="modal-actions" class="flex gap-3">
+                        <!-- Actions will be added based on status -->
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Return Modal -->
+    <div id="returnModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50">
+        <div class="min-h-screen px-4 py-8 flex items-center justify-center">
+            <div class="bg-[#1a1f24] rounded-lg w-full max-w-lg">
+                <div class="border-b border-gray-800 px-6 py-4">
+                    <h2 class="text-xl font-semibold">Return Expense Batch</h2>
+                </div>
+                <div class="p-6">
+                    <label class="text-sm text-gray-400 block mb-2">Reason for Return</label>
+                    <textarea 
+                        id="returnReason" 
+                        rows="4" 
+                        class="w-full bg-[#283039] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-red-500 focus:outline-none"
+                        placeholder="Explain why this batch is being returned..."
+                    ></textarea>
+                    <div class="flex gap-3 mt-4">
+                        <button onclick="closeReturnModal()" class="flex-1 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors">
+                            Cancel
+                        </button>
+                        <button onclick="confirmReturn()" class="flex-1 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors">
+                            Return Batch
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Photo Viewer Modal -->
+    <div id="photoViewer" class="hidden fixed inset-0 bg-black bg-opacity-90 z-50">
+        <div class="w-full h-full flex flex-col max-w-7xl mx-auto">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-6 py-4 bg-[#1a1f24] border-b border-[#283039]">
+                <button onclick="closePhotoViewer()" class="text-white hover:text-gray-300 transition-colors p-2 hover:bg-[#283039] rounded-lg">
+                    <span class="material-symbols-outlined text-2xl">close</span>
+                </button>
+                <h3 class="text-white font-semibold text-lg">View Photos</h3>
+                <div class="w-10"></div>
+            </div>
+            <!-- Photo container -->
+            <div class="flex-1 bg-black flex items-center justify-center" id="photoViewerContent">
+                <!-- Photos will be injected here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentSession = null;
+        let currentUser = null;
+        let allBatches = [];
+        let currentBatch = null;
+        let activeTab = 'pending';
+        let groupByDriver = false; // Toggle for grouping validated expenses by driver
+        let groupByDriverPending = false; // Toggle for grouping pending expenses by driver
+        const notifyError = (message, title = 'Error') => uiDialogs.showAlert({ title, message, tone: 'danger' });
+        const notifyWarning = (message, title = 'Heads Up') => uiDialogs.showAlert({ title, message, tone: 'warning' });
+        const notifySuccess = (message, title = 'Success') => uiDialogs.showAlert({ title, message, tone: 'success' });
+        const notifyInfo = (message, title = 'Notice') => uiDialogs.showAlert({ title, message, tone: 'info' });
+        const getCurrentOfficeId = () => currentUser?.officeId || currentSession?.officeId || null;
+
+        // Initialize function
+        async function initializeExpensesApp() {
+            console.log('=== EXPENSES INITIALIZATION START ===');
+            console.log('Current URL:', window.location.href);
+            
+            try {
+                const session = await window.sotoSession.bootstrap(['office', 'admin']);
+                if (!session) {
+                    console.warn('Session bootstrap failed; redirecting to login.');
+                    window.location.href = '/pages/soto-routes-login.html';
+                    return;
+                }
+
+                currentSession = session;
+                currentUser = { uid: session.uid, ...session };
+
+                try {
+                    const userDoc = await window.getDoc(window.doc(window.db, 'users', session.uid));
+                    if (userDoc.exists()) {
+                        currentUser = { ...currentUser, ...userDoc.data() };
+                    }
+                } catch (profileError) {
+                    console.warn('Unable to load user profile document:', profileError);
+                }
+
+                if (!currentUser || (currentUser.role !== 'office' && currentUser.role !== 'admin')) {
+                    notifyWarning('This page is for office staff only.', 'Access Denied');
+                    window.location.href = '/pages/soto-routes-login.html';
+                    return;
+                }
+
+                if (!getCurrentOfficeId()) {
+                    notifyWarning('No office assigned to your account.', 'Access Denied');
+                    window.location.href = '/pages/soto-routes-login.html';
+                    return;
+                }
+
+                await loadOfficeLogo(getCurrentOfficeId());
+                await initializeNotifications();
+                initializeSearch();
+
+                console.log('Loading expense batches...');
+                await loadAllBatches();
+                document.getElementById('loadingOverlay').style.display = 'none';
+                console.log('Loading complete!');
+            } catch (error) {
+                console.error('Initialization error:', error);
+                notifyError('Error initializing app: ' + error.message);
+                window.location.href = '/pages/soto-routes-login.html';
+            }
+        }
+
+        // Load office logo from Firebase
+        async function loadOfficeLogo(officeId) {
+            if (!officeId) return;
+            
+            try {
+                const officeDoc = await window.getDoc(window.doc(window.db, 'offices', officeId));
+                if (officeDoc.exists()) {
+                    const officeData = officeDoc.data();
+                    const logoImg = document.getElementById('officeLogoImg');
+                    if (logoImg && officeData.logoUrl) {
+                        logoImg.src = officeData.logoUrl;
+                        console.log('Office logo loaded:', officeData.logoUrl);
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading office logo:', error);
+                // Fallback to default logo (already set in HTML)
+            }
+        }
+
+        // Load all expense batches
+        async function loadAllBatches() {
+            try {
+                const officeId = getCurrentOfficeId();
+                if (!officeId) {
+                    console.warn('Unable to load batches without office context.');
+                    allBatches = [];
+                    updateCounts();
+                    displayBatches();
+                    return;
+                }
+
+                console.log('Loading expense batches for officeId:', officeId);
+                
+                // Load batches and expenses in parallel (fixes N+1 query problem)
+                const batchesCollection = window.collection(window.db, 'expenseBatches');
+                const expensesCollection = window.collection(window.db, 'expenses');
+
+                const [batchesSnapshot, expensesSnapshot, legacyBatchesSnapshot, legacyExpensesSnapshot] = await Promise.all([
+                    window.getDocs(window.query(
+                        batchesCollection,
+                        window.where('officeId', '==', officeId)
+                    )),
+                    window.getDocs(window.query(
+                        expensesCollection,
+                        window.where('officeId', '==', officeId)
+                    )),
+                    (async () => {
+                        try {
+                            return await window.getDocs(window.query(
+                                batchesCollection,
+                                window.where('officeId', '==', null)
+                            ));
+                        } catch (legacyError) {
+                            console.warn('Legacy expense batches query failed:', legacyError);
+                            return { docs: [] };
+                        }
+                    })(),
+                    (async () => {
+                        try {
+                            return await window.getDocs(window.query(
+                                expensesCollection,
+                                window.where('officeId', '==', null)
+                            ));
+                        } catch (legacyError) {
+                            console.warn('Legacy expenses query failed:', legacyError);
+                            return { docs: [] };
+                        }
+                    })()
+                ]);
+                
+                console.log('Found batches:', batchesSnapshot.docs.length);
+                console.log('Found expenses:', expensesSnapshot.docs.length);
+                
+                allBatches = [];
+
+                // Group expenses by batchId for efficient lookup
+                const expensesByBatch = {};
+                const expenseDocs = [...expensesSnapshot.docs, ...(legacyExpensesSnapshot?.docs || [])];
+
+                for (const expDoc of expenseDocs) {
+                    const expData = { id: expDoc.id, ...expDoc.data() };
+                    const batchId = expData.batchId;
+
+                    if (expData.officeId && expData.officeId !== officeId) {
+                        continue;
+                    }
+
+                    if (!expData.officeId) {
+                        try {
+                            await window.updateDoc(expDoc.ref, { officeId });
+                            expData.officeId = officeId;
+                        } catch (error) {
+                            console.warn(`Failed to backfill officeId for expense ${expDoc.id}:`, error);
+                            continue;
+                        }
+                    }
+
+                    if (batchId) {
+                        if (!expensesByBatch[batchId]) {
+                            expensesByBatch[batchId] = [];
+                        }
+                        expensesByBatch[batchId].push(expData);
+                    }
+                }
+
+                // Process batches and attach their expenses
+                const batchDocs = [...batchesSnapshot.docs, ...(legacyBatchesSnapshot?.docs || [])];
+
+                for (const doc of batchDocs) {
+                    const rawData = doc.data();
+
+                    if (rawData.officeId && rawData.officeId !== officeId) {
+                        continue;
+                    }
+
+                    const batchData = { id: doc.id, ...rawData };
+
+                    if (!batchData.officeId) {
+                        try {
+                            await window.updateDoc(doc.ref, { officeId });
+                            batchData.officeId = officeId;
+                        } catch (error) {
+                            console.warn(`Failed to backfill officeId for batch ${doc.id}:`, error);
+                            continue;
+                        }
+                    }
+
+                    batchData.expenses = expensesByBatch[doc.id] || [];
+                    allBatches.push(batchData);
+                }
+
+                // Sort by updatedAt descending (client-side)
+                allBatches.sort((a, b) => {
+                    const aTime = a.updatedAt?.toDate ? a.updatedAt.toDate().getTime() : 0;
+                    const bTime = b.updatedAt?.toDate ? b.updatedAt.toDate().getTime() : 0;
+                    return bTime - aTime; // Descending order
+                });
+
+                console.log('Total batches loaded:', allBatches.length);
+                updateCounts();
+                displayBatches();
+            } catch (error) {
+                console.error('Error loading batches:', error);
+                console.error('Error details:', error.message);
+                console.error('Error stack:', error.stack);
+                notifyError('Error loading expense batches: ' + error.message);
+            }
+        }
+
+        // Update counts
+        function updateCounts() {
+            const pending = allBatches.filter(b => b.status === 'pending').length;
+            const validated = allBatches.filter(b => b.status === 'validated').length;
+            const paid = allBatches.filter(b => b.status === 'paid').length;
+            const returned = allBatches.filter(b => b.status === 'returned').length;
+
+            document.getElementById('pending-count').textContent = pending;
+            document.getElementById('validated-count').textContent = validated;
+            document.getElementById('paid-count').textContent = paid;
+            document.getElementById('returned-count').textContent = returned;
+        }
+
+        // Switch tab
+        function switchTab(tab) {
+            activeTab = tab;
+            
+            // Update tab styles
+            document.querySelectorAll('[id^="tab-"]').forEach(btn => {
+                btn.classList.remove('tab-active', 'text-blue-500');
+                btn.classList.add('text-gray-400');
+            });
+            document.getElementById(`tab-${tab}`).classList.add('tab-active', 'text-blue-500');
+            document.getElementById(`tab-${tab}`).classList.remove('text-gray-400');
+
+            // Show/hide content
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
+            document.getElementById(`content-${tab}`).classList.remove('hidden');
+
+            displayBatches();
+        }
+
+        // Calculate working hours between two dates (8am-5pm Mon-Fri only)
+        function calculateWorkingHours(startDate, endDate) {
+            let currentDate = new Date(startDate);
+            let workingHours = 0;
+            
+            while (currentDate < endDate) {
+                const dayOfWeek = currentDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
+                const hour = currentDate.getHours();
+                
+                // Check if it's a weekday (Monday = 1 to Friday = 5)
+                if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+                    // Check if it's within working hours (8am to 5pm)
+                    if (hour >= 8 && hour < 17) {
+                        workingHours += 1;
+                    }
+                }
+                
+                // Move to next hour
+                currentDate.setHours(currentDate.getHours() + 1);
+            }
+            
+            return workingHours;
+        }
+        
+        // Get timer color based on working hours
+        function getTimerColor(hours) {
+            if (hours <= 6) return 'text-green-500';
+            if (hours <= 18) return 'text-orange-500';
+            return 'text-red-500';
+        }
+        
+        // Get timer class based on working hours (for flashing)
+        function getTimerClass(hours) {
+            if (hours > 24) return 'text-red-500 flash-red';
+            return '';
+        }
+        
+        // Toggle group by driver for validated expenses
+        function toggleGroupByDriver() {
+            groupByDriver = !groupByDriver;
+            const btn = document.getElementById('groupByDriverBtn');
+            const text = document.getElementById('groupByDriverText');
+            
+            if (groupByDriver) {
+                btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                btn.classList.remove('bg-[#283039]', 'hover:bg-[#3a444e]');
+                text.textContent = 'Ungroup';
+            } else {
+                btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                btn.classList.add('bg-[#283039]', 'hover:bg-[#3a444e]');
+                text.textContent = 'Group by Driver';
+            }
+            
+            displayBatches();
+        }
+
+        // Toggle group by driver for pending expenses
+        function toggleGroupByDriverPending() {
+            groupByDriverPending = !groupByDriverPending;
+            const btn = document.getElementById('groupByDriverPendingBtn');
+            const text = document.getElementById('groupByDriverPendingText');
+            
+            if (groupByDriverPending) {
+                btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                btn.classList.remove('bg-[#283039]', 'hover:bg-[#3a444e]');
+                text.textContent = 'Ungroup';
+            } else {
+                btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                btn.classList.add('bg-[#283039]', 'hover:bg-[#3a444e]');
+                text.textContent = 'Group by Driver';
+            }
+            
+            displayBatches();
+        }
+
+        // Display batches
+        function displayBatches() {
+            let filtered = allBatches.filter(b => b.status === activeTab);
+            
+            // Handle grouping by driver for validated expenses
+            if (activeTab === 'validated' && groupByDriver) {
+                // Group by driver
+                const driverGroups = {};
+                filtered.forEach(batch => {
+                    const driverId = batch.driverId || batch.driverEmail || 'unknown';
+                    if (!driverGroups[driverId]) {
+                        driverGroups[driverId] = {
+                            driverId: driverId,
+                            driverName: batch.driverName || 'Unknown Driver',
+                            driverEmail: batch.driverEmail || '',
+                            batches: [],
+                            earliestDate: null
+                        };
+                    }
+                    driverGroups[driverId].batches.push(batch);
+                    
+                    // Track earliest submission date
+                    const batchDate = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date(batch.submittedAt);
+                    if (!driverGroups[driverId].earliestDate || batchDate < driverGroups[driverId].earliestDate) {
+                        driverGroups[driverId].earliestDate = batchDate;
+                    }
+                });
+                
+                // Sort drivers by earliest submission date (oldest first)
+                const sortedDrivers = Object.values(driverGroups).sort((a, b) => {
+                    return a.earliestDate - b.earliestDate;
+                });
+                
+                // Render grouped
+                const list = document.getElementById(`${activeTab}-list`);
+                const empty = document.getElementById(`${activeTab}-empty`);
+                
+                if (sortedDrivers.length === 0) {
+                    list.innerHTML = '';
+                    empty.classList.remove('hidden');
+                } else {
+                    empty.classList.add('hidden');
+                    
+                    list.innerHTML = sortedDrivers.map(driverGroup => {
+                        // Calculate total for this driver
+                        const totalAmount = driverGroup.batches.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+                        const totalExpenses = driverGroup.batches.reduce((sum, b) => sum + (b.expenses?.length || 0), 0);
+                        
+                        const batchesHTML = driverGroup.batches.map(batch => {
+                            const date = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
+                            const workingHours = calculateWorkingHours(date, new Date());
+                            const color = getTimerColor(workingHours);
+                            const flashClass = getTimerClass(workingHours);
+                            
+                            return `
+                                <div onclick="openBatchDetail('${batch.id}')" class="bg-[#283039] border border-gray-700 hover:border-gray-600 rounded-lg p-3 cursor-pointer transition-colors ml-4">
+                                    <div class="flex items-start justify-between mb-2">
+                                        <div class="flex-1">
+                                            <p class="text-sm text-gray-300 mb-1">${batch.registration || 'No Reg'}</p>
+                                            <p class="text-xs text-gray-400">${date.toLocaleDateString()}</p>
+                                            <div class="text-xs ${color} ${flashClass} font-semibold mt-1">${workingHours}h since submission</div>
+                                        </div>
+                                        <span class="text-green-400 font-semibold">£${batch.totalAmount?.toFixed(2) || '0.00'}</span>
+                                    </div>
+                                    <div class="text-xs text-gray-500 ml-4">${batch.expenses?.length || 0} expense${batch.expenses?.length !== 1 ? 's' : ''}</div>
+                                </div>
+                            `;
+                        }).join('');
+                        
+                        return `
+                            <div class="mb-6">
+                                <div class="bg-[#1a1f24] border border-gray-800 rounded-lg p-4 mb-3">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <div>
+                                            <p class="font-semibold text-lg">${driverGroup.driverName}</p>
+                                            <p class="text-sm text-gray-400">${driverGroup.driverEmail}</p>
+                                        </div>
+                                        <div class="text-right">
+                                            <p class="text-green-500 font-semibold text-xl">£${totalAmount.toFixed(2)}</p>
+                                            <p class="text-xs text-gray-400">${totalExpenses} expense${totalExpenses !== 1 ? 's' : ''}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="space-y-2">
+                                    ${batchesHTML}
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+                return;
+            }
+            
+            // Handle grouping by driver for pending expenses
+            if (activeTab === 'pending' && groupByDriverPending) {
+                // Group by driver
+                const driverGroups = {};
+                filtered.forEach(batch => {
+                    const driverId = batch.driverId || batch.driverEmail || 'unknown';
+                    if (!driverGroups[driverId]) {
+                        driverGroups[driverId] = {
+                            driverId: driverId,
+                            driverName: batch.driverName || 'Unknown Driver',
+                            driverEmail: batch.driverEmail || '',
+                            batches: [],
+                            earliestDate: null
+                        };
+                    }
+                    driverGroups[driverId].batches.push(batch);
+                    
+                    // Track earliest submission date
+                    const batchDate = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date(batch.submittedAt);
+                    if (!driverGroups[driverId].earliestDate || batchDate < driverGroups[driverId].earliestDate) {
+                        driverGroups[driverId].earliestDate = batchDate;
+                    }
+                });
+                
+                // Sort drivers by earliest submission date (oldest first)
+                const sortedDrivers = Object.values(driverGroups).sort((a, b) => {
+                    return a.earliestDate - b.earliestDate;
+                });
+                
+                // Render grouped
+                const list = document.getElementById(`${activeTab}-list`);
+                const empty = document.getElementById(`${activeTab}-empty`);
+                
+                if (sortedDrivers.length === 0) {
+                    list.innerHTML = '';
+                    empty.classList.remove('hidden');
+                } else {
+                    empty.classList.add('hidden');
+                    
+                    list.innerHTML = sortedDrivers.map(driverGroup => {
+                        // Calculate total for this driver
+                        const totalAmount = driverGroup.batches.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+                        const totalExpenses = driverGroup.batches.reduce((sum, b) => sum + (b.expenses?.length || 0), 0);
+                        
+                        const batchesHTML = driverGroup.batches.map(batch => {
+                            const date = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
+                            const workingHours = calculateWorkingHours(date, new Date());
+                            const color = getTimerColor(workingHours);
+                            const flashClass = getTimerClass(workingHours);
+                            
+                            return `
+                                <div onclick="openBatchDetail('${batch.id}')" class="bg-[#283039] border border-gray-700 hover:border-gray-600 rounded-lg p-3 cursor-pointer transition-colors ml-4">
+                                    <div class="flex items-start justify-between mb-2">
+                                        <div class="flex-1">
+                                            <p class="text-sm text-gray-300 mb-1">${batch.registration || 'No Reg'}</p>
+                                            <p class="text-xs text-gray-400">${date.toLocaleDateString()}</p>
+                                            <div class="text-xs ${color} ${flashClass} font-semibold mt-1">${workingHours}h since submission</div>
+                                        </div>
+                                        <span class="text-green-400 font-semibold">£${batch.totalAmount?.toFixed(2) || '0.00'}</span>
+                                    </div>
+                                    <div class="text-xs text-gray-500 ml-4">${batch.expenses?.length || 0} expense${batch.expenses?.length !== 1 ? 's' : ''}</div>
+                                </div>
+                            `;
+                        }).join('');
+                        
+                        return `
+                            <div class="mb-6">
+                                <div class="bg-[#1a1f24] border border-gray-800 rounded-lg p-4 mb-3">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <div>
+                                            <p class="font-semibold text-lg">${driverGroup.driverName}</p>
+                                            <p class="text-sm text-gray-400">${driverGroup.driverEmail}</p>
+                                        </div>
+                                        <div class="text-right">
+                                            <p class="text-green-500 font-semibold text-xl">£${totalAmount.toFixed(2)}</p>
+                                            <p class="text-xs text-gray-400">${totalExpenses} expense${totalExpenses !== 1 ? 's' : ''}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="space-y-2">
+                                    ${batchesHTML}
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+                return;
+            }
+            
+            // Regular display (not grouped)
+            // Sort pending by oldest to newest
+            if (activeTab === 'pending') {
+                filtered.sort((a, b) => {
+                    const aTime = a.submittedAt?.toDate ? a.submittedAt.toDate().getTime() : 0;
+                    const bTime = b.submittedAt?.toDate ? b.submittedAt.toDate().getTime() : 0;
+                    return aTime - bTime; // Ascending order (oldest first)
+                });
+            }
+            
+            const list = document.getElementById(`${activeTab}-list`);
+            const empty = document.getElementById(`${activeTab}-empty`);
+
+            if (filtered.length === 0) {
+                list.innerHTML = '';
+                empty.classList.remove('hidden');
+            } else {
+                empty.classList.add('hidden');
+                
+                // Show/hide generate PDFs button for paid tab
+                if (activeTab === 'paid') {
+                    document.getElementById('paid-header').classList.remove('hidden');
+                } else {
+                    document.getElementById('paid-header').classList.add('hidden');
+                }
+                
+                // Filter out transferred from paid tab (only show 'paid', not 'transferred')
+            if (activeTab === 'paid') {
+                filtered = filtered.filter(b => b.status === 'paid');
+            }
+            
+            list.innerHTML = filtered.map(batch => {
+                    const date = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
+                    
+                    // Calculate working hours for pending and validated expenses
+                    let timerHTML = '';
+                    if (activeTab === 'pending' || activeTab === 'validated') {
+                        const workingHours = calculateWorkingHours(date, new Date());
+                        const color = getTimerColor(workingHours);
+                        const flashClass = getTimerClass(workingHours);
+                        timerHTML = `<div class="text-xs ${color} ${flashClass} font-semibold mt-1">${workingHours}h since submission</div>`;
+                    }
+                    
+                    return `
+                        <div onclick="openBatchDetail('${batch.id}')" class="bg-[#1a1f24] border border-gray-800 hover:border-gray-700 rounded-lg p-4 cursor-pointer transition-colors">
+                            <div class="flex items-start justify-between mb-3">
+                                <div>
+                                    <p class="font-semibold text-lg mb-1">${batch.driverName || 'Unknown Driver'}</p>
+                                    <p class="text-sm text-gray-400">${batch.driverEmail || ''}</p>
+                                    ${timerHTML}
+                                </div>
+                                <div class="license-plate">${batch.registration}</div>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-gray-400 text-sm">${batch.expenses?.length || 0} expense${batch.expenses?.length !== 1 ? 's' : ''} • ${date.toLocaleDateString()}</span>
+                                <span class="text-green-500 font-semibold text-xl">£${batch.totalAmount?.toFixed(2) || '0.00'}</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        // Open batch detail
+        function openBatchDetail(batchId) {
+            currentBatch = allBatches.find(b => b.id === batchId);
+            if (!currentBatch) return;
+
+            console.log('Opening batch:', currentBatch);
+            console.log('Driver name:', currentBatch.driverName);
+            console.log('Expenses:', currentBatch.expenses);
+
+            const date = currentBatch.submittedAt?.toDate ? currentBatch.submittedAt.toDate() : new Date();
+            
+            document.getElementById('modal-driver').textContent = currentBatch.driverName || 'Unknown Driver';
+            document.getElementById('modal-reg').textContent = currentBatch.registration;
+            document.getElementById('modal-total').textContent = `£${currentBatch.totalAmount?.toFixed(2) || '0.00'}`;
+            document.getElementById('modal-date').textContent = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+
+            // Show return notes if returned
+            if (currentBatch.status === 'returned' && currentBatch.returnNotes) {
+                document.getElementById('modal-return-notes').classList.remove('hidden');
+                document.getElementById('modal-return-text').textContent = currentBatch.returnNotes;
+            } else {
+                document.getElementById('modal-return-notes').classList.add('hidden');
+            }
+
+            // Display expenses
+            const categoryEmojis = {
+                fuel: '⛽',
+                parking: '🅿️',
+                toll: '🛣️',
+                food: '🍔',
+                maintenance: '🔧',
+                other: '📝'
+            };
+
+            document.getElementById('modal-expenses').innerHTML = currentBatch.expenses.map(exp => `
+                <div class="bg-[#283039] rounded-lg p-3 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <span class="text-2xl">${categoryEmojis[exp.category] || '📝'}</span>
+                        <div>
+                            <div class="font-medium capitalize">${exp.category}</div>
+                            ${exp.photos && exp.photos.length > 0 ? `
+                                <button onclick="viewExpensePhotos(${currentBatch.expenses.indexOf(exp)})" class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1">
+                                    <span class="material-symbols-outlined text-xs">photo_camera</span>
+                                    ${exp.photos.length} photo${exp.photos.length !== 1 ? 's' : ''}
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                    <span class="font-semibold text-green-500">£${parseFloat(exp.amount).toFixed(2)}</span>
+                </div>
+            `).join('');
+
+            // Show appropriate actions
+            const actions = document.getElementById('modal-actions');
+            if (currentBatch.status === 'pending') {
+                actions.innerHTML = `
+                    <button onclick="returnBatch()" class="flex-1 py-3 bg-red-600 hover:bg-red-700 rounded-lg font-semibold transition-colors">
+                        <span class="material-symbols-outlined text-sm">undo</span>
+                        Return for Review
+                    </button>
+                    <button onclick="validateBatch()" class="flex-1 py-3 bg-green-600 hover:bg-green-700 rounded-lg font-semibold transition-colors">
+                        <span class="material-symbols-outlined text-sm">check_circle</span>
+                        Validate
+                    </button>
+                `;
+            } else if (currentBatch.status === 'validated') {
+                actions.innerHTML = `
+                    <button onclick="markAsPaid()" class="flex-1 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold transition-colors">
+                        <span class="material-symbols-outlined text-sm">payments</span>
+                        Mark as Paid
+                    </button>
+                `;
+            } else {
+                actions.innerHTML = '';
+            }
+
+            document.getElementById('batchModal').classList.remove('hidden');
+        }
+
+        // Validate batch
+        async function validateBatch() {
+            const confirmed = await showConfirmation({
+                title: 'Validate Expense Batch',
+                message: 'Are you sure you want to validate this expense batch?',
+                confirmText: 'Validate',
+                cancelText: 'Cancel',
+                confirmClass: 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500'
+            });
+
+            if (!confirmed) return;
+
+            try {
+                await window.updateDoc(window.doc(window.db, 'expenseBatches', currentBatch.id), {
+                    status: 'validated',
+                    validatedAt: window.serverTimestamp(),
+                    validatedBy: currentUser.uid,
+                    updatedAt: window.serverTimestamp()
+                });
+
+                closeModal();
+                await loadAllBatches();
+            } catch (error) {
+                console.error('Error validating batch:', error);
+                notifyError('Error validating batch. Please try again.');
+            }
+        }
+
+        // Return batch
+        function returnBatch() {
+            document.getElementById('returnModal').classList.remove('hidden');
+        }
+
+        // Confirm return
+        async function confirmReturn() {
+            const reason = document.getElementById('returnReason').value.trim();
+            if (!reason) {
+                notifyWarning('Please provide a reason for returning this batch.', 'Action Required');
+                return;
+            }
+
+            try {
+                await window.updateDoc(window.doc(window.db, 'expenseBatches', currentBatch.id), {
+                    status: 'returned',
+                    returnNotes: reason,
+                    returnedAt: window.serverTimestamp(),
+                    returnedBy: currentUser.uid,
+                    updatedAt: window.serverTimestamp()
+                });
+
+            notifySuccess('Batch returned to the driver.');
+                closeReturnModal();
+                closeModal();
+                await loadAllBatches();
+            } catch (error) {
+                console.error('Error returning batch:', error);
+            notifyError('Error returning batch. Please try again.');
+            }
+        }
+
+        // Mark as paid
+        async function markAsPaid() {
+            const confirmed = await showConfirmation({
+                title: 'Mark Expense Batch as Paid',
+                message: 'Confirm that this expense batch has been paid?',
+                confirmText: 'Mark as Paid',
+                cancelText: 'Cancel',
+                confirmClass: 'bg-green-600 hover:bg-green-700 focus:ring-green-500'
+            });
+
+            if (!confirmed) return;
+
+            try {
+                await window.updateDoc(window.doc(window.db, 'expenseBatches', currentBatch.id), {
+                    status: 'paid',
+                    paidAt: window.serverTimestamp(),
+                    paidBy: currentUser.uid,
+                    updatedAt: window.serverTimestamp()
+                });
+
+                closeModal();
+                await loadAllBatches();
+            } catch (error) {
+                console.error('Error updating batch:', error);
+                notifyError('Error updating batch. Please try again.');
+            }
+        }
+
+        // View photos for an expense
+        async function viewExpensePhotos(expenseIndex) {
+            const expense = currentBatch.expenses[expenseIndex];
+            if (!expense || !expense.photos || expense.photos.length === 0) {
+                return;
+            }
+
+            const viewer = document.getElementById('photoViewer');
+            const content = document.getElementById('photoViewerContent');
+            if (!viewer || !content) {
+                console.error('Photo viewer elements not found.');
+                return;
+            }
+            
+            // Photos are URLs (from Firebase Storage) - display with beautiful styling
+            content.innerHTML = expense.photos.map((url, index) => `
+                <div class="w-full max-w-4xl mx-auto">
+                    <div class="bg-[#1a1f24] rounded-xl p-4 shadow-2xl border border-[#283039]">
+                        <img 
+                            src="${url}" 
+                            alt="Expense photo ${index + 1}" 
+                            class="w-full h-auto rounded-lg shadow-lg object-contain max-h-[70vh] mx-auto"
+                            loading="lazy"
+                            style="display: block;"
+                        >
+                        <div class="text-center mt-3 text-sm text-gray-400">
+                            Photo ${index + 1} of ${expense.photos.length}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            viewer.classList.remove('hidden');
+        }
+
+        // Close photo viewer
+        function closePhotoViewer() {
+            const viewer = document.getElementById('photoViewer');
+            const content = document.getElementById('photoViewerContent');
+            if (viewer) {
+                viewer.classList.add('hidden');
+            }
+            if (content) {
+                content.innerHTML = '';
+            }
+        }
+
+        // Close photo viewer on Escape key
+        document.addEventListener('keydown', function(e) {
+            const viewer = document.getElementById('photoViewer');
+            if (e.key === 'Escape' && viewer && !viewer.classList.contains('hidden')) {
+                closePhotoViewer();
+            }
+        });
+
+        // Close modals
+        function closeModal() {
+            document.getElementById('batchModal').classList.add('hidden');
+            currentBatch = null;
+        }
+
+        function closeReturnModal() {
+            document.getElementById('returnModal').classList.add('hidden');
+            document.getElementById('returnReason').value = '';
+        }
+
+        // Logout
+        async function logout() {
+            try {
+                await window.signOut(window.auth);
+            } catch (error) {
+                console.warn('Logout error (Firebase signOut):', error);
+            } finally {
+                window.sotoSession?.clearSession();
+                window.location.href = '/pages/soto-routes-login.html';
+            }
+        }
+
+        // Helper functions for navigation
+        async function showNotifications() {
+            const dropdown = document.getElementById('notificationDropdown');
+            if (!dropdown) return;
+            
+            // Toggle dropdown visibility
+            dropdown.classList.toggle('hidden');
+            
+            if (!dropdown.classList.contains('hidden')) {
+                // Load and display notifications
+                await loadNotifications();
+            }
+        }
+
+        function toggleProfileDropdown() {
+            const dropdown = document.getElementById('profileDropdown');
+            dropdown.classList.toggle('hidden');
+        }
+
+        function showChangePassword() {
+            // TODO: Implement change password
+            console.log('Change password clicked');
+        }
+
+        async function markBatchProcessed(batch) {
+            const processedAt = new Date();
+            if (!batch || !batch.id) {
+                console.warn('Unable to mark batch processed: missing batch or ID', batch);
+                batch.processedAt = processedAt;
+                return processedAt;
+            }
+
+            try {
+                await window.updateDoc(window.doc(window.db, 'expenseBatches', batch.id), {
+                    processedAt: window.serverTimestamp(),
+                    updatedAt: window.serverTimestamp()
+                });
+            } catch (error) {
+                console.error(`Error marking batch ${batch.id} as processed:`, error);
+            }
+
+            batch.processedAt = processedAt;
+            return processedAt;
+        }
+
+        // Generate PDFs for all paid expenses
+        async function generateAllPDFs() {
+            const paidBatches = allBatches.filter(b => b.status === 'paid');
+            
+            if (paidBatches.length === 0) {
+                notifyInfo('There are no paid expenses available for PDF generation.', 'Nothing To Export');
+                return;
+            }
+
+            const button = document.getElementById('generatePDFsBtn');
+            const originalText = button.innerHTML;
+            
+            // Check if File System Access API is supported
+            if (!('showDirectoryPicker' in window)) {
+                // Fallback: Ask user if they want to download ZIP to Downloads folder
+                const useDownloads = await showConfirmation({
+                    title: 'Download ZIP Instead?',
+                    message: 'Your browser does not support selecting folders.\n\nWould you like to download a ZIP file to your Downloads folder instead?\n\n(For folder selection, please use Chrome or Edge)',
+                    confirmText: 'Download ZIP',
+                    cancelText: 'Cancel',
+                    tone: 'info'
+                });
+                
+                if (useDownloads) {
+                    await downloadAllPDFsAsZIP(paidBatches, button, originalText);
+                }
+                return;
+            }
+
+            try {
+                button.disabled = true;
+                button.innerHTML = '<span class="material-symbols-outlined animate-spin">hourglass_empty</span> Selecting folder...';
+                
+                // Ask user to select a folder
+                const directoryHandle = await window.showDirectoryPicker({
+                    mode: 'readwrite'
+                });
+                
+                button.innerHTML = '<span class="material-symbols-outlined animate-spin">hourglass_empty</span> Generating PDFs...';
+                
+                let processed = 0;
+                let transferred = 0;
+                let total = paidBatches.length;
+                
+                // Process each paid batch
+                for (const batch of paidBatches) {
+                    try {
+                        await markBatchProcessed(batch);
+                        await generateAndSaveExpensePDF(batch, directoryHandle);
+                        // Mark as transferred after successful generation (auto-delete in 5 days / 120 hours)
+                        const deleteAt = new Date();
+                        deleteAt.setHours(deleteAt.getHours() + 120); // 120 hours = 5 days
+                        
+                        await window.updateDoc(window.doc(window.db, 'expenseBatches', batch.id), {
+                            status: 'transferred',
+                            transferredAt: window.serverTimestamp(),
+                            deleteAt: deleteAt,
+                            updatedAt: window.serverTimestamp()
+                        });
+                        transferred++;
+                        processed++;
+                        button.innerHTML = `<span class="material-symbols-outlined animate-spin">hourglass_empty</span> Processing ${processed}/${total}...`;
+                    } catch (error) {
+                        console.error(`Error processing batch ${batch.registration}:`, error);
+                        // Continue with next batch
+                    }
+                }
+                
+                button.innerHTML = '<span class="material-symbols-outlined">check_circle</span> Complete!';
+                setTimeout(() => {
+                    button.disabled = false;
+                    button.innerHTML = originalText;
+                }, 2000);
+                
+                // Reload batches to reflect transferred status
+                await loadAllBatches();
+                
+                notifySuccess(`Successfully generated and transferred ${transferred} out of ${total} expense PDFs!`, 'PDF Export Complete');
+                
+            } catch (error) {
+                if (error.name === 'AbortError' || error.message?.includes('canceled')) {
+                    // User cancelled folder selection - offer Downloads fallback
+                    const useDownloads = await showConfirmation({
+                        title: 'Download ZIP Instead?',
+                        message: 'Folder selection cancelled.\n\nWould you like to download a ZIP file to your Downloads folder instead?',
+                        confirmText: 'Download ZIP',
+                        cancelText: 'Cancel',
+                        tone: 'warning'
+                    });
+                    if (useDownloads) {
+                        await downloadAllPDFsAsZIP(paidBatches, button, originalText);
+                    } else {
+                        button.disabled = false;
+                        button.innerHTML = originalText;
+                    }
+                    return;
+                }
+                console.error('Error generating PDFs:', error);
+                notifyError('Error generating PDFs: ' + error.message);
+                button.disabled = false;
+                button.innerHTML = originalText;
+            }
+        }
+
+        // Generate PDF and save to folder structure (simplified: date/driverName/registration/)
+        async function generateAndSaveExpensePDF(batch, rootDirectoryHandle) {
+            // Get payment date for folder structure (use day's date)
+            const paymentDate = batch.paidAt?.toDate ? batch.paidAt.toDate() : 
+                               (batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date());
+            
+            const year = paymentDate.getFullYear();
+            const month = String(paymentDate.getMonth() + 1).padStart(2, '0');
+            const day = String(paymentDate.getDate()).padStart(2, '0');
+            
+            // Date folder name: DD_MM_YYYY
+            const dateFolderName = `${day}_${month}_${year}`;
+            
+            // Clean driver name for folder
+            const driverName = (batch.driverName || 'Unknown_Driver')
+                .replace(/[\/\\:]/g, '-')
+                .replace(/\s+/g, '_');
+            
+            // Clean registration for folder
+            const cleanedReg = batch.registration
+                .replace(/[\/\\:]/g, '-')
+                .replace(/\s+/g, '_');
+            
+            // Create simplified folder structure: dateFolderName/driverName/registration/
+            let currentHandle = rootDirectoryHandle;
+            
+            // Date folder
+            currentHandle = await getOrCreateFolder(currentHandle, dateFolderName);
+            // Driver folder
+            currentHandle = await getOrCreateFolder(currentHandle, driverName);
+            // Registration folder
+            currentHandle = await getOrCreateFolder(currentHandle, cleanedReg);
+            
+            // Generate PDF
+            const pdfBlob = await generateExpensePDF(batch);
+            
+            // Save PDF
+            const driverNameForFile = driverName.replace(/_/g, ' ');
+            const pdfFileName = `${cleanedReg}_${driverNameForFile}.pdf`;
+            const pdfFileHandle = await currentHandle.getFileHandle(pdfFileName, { create: true });
+            const pdfWritable = await pdfFileHandle.createWritable();
+            await pdfWritable.write(pdfBlob);
+            await pdfWritable.close();
+            
+            // Download and save photos
+            let photoIndex = 1;
+            for (const expense of batch.expenses || []) {
+                if (expense.photos && expense.photos.length > 0) {
+                    for (const photoURL of expense.photos) {
+                        try {
+                            // Fetch photo from Firebase Storage
+                            const response = await fetch(photoURL);
+                            const photoBlob = await response.blob();
+                            
+                            // Save photo
+                            const photoFileName = `photo_${photoIndex}.jpg`;
+                            const photoFileHandle = await currentHandle.getFileHandle(photoFileName, { create: true });
+                            const photoWritable = await photoFileHandle.createWritable();
+                            await photoWritable.write(photoBlob);
+                            await photoWritable.close();
+                            
+                            photoIndex++;
+                        } catch (error) {
+                            console.error('Error saving photo:', photoURL, error);
+                        }
+                    }
+                }
+            }
+            
+            console.log(`Saved PDF and photos for batch ${batch.registration} to folder structure`);
+        }
+
+        // Download all PDFs as ZIP (fallback for browsers without File System Access API)
+        async function downloadAllPDFsAsZIP(paidBatches, button, originalText) {
+            try {
+                button.disabled = true;
+                button.innerHTML = '<span class="material-symbols-outlined animate-spin">hourglass_empty</span> Generating ZIP...';
+                
+                const zip = new JSZip();
+                let processed = 0;
+                let transferred = 0;
+                const total = paidBatches.length;
+                
+                // Process each paid batch
+                for (const batch of paidBatches) {
+                    button.innerHTML = `<span class="material-symbols-outlined animate-spin">hourglass_empty</span> Processing ${processed + 1}/${total}...`;
+                    
+                    // Get payment date for folder structure
+                    const paymentDate = batch.paidAt?.toDate ? batch.paidAt.toDate() : 
+                                       (batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date());
+                    
+                    const year = paymentDate.getFullYear();
+                    const month = String(paymentDate.getMonth() + 1).padStart(2, '0');
+                    const day = String(paymentDate.getDate()).padStart(2, '0');
+                    const dateFolderName = `${day}_${month}_${year}`;
+                    
+                    // Clean driver name
+                    const driverName = (batch.driverName || 'Unknown_Driver')
+                        .replace(/[\/\\:]/g, '-')
+                        .replace(/\s+/g, '_');
+                    
+                    // Clean registration
+                    const cleanedReg = batch.registration
+                        .replace(/[\/\\:]/g, '-')
+                        .replace(/\s+/g, '_');
+                    
+                    // Folder path: dateFolderName/driverName/cleanedReg/
+                    const folderPath = `${dateFolderName}/${driverName}/${cleanedReg}/`;
+                    
+                    // Generate PDF
+                    await markBatchProcessed(batch);
+                    const pdfBlob = await generateExpensePDF(batch);
+                    
+                    // Add PDF to ZIP
+                    const driverNameForFile = driverName.replace(/_/g, ' ');
+                    const pdfFileName = `${cleanedReg}_${driverNameForFile}.pdf`;
+                    zip.file(folderPath + pdfFileName, pdfBlob);
+                    
+                    // Download and add photos
+                    let photoIndex = 1;
+                    for (const expense of batch.expenses || []) {
+                        if (expense.photos && expense.photos.length > 0) {
+                            for (const photoURL of expense.photos) {
+                                try {
+                                    const response = await fetch(photoURL);
+                                    const photoBlob = await response.blob();
+                                    zip.file(folderPath + `photo_${photoIndex}.jpg`, photoBlob);
+                                    photoIndex++;
+                                } catch (error) {
+                                    console.error('Error downloading photo:', photoURL, error);
+                                }
+                            }
+                        }
+                    }
+                    
+                    processed++;
+                }
+                
+                // Generate and download ZIP
+                button.innerHTML = '<span class="material-symbols-outlined animate-spin">hourglass_empty</span> Creating ZIP...';
+                const zipBlob = await zip.generateAsync({ type: 'blob' });
+                const url = URL.createObjectURL(zipBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Expense_Reports_${new Date().toISOString().split('T')[0]}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                // Mark all batches as transferred after successful ZIP download
+                button.innerHTML = '<span class="material-symbols-outlined animate-spin">hourglass_empty</span> Updating status...';
+                for (const batch of paidBatches) {
+                    try {
+                        // Mark as transferred (auto-delete in 5 days / 120 hours)
+                        const deleteAt = new Date();
+                        deleteAt.setHours(deleteAt.getHours() + 120); // 120 hours = 5 days
+                        
+                        await window.updateDoc(window.doc(window.db, 'expenseBatches', batch.id), {
+                            status: 'transferred',
+                            transferredAt: window.serverTimestamp(),
+                            deleteAt: deleteAt,
+                            updatedAt: window.serverTimestamp()
+                        });
+                        transferred++;
+                    } catch (error) {
+                        console.error(`Error marking batch ${batch.id} as transferred:`, error);
+                    }
+                }
+                
+                // Reload batches to reflect transferred status
+                await loadAllBatches();
+                
+                button.innerHTML = '<span class="material-symbols-outlined">check_circle</span> Complete!';
+                setTimeout(() => {
+                    button.disabled = false;
+                    button.innerHTML = originalText;
+                }, 2000);
+                
+                notifySuccess(`Successfully generated and transferred ${transferred} expense PDFs!`, 'PDF Export Complete');
+            } catch (error) {
+                console.error('Error generating ZIP:', error);
+                notifyError('Error generating ZIP: ' + error.message);
+                button.disabled = false;
+                button.innerHTML = originalText;
+            }
+        }
+
+        // Helper function to get or create a folder
+        async function getOrCreateFolder(parentHandle, folderName) {
+            const finalName = sanitizeName(folderName, { fallbackPrefix: 'Folder' });
+
+            if (finalName !== folderName) {
+                console.warn(`Sanitized folder name from "${folderName}" to "${finalName}"`);
+            }
+
+            try {
+                return await parentHandle.getDirectoryHandle(finalName, { create: true });
+            } catch (error) {
+                console.error(`Error creating folder ${folderName}:`, error);
+                throw error;
+            }
+        }
+
+        // Generate PDF for expense batch (matching app layout exactly)
+        async function generateExpensePDF(batch) {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // Get dates
+            const paymentDate = batch.paidAt?.toDate ? batch.paidAt.toDate() : 
+                               (batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date());
+            const submissionDate = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
+            const validationDate = batch.validatedAt?.toDate ? batch.validatedAt.toDate() : null;
+            const processedDate = batch.processedAt?.toDate
+                ? batch.processedAt.toDate()
+                : (batch.processedAt instanceof Date
+                    ? batch.processedAt
+                    : (batch.processedAt ? new Date(batch.processedAt) : null));
+            
+            // Format dates (medium date style with short time)
+            const formatDate = (date) => {
+                if (!date) return 'Not set';
+                const options = { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                };
+                return date.toLocaleDateString('en-GB', options);
+            };
+            
+            const ptToMm = 0.352778; // Conversion factor: 1pt = 0.352778mm
+            let y = 32 * ptToMm; // Start at 32pt = 11.3mm (matching app)
+            
+            // Title - centered, 28pt bold
+            doc.setFontSize(28);
+            doc.setFont(undefined, 'bold');
+            const titleWidth = doc.getTextWidth('Expense Report');
+            doc.text('Expense Report', (210 - titleWidth) / 2, y);
+            y += 24 * ptToMm; // 24pt = 8.5mm
+            
+            // Information section - 16pt medium weight
+            doc.setFontSize(16);
+            doc.setFont(undefined, 'normal');
+            const infoStartX = 48 * ptToMm; // 48pt left margin = 17mm (matching app)
+            doc.text(`Registration: ${batch.registration}`, infoStartX, y);
+            y += 24 * ptToMm; // 24pt = 8.5mm
+            doc.text(`Driver: ${batch.driverName || 'Unknown'}`, infoStartX, y);
+            y += 24 * ptToMm;
+            doc.text(`Submitted on: ${formatDate(submissionDate)}`, infoStartX, y);
+            y += 24 * ptToMm;
+            doc.text(`Validated on: ${validationDate ? formatDate(validationDate) : 'Not validated'}`, infoStartX, y);
+            y += 24 * ptToMm;
+            doc.text(`Paid on: ${paymentDate ? formatDate(paymentDate) : 'Not paid'}`, infoStartX, y);
+            y += 24 * ptToMm;
+            doc.text(`Processed on: ${processedDate ? formatDate(processedDate) : 'Not processed'}`, infoStartX, y);
+            y += 28 * ptToMm; // 28pt = 9.9mm before table
+            
+            // Table setup (matching app dimensions)
+            // App uses: pageWidth = 595.2pt (A4), left margin = 48pt, tableWidth = 595.2 - 96 = 499.2pt
+            // Column 0 (Category) = 120pt, remaining 5 columns = (499.2 - 120) / 5 = 75.84pt each
+            // Converting to mm (1pt = 0.352778mm): col0 = 42.33mm, colRest = 26.75mm each
+            const tableStartY = y;
+            const pageWidth = 210; // A4 width in mm
+            const leftMargin = 48 * 0.352778; // 48pt in mm ≈ 17mm
+            const tableWidth = pageWidth - (leftMargin * 2); // Total width minus margins
+            const col0 = 42.33; // Category column in mm
+            const colRest = (tableWidth - col0) / 5; // Remaining 5 columns equally divided
+            
+            // Category normalization map
+            const categoryMap = {
+                'fuel': 'Fuel',
+                'charge': 'Charge',
+                'train': 'Train',
+                'train fare': 'Train',
+                'bus': 'Bus',
+                'taxi': 'Taxi',
+                'car wash': 'Car Wash',
+                'carwash': 'Car Wash',
+                'toll': 'Tolls',
+                'tolls': 'Tolls',
+                'other': 'Other'
+            };
+            
+            const categories = ['Fuel', 'Charge', 'Train', 'Bus', 'Taxi', 'Car Wash', 'Tolls', 'Other'];
+            
+            // Group expenses by normalized category
+            const expensesByCategory = {};
+            batch.expenses?.forEach(exp => {
+                const rawCat = (exp.category || 'other').trim().toLowerCase();
+                const normalizedCat = categoryMap[rawCat] || 'Other';
+                if (!expensesByCategory[normalizedCat]) {
+                    expensesByCategory[normalizedCat] = [];
+                }
+                expensesByCategory[normalizedCat].push(exp);
+            });
+            
+            // Create table data matching app format
+            const tableData = [];
+            const headers = ['', '1', '2', '3', '4', 'TOTAL'];
+            
+            // Add header row
+            tableData.push(headers);
+            
+            // Add category rows
+            categories.forEach(category => {
+                const categoryExpenses = expensesByCategory[category] || [];
+                const row = [category];
+                
+                // Add up to 4 individual expenses
+                for (let i = 0; i < 4; i++) {
+                    if (i < categoryExpenses.length) {
+                        row.push(`£${parseFloat(categoryExpenses[i].amount || 0).toFixed(2)}`);
+                    } else {
+                        row.push('');
+                    }
+                }
+                
+                // Calculate category total
+                const categoryTotal = categoryExpenses.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0);
+                row.push(categoryTotal > 0 ? `£${categoryTotal.toFixed(2)}` : '');
+                
+                tableData.push(row);
+            });
+            
+            // Add total row
+            const totalRow = ['TOTAL', '', '', '', '', `£${batch.totalAmount?.toFixed(2) || '0.00'}`];
+            tableData.push(totalRow);
+            
+            // Draw table using autoTable with custom styling to match app
+            doc.autoTable({
+                startY: tableStartY,
+                head: [tableData[0]],
+                body: tableData.slice(1),
+                headStyles: { 
+                    fillColor: [217, 217, 217], // Gray background (0.85 white)
+                    textColor: 0,
+                    fontStyle: 'bold',
+                    fontSize: 15
+                },
+                bodyStyles: {
+                    fontSize: 15,
+                    textColor: 0
+                },
+                alternateRowStyles: {
+                    fillColor: [245, 245, 245] // Very light gray (0.96 white)
+                },
+                columnStyles: {
+                    0: { cellWidth: col0, fontStyle: 'bold' },
+                    1: { cellWidth: colRest, halign: 'left' },
+                    2: { cellWidth: colRest, halign: 'left' },
+                    3: { cellWidth: colRest, halign: 'left' },
+                    4: { cellWidth: colRest, halign: 'left' },
+                    5: { cellWidth: colRest, halign: 'left', fontStyle: 'bold' }
+                },
+                styles: {
+                    lineWidth: 1,
+                    lineColor: 0
+                },
+                margin: { left: infoStartX }
+            });
+            
+            y = doc.lastAutoTable.finalY + 40;
+            
+            // Generate expense summary lines (matching app format)
+            const primaryCategories = ['Fuel', 'Charge', 'Car Wash'];
+            const secondaryCategories = ['Bus', 'Train', 'Taxi', 'Tolls', 'Other'];
+            
+            // Primary line (bold)
+            const primaryAmounts = [];
+            primaryCategories.forEach(cat => {
+                const exp = expensesByCategory[cat] || [];
+                if (exp.length > 0) {
+                    const amounts = exp.map(e => `£${parseFloat(e.amount || 0).toFixed(2)}`).join(' + ');
+                    primaryAmounts.push(`${cat}:(${amounts})`);
+                }
+            });
+            
+            if (primaryAmounts.length > 0) {
+                doc.setFontSize(13);
+                doc.setFont(undefined, 'bold');
+                doc.text(primaryAmounts.join('  '), infoStartX, y);
+                y += 24 * ptToMm;
+            }
+            
+            // Secondary line (regular)
+            const secondaryAmounts = [];
+            secondaryCategories.forEach(cat => {
+                const exp = expensesByCategory[cat] || [];
+                if (exp.length > 0) {
+                    const amounts = exp.map(e => `£${parseFloat(e.amount || 0).toFixed(2)}`).join(' + ');
+                    secondaryAmounts.push(`${cat}: (${amounts})`);
+                }
+            });
+            
+            if (secondaryAmounts.length > 0) {
+                doc.setFontSize(14);
+                doc.setFont(undefined, 'normal');
+                doc.text(secondaryAmounts.join(' '), infoStartX, y);
+                y += 24 * ptToMm;
+            }
+            
+            // Total line (bold)
+            doc.setFontSize(16);
+            doc.setFont(undefined, 'bold');
+            doc.text(`Total: £${batch.totalAmount?.toFixed(2) || '0.00'}`, infoStartX, y);
+            y += 32 * ptToMm;
+            
+            // Footer text
+            doc.setFontSize(13);
+            doc.setFont(undefined, 'italic');
+            doc.setTextColor(105, 105, 105); // darkGray
+            const footerText = 'This report is for client records. Please retain for your files.\n\nIf you have any questions, contact SOTO support.';
+            doc.text(footerText, infoStartX, y, { maxWidth: 210 - (infoStartX * 2), align: 'left' });
+            
+            // Bottom footer
+            doc.setFontSize(12);
+            doc.setTextColor(128, 128, 128); // gray
+            doc.text('Expense report generated by - SOTORoutes', 
+                    105, 280, { align: 'center' });
+            
+            return doc.output('blob');
+        }
+
+
+        // Check for expenses over 24 working hours old
+        async function checkOldExpenses(officeId) {
+            try {
+                const batchesQuery = window.query(
+                    window.collection(window.db, 'expenseBatches'),
+                    window.where('officeId', '==', officeId)
+                );
+                
+                const batchesSnapshot = await window.getDocs(batchesQuery);
+                const now = new Date();
+                let oldExpenseCount = 0;
+                
+                batchesSnapshot.docs.forEach(doc => {
+                    const batch = doc.data();
+                    if (batch.status === 'pending' || batch.status === 'validated') {
+                        const submittedAt = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date(batch.submittedAt);
+                        if (submittedAt) {
+                            const workingHours = calculateWorkingHours(submittedAt, now);
+                            if (workingHours > 24) {
+                                oldExpenseCount++;
+                            }
+                        }
+                    }
+                });
+                
+                return oldExpenseCount;
+            } catch (error) {
+                console.error('Error checking old expenses:', error);
+                return 0;
+            }
+        }
+
+        // Update notification count across all office pages
+        async function updateNotificationCount() {
+            try {
+                console.log('[EXPENSES] updateNotificationCount called');
+                const officeId = getCurrentOfficeId();
+                if (!officeId) {
+                    console.log('[EXPENSES] No office context available for notifications');
+                    return;
+                }
+                
+                console.log('[EXPENSES] Office ID:', officeId);
+                
+                // Get all availability change notifications for this office
+                const notificationsQuery = window.query(
+                    window.collection(window.db, 'availabilityNotifications'),
+                    window.where('officeId', '==', officeId)
+                );
+                
+                const notificationsSnapshot = await window.getDocs(notificationsQuery);
+                console.log('[EXPENSES] Total notifications found:', notificationsSnapshot.docs.length);
+                
+                // Aggregate notifications by driver
+                const driverChanges = {};
+                // Filter to only unseen notifications and convert dates
+                const allNotifications = notificationsSnapshot.docs
+                    .map(doc => {
+                        const data = doc.data();
+                        return {
+                            id: doc.id,
+                            ...data,
+                            createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt)
+                        };
+                    })
+                    .filter(notification => notification.seen !== true) // Only include unseen notifications
+                    .sort((a, b) => b.createdAt - a.createdAt); // Sort by date (most recent first)
+                
+                console.log('[EXPENSES] Unseen notifications:', allNotifications.length);
+                
+                // Group by driver and only count the most recent batch (within 1 hour of latest)
+                allNotifications.forEach(notification => {
+                    const driverId = notification.driverId;
+                    if (!driverId) return;
+                    
+                    if (!driverChanges[driverId]) {
+                        // First notification for this driver (most recent)
+                        driverChanges[driverId] = {
+                            driverId: driverId,
+                            driverName: notification.driverName || 'Unknown Driver',
+                            daysOff: 0,
+                            daysAvailable: 0,
+                            notifications: [],
+                            latestDate: notification.createdAt,
+                            earliestDate: notification.createdAt
+                        };
+                        
+                        if (notification.changeType === 'unavailable') {
+                            driverChanges[driverId].daysOff = 1;
+                        } else {
+                            driverChanges[driverId].daysAvailable = 1;
+                        }
+                        driverChanges[driverId].notifications.push(notification);
+                    } else {
+                        // Check if this notification is within 1 hour of the latest (most recent) one
+                        // This ensures we only count the most recent batch, not old unseen notifications
+                        const timeDiffFromLatest = Math.abs(driverChanges[driverId].latestDate - notification.createdAt);
+                        const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+
+                        if (timeDiffFromLatest <= oneHour) {
+                            // Same batch - add to counts
+                            if (notification.changeType === 'unavailable') {
+                                driverChanges[driverId].daysOff++;
+                            } else {
+                                driverChanges[driverId].daysAvailable++;
+                            }
+                            driverChanges[driverId].notifications.push(notification);
+                            // Update earliest date if this is older
+                            if (notification.createdAt < driverChanges[driverId].earliestDate) {
+                                driverChanges[driverId].earliestDate = notification.createdAt;
+                            }
+                            // latestDate stays as the most recent (first one we found)
+                        }
+                        // If outside the batch window (more than 1 hour from latest), ignore it
+                    }
+                });
+                
+                // Count total number of drivers with changes
+                const availabilityCount = Object.keys(driverChanges).length;
+                console.log('[EXPENSES] Drivers with changes:', availabilityCount);
+                
+                // Check for old expenses (>24 working hours)
+                const oldExpenseCount = await checkOldExpenses(officeId);
+                console.log('[EXPENSES] Old expenses count:', oldExpenseCount);
+                
+                // Total notification count (availability changes + old expenses)
+                const unreadCount = availabilityCount + (oldExpenseCount > 0 ? 1 : 0);
+                console.log('[EXPENSES] Total unread count:', unreadCount);
+                
+                // Update notification badge on all pages
+                updateNotificationBadge(unreadCount);
+                console.log('[EXPENSES] Badge updated');
+                
+            } catch (error) {
+                console.error('[EXPENSES] Error updating notification count:', error);
+            }
+        }
+
+        // Update notification badge display
+        function updateNotificationBadge(count) {
+            console.log('[EXPENSES] updateNotificationBadge called with count:', count);
+            const badgeElements = document.querySelectorAll('.notification-badge');
+            console.log('[EXPENSES] Found badge elements:', badgeElements.length);
+            badgeElements.forEach((badge, index) => {
+                console.log(`[EXPENSES] Badge ${index}:`, badge);
+                if (count > 0) {
+                    badge.textContent = count > 99 ? '99+' : count.toString();
+                    badge.classList.remove('hidden');
+                    console.log(`[EXPENSES] Badge ${index} shown with count:`, badge.textContent);
+                } else {
+                    badge.classList.add('hidden');
+                    console.log(`[EXPENSES] Badge ${index} hidden`);
+                }
+            });
+        }
+
+        // Load notifications for dropdown (aggregated by driver)
+        async function loadNotifications() {
+            try {
+                const officeId = getCurrentOfficeId();
+                if (!officeId) return;
+                
+                // Get all availability change notifications for this office
+                const notificationsQuery = window.query(
+                    window.collection(window.db, 'availabilityNotifications'),
+                    window.where('officeId', '==', officeId)
+                );
+                
+                const notificationsSnapshot = await window.getDocs(notificationsQuery);
+                const notificationsList = document.getElementById('notificationsList');
+                
+                const oldExpenseCount = await checkOldExpenses(officeId);
+                
+                const driverChanges = {};
+                // Filter to only unseen notifications and convert dates
+                const allNotifications = notificationsSnapshot.docs
+                    .map(doc => {
+                        const data = doc.data();
+                        return {
+                            id: doc.id,
+                            ...data,
+                            createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt)
+                        };
+                    })
+                    .filter(notification => notification.seen !== true) // Only include unseen notifications
+                    .sort((a, b) => b.createdAt - a.createdAt); // Sort by date (most recent first)
+                
+                // Group by driver and only count the most recent batch (within 1 hour of latest)
+                allNotifications.forEach(notification => {
+                    const driverId = notification.driverId;
+                    if (!driverId) return;
+                    
+                    if (!driverChanges[driverId]) {
+                        // First notification for this driver (most recent)
+                        driverChanges[driverId] = {
+                            driverId: driverId,
+                            driverName: notification.driverName || 'Unknown Driver',
+                            daysOff: 0,
+                            daysAvailable: 0,
+                            notifications: [],
+                            latestDate: notification.createdAt,
+                            earliestDate: notification.createdAt
+                        };
+                        
+                        if (notification.changeType === 'unavailable') {
+                            driverChanges[driverId].daysOff = 1;
+                        } else {
+                            driverChanges[driverId].daysAvailable = 1;
+                        }
+                        driverChanges[driverId].notifications.push(notification);
+                    } else {
+                        // Check if this notification is within 1 hour of the latest (most recent) one
+                        const timeDiffFromLatest = Math.abs(driverChanges[driverId].latestDate - notification.createdAt);
+                        const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+
+                        if (timeDiffFromLatest <= oneHour) {
+                            // Same batch - add to counts
+                            if (notification.changeType === 'unavailable') {
+                                driverChanges[driverId].daysOff++;
+                            } else {
+                                driverChanges[driverId].daysAvailable++;
+                            }
+                            driverChanges[driverId].notifications.push(notification);
+                            // Update earliest date if this is older
+                            if (notification.createdAt < driverChanges[driverId].earliestDate) {
+                                driverChanges[driverId].earliestDate = notification.createdAt;
+                            }
+                            // latestDate stays as the most recent (first one we found)
+                        }
+                        // If outside the batch window (more than 1 hour from latest), ignore it
+                    }
+                });
+                
+                const sortedDrivers = Object.values(driverChanges).sort((a, b) => b.latestDate - a.latestDate);
+                notificationsList.innerHTML = '';
+                
+                if (oldExpenseCount > 0) {
+                    const expenseNotification = createOldExpenseNotificationElement(oldExpenseCount);
+                    notificationsList.appendChild(expenseNotification);
+                }
+                
+                sortedDrivers.forEach(driverData => {
+                    const notificationElement = createAggregatedNotificationElement(driverData);
+                    notificationsList.appendChild(notificationElement);
+                });
+                
+                if (oldExpenseCount === 0 && sortedDrivers.length === 0) {
+                    notificationsList.innerHTML = '<div class="px-4 py-3 text-gray-400 text-sm text-center">No notifications yet</div>';
+                }
+            } catch (error) {
+                console.error('Error loading notifications:', error);
+            }
+        }
+
+        // Create old expense notification element
+        function createOldExpenseNotificationElement(count) {
+            const element = document.createElement('div');
+            element.className = 'px-4 py-3 border-b border-[#283039] cursor-pointer hover:bg-[#283039] transition-colors bg-[#283039]';
+            element.onclick = () => {
+                document.getElementById('notificationDropdown').classList.add('hidden');
+                window.location.href = '/pages/expenses.html';
+            };
+            
+            element.innerHTML = `
+                <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                        <div class="text-white text-sm font-medium">There are ${count} ${count === 1 ? 'expense' : 'expenses'} that are 24 working hours old</div>
+                        <div class="text-[#9cabba] text-xs mt-1">Click to view expenses</div>
+                    </div>
+                    <div class="w-2 h-2 bg-red-500 rounded-full ml-2 mt-1"></div>
+                </div>
+            `;
+            
+            return element;
+        }
+
+        // Create aggregated notification element
+        function createAggregatedNotificationElement(driverData) {
+            const element = document.createElement('div');
+            element.className = 'px-4 py-3 border-b border-[#283039] cursor-pointer hover:bg-[#283039] transition-colors bg-[#283039]';
+            element.onclick = () => handleAggregatedNotificationClick(driverData);
+            
+            let message = '';
+            if (driverData.daysOff > 0 && driverData.daysAvailable > 0) {
+                message = `${driverData.driverName} has booked ${driverData.daysOff} ${driverData.daysOff === 1 ? 'day' : 'days'} off and is available for ${driverData.daysAvailable} ${driverData.daysAvailable === 1 ? 'day' : 'days'}`;
+            } else if (driverData.daysOff > 0) {
+                message = `${driverData.driverName} has booked ${driverData.daysOff} ${driverData.daysOff === 1 ? 'day' : 'days'} off`;
+            } else {
+                message = `${driverData.driverName} is available for ${driverData.daysAvailable} ${driverData.daysAvailable === 1 ? 'day' : 'days'}`;
+            }
+            
+            const timeAgo = getTimeAgo(driverData.latestDate);
+            
+            element.innerHTML = `
+                <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                        <div class="text-white text-sm font-medium">${message}</div>
+                        <div class="text-[#9cabba] text-xs mt-1">${timeAgo}</div>
+                    </div>
+                    <div class="w-2 h-2 bg-blue-500 rounded-full ml-2 mt-1"></div>
+                </div>
+            `;
+            
+            return element;
+        }
+
+        async function handleAggregatedNotificationClick(driverData) {
+            try {
+                // Hide dropdown
+                document.getElementById('notificationDropdown').classList.add('hidden');
+                
+                // Navigate to availability page
+                const dates = driverData.notifications.map(n => n.date).sort();
+                const earliestDate = dates[0] ? new Date(dates[0]) : new Date();
+                const year = earliestDate.getFullYear();
+                const month = earliestDate.getMonth() + 1;
+                
+                window.location.href = `/pages/availability.html?year=${year}&month=${month}&showChanges=${driverData.driverId}`;
+                
+            } catch (error) {
+                console.error('Error handling aggregated notification click:', error);
+            }
+        }
+
+        function getTimeAgo(date) {
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+            
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`;
+            if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
+            if (diffDays < 7) return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
+            return date.toLocaleDateString();
+        }
+
+        // Initialize notification system on page load
+        async function initializeNotifications() {
+            await updateNotificationCount();
+            
+            // Set up click outside to close dropdown
+            document.addEventListener('click', function(event) {
+                const dropdown = document.getElementById('notificationDropdown');
+                const button = event.target.closest('button[onclick="showNotifications()"]');
+                
+                if (!dropdown || !button) return;
+                
+                if (!dropdown.contains(event.target) && !button.contains(event.target)) {
+                    dropdown.classList.add('hidden');
+                }
+            });
+            
+            // Update notifications periodically
+            setInterval(async () => {
+                await updateNotificationCount();
+            }, 30000); // Every 30 seconds
+            
+            // Update when page becomes visible
+            document.addEventListener('visibilitychange', async () => {
+                if (!document.hidden) {
+                    await updateNotificationCount();
+                }
+            });
+        }
+
+        // Initialize search functionality
+        function initializeSearch() {
+            const searchInput = document.getElementById('expenseSearch');
+            const searchResults = document.getElementById('searchResults');
+            let searchTimeout;
+            
+            searchInput.addEventListener('input', (e) => {
+                const query = e.target.value.trim().toLowerCase();
+                
+                clearTimeout(searchTimeout);
+                
+                if (query.length < 2) {
+                    searchResults.classList.add('hidden');
+                    return;
+                }
+                
+                searchTimeout = setTimeout(() => {
+                    performSearch(query);
+                }, 300); // Debounce search
+            });
+            
+            // Close search results when clicking outside
+            document.addEventListener('click', (e) => {
+                const searchContainer = document.getElementById('expenseSearch').parentElement;
+                if (!searchContainer.contains(e.target)) {
+                    searchResults.classList.add('hidden');
+                }
+            });
+        }
+        
+        // Perform search across all batches
+        function performSearch(query) {
+            const searchResults = document.getElementById('searchResults');
+            const results = [];
+            
+            // Search through all batches
+            allBatches.forEach(batch => {
+                const driverName = (batch.driverName || '').toLowerCase();
+                const driverEmail = (batch.driverEmail || '').toLowerCase();
+                const registration = (batch.registration || '').toLowerCase();
+                const batchId = batch.id.toLowerCase();
+                
+                if (driverName.includes(query) || 
+                    driverEmail.includes(query) || 
+                    registration.includes(query) ||
+                    batchId.includes(query)) {
+                    results.push(batch);
+                }
+            });
+            
+            if (results.length === 0) {
+                searchResults.innerHTML = `
+                    <div class="px-4 py-3 text-gray-400 text-sm text-center">
+                        No expenses found
+                    </div>
+                `;
+            } else {
+                searchResults.innerHTML = results.slice(0, 10).map(batch => {
+                    const date = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
+                    const statusColors = {
+                        pending: 'bg-orange-500',
+                        validated: 'bg-blue-500',
+                        paid: 'bg-green-500',
+                        returned: 'bg-red-500'
+                    };
+                    const statusColor = statusColors[batch.status] || 'bg-gray-500';
+                    
+                    return `
+                        <div onclick="selectSearchResult('${batch.id}')" 
+                            class="px-4 py-3 border-b border-gray-800 hover:bg-[#283039] cursor-pointer transition-colors">
+                            <div class="flex items-center justify-between">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <span class="px-2 py-0.5 ${statusColor} text-white text-xs rounded-full font-semibold">${batch.status}</span>
+                                        <span class="font-semibold text-white">${batch.driverName || 'Unknown Driver'}</span>
+                                    </div>
+                                    <div class="text-sm text-gray-400">${batch.driverEmail || ''}</div>
+                                    <div class="text-xs text-gray-500 mt-1">${batch.registration || 'No Reg'} • ${date.toLocaleDateString()}</div>
+                                </div>
+                                <div class="text-right ml-4">
+                                    <div class="text-green-400 font-semibold">£${batch.totalAmount?.toFixed(2) || '0.00'}</div>
+                                    <div class="text-xs text-gray-500">${batch.expenses?.length || 0} expense${batch.expenses?.length !== 1 ? 's' : ''}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            searchResults.classList.remove('hidden');
+        }
+        
+        // Handle search result selection
+        function selectSearchResult(batchId) {
+            const batch = allBatches.find(b => b.id === batchId);
+            if (!batch) return;
+            
+            // Switch to the appropriate tab
+            switchTab(batch.status);
+            
+            // Close search
+            document.getElementById('expenseSearch').value = '';
+            document.getElementById('searchResults').classList.add('hidden');
+            
+            // Scroll to and highlight the batch (open modal)
+            setTimeout(() => {
+                openBatchDetail(batchId);
+            }, 100);
+        }
+
+        function viewUsage() {
+            const officeId = getCurrentOfficeId();
+            if (!officeId) {
+                notifyWarning('Unable to determine office ID.');
+                return;
+            }
+            window.location.href = `/pages/office-calendar.html?officeId=${officeId}`;
+        }
+
+        function sanitizeName(rawName, options = {}) {
+            if (!rawName) return '';
+
+            const { replaceSpaces = false, fallbackPrefix = 'Item', allowDot = false } = options;
+
+            let name = String(rawName)
+                .replace(/\*/g, '!')
+                .replace(/[<>:"/\\|?\x00-\x1F]/g, '');
+
+            if (replaceSpaces) {
+                name = name.replace(/\s+/g, '_');
+            }
+
+            name = name.trim();
+
+            if (!allowDot) {
+                name = name.replace(/[. ]+$/g, '');
+            }
+
+            if (!name) {
+                return `${fallbackPrefix}-${Date.now()}`;
+            }
+
+            return name;
+        }
+    </script>
+</div>
+</div>
+</body>
+</html>
+
