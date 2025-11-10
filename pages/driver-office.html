@@ -9,6 +9,35 @@
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
     <script src="/assets/js/tailwind-runtime.js"></script>
     <script src="/js/session-manager.js"></script>
+<script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+    import { getAuth } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+    import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA",
+        authDomain: "soto-routes.firebaseapp.com",
+        projectId: "soto-routes",
+        storageBucket: "soto-routes.firebasestorage.app",
+        messagingSenderId: "440989695549",
+        appId: "1:440989695549:web:0bce8b92a46f7f79953454",
+        measurementId: "G-4E3G40QQ9L"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const functions = getFunctions(app);
+
+    window.firebaseApp = app;
+    window.auth = auth;
+    window.functions = functions;
+    window.firebase = {
+        functions,
+        httpsCallable
+    };
+
+    console.log('Firebase initialised for role landing page.');
+</script>
     <script>
         tailwind.config = {
             plugins: {
