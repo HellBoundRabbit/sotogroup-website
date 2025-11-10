@@ -283,7 +283,7 @@
                     return true;
                 }
                 await new Promise((resolve) => setTimeout(resolve, delayMs));
-            }
+                    }
             throw new Error('Firebase did not initialise in time.');
         }
 
@@ -337,25 +337,25 @@
         }
 
         function renderOffices() {
-            const officesList = document.getElementById('officesList');
+                const officesList = document.getElementById('officesList');
             if (!officesList) return;
-
+                
             if (!officesCache.length) {
-                officesList.innerHTML = `
-                    <div class="text-center py-8 text-gray-400">
-                        <p class="text-lg mb-2">No offices found</p>
-                        <p class="text-sm">Click "Add New Office" to create the first office</p>
-                    </div>
-                `;
-                return;
-            }
-
-            officesList.innerHTML = '';
+                    officesList.innerHTML = `
+                        <div class="text-center py-8 text-gray-400">
+                            <p class="text-lg mb-2">No offices found</p>
+                            <p class="text-sm">Click "Add New Office" to create the first office</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                officesList.innerHTML = '';
             officesCache.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
             officesCache.forEach((office) => {
                 officesList.appendChild(createOfficeElement(office));
             });
-        }
+            }
 
         function createOfficeElement(office) {
             const officeDiv = document.createElement('div');
@@ -439,7 +439,7 @@
                         showMessage('Office created but logo upload failed.', 'error');
                     }
                 }
-
+                
                 showMessage(`Office "${officeName}" created successfully!`, 'success');
                 hideAddOfficeModal();
                 
@@ -480,46 +480,46 @@
         }
 
         async function handleEditOfficeSubmit(e) {
-            e.preventDefault();
-            
-            const officeId = document.getElementById('editOfficeId').value;
-            const officeName = document.getElementById('editOfficeName').value;
-            const logoFile = document.getElementById('editOfficeLogo').files[0];
-            
-            const submitBtn = e.target.querySelector('button[type="submit"]');
-            const originalText = submitBtn.textContent;
-            
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Updating...';
-            
-            try {
+                    e.preventDefault();
+                    
+                    const officeId = document.getElementById('editOfficeId').value;
+                    const officeName = document.getElementById('editOfficeName').value;
+                    const logoFile = document.getElementById('editOfficeLogo').files[0];
+                    
+                    const submitBtn = e.target.querySelector('button[type="submit"]');
+                    const originalText = submitBtn.textContent;
+                    
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Updating...';
+                    
+                    try {
                 const updatePayload = {
                     officeId,
-                    name: officeName
-                };
-
-                if (logoFile) {
-                    const timestamp = Date.now();
+                            name: officeName
+                        };
+                        
+                        if (logoFile) {
+                                const timestamp = Date.now();
                     const storagePath = `offices/${officeId}/${timestamp}_${logoFile.name}`;
                     const logoRef = window.ref(window.storage, storagePath);
-                    await window.uploadBytes(logoRef, logoFile);
-                    const logoUrl = await window.getDownloadURL(logoRef);
+                                await window.uploadBytes(logoRef, logoFile);
+                                const logoUrl = await window.getDownloadURL(logoRef);
                     updatePayload.logoUrl = logoUrl;
                 }
 
                 const updateOfficeFn = getCallable('updateOffice');
                 await updateOfficeFn(updatePayload);
-
-                showMessage(`Office "${officeName}" updated successfully!`, 'success');
-                hideEditOfficeModal();
-                await loadOffices();
-            } catch (error) {
-                console.error('Error updating office:', error);
-                showMessage('Failed to update office. Please try again.', 'error');
-            } finally {
-                submitBtn.disabled = false;
-                submitBtn.textContent = originalText;
-            }
+                        
+                        showMessage(`Office "${officeName}" updated successfully!`, 'success');
+                        hideEditOfficeModal();
+                        await loadOffices();
+                    } catch (error) {
+                        console.error('Error updating office:', error);
+                        showMessage('Failed to update office. Please try again.', 'error');
+                    } finally {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = originalText;
+                    }
         }
 
         function showEditOfficeModal(office) {

@@ -186,7 +186,7 @@
             try {
                 const session = await window.sotoSession.bootstrap(['driver']);
                 if (!session) {
-                    window.location.href = '/pages/soto-routes-login.html';
+                        window.location.href = '/pages/soto-routes-login.html';
                     return;
                 }
 
@@ -195,40 +195,40 @@
             } catch (error) {
                 console.error('Failed to establish driver session:', error);
                 window.location.href = '/pages/soto-routes-login.html';
-                return;
-            }
+                    return;
+                }
 
-            try {
+                try {
                 console.log('Loading user data for:', currentUser.uid);
                 const userDoc = await window.getDoc(window.doc(window.db, 'users', currentUser.uid));
-                if (!userDoc.exists()) {
-                    console.log('User document not found');
-                    window.location.href = '/pages/soto-routes-login.html';
-                    return;
-                }
+                    if (!userDoc.exists()) {
+                        console.log('User document not found');
+                        window.location.href = '/pages/soto-routes-login.html';
+                        return;
+                    }
 
                 currentUser = { ...currentUser, ...userDoc.data() };
-                console.log('Current user:', currentUser);
-                
-                // Only drivers can access this page
-                if (currentUser.role !== 'driver') {
-                    notifyWarning('This page is for drivers only.', 'Access Denied');
-                    window.location.href = '/pages/soto-lp.html';
-                    return;
-                }
+                    console.log('Current user:', currentUser);
+                    
+                    // Only drivers can access this page
+                    if (currentUser.role !== 'driver') {
+                        notifyWarning('This page is for drivers only.', 'Access Denied');
+                        window.location.href = '/pages/soto-lp.html';
+                        return;
+                    }
 
-                // Display user email
-                document.getElementById('userEmail').textContent = currentUser.email;
-                
-                // Check for unread messages and grey out features if needed
-                await checkAndDisableFeatures();
-                
-                document.getElementById('loadingOverlay').style.display = 'none';
-                console.log('Loading complete!');
-            } catch (error) {
-                console.error('Error loading user data:', error);
-                notifyError('Error loading user data. Please try again.');
-            }
+                    // Display user email
+                    document.getElementById('userEmail').textContent = currentUser.email;
+                    
+                    // Check for unread messages and grey out features if needed
+                    await checkAndDisableFeatures();
+                    
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                    console.log('Loading complete!');
+                } catch (error) {
+                    console.error('Error loading user data:', error);
+                    notifyError('Error loading user data. Please try again.');
+                }
         }
 
         // Check for unread messages and disable/grey out features

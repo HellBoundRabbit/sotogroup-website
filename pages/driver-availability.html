@@ -429,9 +429,9 @@
                 const session = await window.sotoSession.bootstrap(['driver']);
                 if (!session) {
                     console.warn('Session bootstrap failed, redirecting to login.');
-                    window.location.href = '/pages/soto-routes-login.html';
-                    return;
-                }
+                window.location.href = '/pages/soto-routes-login.html';
+                return;
+            }
 
                 currentSession = session;
                 currentUser = { ...session };

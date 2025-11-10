@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16.png">
     <link rel="icon" type="image/svg+xml" href="/assets/logos/favicon.svg">
-<link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
+    <link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png">
 <link rel="stylesheet" href="/assets/css/responsive-nav.css">
 <script src="/assets/js/tailwind-runtime.js"></script>
@@ -597,7 +597,7 @@ function getWeekNumber(date) {
 
         // Load office logo from Firebase
 async function loadOfficeLogo(officeId = getCurrentOfficeId()) {
-    if (!officeId) {
+            if (!officeId) {
         console.log('No officeId available, skipping logo load');
                 return;
             }
@@ -886,7 +886,7 @@ async function loadRoutesForSelectedDate() {
         ];
 
         const routeEntries = new Map();
-
+        
         for (const queryRef of routeQueries) {
             const snapshot = await window.firebaseGetDocs(queryRef);
             snapshot.forEach((doc) => {
@@ -2155,7 +2155,7 @@ async function createRouteSummary(routeId) {
             window.firebaseQuery(
                 routesCollection,
                 window.where('officeId', '==', officeId),
-                window.where('routeId', '==', `route_${routeId}`)
+            window.where('routeId', '==', `route_${routeId}`)
             ),
             window.firebaseQuery(
                 routesCollection,
@@ -2169,7 +2169,7 @@ async function createRouteSummary(routeId) {
             snapshot.forEach((doc) => existingRouteDocs.push(doc));
         }
         console.log(`Found ${existingRouteDocs.length} existing routes`);
-
+        
         const existingRoute = existingRouteDocs.find((doc) => {
             const data = doc.data();
             return !data.officeId || data.officeId === officeId;
@@ -2699,7 +2699,7 @@ async function saveAllJobsToFirebase(routeId, jobs) {
         if (!officeId) {
             throw new Error('Missing office context while saving jobs.');
         }
-
+        
         const savedJobIds = [];
         
         for (const job of jobs) {

@@ -131,17 +131,17 @@
                 const userDocRef = window.doc(window.db, 'users', session.uid);
                 const userDoc = await window.getDoc(userDocRef);
                 if (!userDoc.exists()) {
-                    window.location.href = '/pages/soto-routes-login.html';
-                    return;
-                }
+                window.location.href = '/pages/soto-routes-login.html';
+                return;
+            }
 
                 currentUser = { uid: session.uid, ...session, ...userDoc.data() };
-                if (currentUser.role !== 'driver') {
-                    window.location.href = '/pages/soto-routes-login.html';
-                    return;
-                }
+            if (currentUser.role !== 'driver') {
+                window.location.href = '/pages/soto-routes-login.html';
+                return;
+            }
 
-                await loadMessages();
+            await loadMessages();
             } catch (error) {
                 console.error('Error initializing messages view:', error);
                 notifyError('Unable to load messages right now. Please try again.');

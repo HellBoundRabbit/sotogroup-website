@@ -195,24 +195,24 @@
                 try {
                     const session = await window.sotoSession.bootstrap(['driver']);
                     if (!session) {
-                        window.location.href = '/pages/soto-routes-login.html';
-                        return;
-                    }
+                    window.location.href = '/pages/soto-routes-login.html';
+                    return;
+                }
 
                     currentSession = session;
                     currentUser = { uid: session.uid, ...session };
 
-                    try {
+                try {
                         const userDoc = await window.getDoc(window.doc(window.db, 'users', session.uid));
-                        if (!userDoc.exists()) {
-                            window.location.href = '/pages/soto-routes-login.html';
-                            return;
+                    if (!userDoc.exists()) {
+                        window.location.href = '/pages/soto-routes-login.html';
+                        return;
                         }
                         currentUser = { ...currentUser, ...userDoc.data() };
                     } catch (profileError) {
                         console.warn('Unable to load driver profile for paid expenses:', profileError);
                     }
-
+                    
                     if (currentUser.role !== 'driver') {
                         notifyWarning('Access denied.', 'Access Denied');
                         window.location.href = '/pages/soto-lp.html';

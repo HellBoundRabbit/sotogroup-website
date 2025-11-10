@@ -395,9 +395,9 @@
             try {
                 const session = await window.sotoSession.bootstrap(['office', 'admin']);
                 if (!session) {
-                    window.location.href = '/pages/soto-routes-login.html';
-                    return false;
-                }
+                window.location.href = '/pages/soto-routes-login.html';
+                return false;
+            }
 
                 currentSession = session;
                 currentUserId = session.uid;
@@ -415,7 +415,7 @@
                     currentUser = { uid: session.uid, ...session };
                 }
 
-                return true;
+            return true;
             } catch (error) {
                 console.error('Authentication failed:', error);
                 window.location.href = '/pages/soto-routes-login.html';
@@ -829,7 +829,7 @@
                     console.log('User logged out successfully');
                     
                     window.sotoSession?.clearSession();
-
+                    
                     // Redirect to login page
                     window.location.href = '/pages/soto-routes-login.html';
                 } catch (error) {
@@ -896,7 +896,7 @@
                     console.log('No routes found in Firebase, checking localStorage...');
                     return loadRoutesFromLocalStorage();
                 }
-
+                
                 const jobsByRoute = {};
                 const jobDocs = [...jobsSnapshot.docs, ...(legacyJobsSnapshot?.docs || [])];
 
@@ -922,15 +922,15 @@
                         return;
                     }
 
-                    if (!jobsByRoute[routeId]) {
-                        jobsByRoute[routeId] = [];
-                    }
-                    jobsByRoute[routeId].push({
-                        id: jobDoc.id,
-                        ...jobData
-                    });
+                        if (!jobsByRoute[routeId]) {
+                            jobsByRoute[routeId] = [];
+                        }
+                        jobsByRoute[routeId].push({
+                            id: jobDoc.id,
+                            ...jobData
+                        });
                 }));
-                
+                    
                 // Sort jobs within each route by jobNumber
                 Object.keys(jobsByRoute).forEach(routeId => {
                     jobsByRoute[routeId].sort((a, b) => (a.jobNumber || 0) - (b.jobNumber || 0));
@@ -1015,7 +1015,7 @@
                         ...job,
                         officeId: job.officeId || officeId
                     }));
-
+                    
                     await window.firebaseSetDoc(routeDocRef, {
                         routeId: routeData.route.routeId || originalRouteId,
                         route: routeWithAssignments, // Include driver assignments
@@ -1051,7 +1051,7 @@
                 // Get all drivers from Firebase
                 const driversCollection = window.firebaseCollection(window.firestore, 'drivers');
                 const driversQuery = window.firebaseQuery(driversCollection, window.firebaseWhere('officeId', '==', officeId));
-                
+
                 let [driversSnapshot, legacySnapshot] = await Promise.all([
                     window.firebaseGetDocs(driversQuery),
                     (async () => {

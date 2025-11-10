@@ -632,43 +632,43 @@
                 window.currentUser = currentUser;
             } catch (error) {
                 console.error('Unable to establish session for driver expenses:', error);
-                window.location.href = '/pages/soto-routes-login.html';
-                return;
-            }
-
-            try {
-                console.log('Loading user data for:', currentUser.uid);
-                const userDoc = await window.getDoc(window.doc(window.db, 'users', currentUser.uid));
-                if (!userDoc.exists()) {
-                    console.log('User document not found');
                     window.location.href = '/pages/soto-routes-login.html';
                     return;
                 }
 
+                try {
+                console.log('Loading user data for:', currentUser.uid);
+                const userDoc = await window.getDoc(window.doc(window.db, 'users', currentUser.uid));
+                    if (!userDoc.exists()) {
+                        console.log('User document not found');
+                        window.location.href = '/pages/soto-routes-login.html';
+                        return;
+                    }
+
                 currentUser = { ...currentUser, ...userDoc.data() };
-                window.currentUser = currentUser;
+                    window.currentUser = currentUser;
+                    
+                    if (currentUser.role !== 'driver') {
+                        notifyWarning('This page is for drivers only.', 'Access Denied');
+                        window.location.href = '/pages/soto-lp.html';
+                        return;
+                    }
 
-                if (currentUser.role !== 'driver') {
-                    notifyWarning('This page is for drivers only.', 'Access Denied');
-                    window.location.href = '/pages/soto-lp.html';
-                    return;
+                    console.log('Loading expense batches...');
+                    await processSubmissionQueue({ showToast: false });
+                    await loadExpenseBatches();
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                    console.log('Loading complete!');
+                    
+                    if (window.uploadQueue) {
+                        await window.uploadQueue.init();
+                        await window.uploadQueue.processQueue();
+                        await window.uploadQueue.updateGlobalUploadStatus();
+                    }
+                } catch (error) {
+                    console.error('Error loading user data:', error);
+                    notifyError('Error loading user data. Please try again.');
                 }
-
-                console.log('Loading expense batches...');
-                await processSubmissionQueue({ showToast: false });
-                await loadExpenseBatches();
-                document.getElementById('loadingOverlay').style.display = 'none';
-                console.log('Loading complete!');
-
-                if (window.uploadQueue) {
-                    await window.uploadQueue.init();
-                    await window.uploadQueue.processQueue();
-                    await window.uploadQueue.updateGlobalUploadStatus();
-                }
-            } catch (error) {
-                console.error('Error loading user data:', error);
-                notifyError('Error loading user data. Please try again.');
-            }
         }
 
         // Load all expense batches for this driver
@@ -680,7 +680,7 @@
                 if (!officeId) {
                     throw new Error('Missing officeId on current user.');
                 }
-
+                
                 const batchesQuery = window.query(
                     window.collection(window.db, 'expenseBatches'),
                     window.where('driverId', '==', currentUser.uid),
@@ -1118,7 +1118,7 @@
                 galleryInput.click();
             }
         }
-
+        
         // Handle photo selection (works with both camera and gallery inputs)
         function handlePhotoSelect(event) {
             const files = Array.from(event.target.files);
@@ -1334,14 +1334,14 @@
                 let expenseDocRef = expenseDocId ? window.doc(window.db, 'expenses', expenseDocId) : null;
 
                 if (!expenseDocRef) {
-                    const expensesQuery = window.query(
-                        window.collection(window.db, 'expenses'),
-                        window.where('batchId', '==', currentBatch.id)
-                    );
-                    const expensesSnapshot = await window.getDocs(expensesQuery);
-                    const expenseDocs = expensesSnapshot.docs;
-                    const expenseDoc = expenseDocs[window.editingExpenseIndex];
-                    if (expenseDoc) {
+                const expensesQuery = window.query(
+                    window.collection(window.db, 'expenses'),
+                    window.where('batchId', '==', currentBatch.id)
+                );
+                const expensesSnapshot = await window.getDocs(expensesQuery);
+                const expenseDocs = expensesSnapshot.docs;
+                const expenseDoc = expenseDocs[window.editingExpenseIndex];
+                if (expenseDoc) {
                         expenseDocRef = expenseDoc.ref;
                         expenseDocId = expenseDoc.id;
                     }
@@ -1357,7 +1357,7 @@
                 }
             } catch (error) {
                 console.error('Error updating expense photos:', error);
-                notifyError('Error saving photos. Please try again.');
+            notifyError('Error saving photos. Please try again.');
                 return;
             }
             

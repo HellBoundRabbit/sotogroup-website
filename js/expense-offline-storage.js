@@ -207,7 +207,12 @@ class UploadQueue {
     }
 
     async processQueue() {
-        if (this.isProcessing || !navigator.onLine) return;
+        if (this.isProcessing || !navigator.onLine) {
+            if (!navigator.onLine) {
+                console.debug('[UploadQueue] Skipping processing because navigator.onLine is false');
+            }
+            return;
+        }
         await this.init();
         if (!this.db) {
             console.error('Database not initialized in processQueue');
@@ -224,7 +229,9 @@ class UploadQueue {
                 const cursor = e.target.result;
                 if (cursor) {
                     const task = cursor.value;
+                    console.debug('[UploadQueue] Processing task', task.uploadId, task.filename);
                     if (task.retries >= this.maxRetries) {
+                        console.warn('[UploadQueue] Task exceeded max retries, marking failed', task.uploadId);
                         await this.markFailed(task.uploadId, 'Max retries exceeded');
                         cursor.continue();
                         return;
@@ -233,13 +240,15 @@ class UploadQueue {
                     await cursor.update(task);
                     try {
                         await this.uploadPhoto(task);
+                        console.debug('[UploadQueue] Upload succeeded', task.uploadId);
                         task.status = 'completed';
                         task.completedAt = Date.now();
                         await cursor.update(task);
+                        await cursor.delete();
                         this.updateUploadStatus(task.batchId, task.expenseIndex);
                         await this.updateGlobalUploadStatus();
                     } catch (error) {
-                        console.error('Upload failed:', error);
+                        console.error('[UploadQueue] Upload failed', task.uploadId, error);
                         task.retries++;
                         task.status = 'pending';
                         task.error = error.message;
@@ -253,6 +262,10 @@ class UploadQueue {
                     this.isProcessing = false;
                     await this.updateGlobalUploadStatus();
                 }
+            };
+            request.onerror = (error) => {
+                console.error('[UploadQueue] Cursor error', error);
+                this.isProcessing = false;
             };
         } catch (error) {
             console.error('Error processing queue:', error);
@@ -284,12 +297,12 @@ class UploadQueue {
                 }
                 expenseData = docSnap.data() || {};
             } else {
-                const expensesQuery = window.query(
-                    window.collection(window.db, 'expenses'),
-                    window.where('batchId', '==', batchId)
-                );
-                const snapshot = await window.getDocs(expensesQuery);
-                const expenseDocs = snapshot.docs;
+            const expensesQuery = window.query(
+                window.collection(window.db, 'expenses'),
+                window.where('batchId', '==', batchId)
+            );
+            const snapshot = await window.getDocs(expensesQuery);
+            const expenseDocs = snapshot.docs;
                 if (!expenseDocs[expenseIndex]) {
                     console.warn('Unable to resolve expense document for upload task', task);
                     return;
@@ -302,16 +315,16 @@ class UploadQueue {
                 expenseData.photos = [];
             }
 
-            if (expenseData.photos[photoIndex]) {
-                expenseData.photos[photoIndex] = downloadURL;
-            } else {
-                expenseData.photos.push(downloadURL);
-            }
+                if (expenseData.photos[photoIndex]) {
+                    expenseData.photos[photoIndex] = downloadURL;
+                } else {
+                    expenseData.photos.push(downloadURL);
+                }
 
             await window.updateDoc(expenseDocRef, {
-                photos: expenseData.photos,
+                    photos: expenseData.photos,
                 updatedAt: window.serverTimestamp ? window.serverTimestamp() : new Date()
-            });
+                });
 
             if (window.currentBatch && window.currentBatch.id === batchId && window.currentBatch.expenses && window.currentBatch.expenses[expenseIndex]) {
                 const localExpense = window.currentBatch.expenses[expenseIndex];

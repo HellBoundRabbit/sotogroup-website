@@ -493,32 +493,32 @@
                 currentSession = session;
 
                 const userDoc = await window.getDoc(window.doc(window.db, 'users', session.uid));
-                if (!userDoc.exists()) {
-                    window.location.href = '/pages/soto-routes-login.html';
-                    return;
-                }
+                    if (!userDoc.exists()) {
+                        window.location.href = '/pages/soto-routes-login.html';
+                        return;
+                    }
 
                 currentUser = { uid: session.uid, ...session, ...userDoc.data() };
-                if (currentUser.role !== 'driver') {
-                    notifyWarning('This page is for drivers only.', 'Access Denied');
-                    window.location.href = '/pages/soto-lp.html';
-                    return;
-                }
+                    if (currentUser.role !== 'driver') {
+                        notifyWarning('This page is for drivers only.', 'Access Denied');
+                        window.location.href = '/pages/soto-lp.html';
+                        return;
+                    }
 
-                loadLocalWaitTimesFromQueue();
-                renderWaitTimes();
+                    loadLocalWaitTimesFromQueue();
+                    renderWaitTimes();
                 await syncWaitTimeQueue({ showToast: false });
-                window.addEventListener('online', () => syncWaitTimeQueue({ showToast: true }));
+                    window.addEventListener('online', () => syncWaitTimeQueue({ showToast: true }));
 
                 await backfillWaitTimesOffice();
 
-                document.getElementById('loadingOverlay').style.display = 'none';
-                attachFormInteractions();
-                startWaitTimesListener();
-            } catch (error) {
-                console.error('Error loading driver profile:', error);
-                notifyError('Unable to load your profile. Please try again.');
-            }
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                    attachFormInteractions();
+                    startWaitTimesListener();
+                } catch (error) {
+                    console.error('Error loading driver profile:', error);
+                    notifyError('Unable to load your profile. Please try again.');
+                }
         }
 
         function attachFormInteractions() {

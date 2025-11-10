@@ -232,12 +232,12 @@
                 // Sign in with Firebase Auth
                 await window.signInWithEmailAndPassword(window.auth, email, password);
                 const session = await window.sotoSession.bootstrap();
-
+                
                 if (!session) {
                     showMessage('Unable to establish session. Please try again.');
-                    return;
-                }
-
+                        return;
+                    }
+                    
                 redirectAfterLogin(session);
                 
             } catch (error) {
@@ -301,7 +301,7 @@
                             const session = await window.sotoSession.bootstrap();
                             if (session) {
                                 redirectAfterLogin(session);
-                            }
+                    }
                         }
                     });
                 }

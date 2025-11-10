@@ -332,11 +332,11 @@
         // Go back - to admin panel or office page depending on role
         function goBack() {
             if (currentUser?.role === 'admin') {
-                window.location.href = '/pages/admin-panel.html';
+                    window.location.href = '/pages/admin-panel.html';
                 return;
             }
             if (currentUser?.role === 'office') {
-                window.location.href = '/pages/soto-lp.html';
+                    window.location.href = '/pages/soto-lp.html';
                 return;
             }
             window.location.href = '/pages/soto-routes-login.html';
@@ -364,9 +364,9 @@
                 currentSession = await window.sotoSession.bootstrap(['admin', 'office']);
                 if (!currentSession) {
                     window.location.href = '/pages/soto-routes-login.html';
-                    return;
-                }
-
+                return;
+            }
+            
                 currentUser = { uid: currentSession.uid, ...currentSession };
                 try {
                     const userDoc = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'users', currentSession.uid));
@@ -378,16 +378,16 @@
                 }
 
                 officeId = resolveOfficeId();
-                if (!officeId) {
+            if (!officeId) {
                     notifyWarning('No office selected. Please select an office from the admin panel.', 'No Office Selected');
-                    goBack();
-                    return;
-                }
-
+                goBack();
+                return;
+            }
+            
                 document.getElementById('loading-overlay').classList.remove('hidden');
-                await loadOfficeDetails();
-                await loadUsageData();
-                await renderCalendar();
+            await loadOfficeDetails();
+            await loadUsageData();
+            await renderCalendar();
                 document.getElementById('loading-overlay').classList.add('hidden');
             } catch (error) {
                 console.error('Error initializing office calendar:', error);

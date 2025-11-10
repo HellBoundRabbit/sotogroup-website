@@ -486,7 +486,7 @@
                 await loadOfficeLogo(getCurrentOfficeId());
                 await initializeNotifications();
                 initializeSearch();
-
+                
                 console.log('Loading expense batches...');
                 await loadAllBatches();
                 document.getElementById('loadingOverlay').style.display = 'none';
