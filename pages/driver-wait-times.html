@@ -478,6 +478,7 @@
                 console.warn("Failed to backfill wait time office IDs:", error);
             }
         }
+        window.backfillWaitTimesOffice = backfillWaitTimesOffice;
 
         async function initializeDriverWaitTimesApp() {
             console.log('Initializing driver wait times page...');
