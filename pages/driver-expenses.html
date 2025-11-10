@@ -136,10 +136,35 @@
 <body class="bg-[#0f1419] text-white min-h-screen">
 
     <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="loading-overlay">
+    <div id="loadingOverlay" class="fixed inset-0 bg-[#0f1419] flex items-center justify-center z-50">
         <div class="text-center">
             <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
             <p class="text-gray-400">Loading your expenses...</p>
+        </div>
+    </div>
+
+    <div id="persistencePrompt" class="hidden fixed inset-0 bg-black bg-opacity-70 z-50">
+        <div class="min-h-screen flex items-center justify-center px-4">
+            <div class="bg-[#1a1f24] border border-[#283039] rounded-2xl max-w-md w-full shadow-2xl p-6 space-y-4">
+                <div class="flex items-center gap-3">
+                    <span class="material-symbols-outlined text-3xl text-blue-400">cloud_upload</span>
+                    <h2 class="text-lg font-semibold text-white">Allow background uploads?</h2>
+                </div>
+                <p class="text-gray-300 text-sm leading-relaxed">
+                    Safari can pause uploads when the app is in the background. Allowing "Download offline data" lets your receipt photos finish uploading even after you switch apps.
+                </p>
+                <div class="bg-[#151b21] border border-[#283039] rounded-xl p-4 text-sm text-gray-400 space-y-2">
+                    <p class="font-semibold text-gray-200">How to allow:</p>
+                    <ol class="space-y-2 list-decimal list-inside">
+                        <li>When Safari asks "Allow this site to download data for offline use?", tap <span class="text-blue-400">Allow</span>.</li>
+                        <li>If you have never seen this prompt, close Safari and reopen this page.</li>
+                    </ol>
+                </div>
+                <div class="flex gap-3">
+                    <button id="persistenceAllowBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 font-semibold transition-colors">Allow Background Uploads</button>
+                    <button id="persistenceSkipBtn" class="flex-1 bg-[#283039] hover:bg-[#3a4552] text-white rounded-lg py-2 font-semibold transition-colors">Not Now</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -634,41 +659,38 @@
                 console.error('Unable to establish session for driver expenses:', error);
                     window.location.href = '/pages/soto-routes-login.html';
                     return;
-                }
+            }
 
-                try {
-                console.log('Loading user data for:', currentUser.uid);
+            window.expenseUploadPrompt = createPersistencePrompt();
+
+            console.log('Loading user data for:', currentUser.uid);
+            try {
                 const userDoc = await window.getDoc(window.doc(window.db, 'users', currentUser.uid));
-                    if (!userDoc.exists()) {
-                        console.log('User document not found');
-                        window.location.href = '/pages/soto-routes-login.html';
-                        return;
-                    }
+                if (!userDoc.exists()) {
+                    console.error('User document not found. Signing out and redirecting.');
+                    await window.signOut(window.auth);
+                    window.location.href = '/pages/soto-routes-login.html';
+                    return;
+                }
 
                 currentUser = { ...currentUser, ...userDoc.data() };
-                    window.currentUser = currentUser;
-                    
-                    if (currentUser.role !== 'driver') {
-                        notifyWarning('This page is for drivers only.', 'Access Denied');
-                        window.location.href = '/pages/soto-lp.html';
-                        return;
-                    }
+                window.currentUser = currentUser;
 
-                    console.log('Loading expense batches...');
-                    await processSubmissionQueue({ showToast: false });
-                    await loadExpenseBatches();
-                    document.getElementById('loadingOverlay').style.display = 'none';
-                    console.log('Loading complete!');
-                    
-                    if (window.uploadQueue) {
-                        await window.uploadQueue.init();
-                        await window.uploadQueue.processQueue();
-                        await window.uploadQueue.updateGlobalUploadStatus();
-                    }
-                } catch (error) {
-                    console.error('Error loading user data:', error);
-                    notifyError('Error loading user data. Please try again.');
-                }
+            console.log('Loading expense batches...');
+            await processSubmissionQueue({ showToast: false });
+            await loadExpenseBatches();
+            document.getElementById('loadingOverlay').style.display = 'none';
+            console.log('Loading complete!');
+            
+            if (window.uploadQueue) {
+                await window.uploadQueue.init();
+                await window.uploadQueue.processQueue();
+                await window.uploadQueue.updateGlobalUploadStatus();
+            }
+            } catch (error) {
+                console.error('Error loading user data:', error);
+                notifyError('Error loading user data. Please try again.');
+            }
         }
 
         // Load all expense batches for this driver
@@ -1600,6 +1622,13 @@
                 const notes = document.getElementById('notesInput').value.trim();
                 currentBatch.notes = notes || '';
 
+                if (window.expenseUploadPrompt && typeof window.expenseUploadPrompt.ensurePersistence === 'function') {
+                    const granted = await window.expenseUploadPrompt.ensurePersistence();
+                    if (!granted) {
+                        notifyInfo('Photos might take longer to upload in the background if you close Safari. Leave the app open until upload finishes.', 'Background Uploads');
+                    }
+                }
+
                 await syncDraftToFirestore(currentBatch, 'draft');
 
                 notifySuccess('Draft saved successfully.', 'Draft Saved');
@@ -2408,6 +2437,56 @@
             console.table(pendingTasks);
             alert(`Upload queue size: ${pendingTasks.length}`);
         }
+
+        function createPersistencePrompt() {
+            const promptEl = document.getElementById('persistencePrompt');
+            const allowBtn = document.getElementById('persistenceAllowBtn');
+            const skipBtn = document.getElementById('persistenceSkipBtn');
+
+            let resolvePrompt;
+            const ensurePersistence = async () => {
+                if (!navigator.storage || !navigator.storage.persist) {
+                    return true;
+                }
+                const isPersisted = await navigator.storage.persisted();
+                if (isPersisted) {
+                    return true;
+                }
+                promptEl.classList.remove('hidden');
+                return new Promise((resolve) => {
+                    resolvePrompt = resolve;
+                });
+            };
+
+            allowBtn.addEventListener('click', async () => {
+                try {
+                    const granted = await navigator.storage.persist();
+                    promptEl.classList.add('hidden');
+                    resolvePrompt?.(granted);
+                    if (!granted) {
+                        notifyInfo('If the system prompt did not appear, Safari may block background uploads. Leave this page open while photos finish uploading.', 'Upload Notice');
+                    }
+                } catch (error) {
+                    console.warn('navigator.storage.persist() failed', error);
+                    promptEl.classList.add('hidden');
+                    resolvePrompt?.(false);
+                }
+            });
+
+            skipBtn.addEventListener('click', () => {
+                promptEl.classList.add('hidden');
+                notifyInfo('If you leave Safari or lock your phone, photos may take longer to upload. Keep this page open until uploads complete.', 'Upload Notice');
+                resolvePrompt?.(false);
+            });
+
+            return { ensurePersistence };
+        }
+
+        window.closeBatchModal = closeBatchModal;
+        window.closeExpenseModal = closeExpenseModal;
+        window.addExpense = addExpense;
+        window.saveExpense = saveExpense;
+        window.removePhoto = removePhoto;
     </script>
 </body>
 </html>

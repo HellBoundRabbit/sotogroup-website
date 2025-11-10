@@ -161,6 +161,23 @@ class UploadQueue {
     }
 
     async init() {
+        if (navigator.storage && navigator.storage.persist) {
+            try {
+                const isPersisted = await navigator.storage.persisted();
+                if (!isPersisted) {
+                    const granted = await navigator.storage.persist();
+                    if (!granted) {
+                        console.warn('[UploadQueue] Persistent storage request was denied. Receipts may not upload when the page is backgrounded.');
+                        if (document.activeElement && document.activeElement.blur) {
+                            document.activeElement.blur();
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn('[UploadQueue] Unable to request persistent storage', error);
+            }
+        }
+
         if (!window.expenseDraftDB) {
             window.expenseDraftDB = new ExpenseDraftDB();
         }
