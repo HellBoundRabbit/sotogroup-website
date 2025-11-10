@@ -920,8 +920,28 @@
 
         // Open existing batch
         async function openBatch(batchId) {
-            const batch = allBatches.find(b => b.id === batchId);
+            let batch = allBatches.find(b => b.id === batchId);
             if (!batch) return;
+
+            try {
+                const batchRef = window.doc(window.db, 'expenseBatches', batchId);
+                const batchSnap = await window.getDoc(batchRef);
+                if (batchSnap.exists()) {
+                    batch = { id: batchSnap.id, ...batchSnap.data() };
+                    const expensesQuery = window.query(
+                        window.collection(window.db, 'expenses'),
+                        window.where('batchId', '==', batch.id)
+                    );
+                    const expensesSnapshot = await window.getDocs(expensesQuery);
+                    batch.expenses = expensesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    const index = allBatches.findIndex(b => b.id === batchId);
+                    if (index >= 0) {
+                        allBatches[index] = batch;
+                    }
+                }
+            } catch (error) {
+                console.warn('Failed to fetch latest expenses for batch', batchId, error);
+            }
 
             currentBatch = batch;
             

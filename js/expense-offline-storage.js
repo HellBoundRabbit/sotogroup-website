@@ -347,11 +347,7 @@ class UploadQueue {
                 }
                 localExpense.photos[photoIndex] = downloadURL;
             }
-
-            if (typeof window.loadExpenseBatches === 'function') {
-                window.loadExpenseBatches();
-            }
-            return true;
+             return true;
         } catch (error) {
             console.error('Error updating expense photo URL:', error);
             throw error;
