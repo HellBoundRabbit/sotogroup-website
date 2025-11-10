@@ -221,30 +221,21 @@ class UploadQueue {
         }
         this.isProcessing = true;
         try {
-            const pendingTasks = await new Promise((resolve, reject) => {
-                const transaction = this.db.transaction(['uploadQueue'], 'readonly');
-                const store = transaction.objectStore('uploadQueue');
-                const statusIndex = store.index('status');
-                const tasks = [];
-                const request = statusIndex.openCursor(IDBKeyRange.only('pending'));
-                request.onsuccess = (event) => {
-                    const cursor = event.target.result;
-                    if (cursor) {
-                        tasks.push(cursor.value);
-                        cursor.continue();
-                    } else {
-                        resolve(tasks);
-                    }
-                };
-                request.onerror = () => reject(request.error);
-            });
+            const allTasks = await this.getAllTasks();
+            const tasksToProcess = allTasks.filter((task) => task.status === 'pending' || task.status === 'uploading');
 
-            for (const task of pendingTasks) {
+            for (const task of tasksToProcess) {
+                if (task.status === 'uploading') {
+                    // Reset stuck uploads back to pending
+                    task.status = 'pending';
+                    await this.saveTask(task);
+                }
+
                 console.debug('[UploadQueue] Processing task', task.uploadId, task.filename);
 
                 if (task.retries >= this.maxRetries) {
-                    console.warn('[UploadQueue] Task exceeded max retries, marking failed', task.uploadId);
-                    await this.markFailed(task.uploadId, 'Max retries exceeded');
+                    console.warn('[UploadQueue] Task exceeded max retries, removing', task.uploadId);
+                    await this.deleteTask(task.uploadId);
                     continue;
                 }
 
@@ -253,12 +244,17 @@ class UploadQueue {
                     console.debug('[UploadQueue] Upload succeeded', task.uploadId);
                     await this.deleteTask(task.uploadId);
                 } catch (error) {
-                    console.error('[UploadQueue] Upload failed', task.uploadId, error);
-                    task.retries++;
-                    task.status = 'pending';
-                    task.error = error.message;
-                    task.lastRetryAt = Date.now();
-                    await this.saveTask(task);
+                    if (error && error.code === 'EXPENSE_DOC_MISSING') {
+                        console.warn('[UploadQueue] Expense document missing, dropping task', task.uploadId);
+                        await this.deleteTask(task.uploadId);
+                    } else {
+                        console.error('[UploadQueue] Upload failed', task.uploadId, error);
+                        task.retries++;
+                        task.status = 'pending';
+                        task.error = error.message;
+                        task.lastRetryAt = Date.now();
+                        await this.saveTask(task);
+                    }
                 }
 
                 await this.updateGlobalUploadStatus();
@@ -271,12 +267,29 @@ class UploadQueue {
         }
     }
 
+    async getAllTasks() {
+        await this.init();
+        if (!this.db) return [];
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['uploadQueue'], 'readonly');
+            const store = transaction.objectStore('uploadQueue');
+            const request = store.getAll();
+            request.onsuccess = () => resolve(request.result || []);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
     async uploadPhoto(task) {
         const photoRef = window.ref(window.storage, task.filename);
         const blob = task.photoFile instanceof File ? task.photoFile : task.photoFile;
         await window.uploadBytes(photoRef, blob);
         const downloadURL = await window.getDownloadURL(photoRef);
-        await this.updateExpensePhotoUrl(task, downloadURL);
+        const updated = await this.updateExpensePhotoUrl(task, downloadURL);
+        if (!updated) {
+            const error = new Error('Expense document missing');
+            error.code = 'EXPENSE_DOC_MISSING';
+            throw error;
+        }
         return downloadURL;
     }
 
@@ -291,19 +304,19 @@ class UploadQueue {
                 const docSnap = await window.getDoc(expenseDocRef);
                 if (!docSnap.exists()) {
                     console.warn('Expense document not found for upload task', task);
-                    return;
+                    return false;
                 }
                 expenseData = docSnap.data() || {};
             } else {
-            const expensesQuery = window.query(
-                window.collection(window.db, 'expenses'),
-                window.where('batchId', '==', batchId)
-            );
-            const snapshot = await window.getDocs(expensesQuery);
-            const expenseDocs = snapshot.docs;
+                const expensesQuery = window.query(
+                    window.collection(window.db, 'expenses'),
+                    window.where('batchId', '==', batchId)
+                );
+                const snapshot = await window.getDocs(expensesQuery);
+                const expenseDocs = snapshot.docs;
                 if (!expenseDocs[expenseIndex]) {
                     console.warn('Unable to resolve expense document for upload task', task);
-                    return;
+                    return false;
                 }
                 expenseDocRef = expenseDocs[expenseIndex].ref;
                 expenseData = expenseDocs[expenseIndex].data() || {};
@@ -313,16 +326,16 @@ class UploadQueue {
                 expenseData.photos = [];
             }
 
-                if (expenseData.photos[photoIndex]) {
-                    expenseData.photos[photoIndex] = downloadURL;
-                } else {
-                    expenseData.photos.push(downloadURL);
-                }
+            if (expenseData.photos[photoIndex]) {
+                expenseData.photos[photoIndex] = downloadURL;
+            } else {
+                expenseData.photos.push(downloadURL);
+            }
 
             await window.updateDoc(expenseDocRef, {
-                    photos: expenseData.photos,
+                photos: expenseData.photos,
                 updatedAt: window.serverTimestamp ? window.serverTimestamp() : new Date()
-                });
+            });
 
             if (window.currentBatch && window.currentBatch.id === batchId && window.currentBatch.expenses && window.currentBatch.expenses[expenseIndex]) {
                 const localExpense = window.currentBatch.expenses[expenseIndex];
@@ -331,6 +344,7 @@ class UploadQueue {
                 }
                 localExpense.photos[photoIndex] = downloadURL;
             }
+            return true;
         } catch (error) {
             console.error('Error updating expense photo URL:', error);
             throw error;
