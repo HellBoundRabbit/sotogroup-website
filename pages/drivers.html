@@ -8,11 +8,13 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16.png">
     <link rel="icon" type="image/svg+xml" href="/assets/logos/favicon.svg">
-    <link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
+<link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png">
+<link rel="stylesheet" href="/assets/css/responsive-nav.css">
 <title>Driver Management - SOTO Routes</title>
 <link href="data:image/x-icon;base64," rel="icon" type="image/x-icon"/>
 <script src="/assets/js/tailwind-runtime.js?plugins=forms,container-queries"></script>
+<script src="/js/mobile-nav.js"></script>
 <script src="/js/session-manager.js"></script>
 <script src="../js/ui-dialogs.js"></script>
 <!-- Firebase SDK -->
@@ -157,7 +159,7 @@ function initializeDrivers() {
 <body class="bg-[#111418] text-white" style='font-family: Inter, "Noto Sans", sans-serif;'>
 <div class="relative flex h-auto min-h-screen w-full flex-col dark group/design-root overflow-x-hidden">
 <div class="flex h-full grow flex-col">
-<header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-b-[#283039] px-6 py-3">
+<header class="relative flex items-center justify-between whitespace-nowrap border-b border-solid border-b-[#283039] px-6 py-3" data-soto-nav>
 <div class="flex items-center gap-4">
 <div class="size-8 text-[var(--primary-color)]">
 <svg fill="none" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
@@ -167,7 +169,7 @@ function initializeDrivers() {
 </div>
 <h2 class="text-xl font-bold">SOTO Routes</h2>
 </div>
-<nav class="flex flex-1 justify-center gap-2">
+<nav class="flex flex-1 justify-center gap-2" data-soto-nav-links>
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/soto-lp.html">Routes</a>
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/optimisation.html">Optimisation</a>
 <a class="bg-[#283039] text-white text-sm font-medium rounded-md px-4 py-2" href="#">Drivers</a>
@@ -177,6 +179,9 @@ function initializeDrivers() {
 <a class="text-sm font-medium rounded-md px-4 py-2 hover:bg-[#283039] transition-colors" href="/pages/messages.html">Messages</a>
 </nav>
 <div class="flex items-center gap-4">
+    <button type="button" class="mobile-nav-toggle" data-soto-nav-toggle aria-label="Toggle navigation" aria-expanded="false">
+        <span class="material-symbols-outlined text-xl">menu</span>
+    </button>
                 <div class="relative">
                     <button class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors relative" onclick="showNotifications()">
                         <span class="material-symbols-outlined text-xl">notifications</span>
