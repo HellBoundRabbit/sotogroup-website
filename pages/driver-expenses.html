@@ -155,6 +155,9 @@
                     <span class="material-symbols-outlined text-sm animate-pulse">cloud_upload</span>
                     <span class="text-xs"></span>
                 </div>
+                <button onclick="debugUploadQueue()" class="hidden md:inline-flex items-center text-xs text-gray-400 hover:text-white border border-gray-600 rounded-md px-2 py-1 transition-colors">
+                    Debug Queue
+                </button>
             </div>
             <button onclick="window.location.href='/pages/driver-paid-expenses.html'" class="touch-target flex items-center text-green-500 hover:text-green-400 transition-colors text-sm font-semibold">
                 Processed Expenses
@@ -2364,6 +2367,23 @@
             `).join('');
 
             document.getElementById('photoViewerModal').classList.remove('hidden');
+        }
+
+        async function debugUploadQueue() {
+            if (!window.uploadQueue) {
+                console.warn('Upload queue not initialized yet');
+                return;
+            }
+            await window.uploadQueue.init();
+            const pendingTasks = await new Promise((resolve) => {
+                const transaction = window.uploadQueue.db.transaction(['uploadQueue'], 'readonly');
+                const store = transaction.objectStore('uploadQueue');
+                const request = store.getAll();
+                request.onsuccess = () => resolve(request.result || []);
+                request.onerror = () => resolve([]);
+            });
+            console.table(pendingTasks);
+            alert(`Upload queue size: ${pendingTasks.length}`);
         }
     </script>
 </body>
