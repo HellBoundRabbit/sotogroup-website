@@ -193,6 +193,7 @@ class UploadQueue {
         const task = {
             uploadId, batchId: uploadTask.batchId, batchLocalId: uploadTask.batchLocalId,
             expenseIndex: uploadTask.expenseIndex, photoIndex: uploadTask.photoIndex,
+            expenseDocId: uploadTask.expenseDocId || null,
             photoFile: uploadTask.photoFile, filename: uploadTask.filename,
             status: 'pending', retries: 0, error: null, createdAt: Date.now()
         };
@@ -264,31 +265,60 @@ class UploadQueue {
         const blob = task.photoFile instanceof File ? task.photoFile : task.photoFile;
         await window.uploadBytes(photoRef, blob);
         const downloadURL = await window.getDownloadURL(photoRef);
-        await this.updateExpensePhotoUrl(task.batchId, task.expenseIndex, task.photoIndex, downloadURL);
+        await this.updateExpensePhotoUrl(task, downloadURL);
         return downloadURL;
     }
 
-    async updateExpensePhotoUrl(batchId, expenseIndex, photoIndex, downloadURL) {
+    async updateExpensePhotoUrl(task, downloadURL) {
+        const {batchId, expenseIndex, photoIndex, expenseDocId} = task;
         try {
-            const expensesQuery = window.query(
-                window.collection(window.db, 'expenses'),
-                window.where('batchId', '==', batchId)
-            );
-            const snapshot = await window.getDocs(expensesQuery);
-            const expenseDocs = snapshot.docs;
-            if (expenseDocs[expenseIndex]) {
-                const expenseDoc = expenseDocs[expenseIndex];
-                const expenseData = expenseDoc.data();
-                if (!expenseData.photos) expenseData.photos = [];
-                if (expenseData.photos[photoIndex]) {
-                    expenseData.photos[photoIndex] = downloadURL;
-                } else {
-                    expenseData.photos.push(downloadURL);
+            let expenseDocRef = null;
+            let expenseData = null;
+
+            if (expenseDocId) {
+                expenseDocRef = window.doc(window.db, 'expenses', expenseDocId);
+                const docSnap = await window.getDoc(expenseDocRef);
+                if (!docSnap.exists()) {
+                    console.warn('Expense document not found for upload task', task);
+                    return;
                 }
-                await window.updateDoc(window.doc(window.db, 'expenses', expenseDoc.id), {
-                    photos: expenseData.photos,
-                    updatedAt: window.serverTimestamp()
-                });
+                expenseData = docSnap.data() || {};
+            } else {
+                const expensesQuery = window.query(
+                    window.collection(window.db, 'expenses'),
+                    window.where('batchId', '==', batchId)
+                );
+                const snapshot = await window.getDocs(expensesQuery);
+                const expenseDocs = snapshot.docs;
+                if (!expenseDocs[expenseIndex]) {
+                    console.warn('Unable to resolve expense document for upload task', task);
+                    return;
+                }
+                expenseDocRef = expenseDocs[expenseIndex].ref;
+                expenseData = expenseDocs[expenseIndex].data() || {};
+            }
+
+            if (!Array.isArray(expenseData.photos)) {
+                expenseData.photos = [];
+            }
+
+            if (expenseData.photos[photoIndex]) {
+                expenseData.photos[photoIndex] = downloadURL;
+            } else {
+                expenseData.photos.push(downloadURL);
+            }
+
+            await window.updateDoc(expenseDocRef, {
+                photos: expenseData.photos,
+                updatedAt: window.serverTimestamp ? window.serverTimestamp() : new Date()
+            });
+
+            if (window.currentBatch && window.currentBatch.id === batchId && window.currentBatch.expenses && window.currentBatch.expenses[expenseIndex]) {
+                const localExpense = window.currentBatch.expenses[expenseIndex];
+                if (!Array.isArray(localExpense.photos)) {
+                    localExpense.photos = [];
+                }
+                localExpense.photos[photoIndex] = downloadURL;
             }
         } catch (error) {
             console.error('Error updating expense photo URL:', error);

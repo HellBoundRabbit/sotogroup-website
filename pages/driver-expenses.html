@@ -383,7 +383,7 @@
                             class="hidden"
                             onchange="handlePhotoSelect(event)"
                         >
-                        <button onclick="showPhotoSourceChoice()" class="w-full py-3 bg-[#283039] hover:bg-[#3a4552] text-white rounded-lg transition-colors flex items-center justify-center gap-2 touch-target border border-dashed border-gray-600">
+                        <button onclick="openPhotoPicker()" class="w-full py-3 bg-[#283039] hover:bg-[#3a4552] text-white rounded-lg transition-colors flex items-center justify-center gap-2 touch-target border border-dashed border-gray-600">
                             <span class="material-symbols-outlined">add_a_photo</span>
                             Add Photos
                         </button>
@@ -1110,59 +1110,15 @@
             event.target.closest('.category-btn').classList.add('ring-2', 'ring-blue-500');
         }
 
-        // Show photo source choice (camera or gallery)
-        function showPhotoSourceChoice() {
-            // Create modal overlay
-            const modal = document.createElement('div');
-            modal.className = 'fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center';
-            modal.innerHTML = `
-                <div class="bg-[#1a1f24] rounded-lg p-6 max-w-sm w-full mx-4 border border-gray-700">
-                    <h3 class="text-white text-lg font-semibold mb-4 text-center">Select Photo Source</h3>
-                    <div class="space-y-3">
-                        <button onclick="selectPhotoSource('camera')" class="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center justify-center gap-3 touch-target">
-                            <span class="material-symbols-outlined text-2xl">camera_alt</span>
-                            <span class="text-lg font-semibold">Take Photo</span>
-                        </button>
-                        <button onclick="selectPhotoSource('gallery')" class="w-full py-4 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors flex items-center justify-center gap-3 touch-target">
-                            <span class="material-symbols-outlined text-2xl">photo_library</span>
-                            <span class="text-lg font-semibold">Choose from Library</span>
-                        </button>
-                        <button onclick="closePhotoSourceModal()" class="w-full py-3 bg-[#283039] hover:bg-[#3a4552] text-white rounded-lg transition-colors touch-target">
-                            Cancel
-                        </button>
-                    </div>
-                </div>
-            `;
-            modal.id = 'photoSourceModal';
-            document.body.appendChild(modal);
-            
-            // Close on outside click
-            modal.addEventListener('click', (e) => {
-                if (e.target === modal) {
-                    closePhotoSourceModal();
-                }
-            });
-        }
-        
-        // Select photo source and trigger appropriate input
-        function selectPhotoSource(source) {
-            closePhotoSourceModal();
-            
-            if (source === 'camera') {
-                document.getElementById('photoInputCamera').click();
-            } else if (source === 'gallery') {
-                document.getElementById('photoInputGallery').click();
+        // Show system photo picker
+        function openPhotoPicker() {
+            const galleryInput = document.getElementById('photoInputGallery');
+            if (galleryInput) {
+                galleryInput.value = '';
+                galleryInput.click();
             }
         }
-        
-        // Close photo source modal
-        function closePhotoSourceModal() {
-            const modal = document.getElementById('photoSourceModal');
-            if (modal) {
-                modal.remove();
-            }
-        }
-        
+
         // Handle photo selection (works with both camera and gallery inputs)
         function handlePhotoSelect(event) {
             const files = Array.from(event.target.files);
@@ -1175,8 +1131,10 @@
             if (remainingSlots <= 0) {
                 notifyWarning(`Each expense can include up to ${MAX_PHOTOS_PER_EXPENSE} photos. Remove one to add another.`, 'Photo Limit Reached');
                 event.target.value = '';
-                document.getElementById('photoInputCamera').value = '';
-                document.getElementById('photoInputGallery').value = '';
+                const cameraInput = document.getElementById('photoInputCamera');
+                const galleryInput = document.getElementById('photoInputGallery');
+                if (cameraInput) cameraInput.value = '';
+                if (galleryInput) galleryInput.value = '';
                 return;
             }
 
@@ -1211,8 +1169,10 @@
             }).join('');
             
             // Reset both inputs so same file can be selected again if needed
-            document.getElementById('photoInputCamera').value = '';
-            document.getElementById('photoInputGallery').value = '';
+            const cameraInput = document.getElementById('photoInputCamera');
+            const galleryInput = document.getElementById('photoInputGallery');
+            if (cameraInput) cameraInput.value = '';
+            if (galleryInput) galleryInput.value = '';
             
             // Trigger auto-save if we're editing a batch
             if (currentBatch && window.scheduleAutoSave) {
@@ -1370,24 +1330,34 @@
             
             // Update expense in Firebase - need to find the expense document
             try {
-                const expensesQuery = window.query(
-                    window.collection(window.db, 'expenses'),
-                    window.where('batchId', '==', currentBatch.id)
-                );
-                const expensesSnapshot = await window.getDocs(expensesQuery);
-                const expenseDocs = expensesSnapshot.docs;
-                
-                // Find the expense document by matching category and amount (or index)
-                const expenseDoc = expenseDocs[window.editingExpenseIndex];
-                if (expenseDoc) {
-                    await window.updateDoc(window.doc(window.db, 'expenses', expenseDoc.id), {
+                let expenseDocId = expense.serverId || expense.id;
+                let expenseDocRef = expenseDocId ? window.doc(window.db, 'expenses', expenseDocId) : null;
+
+                if (!expenseDocRef) {
+                    const expensesQuery = window.query(
+                        window.collection(window.db, 'expenses'),
+                        window.where('batchId', '==', currentBatch.id)
+                    );
+                    const expensesSnapshot = await window.getDocs(expensesQuery);
+                    const expenseDocs = expensesSnapshot.docs;
+                    const expenseDoc = expenseDocs[window.editingExpenseIndex];
+                    if (expenseDoc) {
+                        expenseDocRef = expenseDoc.ref;
+                        expenseDocId = expenseDoc.id;
+                    }
+                }
+
+                if (expenseDocRef) {
+                    await window.updateDoc(expenseDocRef, {
                         photos: expense.photos,
                         updatedAt: window.serverTimestamp()
                     });
+                    expense.serverId = expenseDocId;
+                    expense.id = expenseDocId;
                 }
             } catch (error) {
                 console.error('Error updating expense photos:', error);
-            notifyError('Error saving photos. Please try again.');
+                notifyError('Error saving photos. Please try again.');
                 return;
             }
             
@@ -1731,6 +1701,12 @@
 
                 // Create expense document first (with empty photos array)
                 const expenseDocRef = await window.addDoc(window.collection(window.db, 'expenses'), expenseData);
+                const expenseDocId = expenseDocRef.id;
+
+                if (currentBatch && currentBatch.expenses && currentBatch.expenses[expenseIndex]) {
+                    currentBatch.expenses[expenseIndex].serverId = expenseDocId;
+                    currentBatch.expenses[expenseIndex].id = expenseDocId;
+                }
 
                 // Handle photo uploads using the upload queue system
                 if (expense.photos && expense.photos.length > 0) {
@@ -1762,6 +1738,7 @@
                                         batchId: batchId,
                                         batchLocalId: batchRef.localId || null,
                                         expenseIndex: expenseIndex,
+                                        expenseDocId: expenseDocId,
                                         photoIndex: photoIndex,
                                         photoFile: photoFile,
                                         filename: filename
