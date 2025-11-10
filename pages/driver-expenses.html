@@ -1712,13 +1712,14 @@
 
             // Add new expenses
             const addPromises = expensesToSave.map(async (expense, expenseIndex) => {
+                const existingPhotoURLs = (expense.photos || []).filter((p) => typeof p === 'string');
                 const expenseData = {
                     batchId: batchId,
                     driverId: batchRef.driverId || currentUser.uid,
                     officeId: batchRef.officeId || currentUser.officeId,
                     category: expense.category,
                     amount: parseFloat(expense.amount),
-                    photos: [], // Will be populated as photos upload via queue
+                    photos: existingPhotoURLs, // Preserve already uploaded photos; new ones will be queued
                     createdAt: window.serverTimestamp()
                 };
 
