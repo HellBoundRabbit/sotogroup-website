@@ -659,38 +659,38 @@
                 console.error('Unable to establish session for driver expenses:', error);
                     window.location.href = '/pages/soto-routes-login.html';
                     return;
-            }
+                }
 
             window.expenseUploadPrompt = createPersistencePrompt();
 
             console.log('Loading user data for:', currentUser.uid);
-            try {
+                try {
                 const userDoc = await window.getDoc(window.doc(window.db, 'users', currentUser.uid));
-                if (!userDoc.exists()) {
+                    if (!userDoc.exists()) {
                     console.error('User document not found. Signing out and redirecting.');
                     await window.signOut(window.auth);
-                    window.location.href = '/pages/soto-routes-login.html';
-                    return;
-                }
+                        window.location.href = '/pages/soto-routes-login.html';
+                        return;
+                    }
 
                 currentUser = { ...currentUser, ...userDoc.data() };
-                window.currentUser = currentUser;
+                    window.currentUser = currentUser;
 
-            console.log('Loading expense batches...');
-            await processSubmissionQueue({ showToast: false });
-            await loadExpenseBatches();
-            document.getElementById('loadingOverlay').style.display = 'none';
-            console.log('Loading complete!');
-            
-            if (window.uploadQueue) {
-                await window.uploadQueue.init();
-                await window.uploadQueue.processQueue();
-                await window.uploadQueue.updateGlobalUploadStatus();
-            }
-            } catch (error) {
-                console.error('Error loading user data:', error);
-                notifyError('Error loading user data. Please try again.');
-            }
+                    console.log('Loading expense batches...');
+                    await processSubmissionQueue({ showToast: false });
+                    await loadExpenseBatches();
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                    console.log('Loading complete!');
+                    
+                    if (window.uploadQueue) {
+                        await window.uploadQueue.init();
+                        await window.uploadQueue.processQueue();
+                        await window.uploadQueue.updateGlobalUploadStatus();
+                    }
+                } catch (error) {
+                    console.error('Error loading user data:', error);
+                    notifyError('Error loading user data. Please try again.');
+                }
         }
 
         // Load all expense batches for this driver
@@ -2243,8 +2243,8 @@
                 startY: tableStartY,
                 head: [tableData[0]],
                 body: tableData.slice(1),
-                headStyles: { 
-                    fillColor: [217, 217, 217], // Gray background (0.85 white)
+                headStyles: {
+                    fillColor: [217, 217, 217],
                     textColor: 0,
                     fontStyle: 'bold',
                     fontSize: 15
@@ -2254,7 +2254,7 @@
                     textColor: 0
                 },
                 alternateRowStyles: {
-                    fillColor: [245, 245, 245] // Very light gray (0.96 white)
+                    fillColor: [245, 245, 245]
                 },
                 columnStyles: {
                     0: { cellWidth: col0, fontStyle: 'bold' },
@@ -2270,38 +2270,32 @@
                 },
                 margin: { left: infoStartX }
             });
-            
-            y = doc.lastAutoTable.finalY + 40;
-            
-            // Generate expense summary lines (matching app format)
-            const primaryCategories = ['Fuel', 'Charge', 'Car Wash'];
-            const secondaryCategories = ['Bus', 'Train', 'Taxi', 'Tolls', 'Other'];
-            
-            // Primary line (bold)
-            const primaryAmounts = [];
-            primaryCategories.forEach(cat => {
-                const exp = expensesByCategory[cat] || [];
-                if (exp.length > 0) {
-                    const amounts = exp.map(e => `
-```
+
+            return doc;
+        }
+
         function createPersistencePrompt() {
             const promptEl = document.getElementById('persistencePrompt');
             const allowBtn = document.getElementById('persistenceAllowBtn');
             const skipBtn = document.getElementById('persistenceSkipBtn');
 
             let resolvePrompt;
+
             const ensurePersistence = async () => {
                 if (!navigator.storage || !navigator.storage.persist) {
                     return true;
                 }
-                if (localStorage.getItem('expense_persisted') === 'true' || localStorage.getItem('expense_persist_prompted') === 'true') {
+
+                if (localStorage.getItem('expense_persisted') === 'true') {
                     return true;
                 }
+
                 const isPersisted = await navigator.storage.persisted();
                 if (isPersisted) {
                     localStorage.setItem('expense_persisted', 'true');
                     return true;
                 }
+
                 promptEl.classList.remove('hidden');
                 return new Promise((resolve) => {
                     resolvePrompt = resolve;
@@ -2327,9 +2321,7 @@
 
             skipBtn.addEventListener('click', () => {
                 notifyWarning('Background uploads are required to save receipts. Please tap Allow on the system prompt to continue.', 'Permission Required');
-                if (resolvePrompt) {
-                    resolvePrompt(false);
-                }
+                resolvePrompt?.(false);
             });
 
             return { ensurePersistence };
