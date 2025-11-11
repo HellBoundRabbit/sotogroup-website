@@ -163,10 +163,13 @@ class UploadQueue {
     async init() {
         if (navigator.storage && navigator.storage.persist) {
             try {
+                const alreadyGranted = localStorage.getItem('expense_persisted') === 'true';
                 const isPersisted = await navigator.storage.persisted();
-                if (!isPersisted) {
+                if (!alreadyGranted && !isPersisted) {
                     const granted = await navigator.storage.persist();
-                    if (!granted) {
+                    if (granted) {
+                        localStorage.setItem('expense_persisted', 'true');
+                    } else {
                         console.warn('[UploadQueue] Persistent storage request was denied. Receipts may not upload when the page is backgrounded.');
                         if (document.activeElement && document.activeElement.blur) {
                             document.activeElement.blur();
