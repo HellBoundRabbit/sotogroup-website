@@ -145,25 +145,43 @@
 
     <div id="persistencePrompt" class="hidden fixed inset-0 bg-black bg-opacity-70 z-[100] pointer-events-auto">
         <div class="min-h-screen flex items-center justify-center px-4">
-            <div class="bg-[#1a1f24] border border-[#283039] rounded-2xl max-w-md w-full shadow-2xl p-6 space-y-4 pointer-events-auto z-[101]">
-                <div class="flex items-center gap-3">
+            <div class="bg-[#1a1f24] border border-[#283039] rounded-2xl max-w-md w-full shadow-2xl p-6 space-y-5 pointer-events-auto z-[101]">
+                <div class="flex items-start gap-3">
                     <span class="material-symbols-outlined text-3xl text-blue-400">cloud_upload</span>
-                    <h2 class="text-lg font-semibold text-white">Allow background uploads?</h2>
+                    <div class="space-y-1">
+                        <h2 class="text-lg font-semibold text-white">Keep uploads running</h2>
+                        <p class="text-gray-300 text-sm leading-relaxed">If Safari never shows "Allow downloads for offline use", follow these steps so your receipt photos keep uploading.</p>
+                    </div>
                 </div>
-                <p class="text-gray-300 text-sm leading-relaxed">
-                    Safari can pause uploads when the app is in the background. Allowing "Download offline data" lets your receipt photos finish uploading even after you switch apps.
-                </p>
-                <div class="bg-[#151b21] border border-[#283039] rounded-xl p-4 text-sm text-gray-400 space-y-2">
-                    <p class="font-semibold text-gray-200">How to allow:</p>
+                <div class="bg-[#151b21] border border-[#283039] rounded-xl p-4 text-sm text-gray-300 space-y-3">
+                    <p class="font-semibold text-gray-200">Try this:</p>
                     <ol class="space-y-2 list-decimal list-inside">
-                        <li>When Safari asks "Allow this site to download data for offline use?", tap <span class="text-blue-400">Allow</span>.</li>
-                        <li>If you have never seen this prompt, close Safari and reopen this page.</li>
+                        <li>Tap <span class="text-blue-400 font-semibold">Share &gt; Add to Home Screen</span>.</li>
+                        <li>Open SOTO Routes from your Home Screen icon.</li>
+                        <li>Return to Expenses and choose <span class="text-blue-400 font-semibold">Enable background uploads</span>.</li>
                     </ol>
+                    <p class="text-xs text-gray-500">Apple only guarantees background storage for sites opened from the Home Screen or when Safari decides automatically after repeated use.</p>
                 </div>
-                <div class="flex gap-3">
-                    <button id="persistenceAllowBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 font-semibold transition-colors">Allow Background Uploads</button>
-                    <button id="persistenceSkipBtn" class="flex-1 bg-[#283039] hover:bg-[#3a4552] text-white rounded-lg py-2 font-semibold transition-colors">Cancel</button>
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <button id="persistenceAllowBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 font-semibold transition-colors">Try again now</button>
+                    <button id="persistenceSkipBtn" class="flex-1 bg-[#283039] hover:bg-[#3a4552] text-white rounded-lg py-2 font-semibold transition-colors">Close</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="persistenceBanner" class="hidden px-4 pt-4">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-2xl border border-yellow-500/40 bg-[#1c1a12] p-4 shadow-lg">
+            <div class="flex items-start gap-3">
+                <span class="material-symbols-outlined text-yellow-400">cloud_upload</span>
+                <div class="space-y-1">
+                    <p class="text-yellow-200 font-semibold text-sm uppercase tracking-wide">Background uploads off</p>
+                    <p class="text-yellow-100 text-xs sm:text-sm leading-relaxed">Safari may pause receipt photos after you leave this tab. Enable background uploads so everything finishes safely.</p>
+                </div>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-2 sm:items-center shrink-0">
+                <button id="persistenceBannerEnableBtn" class="bg-yellow-400 hover:bg-yellow-300 text-black rounded-lg px-4 py-2 text-sm font-semibold transition-colors">Enable background uploads</button>
+                <button id="persistenceBannerLearnBtn" class="border border-yellow-500/40 text-yellow-200 hover:bg-yellow-500/10 rounded-lg px-4 py-2 text-sm font-semibold transition-colors">How do I enable this?</button>
             </div>
         </div>
     </div>
@@ -662,7 +680,10 @@
                 }
 
             window.expenseUploadPrompt = createPersistencePrompt();
-
+            if (window.expenseUploadPrompt?.ensurePersistence) {
+                await window.expenseUploadPrompt.ensurePersistence({ request: false, suppressToast: true });
+            }
+ 
             console.log('Loading user data for:', currentUser.uid);
                 try {
                 const userDoc = await window.getDoc(window.doc(window.db, 'users', currentUser.uid));
@@ -1622,12 +1643,8 @@
                 const notes = document.getElementById('notesInput').value.trim();
                 currentBatch.notes = notes || '';
 
-                if (window.expenseUploadPrompt && typeof window.expenseUploadPrompt.ensurePersistence === 'function') {
-                    const granted = await window.expenseUploadPrompt.ensurePersistence();
-                    if (!granted) {
-                        notifyWarning('Please allow background uploads before saving drafts so your receipts do not get lost.', 'Permission Required');
-                        return;
-                    }
+                if (window.expenseUploadPrompt?.ensurePersistence) {
+                    await window.expenseUploadPrompt.ensurePersistence({ request: true });
                 }
 
                 await syncDraftToFirestore(currentBatch, 'draft');
@@ -1693,6 +1710,10 @@
                 currentBatch.officeId = currentUser.officeId;
                 currentBatch.status = 'pending';
                 currentBatch.notes = notes || '';
+
+                if (window.expenseUploadPrompt?.ensurePersistence) {
+                    await window.expenseUploadPrompt.ensurePersistence({ request: true });
+                }
 
                 await syncDraftToFirestore(currentBatch, 'pending');
 
@@ -2278,53 +2299,115 @@
             const promptEl = document.getElementById('persistencePrompt');
             const allowBtn = document.getElementById('persistenceAllowBtn');
             const skipBtn = document.getElementById('persistenceSkipBtn');
+            const bannerEl = document.getElementById('persistenceBanner');
+            const bannerEnableBtn = document.getElementById('persistenceBannerEnableBtn');
+            const bannerLearnBtn = document.getElementById('persistenceBannerLearnBtn');
+            const STORAGE_FLAG_KEY = 'expense_persisted';
 
-            let resolvePrompt;
+            const showBanner = () => bannerEl?.classList.remove('hidden');
+            const hideBanner = () => bannerEl?.classList.add('hidden');
+            const showPrompt = () => promptEl?.classList.remove('hidden');
+            const hidePrompt = () => promptEl?.classList.add('hidden');
 
-            const ensurePersistence = async () => {
-                if (!navigator.storage || !navigator.storage.persist) {
-                    return true;
-                }
-
-                if (localStorage.getItem('expense_persisted') === 'true') {
-                    return true;
-                }
-
-                const isPersisted = await navigator.storage.persisted();
-                if (isPersisted) {
-                    localStorage.setItem('expense_persisted', 'true');
-                    return true;
-                }
-
-                promptEl.classList.remove('hidden');
-                return new Promise((resolve) => {
-                    resolvePrompt = resolve;
-                });
+            const markGranted = () => {
+                localStorage.setItem(STORAGE_FLAG_KEY, 'true');
+                hideBanner();
+                hidePrompt();
             };
 
-            allowBtn.addEventListener('click', async () => {
+            const ensurePersistence = async ({ request = false, suppressToast = false } = {}) => {
+                if (!navigator.storage || !navigator.storage.persist) {
+                    markGranted();
+                    return true;
+                }
+
+                if (localStorage.getItem(STORAGE_FLAG_KEY) === 'true') {
+                    hideBanner();
+                    return true;
+                }
+
+                let alreadyPersisted = false;
                 try {
-                    const granted = await navigator.storage.persist();
-                    promptEl.classList.add('hidden');
-                    resolvePrompt?.(granted);
-                    if (granted) {
-                        localStorage.setItem('expense_persisted', 'true');
-                    } else {
-                        notifyWarning('Please tap Allow when Safari asks to download data for offline use. Without it, receipts may not upload.', 'Permission Required');
-                    }
+                    alreadyPersisted = await navigator.storage.persisted();
+                } catch (error) {
+                    console.warn('navigator.storage.persisted() failed', error);
+                }
+
+                if (alreadyPersisted) {
+                    markGranted();
+                    return true;
+                }
+
+                showBanner();
+
+                if (!request) {
+                    return false;
+                }
+
+                let granted = false;
+                try {
+                    granted = await navigator.storage.persist();
                 } catch (error) {
                     console.warn('navigator.storage.persist() failed', error);
-                    promptEl.classList.add('hidden');
-                    resolvePrompt?.(false);
+                }
+
+                if (granted) {
+                    markGranted();
+                    if (!suppressToast) {
+                        notifySuccess(
+                            'Background uploads are enabled. You can switch apps while photos finish uploading.',
+                            'All set'
+                        );
+                    }
+                    return true;
+                }
+
+                if (!suppressToast) {
+                    notifyWarning(
+                        'Keep this page open until the blue upload indicator disappears, or enable background uploads so Safari can finish in the background.',
+                        'Background uploads not enabled'
+                    );
+                }
+
+                showBanner();
+                return false;
+            };
+
+            bannerEnableBtn?.addEventListener('click', async () => {
+                const granted = await ensurePersistence({ request: true });
+                if (!granted) {
+                    showPrompt();
                 }
             });
 
-            skipBtn.addEventListener('click', () => {
-                notifyWarning('Background uploads are required to save receipts. Please tap Allow on the system prompt to continue.', 'Permission Required');
-                resolvePrompt?.(false);
+            bannerLearnBtn?.addEventListener('click', () => {
+                showPrompt();
             });
 
-            return { ensurePersistence };
+            allowBtn?.addEventListener('click', async () => {
+                const granted = await ensurePersistence({ request: true });
+                if (!granted) {
+                    notifyInfo(
+                        'If Safari still does not ask, add SOTO Routes to your Home Screen and try again.',
+                        'Need Safari\'s permission'
+                    );
+                }
+            });
+
+            skipBtn?.addEventListener('click', () => {
+                hidePrompt();
+            });
+
+            promptEl?.addEventListener('click', (event) => {
+                if (event.target === promptEl) {
+                    hidePrompt();
+                }
+            });
+
+            return {
+                ensurePersistence,
+                showReminder: showBanner
+            };
         }
 
         // Initialize the app after Firebase is ready
