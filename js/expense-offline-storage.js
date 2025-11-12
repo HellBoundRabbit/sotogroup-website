@@ -442,19 +442,57 @@ class UploadQueue {
                 req.onsuccess = () => r(req.result); req.onerror = () => r(0);
             })
         ]);
+
+        let submissionQueued = 0;
+        if (typeof window.getExpenseSubmissionQueueInfo === 'function') {
+            try {
+                const info = window.getExpenseSubmissionQueueInfo();
+                if (info && typeof info.pending === 'number') {
+                    submissionQueued = info.pending;
+                }
+            } catch (error) {
+                console.warn('[UploadQueue] Unable to read submission queue info', error);
+            }
+        }
         console.debug('[UploadQueue] status counts', {pending, uploading, failed});
         const indicator = document.getElementById('uploadStatusIndicator');
         if (indicator) {
             const icon = indicator.querySelector('.material-symbols-outlined');
             const text = indicator.querySelector('span:last-child');
             if (pending > 0 || uploading > 0) {
+                 indicator.classList.remove('hidden', 'bg-red-600', 'hover:bg-red-700');
+                 indicator.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                 if (icon) {
+                     icon.textContent = 'cloud_upload';
+                     icon.classList.add('animate-pulse');
+                 }
+                if (text) {
+                    const parts = [];
+                    if (submissionQueued > 0) {
+                        parts.push(`Uploading ${submissionQueued} expense${submissionQueued === 1 ? '' : 's'}...`);
+                    }
+                    if (uploading > 0) {
+                        parts.push(`${uploading} photo${uploading === 1 ? '' : 's'} in progress`);
+                    } else if (pending > 0) {
+                        parts.push(`${pending} photo${pending === 1 ? '' : 's'} pending`);
+                    }
+                    if (parts.length === 0) {
+                        parts.push('Uploading...');
+                    }
+                    text.classList.remove('text-red-100');
+                    text.textContent = parts.join(' · ');
+                }
+            } else if (submissionQueued > 0) {
                 indicator.classList.remove('hidden', 'bg-red-600', 'hover:bg-red-700');
                 indicator.classList.add('bg-blue-600', 'hover:bg-blue-700');
                 if (icon) {
                     icon.textContent = 'cloud_upload';
                     icon.classList.add('animate-pulse');
                 }
-                if (text) text.textContent = uploading > 0 ? `Uploading ${uploading}...` : `${pending} pending`;
+                if (text) {
+                    text.classList.remove('text-red-100');
+                    text.textContent = `Uploading ${submissionQueued} expense${submissionQueued === 1 ? '' : 's'}...`;
+                }
             } else if (failed > 0) {
                 indicator.classList.remove('hidden', 'bg-blue-600', 'hover:bg-blue-700');
                 indicator.classList.add('bg-red-600', 'hover:bg-red-700');

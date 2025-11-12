@@ -463,9 +463,16 @@
             }
         }
 
+        window.getExpenseSubmissionQueueInfo = function() {
+            const queue = loadSubmissionQueue();
+            return {
+                pending: Array.isArray(queue) ? queue.length : 0,
+            };
+        };
+
         async function queueExpenseAction(targetStatus) {
             if (!currentBatch) {
-                return;
+                return null;
             }
             currentBatch.status = targetStatus;
             if (window.autoSaveDraft) {
@@ -474,7 +481,7 @@
             const localId = currentBatch.localId;
             if (!localId) {
                 console.warn('Unable to queue expense action: missing localId.');
-                return;
+                return null;
             }
             const queue = loadSubmissionQueue();
             const entry = {
@@ -490,6 +497,16 @@
             }
             saveSubmissionQueue(queue);
             console.log(`Queued expense batch ${localId} for ${targetStatus} sync when online.`);
+
+            if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
+                try {
+                    await window.uploadQueue.updateGlobalUploadStatus();
+                } catch (error) {
+                    console.warn('Unable to refresh upload indicator after queue update:', error);
+                }
+            }
+
+            return localId;
         }
 
         async function syncDraftToFirestore(draft, targetStatus) {
@@ -612,6 +629,10 @@
 
             if (remaining.length > 0) {
                 console.warn('Some expense submissions could not sync and remain queued.');
+            }
+
+            if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
+                await window.uploadQueue.updateGlobalUploadStatus();
             }
         }
 
@@ -1564,54 +1585,58 @@
         async function saveDraft() {
             let registration = document.getElementById('regInput').value.trim().toUpperCase();
             if (!registration) {
-        notifyWarning('Please enter a registration number.', 'Missing Registration');
+                notifyWarning('Please enter a registration number.', 'Missing Registration');
+                return;
+            }
+
+            // Prepare batch details prior to queueing so the offline copy is complete
+            currentBatch.registration = registration;
+            currentBatch.driverId = currentUser.uid;
+            currentBatch.driverEmail = currentUser.email;
+            currentBatch.driverName =
+                currentUser.name || `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || 'Unknown Driver';
+            currentBatch.officeId = currentUser.officeId;
+            currentBatch.status = 'draft';
+            const notes = document.getElementById('notesInput').value.trim();
+            currentBatch.notes = notes || '';
+
+            let queuedLocalId = null;
+            try {
+                queuedLocalId = await queueExpenseAction('draft');
+            } catch (error) {
+                console.error('Error queueing draft for upload:', error);
+            }
+
+            notifyInfo('This expense batch has been added to the upload queue. It will upload when the connection is adequate.', 'Upload queued');
+
+            if (!navigator.onLine) {
+                document.getElementById('batchModal').classList.add('hidden');
+                currentBatch = null;
+                window.currentBatch = null;
                 return;
             }
 
             try {
-                if (window.autoSaveDraft) {
-                    await window.autoSaveDraft();
-                }
-
-                if (!navigator.onLine) {
-                    currentBatch.registration = registration;
-                    currentBatch.status = 'draft';
-                    await queueExpenseAction('draft');
-                    notifyInfo('Draft saved locally. It will sync automatically once you reconnect.', 'Offline Mode');
-                    document.getElementById('batchModal').classList.add('hidden');
-                    currentBatch = null;
-                    return;
-                }
-
-                // Prepare batch details
-                currentBatch.registration = registration;
-                currentBatch.driverId = currentUser.uid;
-                currentBatch.driverEmail = currentUser.email;
-                currentBatch.driverName =
-                    currentUser.name || `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || 'Unknown Driver';
-                currentBatch.officeId = currentUser.officeId;
-                currentBatch.status = 'draft';
-
-                const notes = document.getElementById('notesInput').value.trim();
-                currentBatch.notes = notes || '';
-
-                if (window.expenseUploadPrompt?.ensurePersistence) {
-                    await window.expenseUploadPrompt.ensurePersistence({ request: true });
-                }
-
                 await syncDraftToFirestore(currentBatch, 'draft');
 
+                if (queuedLocalId) {
+                    removeSubmissionQueueEntry(queuedLocalId);
+                    if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
+                        await window.uploadQueue.updateGlobalUploadStatus();
+                    }
+                }
+
                 notifySuccess('Draft saved successfully.', 'Draft Saved');
-                
-                // Close modal and clear batch before reloading
                 document.getElementById('batchModal').classList.add('hidden');
                 currentBatch = null;
-                
+                window.currentBatch = null;
                 await loadExpenseBatches();
             } catch (error) {
-                console.error('Error saving draft:', error);
-                await queueExpenseAction('draft');
-                notifyWarning('Unable to sync right now. Draft saved locally and will retry automatically.', 'Offline Mode');
+                console.error('Error syncing draft:', error);
+                notifyWarning('Connection dropped. This expense batch will upload automatically once the connection is adequate.', 'Upload queued');
+                document.getElementById('batchModal').classList.add('hidden');
+                currentBatch = null;
+                window.currentBatch = null;
             }
         }
 
@@ -1619,12 +1644,12 @@
         async function submitBatch() {
             let registration = document.getElementById('regInput').value.trim().toUpperCase();
             if (!registration) {
-        notifyWarning('Please enter a registration number.', 'Missing Registration');
+                notifyWarning('Please enter a registration number.', 'Missing Registration');
                 return;
             }
 
             if (!currentBatch.expenses || currentBatch.expenses.length === 0) {
-        notifyWarning('Please add at least one expense.', 'No Expenses Added');
+                notifyWarning('Please add at least one expense.', 'No Expenses Added');
                 return;
             }
 
@@ -1639,46 +1664,54 @@
                 return;
             }
 
+            // Prepare batch for queueing
+            currentBatch.registration = registration;
+            currentBatch.driverId = currentUser.uid;
+            currentBatch.driverEmail = currentUser.email;
+            currentBatch.driverName =
+                currentUser.name || `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || 'Unknown Driver';
+            currentBatch.officeId = currentUser.officeId;
+            currentBatch.status = 'pending';
+            const notes = document.getElementById('notesInput').value.trim();
+            currentBatch.notes = notes || '';
+
+            let queuedLocalId = null;
             try {
-                if (window.autoSaveDraft) {
-                    await window.autoSaveDraft();
-                }
+                queuedLocalId = await queueExpenseAction('pending');
+            } catch (error) {
+                console.error('Error queueing submission for upload:', error);
+            }
 
-                if (!navigator.onLine) {
-                    currentBatch.registration = registration;
-                    currentBatch.status = 'pending';
-                    await queueExpenseAction('pending');
-                    notifyInfo('Submission saved locally. It will be submitted automatically once you are back online.', 'Offline Mode');
-                    closeBatchModal();
-                    return;
-                }
+            notifyInfo('This expense batch has been added to the upload queue. It will upload when the connection is adequate.', 'Upload queued');
 
-                const notes = document.getElementById('notesInput').value.trim();
-                currentBatch.registration = registration;
-                currentBatch.driverId = currentUser.uid;
-                currentBatch.driverEmail = currentUser.email;
-                currentBatch.driverName =
-                    currentUser.name || `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || 'Unknown Driver';
-                currentBatch.officeId = currentUser.officeId;
-                currentBatch.status = 'pending';
-                currentBatch.notes = notes || '';
+            if (!navigator.onLine) {
+                document.getElementById('batchModal').classList.add('hidden');
+                currentBatch = null;
+                window.currentBatch = null;
+                return;
+            }
 
-                if (window.expenseUploadPrompt?.ensurePersistence) {
-                    await window.expenseUploadPrompt.ensurePersistence({ request: true });
-                }
-
+            try {
                 await syncDraftToFirestore(currentBatch, 'pending');
 
-            notifySuccess('Batch submitted successfully!', 'Submitted');
-                
-                // Clear currentBatch before closing modal to prevent "unsaved changes" prompt
+                if (queuedLocalId) {
+                    removeSubmissionQueueEntry(queuedLocalId);
+                    if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
+                        await window.uploadQueue.updateGlobalUploadStatus();
+                    }
+                }
+
+                notifySuccess('Batch submitted successfully!', 'Submitted');
+                document.getElementById('batchModal').classList.add('hidden');
                 currentBatch = null;
-                closeBatchModal();
+                window.currentBatch = null;
                 await loadExpenseBatches();
             } catch (error) {
                 console.error('Error submitting batch:', error);
-                await queueExpenseAction('pending');
-            notifyWarning('Unable to submit right now. This batch will submit automatically when you reconnect.', 'Offline Mode');
+                notifyWarning('Connection dropped. This expense batch will upload automatically once the connection is adequate.', 'Upload queued');
+                document.getElementById('batchModal').classList.add('hidden');
+                currentBatch = null;
+                window.currentBatch = null;
             }
         }
 
