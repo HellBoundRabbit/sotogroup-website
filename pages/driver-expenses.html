@@ -508,7 +508,7 @@
                 localId,
                 status: targetStatus,
                 timestamp: Date.now(),
-                registration: currentBatch.registration || null
+                registration: currentBatch.registration ? currentBatch.registration : null
             };
             const existingIndex = queue.findIndex(item => item.localId === localId);
             if (existingIndex >= 0) {
@@ -603,7 +603,15 @@
             draft.driverName = driverName;
             draft.driverEmail = driverEmail;
             draft.totalAmount = totalAmount;
-            await window.expenseDraftDB.saveDraft(draft);
+            draft.updatedAt = Date.now();
+            if (draft.submittedAt && typeof draft.submittedAt.toDate === 'function') {
+                draft.submittedAt = draft.submittedAt.toDate().getTime();
+            }
+            try {
+                await window.expenseDraftDB.saveDraft(draft);
+            } catch (storageError) {
+                console.warn('Unable to store draft snapshot locally:', storageError);
+            }
 
             removeSubmissionQueueEntry(draft.localId);
 

@@ -36,12 +36,18 @@ class ExpenseDraftDB {
                     queueStore.createIndex('batchId', 'batchId', { unique: false });
                     queueStore.createIndex('status', 'status', { unique: false });
                 }
+                if (!db.objectStoreNames.contains('photoBlobs')) {
+                    const photoBlobStore = db.createObjectStore('photoBlobs', { keyPath: 'blobId' });
+                }
             };
         });
     }
 
     async saveDraft(batch, photos) {
         if (!this.db) await this.init();
+        if (!batch.expenses) {
+             return batch.localId;
+         }
         const transaction = this.db.transaction(['batches', 'photos'], 'readwrite');
         if (!batch.localId) {
             batch.localId = `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -67,6 +73,34 @@ class ExpenseDraftDB {
             }
         }
         return batch.localId;
+    }
+
+    async savePhotoBlob(localId, expenseIndex, photoIndex, blob) {
+        if (!this.db) await this.init();
+        const transaction = this.db.transaction(['photos'], 'readwrite');
+        await transaction.objectStore('photos').put({
+            photoId: `${localId}_exp${expenseIndex}_photo${photoIndex}`,
+            expenseKey: `${localId}_exp${expenseIndex}`,
+            batchLocalId: localId,
+            blob,
+            timestamp: Date.now()
+        });
+    }
+
+    async getPhotoBlob(localId, expenseIndex, photoIndex) {
+        if (!this.db) await this.init();
+        const transaction = this.db.transaction(['photos'], 'readonly');
+        return new Promise((resolve, reject) => {
+            const request = transaction.objectStore('photos').get(`${localId}_exp${expenseIndex}_photo${photoIndex}`);
+            request.onsuccess = () => resolve(request.result ? request.result.blob : null);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async deletePhotoBlob(localId, expenseIndex, photoIndex) {
+        if (!this.db) await this.init();
+        const transaction = this.db.transaction(['photos'], 'readwrite');
+        await transaction.objectStore('photos').delete(`${localId}_exp${expenseIndex}_photo${photoIndex}`);
     }
 
     async getDraft(localIdOrBatchId) {
@@ -214,11 +248,20 @@ class UploadQueue {
             uploadId, batchId: uploadTask.batchId, batchLocalId: uploadTask.batchLocalId,
             expenseIndex: uploadTask.expenseIndex, photoIndex: uploadTask.photoIndex,
             expenseDocId: uploadTask.expenseDocId || null,
-            photoFile: uploadTask.photoFile, filename: uploadTask.filename,
+            photoFilename: uploadTask.filename,
             status: 'pending', retries: 0, error: null, createdAt: Date.now()
         };
         const transaction = this.db.transaction(['uploadQueue'], 'readwrite');
         await transaction.objectStore('uploadQueue').put(task);
+
+        if (uploadTask.photoFile) {
+            try {
+                await window.expenseDraftDB.savePhotoBlob(uploadTask.batchLocalId || uploadTask.batchId, uploadTask.expenseIndex, uploadTask.photoIndex, uploadTask.photoFile);
+            } catch (error) {
+                console.warn('[UploadQueue] Failed to cache photo blob', error);
+            }
+        }
+
         console.log('[UploadQueue] Enqueued task', task);
         if (navigator.onLine) {
             setTimeout(() => this.processQueue(), 100);
@@ -257,6 +300,7 @@ class UploadQueue {
                 if (task.retries >= this.maxRetries) {
                     console.warn('[UploadQueue] Task exceeded max retries, removing', task.uploadId);
                     await this.deleteTask(task.uploadId);
+                    await window.expenseDraftDB.deletePhotoBlob(task.batchLocalId || task.batchId, task.expenseIndex, task.photoIndex);
                     continue;
                 }
 
@@ -264,10 +308,12 @@ class UploadQueue {
                     await this.uploadPhoto(task);
                     console.debug('[UploadQueue] Upload succeeded', task.uploadId);
                     await this.deleteTask(task.uploadId);
+                    await window.expenseDraftDB.deletePhotoBlob(task.batchLocalId || task.batchId, task.expenseIndex, task.photoIndex);
                 } catch (error) {
                     if (error && error.code === 'EXPENSE_DOC_MISSING') {
                         console.warn('[UploadQueue] Expense document missing, dropping task', task.uploadId);
                         await this.deleteTask(task.uploadId);
+                        await window.expenseDraftDB.deletePhotoBlob(task.batchLocalId || task.batchId, task.expenseIndex, task.photoIndex);
                     } else {
                         console.error('[UploadQueue] Upload failed', task.uploadId, error);
                         task.retries++;
@@ -301,8 +347,11 @@ class UploadQueue {
     }
 
     async uploadPhoto(task) {
-        const photoRef = window.ref(window.storage, task.filename);
-        const blob = task.photoFile instanceof File ? task.photoFile : task.photoFile;
+        const blob = await window.expenseDraftDB.getPhotoBlob(task.batchLocalId || task.batchId, task.expenseIndex, task.photoIndex);
+        if (!blob) {
+            throw new Error('Missing cached photo for upload task.');
+        }
+        const photoRef = window.ref(window.storage, task.photoFilename);
         await window.uploadBytes(photoRef, blob);
         const downloadURL = await window.getDownloadURL(photoRef);
         console.log('[UploadQueue] Upload complete, updating expense', {expenseDocId: task.expenseDocId, batchId: task.batchId, expenseIndex: task.expenseIndex});
@@ -367,7 +416,7 @@ class UploadQueue {
                 }
                 localExpense.photos[photoIndex] = downloadURL;
             }
-             return true;
+            return true;
         } catch (error) {
             console.error('Error updating expense photo URL:', error);
             throw error;
