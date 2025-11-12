@@ -507,7 +507,8 @@
             const entry = {
                 localId,
                 status: targetStatus,
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                registration: currentBatch.registration || null
             };
             const existingIndex = queue.findIndex(item => item.localId === localId);
             if (existingIndex >= 0) {
@@ -610,130 +611,84 @@
         }
 
         async function processSubmissionQueue(options = {}) {
-             const { showToast = true } = options;
-             if (processSubmissionQueue.isRunning) {
-                 return;
-             }
-             processSubmissionQueue.isRunning = true;
--            if (!navigator.onLine || !currentUser) {
--                processSubmissionQueue.isRunning = false;
--                return;
--            }
--            const queue = loadSubmissionQueue();
--            if (!queue.length) {
--                processSubmissionQueue.isRunning = false;
--                return;
--            }
--            console.log('Processing queued expense submissions:', queue.length);
--            const remaining = [];
--            let processed = 0;
--
--            for (const entry of queue) {
--                try {
--                    const draft = await window.expenseDraftDB.getDraft(entry.localId);
--                    if (!draft) {
--                        console.warn('Draft not found for queued submission:', entry.localId);
--                        continue;
--                    }
--                    await syncDraftToFirestore(draft, entry.status);
--                    processed++;
--                } catch (error) {
--                    console.error('Error syncing queued expense submission:', entry, error);
--                    remaining.push(entry);
--                }
--            }
--
--            saveSubmissionQueue(remaining);
--
--            if (processed > 0) {
--                await loadExpenseBatches();
--                if (showToast) {
--                    notifySuccess(
--                        `${processed} expense batch${processed === 1 ? '' : 'es'} synced successfully.`,
--                        'Back Online'
--                    );
--                }
--            }
--
--            if (remaining.length > 0) {
--                console.warn('Some expense submissions could not sync and remain queued.');
--            }
--
--            if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
--                await window.uploadQueue.updateGlobalUploadStatus();
--            }
--
--            const info = window.getExpenseSubmissionQueueInfo ? window.getExpenseSubmissionQueueInfo() : { pending: 0 };
--            if (!info || info.pending === 0) {
--                if (submissionQueueRetryTimer) {
--                    clearInterval(submissionQueueRetryTimer);
--                    submissionQueueRetryTimer = null;
--                }
--            } else {
--                ensureSubmissionQueueRetryScheduled();
--            }
--
--            processSubmissionQueue.isRunning = false;
-+            try {
-+                if (!navigator.onLine || !currentUser) {
-+                    return;
-+                }
-+                const queue = loadSubmissionQueue();
-+                if (!queue.length) {
-+                    return;
-+                }
-+                console.log('Processing queued expense submissions:', queue.length);
-+                const remaining = [];
-+                let processed = 0;
-+
-+                for (const entry of queue) {
-+                    try {
-+                        const draft = await window.expenseDraftDB.getDraft(entry.localId);
-+                        if (!draft) {
-+                            console.warn('Draft not found for queued submission:', entry.localId);
-+                            continue;
-+                        }
-+                        await syncDraftToFirestore(draft, entry.status);
-+                        processed++;
-+                    } catch (error) {
-+                        console.error('Error syncing queued expense submission:', entry, error);
-+                        remaining.push(entry);
-+                    }
-+                }
-+
-+                saveSubmissionQueue(remaining);
-+
-+                if (processed > 0) {
-+                    await loadExpenseBatches();
-+                    if (showToast) {
-+                        notifySuccess(
-+                            `${processed} expense batch${processed === 1 ? '' : 'es'} synced successfully.`,
-+                            'Back Online'
-+                        );
-+                    }
-+                }
-+
-+                if (remaining.length > 0) {
-+                    console.warn('Some expense submissions could not sync and remain queued.');
-+                }
-+
-+                if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
-+                    await window.uploadQueue.updateGlobalUploadStatus();
-+                }
-+
-+                const info = window.getExpenseSubmissionQueueInfo ? window.getExpenseSubmissionQueueInfo() : { pending: 0 };
-+                if (!info || info.pending === 0) {
-+                    if (submissionQueueRetryTimer) {
-+                        clearInterval(submissionQueueRetryTimer);
-+                        submissionQueueRetryTimer = null;
-+                    }
-+                } else {
-+                    ensureSubmissionQueueRetryScheduled();
-+                }
-+            } finally {
-+                processSubmissionQueue.isRunning = false;
-+            }
-         }
+            const { showToast = true } = options;
+            if (processSubmissionQueue.isRunning) {
+                return;
+            }
+            processSubmissionQueue.isRunning = true;
+            try {
+                if (!navigator.onLine || !currentUser) {
+                    return;
+                }
+                const queue = loadSubmissionQueue();
+                if (!queue.length) {
+                    return;
+                }
+                console.log('Processing queued expense submissions:', queue.length);
+                const remaining = [];
+                let processed = 0;
+                let registrationErrorNotified = false;
+
+                for (const entry of queue) {
+                    try {
+                        const draft = await window.expenseDraftDB.getDraft(entry.localId);
+                        if (!draft) {
+                            console.warn('Draft not found for queued submission:', entry.localId);
+                            continue;
+                        }
+                        if ((!draft.registration || draft.registration.trim() === '') && entry.registration) {
+                            draft.registration = entry.registration;
+                        }
+                        await syncDraftToFirestore(draft, entry.status);
+                        processed++;
+                    } catch (error) {
+                        console.error('Error syncing queued expense submission:', entry, error);
+                        const needsRegistration = error && typeof error.message === 'string' && error.message.includes('Registration is required');
+                        if (needsRegistration && (!entry.registration || entry.registration.trim() === '')) {
+                            console.warn('Discarding queued submission with no registration. User must re-open and save the draft.', entry);
+                            if (!registrationErrorNotified) {
+                                notifyWarning('One queued expense was missing its registration and could not upload. Please open the draft, confirm the registration, and save again.', 'Action needed');
+                                registrationErrorNotified = true;
+                            }
+                            continue;
+                        }
+                        remaining.push(entry);
+                    }
+                }
+
+                saveSubmissionQueue(remaining);
+
+                if (processed > 0) {
+                    await loadExpenseBatches();
+                    if (showToast) {
+                        notifySuccess(
+                            `${processed} expense batch${processed === 1 ? '' : 'es'} synced successfully.`,
+                            'Back Online'
+                        );
+                    }
+                }
+
+                if (remaining.length > 0) {
+                    console.warn('Some expense submissions could not sync and remain queued.');
+                }
+
+                if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
+                    await window.uploadQueue.updateGlobalUploadStatus();
+                }
+
+                const info = window.getExpenseSubmissionQueueInfo ? window.getExpenseSubmissionQueueInfo() : { pending: 0 };
+                if (!info || info.pending === 0) {
+                    if (submissionQueueRetryTimer) {
+                        clearInterval(submissionQueueRetryTimer);
+                        submissionQueueRetryTimer = null;
+                    }
+                } else {
+                    ensureSubmissionQueueRetryScheduled();
+                }
+            } finally {
+                processSubmissionQueue.isRunning = false;
+            }
+        }
 
         window.processExpenseSubmissionQueue = processSubmissionQueue;
         window.addEventListener('online', () => processSubmissionQueue({ showToast: true }));
