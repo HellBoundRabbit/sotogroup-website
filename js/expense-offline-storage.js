@@ -11,6 +11,45 @@ class ExpenseDraftDB {
         this.db = null;
     }
 
+    sanitizeForStorage(value) {
+        if (value === undefined) {
+            return undefined;
+        }
+        if (value === null) {
+            return null;
+        }
+        if (value instanceof File || value instanceof Blob) {
+            return null;
+        }
+        if (value instanceof Date) {
+            return value.getTime();
+        }
+        if (value && typeof value === 'object') {
+            if (typeof value.toDate === 'function') {
+                try {
+                    return value.toDate().getTime();
+                } catch (error) {
+                    return null;
+                }
+            }
+            if (Array.isArray(value)) {
+                return value.map((item) => this.sanitizeForStorage(item)).filter((item) => item !== undefined);
+            }
+            const sanitized = {};
+            for (const [key, val] of Object.entries(value)) {
+                const result = this.sanitizeForStorage(val);
+                if (result !== undefined) {
+                    sanitized[key] = result;
+                }
+            }
+            return sanitized;
+        }
+        if (typeof value === 'function') {
+            return undefined;
+        }
+        return value;
+    }
+
     async init() {
         return new Promise((resolve, reject) => {
             const request = indexedDB.open(this.dbName, this.version);
@@ -53,7 +92,8 @@ class ExpenseDraftDB {
             batch.localId = `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         }
         batch.lastSaved = Date.now();
-        await transaction.objectStore('batches').put(batch);
+        const sanitizedBatch = this.sanitizeForStorage(batch);
+        await transaction.objectStore('batches').put(sanitizedBatch);
         if (photos && batch.expenses) {
             for (let expIndex = 0; expIndex < batch.expenses.length; expIndex++) {
                 const expense = batch.expenses[expIndex];
@@ -314,6 +354,9 @@ class UploadQueue {
                         console.warn('[UploadQueue] Expense document missing, dropping task', task.uploadId);
                         await this.deleteTask(task.uploadId);
                         await window.expenseDraftDB.deletePhotoBlob(task.batchLocalId || task.batchId, task.expenseIndex, task.photoIndex);
+                    } else if (error && error.code === 'PHOTO_BLOB_MISSING') {
+                        console.warn('[UploadQueue] Cached photo missing, dropping task', task.uploadId);
+                        await this.deleteTask(task.uploadId);
                     } else {
                         console.error('[UploadQueue] Upload failed', task.uploadId, error);
                         task.retries++;
@@ -349,7 +392,9 @@ class UploadQueue {
     async uploadPhoto(task) {
         const blob = await window.expenseDraftDB.getPhotoBlob(task.batchLocalId || task.batchId, task.expenseIndex, task.photoIndex);
         if (!blob) {
-            throw new Error('Missing cached photo for upload task.');
+            const error = new Error('Missing cached photo for upload task.');
+            error.code = 'PHOTO_BLOB_MISSING';
+            throw error;
         }
         const photoRef = window.ref(window.storage, task.photoFilename);
         await window.uploadBytes(photoRef, blob);

@@ -76,9 +76,6 @@
         window.getDownloadURL = getDownloadURL;
         
         console.log('Firebase initialized successfully!');
-        
-        // Initialize the app after Firebase is ready
-        initializeDriverExpensesApp();
     </script>
     <style>
         /* Mobile-optimized touch targets */
@@ -419,6 +416,11 @@
         </div>
     </div>
 
+    <!-- Debug Info (hidden by default) -->
+    <div id="expensesDebugInfo" class="hidden fixed bottom-4 left-4 bg-black bg-opacity-70 text-xs p-3 rounded">
+        Debug
+    </div>
+
     <script>
         // Global variables
         let currentUser = null;
@@ -426,10 +428,20 @@
         let currentExpense = { category: null, amount: 0, photos: [] };
         let allBatches = [];
         let submissionQueueRetryTimer = null;
-        const notifyError = (message, title = 'Error') => uiDialogs.showAlert({ title, message, tone: 'danger' });
-        const notifyWarning = (message, title = 'Heads Up') => uiDialogs.showAlert({ title, message, tone: 'warning' });
-        const notifySuccess = (message, title = 'Success') => uiDialogs.showAlert({ title, message, tone: 'success' });
-        const notifyInfo = (message, title = 'Notice') => uiDialogs.showAlert({ title, message, tone: 'info' });
+
+        const fallbackDialogs = {
+            showAlert({ title, message }) {
+                console.warn(`[Dialog:${title}] ${message}`);
+            },
+            async showConfirmation({ title, message, confirmText }) {
+                return window.confirm(`${title || 'Confirm'}\n\n${message || ''}\n\n${confirmText || 'OK'}?`);
+            },
+        };
+        const dialogApi = window.uiDialogs || fallbackDialogs;
+        const notifyError = (message, title = 'Error') => dialogApi.showAlert({ title, message, tone: 'danger' });
+        const notifyWarning = (message, title = 'Heads Up') => dialogApi.showAlert({ title, message, tone: 'warning' });
+        const notifySuccess = (message, title = 'Success') => dialogApi.showAlert({ title, message, tone: 'success' });
+        const notifyInfo = (message, title = 'Notice') => dialogApi.showAlert({ title, message, tone: 'info' });
         const EXPENSE_SUBMISSION_QUEUE_KEY = 'expense_submission_queue_v1';
         const MAX_PHOTOS_PER_EXPENSE = 4;
 
@@ -508,8 +520,17 @@
                 localId,
                 status: targetStatus,
                 timestamp: Date.now(),
-                registration: currentBatch.registration ? currentBatch.registration : null
+                registration: currentBatch.registration ? currentBatch.registration : null,
+                snapshot: null
             };
+            try {
+                const snapshot = buildBatchSnapshot(currentBatch);
+                if (snapshot) {
+                    entry.snapshot = JSON.stringify(snapshot);
+                }
+            } catch (error) {
+                console.warn('Unable to serialize batch snapshot for queue entry:', error);
+            }
             const existingIndex = queue.findIndex(item => item.localId === localId);
             if (existingIndex >= 0) {
                 queue[existingIndex] = entry;
@@ -639,14 +660,73 @@
 
                 for (const entry of queue) {
                     try {
-                        const draft = await window.expenseDraftDB.getDraft(entry.localId);
+                        let draft = null;
+                        try {
+                            draft = await window.expenseDraftDB.getDraft(entry.localId);
+                        } catch (dbError) {
+                            console.warn('Failed to read draft from IndexedDB, falling back to snapshot:', dbError);
+                        }
+
+                        let snapshot = null;
+                        if (entry.snapshot) {
+                            try {
+                                snapshot = JSON.parse(entry.snapshot);
+                            } catch (parseError) {
+                                console.warn('Failed to parse queued snapshot:', parseError);
+                            }
+                        }
+
+                        if (!draft && snapshot) {
+                            draft = snapshot;
+                        }
+
                         if (!draft) {
                             console.warn('Draft not found for queued submission:', entry.localId);
                             continue;
                         }
+
+                        console.log('Processing queued draft', entry.localId, {
+                            status: entry.status,
+                            hasSnapshot: Boolean(snapshot),
+                            draftExpenses: draft.expenses ? draft.expenses.map((exp, idx) => ({
+                                idx,
+                                category: exp.category,
+                                amount: exp.amount,
+                                photos: Array.isArray(exp.photos) ? exp.photos.length : 0,
+                            })) : 'none',
+                        });
+
+                        draft.localId = draft.localId || entry.localId;
+                        draft.registration = draft.registration || snapshot?.registration || entry.registration || null;
+                        draft.driverId = draft.driverId || snapshot?.driverId || currentUser?.uid || null;
+                        draft.officeId = draft.officeId || snapshot?.officeId || currentUser?.officeId || null;
+                        draft.notes = draft.notes || snapshot?.notes || '';
+                        draft.totalAmount = draft.totalAmount != null ? Number(draft.totalAmount) : (snapshot?.totalAmount != null ? Number(snapshot.totalAmount) : null);
+
+                        if ((!draft.expenses || draft.expenses.length === 0) && snapshot?.expenses?.length) {
+                            draft.expenses = snapshot.expenses;
+                        }
+
+                        if (draft.expenses) {
+                            console.log('Merged draft expenses snapshot', draft.expenses.map((exp, idx) => ({
+                                idx,
+                                category: exp.category,
+                                amount: exp.amount,
+                                photos: Array.isArray(exp.photos) ? exp.photos.length : 0,
+                            })));
+                        }
+
                         if ((!draft.registration || draft.registration.trim() === '') && entry.registration) {
                             draft.registration = entry.registration;
                         }
+
+                        console.log('Persisting draft to Firestore', {
+                            registration: draft.registration,
+                            status: draft.status,
+                            expenseCount: draft.expenses ? draft.expenses.length : 0,
+                            expenses: draft.expenses,
+                        });
+
                         await syncDraftToFirestore(draft, entry.status);
                         processed++;
                     } catch (error) {
@@ -718,6 +798,15 @@
 
                 currentUser = { uid: session.uid, ...session };
                 window.currentUser = currentUser;
+                window.__driverExpensesDebug = { step: 'session-loaded', currentUser };
+                const overlay = document.getElementById('loadingOverlay');
+                if (overlay) {
+                    overlay.setAttribute('data-step', 'session-loaded');
+                }
+                const debugEl = document.getElementById('expensesDebugInfo');
+                if (debugEl) {
+                    debugEl.textContent = `session loaded for ${currentUser.uid}`;
+                }
             } catch (error) {
                 console.error('Unable to establish session for driver expenses:', error);
                     window.location.href = '/pages/soto-routes-login.html';
@@ -738,10 +827,23 @@
                     window.currentUser = currentUser;
 
                     console.log('Loading expense batches...');
-                    await processSubmissionQueue({ showToast: false });
-                    await loadExpenseBatches();
-                    document.getElementById('loadingOverlay').style.display = 'none';
-                    console.log('Loading complete!');
+                    window.__driverExpensesDebug.step = 'before-load-batches';
+                    if (overlay) {
+                        overlay.setAttribute('data-step', 'before-load-batches');
+                    }
+                    if (debugEl) {
+                        debugEl.textContent = 'loading batches...';
+                    }
+                     await loadExpenseBatches();
+                     document.getElementById('loadingOverlay').style.display = 'none';
+                     console.log('Loading complete!');
+                     window.__driverExpensesDebug.step = 'after-load-batches';
+                     if (overlay) {
+                        overlay.setAttribute('data-step', 'after-load-batches');
+                    }
+                    if (debugEl) {
+                        debugEl.textContent = `batches loaded: ${allBatches.length}`;
+                    }
                     
                     if (window.uploadQueue) {
                         await window.uploadQueue.init();
@@ -751,9 +853,50 @@
                 } catch (error) {
                     console.error('Error loading user data:', error);
                     notifyError('Error loading user data. Please try again.');
+                    if (debugEl) {
+                        debugEl.textContent = `init failed: ${error?.message || error}`;
+                    }
                 }
         }
 
+        console.log('Driver expenses script loaded');
+        const debugInit = (label, error) => {
+            const overlay = document.getElementById('loadingOverlay');
+            if (overlay) {
+                overlay.setAttribute('data-step', label);
+            }
+            const debugEl = document.getElementById('expensesDebugInfo');
+            if (debugEl) {
+                debugEl.classList.remove('hidden');
+                const text = error ? `${label}: ${error}` : label;
+                debugEl.textContent = `${text}\nqueue pending: ${(window.getExpenseSubmissionQueueInfo?.().pending) || 0}`;
+            }
+        };
+
+        const runDriverExpensesInit = () => {
+            initializeDriverExpensesApp()
+                .then(() => debugInit('init-complete'))
+                .catch((error) => {
+                    console.error('Failed to initialize driver expenses:', error);
+                    notifyError('Unable to load expenses. Please refresh.');
+                    window.__driverExpensesDebug = { step: 'init-failed', error: error?.message || error };
+                    debugInit('init-failed', error?.message || error);
+                });
+        };
+
+        if (document.readyState === 'loading') {
+            window.addEventListener('DOMContentLoaded', runDriverExpensesInit, { once: true });
+        } else {
+            runDriverExpensesInit();
+        }
+
+        window.addEventListener('load', () => {
+            if (!window.__driverExpensesDebug || window.__driverExpensesDebug.step !== 'after-load-batches') {
+                debugInit('init-load-fallback');
+                runDriverExpensesInit();
+            }
+        }, { once: true });
+ 
         // Load all expense batches for this driver
         async function loadExpenseBatches() {
             const loadToken = Date.now();
@@ -800,6 +943,7 @@
                     const expenseMap = new Map();
                     for (const expDoc of expensesSnapshot.docs) {
                         const expenseData = { id: expDoc.id, ...expDoc.data() };
+                        console.log('Fetched expense doc', expDoc.id, expenseData);
                         if (!expenseData.officeId) {
                             try {
                                 await window.updateDoc(window.doc(window.db, 'expenses', expDoc.id), { officeId });
@@ -834,6 +978,14 @@
                 });
 
                 console.log('Total batches loaded:', allBatches.length);
+                if (allBatches.length) {
+                    const statusCounts = allBatches.reduce((acc, batch) => {
+                        const status = batch.status || 'unknown';
+                        acc[status] = (acc[status] || 0) + 1;
+                        return acc;
+                    }, {});
+                    console.log('Batch status counts:', statusCounts);
+                }
                 displayBatches();
             } catch (error) {
                 console.error('Error loading batches:', error);
@@ -1565,13 +1717,13 @@
 
         // Delete expense
         async function deleteExpense(index) {
-            const confirmed = await showConfirmation({
+            const confirmed = await dialogApi.showConfirmation ? dialogApi.showConfirmation({
                 title: 'Delete Expense',
                 message: 'Delete this expense? This action cannot be undone.',
                 confirmText: 'Delete Expense',
                 cancelText: 'Cancel',
                 tone: 'danger'
-            });
+            }) : window.confirm('Delete this expense? This action cannot be undone.');
             if (!confirmed) {
                 return;
             }
@@ -1730,13 +1882,13 @@
                 return;
             }
 
-            const confirmed = await showConfirmation({
+            const confirmed = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
                 title: 'Submit Expense Batch',
                 message: 'Submit this batch for review? You won\'t be able to edit it after submission.',
                 confirmText: 'Submit Batch',
                 cancelText: 'Cancel',
                 tone: 'info'
-            });
+            }) : window.confirm('Submit this batch for review? You\'ll lose the ability to edit it.');
             if (!confirmed) {
                 return;
             }
@@ -1901,85 +2053,193 @@
 
         // Delete batch
         async function deleteBatch() {
-            const confirmed = await showConfirmation({
-                title: 'Delete Expense Batch',
-                message: 'Delete this expense batch? This cannot be undone.',
-                confirmText: 'Delete Batch',
-                cancelText: 'Cancel',
-                tone: 'danger'
-            });
-            if (!confirmed) {
-                return;
-            }
-
-            try {
-                // Delete all expenses in this batch
-                const expensesQuery = window.query(
-                    window.collection(window.db, 'expenses'),
-                    window.where('batchId', '==', currentBatch.id),
-                    window.where('officeId', '==', currentUser.officeId)
-                );
-                const expensesSnapshot = await window.getDocs(expensesQuery);
-                const deletePromises = expensesSnapshot.docs.map(doc => window.deleteDoc(doc.ref));
-                await Promise.all(deletePromises);
-
-                // Delete the batch
-                await window.deleteDoc(window.doc(window.db, 'expenseBatches', currentBatch.id));
-
-            notifySuccess('Batch deleted successfully.', 'Batch Deleted');
-                closeBatchModal();
-                await loadExpenseBatches();
-            } catch (error) {
-                console.error('Error deleting batch:', error);
-            notifyError('Error deleting batch. Please try again.');
+             const confirmed = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
+                 title: 'Delete Expense Batch',
+                 message: 'Delete this expense batch? This cannot be undone.',
+                 confirmText: 'Delete Batch',
+                 cancelText: 'Cancel',
+                 tone: 'danger'
+             }) : window.confirm('Delete this expense batch? This cannot be undone.');
+             if (!confirmed) {
+                 return;
+             }
+ 
+             try {
+-                const deletedId = currentBatch?.id || null;
+-                const deletedLocalId = currentBatch?.localId || null;
+-                const localCopy = currentBatch;
++                const deletedId = currentBatch?.id || null;
++                const deletedLocalId = currentBatch?.localId || null;
++                const localCopy = currentBatch;
+ 
+                 // Delete all expenses in this batch
+                 const expensesQuery = window.query(
+                     window.collection(window.db, 'expenses'),
+                     window.where('batchId', '==', currentBatch.id),
+                     window.where('officeId', '==', currentUser.officeId)
+                 );
+                 const expensesSnapshot = await window.getDocs(expensesQuery);
+                 const deletePromises = expensesSnapshot.docs.map(doc => window.deleteDoc(doc.ref));
+                 await Promise.all(deletePromises);
+ 
+                 // Delete the batch
+                 await window.deleteDoc(window.doc(window.db, 'expenseBatches', currentBatch.id));
+ 
+-                if (deletedLocalId) {
+-                    removeSubmissionQueueEntry(deletedLocalId);
+-                }
+-                if (window.expenseDraftDB && deletedLocalId) {
+-                    try {
+-                        await window.expenseDraftDB.deleteDraft(deletedLocalId);
+-                    } catch (error) {
+-                        console.warn('Unable to remove draft from offline storage:', error);
+-                    }
+-                }
+-
+-                if (localCopy) {
+-                    allBatches = allBatches.filter((batch) => {
+-                        if (deletedId && batch.id) {
+-                            return batch.id !== deletedId;
+-                        }
+-                        if (deletedLocalId && batch.localId) {
+-                            return batch.localId !== deletedLocalId;
+-                        }
+-                        return batch.id !== localCopy.id;
+-                    });
+-                    displayBatches();
+-                }
++                if (deletedLocalId) {
++                    removeSubmissionQueueEntry(deletedLocalId);
++                }
++                if (window.expenseDraftDB && deletedLocalId) {
++                    try {
++                        await window.expenseDraftDB.deleteDraft(deletedLocalId);
++                    } catch (error) {
++                        console.warn('Unable to remove draft from offline storage:', error);
++                    }
++                }
++
++                if (localCopy) {
++                    allBatches = allBatches.filter((batch) => {
++                        if (deletedId && batch.id) {
++                            return batch.id !== deletedId;
++                        }
++                        if (deletedLocalId && batch.localId) {
++                            return batch.localId !== deletedLocalId;
++                        }
++                        return batch.id !== localCopy.id;
++                    });
++                    displayBatches();
++                }
+ 
+                 notifySuccess('Batch deleted successfully.', 'Batch Deleted');
+                 closeBatchModal();
+                 await loadExpenseBatches();
+             } catch (error) {
+                 console.error('Error deleting batch:', error);
+             notifyError('Error deleting batch. Please try again.');
             }
         }
 
         // Discard returned batch
         async function discardReturnedBatch() {
-            const confirmed = await showConfirmation({
-                title: 'Discard Returned Expense',
-                message: 'Discard this returned expense? This will permanently delete it and cannot be undone.',
-                confirmText: 'Discard Expense',
-                cancelText: 'Cancel',
-                tone: 'danger'
-            });
-            if (!confirmed) {
-                return;
-            }
-
-            try {
-                // Delete all expenses in this batch
-                const expensesQuery = window.query(
-                    window.collection(window.db, 'expenses'),
-                    window.where('batchId', '==', currentBatch.id),
-                    window.where('officeId', '==', currentUser.officeId)
-                );
-                const expensesSnapshot = await window.getDocs(expensesQuery);
-                const deletePromises = expensesSnapshot.docs.map(doc => window.deleteDoc(doc.ref));
-                await Promise.all(deletePromises);
-
-                // Delete the batch
-                await window.deleteDoc(window.doc(window.db, 'expenseBatches', currentBatch.id));
-
-            notifySuccess('Expense discarded successfully.', 'Expense Discarded');
-                closeBatchModal();
-                await loadExpenseBatches();
-            } catch (error) {
-                console.error('Error discarding batch:', error);
-            notifyError('Error discarding expense. Please try again.');
+             const confirmed = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
+                 title: 'Discard Returned Expense',
+                 message: 'Discard this returned expense? This will permanently delete it and cannot be undone.',
+                 confirmText: 'Discard Expense',
+                 cancelText: 'Cancel',
+                 tone: 'danger'
+             }) : window.confirm('Discard this returned expense? This cannot be undone.');
+             if (!confirmed) {
+                 return;
+             }
+ 
+             try {
+-                const deletedId = currentBatch?.id || null;
+-                const deletedLocalId = currentBatch?.localId || null;
+-                const localCopy = currentBatch;
++                const deletedId = currentBatch?.id || null;
++                const deletedLocalId = currentBatch?.localId || null;
++                const localCopy = currentBatch;
+ 
+                 // Delete all expenses in this batch
+                 const expensesQuery = window.query(
+                     window.collection(window.db, 'expenses'),
+                     window.where('batchId', '==', currentBatch.id),
+                     window.where('officeId', '==', currentUser.officeId)
+                 );
+                 const expensesSnapshot = await window.getDocs(expensesQuery);
+                 const deletePromises = expensesSnapshot.docs.map(doc => window.deleteDoc(doc.ref));
+                 await Promise.all(deletePromises);
+ 
+                 // Delete the batch
+                 await window.deleteDoc(window.doc(window.db, 'expenseBatches', currentBatch.id));
+ 
+-                if (deletedLocalId) {
+-                    removeSubmissionQueueEntry(deletedLocalId);
+-                }
+-                if (window.expenseDraftDB && deletedLocalId) {
+-                    try {
+-                        await window.expenseDraftDB.deleteDraft(deletedLocalId);
+-                    } catch (error) {
+-                        console.warn('Unable to remove draft from offline storage:', error);
+-                    }
+-                }
+-
+-                if (localCopy) {
+-                    allBatches = allBatches.filter((batch) => {
+-                        if (deletedId && batch.id) {
+-                            return batch.id !== deletedId;
+-                        }
+-                        if (deletedLocalId && batch.localId) {
+-                            return batch.localId !== deletedLocalId;
+-                        }
+-                        return batch.id !== localCopy.id;
+-                    });
+-                    displayBatches();
+-                }
++                if (deletedLocalId) {
++                    removeSubmissionQueueEntry(deletedLocalId);
++                }
++                if (window.expenseDraftDB && deletedLocalId) {
++                    try {
++                        await window.expenseDraftDB.deleteDraft(deletedLocalId);
++                    } catch (error) {
++                        console.warn('Unable to remove draft from offline storage:', error);
++                    }
++                }
++
++                if (localCopy) {
++                    allBatches = allBatches.filter((batch) => {
++                        if (deletedId && batch.id) {
++                            return batch.id !== deletedId;
++                        }
++                        if (deletedLocalId && batch.localId) {
++                            return batch.localId !== deletedLocalId;
++                        }
++                        return batch.id !== localCopy.id;
++                    });
++                    displayBatches();
++                }
+ 
+                 notifySuccess('Expense discarded successfully.', 'Expense Discarded');
+                 closeBatchModal();
+                 await loadExpenseBatches();
+             } catch (error) {
+                 console.error('Error discarding batch:', error);
+             notifyError('Error discarding expense. Please try again.');
             }
         }
 
         // Add additional expenses (creates new batch with same reg + *)
         async function addAdditionalExpenses() {
-            const confirmed = await showConfirmation({
+            const confirmed = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
                 title: 'Add Additional Expenses',
                 message: 'Create a new expense batch with the same registration? This will allow you to add additional expenses.',
                 confirmText: 'Create New Batch',
                 cancelText: 'Cancel',
                 tone: 'info'
-            });
+            }) : window.confirm('Create a new expense batch with the same registration?');
             if (!confirmed) {
                 return;
             }
@@ -2098,13 +2358,13 @@
             // Check if there are unsaved changes
             if (hasUnsavedChanges()) {
                 // Show custom modal for save/discard choice
-                const shouldSave = await showConfirmation({
+                const shouldSave = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
                     title: 'Save Draft?',
                     message: 'You have unsaved changes. Save them as a draft before closing?',
                     confirmText: 'Save Draft',
                     cancelText: 'Discard',
                     tone: 'warning'
-                });
+                }) : window.confirm('You have unsaved changes. Save them as a draft before closing?');
                 if (shouldSave) {
                     // User wants to save
                     await saveDraft();
@@ -2237,128 +2497,4 @@
             doc.setFontSize(16);
             doc.setFont(undefined, 'normal');
             const infoStartX = 48 * ptToMm; // 48pt left margin = 17mm (matching app)
-            doc.text(`Registration: ${batch.registration}`, infoStartX, y);
-            y += 24 * ptToMm; // 24pt = 8.5mm
-            doc.text(`Driver: ${batch.driverName || 'Unknown'}`, infoStartX, y);
-            y += 24 * ptToMm;
-            doc.text(`Submitted on: ${formatDate(submissionDate)}`, infoStartX, y);
-            y += 24 * ptToMm;
-            doc.text(`Validated on: ${validationDate ? formatDate(validationDate) : 'Not validated'}`, infoStartX, y);
-            y += 24 * ptToMm;
-            doc.text(`Paid on: ${paymentDate ? formatDate(paymentDate) : 'Not paid'}`, infoStartX, y);
-            y += 24 * ptToMm;
-            doc.text(`Processed on: ${processedDate ? formatDate(processedDate) : 'Not processed'}`, infoStartX, y);
-            y += 28 * ptToMm; // 28pt = 9.9mm before table
-            
-            // Table setup (matching app dimensions)
-            // App uses: pageWidth = 595.2pt (A4), left margin = 48pt, tableWidth = 595.2 - 96 = 499.2pt
-            // Column 0 (Category) = 120pt, remaining 5 columns = (499.2 - 120) / 5 = 75.84pt each
-            // Converting to mm (1pt = 0.352778mm): col0 = 42.33mm, colRest = 26.75mm each
-            const tableStartY = y;
-            const pageWidth = 210; // A4 width in mm
-            const leftMargin = 48 * 0.352778; // 48pt in mm ≈ 17mm
-            const tableWidth = pageWidth - (leftMargin * 2); // Total width minus margins
-            const col0 = 42.33; // Category column in mm
-            const colRest = (tableWidth - col0) / 5; // Remaining 5 columns equally divided
-            
-            // Category normalization map
-            const categoryMap = {
-                'fuel': 'Fuel',
-                'charge': 'Charge',
-                'train': 'Train',
-                'train fare': 'Train',
-                'bus': 'Bus',
-                'taxi': 'Taxi',
-                'car wash': 'Car Wash',
-                'carwash': 'Car Wash',
-                'toll': 'Tolls',
-                'tolls': 'Tolls',
-                'other': 'Other'
-            };
-            
-            const categories = ['Fuel', 'Charge', 'Train', 'Bus', 'Taxi', 'Car Wash', 'Tolls', 'Other'];
-            
-            // Group expenses by normalized category
-            const expensesByCategory = {};
-            batch.expenses?.forEach(exp => {
-                const rawCat = (exp.category || 'other').trim().toLowerCase();
-                const normalizedCat = categoryMap[rawCat] || 'Other';
-                if (!expensesByCategory[normalizedCat]) {
-                    expensesByCategory[normalizedCat] = [];
-                }
-                expensesByCategory[normalizedCat].push(exp);
-            });
-            
-            // Create table data matching app format
-            const tableData = [];
-            const headers = ['', '1', '2', '3', '4', 'TOTAL'];
-            
-            // Add header row
-            tableData.push(headers);
-            
-            // Add category rows
-            categories.forEach(category => {
-                const categoryExpenses = expensesByCategory[category] || [];
-                const row = [category];
-                
-                // Add up to 4 individual expenses
-                for (let i = 0; i < 4; i++) {
-                    if (i < categoryExpenses.length) {
-                        row.push(`£${parseFloat(categoryExpenses[i].amount || 0).toFixed(2)}`);
-                    } else {
-                        row.push('');
-                    }
-                }
-                
-                // Calculate category total
-                const categoryTotal = categoryExpenses.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0);
-                row.push(categoryTotal > 0 ? `£${categoryTotal.toFixed(2)}` : '');
-                
-                tableData.push(row);
-            });
-            
-            // Add total row
-            const totalRow = ['TOTAL', '', '', '', '', `£${batch.totalAmount?.toFixed(2) || '0.00'}`];
-            tableData.push(totalRow);
-            
-            // Draw table using autoTable with custom styling to match app
-            doc.autoTable({
-                startY: tableStartY,
-                head: [tableData[0]],
-                body: tableData.slice(1),
-                headStyles: {
-                    fillColor: [217, 217, 217],
-                    textColor: 0,
-                    fontStyle: 'bold',
-                    fontSize: 15
-                },
-                bodyStyles: {
-                    fontSize: 15,
-                    textColor: 0
-                },
-                alternateRowStyles: {
-                    fillColor: [245, 245, 245]
-                },
-                columnStyles: {
-                    0: { cellWidth: col0, fontStyle: 'bold' },
-                    1: { cellWidth: colRest, halign: 'left' },
-                    2: { cellWidth: colRest, halign: 'left' },
-                    3: { cellWidth: colRest, halign: 'left' },
-                    4: { cellWidth: colRest, halign: 'left' },
-                    5: { cellWidth: colRest, halign: 'left', fontStyle: 'bold' }
-                },
-                styles: {
-                    lineWidth: 1,
-                    lineColor: 0
-                },
-                margin: { left: infoStartX }
-            });
-
-            return doc;
-        }
-
-        // Initialize the app after Firebase is ready
-        initializeDriverExpensesApp();
-    </script>
-</body>
-</html>
+            doc.text(`
