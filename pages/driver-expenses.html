@@ -689,14 +689,15 @@
 
         // Load all expense batches for this driver
         async function loadExpenseBatches() {
+            const loadToken = Date.now();
+            loadExpenseBatches.latestToken = loadToken;
             try {
                 console.log('Loading expense batches for driverId:', currentUser.uid);
-                
                 const officeId = currentUser.officeId;
                 if (!officeId) {
-                    throw new Error('Missing officeId on current user.');
+                    throw new Error('Office ID is missing in user profile.');
                 }
-                
+
                 const batchesQuery = window.query(
                     window.collection(window.db, 'expenseBatches'),
                     window.where('driverId', '==', currentUser.uid),
@@ -706,7 +707,7 @@
                 const batchesSnapshot = await window.getDocs(batchesQuery);
                 console.log('Found batches:', batchesSnapshot.docs.length);
                 
-                allBatches = [];
+                const batchMap = new Map();
 
                 for (const doc of batchesSnapshot.docs) {
                     const batchData = { id: doc.id, ...doc.data() };
@@ -729,7 +730,7 @@
                         window.where('officeId', '==', officeId)
                     );
                     const expensesSnapshot = await window.getDocs(expensesQuery);
-                    batchData.expenses = [];
+                    const expenseMap = new Map();
                     for (const expDoc of expensesSnapshot.docs) {
                         const expenseData = { id: expDoc.id, ...expDoc.data() };
                         if (!expenseData.officeId) {
@@ -743,11 +744,20 @@
                             console.warn(`Skipping expense ${expDoc.id} due to mismatched officeId.`);
                             continue;
                         }
-                        batchData.expenses.push(expenseData);
+                        const expenseKey = expenseData.id || `${doc.id}_${expenseData.category || 'expense'}_${expenseData.createdAt?.seconds || expenseData.createdAt || Math.random()}`;
+                        expenseMap.set(expenseKey, expenseData);
                     }
+                    batchData.expenses = Array.from(expenseMap.values());
                     
-                    allBatches.push(batchData);
+                    batchMap.set(batchData.id || `local_${batchData.localId || Math.random()}`, batchData);
                 }
+
+                if (loadExpenseBatches.latestToken !== loadToken) {
+                    console.warn('Discarding stale expense batch load (superseded by a newer refresh).');
+                    return;
+                }
+
+                allBatches = Array.from(batchMap.values());
 
                 // Sort by updatedAt descending (client-side)
                 allBatches.sort((a, b) => {
