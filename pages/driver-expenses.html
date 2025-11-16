@@ -2139,7 +2139,7 @@
             }
 
             if (!navigator.onLine) {
-                notifyInfo('This expense batch has been added to the upload queue. It will upload when the connection is adequate.', 'Upload queued');
+                // Upload banner will show the queue status, no need for dialog
                 document.getElementById('batchModal').classList.add('hidden');
                 currentBatch = null;
                 window.currentBatch = null;
@@ -2170,7 +2170,7 @@
                 await loadExpenseBatches();
             } catch (error) {
                 console.error('Error syncing draft:', error);
-                notifyWarning('Connection dropped. This expense batch will upload automatically once the connection is adequate.', 'Upload queued');
+                // Upload banner will show the queue status, no need for dialog
                 document.getElementById('batchModal').classList.add('hidden');
                 currentBatch = null;
                 window.currentBatch = null;
@@ -2267,7 +2267,7 @@
             }
 
             if (!navigator.onLine) {
-                notifyInfo('This expense batch has been added to the upload queue. It will upload when the connection is adequate.', 'Upload queued');
+                // Upload banner will show the queue status, no need for dialog
                 document.getElementById('batchModal').classList.add('hidden');
                 currentBatch = null;
                 window.currentBatch = null;
@@ -2298,7 +2298,7 @@
                 await loadExpenseBatches();
             } catch (error) {
                 console.error('Error submitting batch:', error);
-                notifyWarning('Connection dropped. This expense batch will upload automatically once the connection is adequate.', 'Upload queued');
+                // Upload banner will show the queue status, no need for dialog
                 document.getElementById('batchModal').classList.add('hidden');
                 currentBatch = null;
                 window.currentBatch = null;
