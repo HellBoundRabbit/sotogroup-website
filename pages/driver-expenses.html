@@ -391,7 +391,9 @@
                 <span class="material-symbols-outlined">add_a_photo</span>
                 Add Photos
                 </button>
-                <div id="photoPreview" class="mt-3 grid grid-cols-3 gap-2"></div>
+                <div id="photoPreview" class="mt-3 grid grid-cols-3 gap-2">
+                    <!-- Photos will be rendered here with click-to-expand functionality -->
+                </div>
                 </div>
 
                 <!-- Save Button -->
@@ -1646,19 +1648,25 @@
             preview.innerHTML = currentExpense.photos.map((photo, index) => {
                 if (photo instanceof File) {
                 return `
-                <div class="relative">
-                <img src="${URL.createObjectURL(photo)}" class="w-full h-24 object-cover rounded-lg">
-                <button onclick="removePhoto(${index})" class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">
+                <div class="relative cursor-pointer group" onclick="viewCurrentExpensePhotos(${index})">
+                <img src="${URL.createObjectURL(photo)}" class="w-full h-24 object-cover rounded-lg transition-opacity group-hover:opacity-80">
+                <button onclick="event.stopPropagation(); removePhoto(${index})" class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs z-10 hover:bg-red-600">
                 ×
                 </button>
+                <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-20 rounded-lg">
+                <span class="material-symbols-outlined text-white text-2xl">zoom_in</span>
+                </div>
                 </div>
                 `;
                 }
 
                 return `
-                <div class="relative">
-                <img src="${photo}" class="w-full h-24 object-cover rounded-lg">
-                <span class="absolute top-1 right-1 bg-gray-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">✓</span>
+                <div class="relative cursor-pointer group" onclick="viewCurrentExpensePhotos(${index})">
+                <img src="${photo}" class="w-full h-24 object-cover rounded-lg transition-opacity group-hover:opacity-80">
+                <span class="absolute top-1 right-1 bg-gray-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs z-10">✓</span>
+                <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-20 rounded-lg">
+                <span class="material-symbols-outlined text-white text-2xl">zoom_in</span>
+                </div>
                 </div>
                 `;
             }).join('');
@@ -1688,18 +1696,24 @@
                 // Check if it's a File or URL
                 if (file instanceof File) {
                 return `
-                <div class="relative">
-                <img src="${URL.createObjectURL(file)}" class="w-full h-24 object-cover rounded-lg">
-                <button onclick="removePhoto(${idx})" class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">
+                <div class="relative cursor-pointer group" onclick="viewCurrentExpensePhotos(${idx})">
+                <img src="${URL.createObjectURL(file)}" class="w-full h-24 object-cover rounded-lg transition-opacity group-hover:opacity-80">
+                <button onclick="event.stopPropagation(); removePhoto(${idx})" class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs z-10 hover:bg-red-600">
                 ×
                 </button>
+                <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-20 rounded-lg">
+                <span class="material-symbols-outlined text-white text-2xl">zoom_in</span>
+                </div>
                 </div>
                 `;
                 } else {
                 return `
-                <div class="relative">
-                <img src="${file}" class="w-full h-24 object-cover rounded-lg">
-                <span class="absolute top-1 right-1 bg-gray-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">✓</span>
+                <div class="relative cursor-pointer group" onclick="viewCurrentExpensePhotos(${idx})">
+                <img src="${file}" class="w-full h-24 object-cover rounded-lg transition-opacity group-hover:opacity-80">
+                <span class="absolute top-1 right-1 bg-gray-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs z-10">✓</span>
+                <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-20 rounded-lg">
+                <span class="material-symbols-outlined text-white text-2xl">zoom_in</span>
+                </div>
                 </div>
                 `;
                 }
@@ -1733,18 +1747,24 @@
                 // Check if it's a URL or File object
                 if (photo instanceof File) {
                 return `
-                <div class="relative">
-                <img src="${URL.createObjectURL(photo)}" class="w-full h-24 object-cover rounded-lg">
-                <button onclick="removePhoto(${idx})" class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">
+                <div class="relative cursor-pointer group" onclick="viewCurrentExpensePhotos(${idx})">
+                <img src="${URL.createObjectURL(photo)}" class="w-full h-24 object-cover rounded-lg transition-opacity group-hover:opacity-80">
+                <button onclick="event.stopPropagation(); removePhoto(${idx})" class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs z-10 hover:bg-red-600">
                 ×
                 </button>
+                <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-20 rounded-lg">
+                <span class="material-symbols-outlined text-white text-2xl">zoom_in</span>
+                </div>
                 </div>
                 `;
                 } else {
                 return `
-                <div class="relative">
-                <img src="${photo}" class="w-full h-24 object-cover rounded-lg">
-                <span class="absolute top-1 right-1 bg-gray-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">✓</span>
+                <div class="relative cursor-pointer group" onclick="viewCurrentExpensePhotos(${idx})">
+                <img src="${photo}" class="w-full h-24 object-cover rounded-lg transition-opacity group-hover:opacity-80">
+                <span class="absolute top-1 right-1 bg-gray-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs z-10">✓</span>
+                <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-20 rounded-lg">
+                <span class="material-symbols-outlined text-white text-2xl">zoom_in</span>
+                </div>
                 </div>
                 `;
                 }
@@ -2679,6 +2699,33 @@
                 grid.innerHTML = expense.photos.map((url, index) => `
                 <div class="mb-4">
                 <img src="${url}" class="w-full rounded-lg" alt="Expense photo ${index + 1}">
+                </div>
+                `).join('');
+            }
+
+            document.getElementById('photoViewerModal').classList.remove('hidden');
+        }
+
+        // View photos from current expense being edited
+        function viewCurrentExpensePhotos(startIndex = 0) {
+            if (!currentExpense || !currentExpense.photos || currentExpense.photos.length === 0) {
+                return;
+            }
+
+            const grid = document.getElementById('photoViewerGrid');
+            
+            // If photos are File objects (from new uploads)
+            if (currentExpense.photos[0] instanceof File) {
+                grid.innerHTML = currentExpense.photos.map((file, index) => `
+                <div class="mb-4">
+                <img src="${URL.createObjectURL(file)}" class="w-full rounded-lg" alt="Receipt photo ${index + 1}">
+                </div>
+                `).join('');
+            } else {
+                // Photos are URLs (from Firebase Storage)
+                grid.innerHTML = currentExpense.photos.map((url, index) => `
+                <div class="mb-4">
+                <img src="${url}" class="w-full rounded-lg" alt="Receipt photo ${index + 1}">
                 </div>
                 `).join('');
             }
