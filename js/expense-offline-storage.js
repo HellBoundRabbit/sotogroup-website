@@ -267,20 +267,42 @@ class UploadQueue {
         this.db = null;
         this.isProcessing = false;
         this.maxRetries = 5;
+        this.persistentStorageRequested = false; // Track if we've already requested persistent storage
     }
 
     async init() {
-        if (navigator.storage && navigator.storage.persist) {
+        // Only request persistent storage once per page load to avoid interfering with keyboard
+        if (!this.persistentStorageRequested && navigator.storage && navigator.storage.persist) {
+            this.persistentStorageRequested = true;
             try {
                 const alreadyGranted = localStorage.getItem('expense_persisted') === 'true';
                 const isPersisted = await navigator.storage.persisted();
                 if (!alreadyGranted && !isPersisted) {
-                    const granted = await navigator.storage.persist();
-                    if (granted) {
-                        localStorage.setItem('expense_persisted', 'true');
+                    // Only request if user is NOT actively typing (prevents keyboard from closing)
+                    const activeElement = document.activeElement;
+                    const isTyping = activeElement && (
+                        activeElement.tagName === 'INPUT' || 
+                        activeElement.tagName === 'TEXTAREA'
+                    );
+                    
+                    if (!isTyping) {
+                        const granted = await navigator.storage.persist();
+                        if (granted) {
+                            localStorage.setItem('expense_persisted', 'true');
+                        } else {
+                            console.warn('[UploadQueue] Persistent storage request was denied. Receipts may not upload when the page is backgrounded.');
+                        }
                     } else {
-                        console.warn('[UploadQueue] Persistent storage request was denied. Receipts may not upload when the page is backgrounded.');
-                        // Don't blur - this closes the keyboard on mobile devices
+                        // User is typing - defer the request
+                        setTimeout(() => {
+                            if (!localStorage.getItem('expense_persisted')) {
+                                navigator.storage.persist().then(granted => {
+                                    if (granted) {
+                                        localStorage.setItem('expense_persisted', 'true');
+                                    }
+                                }).catch(() => {});
+                            }
+                        }, 5000); // Wait 5 seconds after typing stops
                     }
                 }
             } catch (error) {
@@ -637,11 +659,13 @@ class UploadQueue {
         }
         
         // Don't update if user is actively typing (prevents keyboard from closing)
+        // Check both the global flag and active element
         const activeElement = document.activeElement;
-        const isTyping = activeElement && (
-            activeElement.tagName === 'INPUT' || 
-            activeElement.tagName === 'TEXTAREA'
-        );
+        const isTyping = (typeof window.isUserTyping !== 'undefined' && window.isUserTyping) ||
+            (activeElement && (
+                activeElement.tagName === 'INPUT' || 
+                activeElement.tagName === 'TEXTAREA'
+            ));
         
         // If user is typing, skip this update to avoid interfering with keyboard
         if (isTyping) {
@@ -821,11 +845,11 @@ window.scheduleAutoSave = function() {
     clearTimeout(autoSaveTimeout);
     autoSaveTimeout = setTimeout(() => {
         // Only auto-save if user is not actively typing (prevents keyboard from closing)
-        const activeElement = document.activeElement;
-        const isTyping = activeElement && (
-            activeElement.tagName === 'INPUT' || 
-            activeElement.tagName === 'TEXTAREA'
-        );
+        const isTyping = (typeof window.isUserTyping !== 'undefined' && window.isUserTyping) ||
+            (document.activeElement && (
+                document.activeElement.tagName === 'INPUT' || 
+                document.activeElement.tagName === 'TEXTAREA'
+            ));
         if (!isTyping && window.autoSaveDraft) {
             window.autoSaveDraft();
         }

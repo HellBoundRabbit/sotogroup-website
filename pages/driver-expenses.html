@@ -972,15 +972,16 @@
                 await window.uploadQueue.processQueue();
                 await window.uploadQueue.updateGlobalUploadStatus();
                 
-                // Set up periodic status updates while uploading
+                // Set up periodic status updates while uploading (only when not typing)
                 if (window.uploadStatusCheckInterval) {
                     clearInterval(window.uploadStatusCheckInterval);
                 }
                 window.uploadStatusCheckInterval = setInterval(async () => {
-                    if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
+                    // Skip update if user is actively typing to prevent keyboard from closing
+                    if (!window.isUserTyping && window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
                         await window.uploadQueue.updateGlobalUploadStatus();
                     }
-                }, 2000); // Check every 2 seconds
+                }, 3000); // Check every 3 seconds (less frequent to avoid interference)
                 }
                 } catch (error) {
                 console.error('Error loading user data:', error);
@@ -994,6 +995,52 @@
         console.log('Driver expenses script loaded');
         console.log('Document readyState:', document.readyState);
         console.log('sotoSession available:', typeof window.sotoSession !== 'undefined');
+        
+        // Track if user is actively typing to prevent keyboard from closing
+        window.isUserTyping = false;
+        let typingTimeout = null;
+        
+        // Monitor all input fields for typing activity
+        document.addEventListener('focusin', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                window.isUserTyping = true;
+                clearTimeout(typingTimeout);
+                typingTimeout = setTimeout(() => {
+                    window.isUserTyping = false;
+                }, 2000); // Consider typing stopped after 2 seconds of inactivity
+            }
+        });
+        
+        document.addEventListener('focusout', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                clearTimeout(typingTimeout);
+                typingTimeout = setTimeout(() => {
+                    window.isUserTyping = false;
+                }, 500); // Small delay to allow for tabbing between fields
+            }
+        });
+        
+        // Also track keydown events
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                window.isUserTyping = true;
+                clearTimeout(typingTimeout);
+                typingTimeout = setTimeout(() => {
+                    window.isUserTyping = false;
+                }, 2000);
+            }
+        });
+        
+        // Also track input events (for mobile)
+        document.addEventListener('input', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                window.isUserTyping = true;
+                clearTimeout(typingTimeout);
+                typingTimeout = setTimeout(() => {
+                    window.isUserTyping = false;
+                }, 2000);
+            }
+        });
         
         const debugInit = (label, error) => {
             const overlay = document.getElementById('loadingOverlay');
@@ -1454,6 +1501,16 @@
 
         // Render expenses in batch modal
         function renderExpenses() {
+            // Don't render if user is actively typing (prevents keyboard from closing)
+            if (window.isUserTyping) {
+                // Defer rendering until user stops typing
+                clearTimeout(renderExpenses.deferTimer);
+                renderExpenses.deferTimer = setTimeout(() => {
+                    renderExpenses();
+                }, 1500);
+                return;
+            }
+            
             const container = document.getElementById('expensesList');
             if (!container) {
                 console.error('expensesList container not found');
@@ -1901,9 +1958,13 @@
             window.currentBatch = currentBatch;
             
             closeExpenseModal();
-            renderExpenses();
             
-            // Auto-save draft to IndexedDB
+            // Defer renderExpenses to avoid interfering with any ongoing input
+            setTimeout(() => {
+                renderExpenses();
+            }, 100);
+            
+            // Auto-save draft to IndexedDB (will check if typing before saving)
             if (window.scheduleAutoSave) {
                 window.scheduleAutoSave();
             }
@@ -1954,7 +2015,7 @@
                 }
             }
             
-            // Re-render expenses
+            // Re-render expenses (will defer if user is typing)
             renderExpenses();
         }
 
