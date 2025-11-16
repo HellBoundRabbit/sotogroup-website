@@ -280,9 +280,7 @@ class UploadQueue {
                         localStorage.setItem('expense_persisted', 'true');
                     } else {
                         console.warn('[UploadQueue] Persistent storage request was denied. Receipts may not upload when the page is backgrounded.');
-                        if (document.activeElement && document.activeElement.blur) {
-                            document.activeElement.blur();
-                        }
+                        // Don't blur - this closes the keyboard on mobile devices
                     }
                 }
             } catch (error) {
@@ -637,6 +635,19 @@ class UploadQueue {
             this.hideUploadBanner();
             return;
         }
+        
+        // Don't update if user is actively typing (prevents keyboard from closing)
+        const activeElement = document.activeElement;
+        const isTyping = activeElement && (
+            activeElement.tagName === 'INPUT' || 
+            activeElement.tagName === 'TEXTAREA'
+        );
+        
+        // If user is typing, skip this update to avoid interfering with keyboard
+        if (isTyping) {
+            return;
+        }
+        
         const transaction = this.db.transaction(['uploadQueue'], 'readonly');
         const store = transaction.objectStore('uploadQueue');
         const statusIndex = store.index('status');
@@ -809,8 +820,16 @@ let autoSaveTimeout;
 window.scheduleAutoSave = function() {
     clearTimeout(autoSaveTimeout);
     autoSaveTimeout = setTimeout(() => {
-        if (window.autoSaveDraft) window.autoSaveDraft();
-    }, 2000);
+        // Only auto-save if user is not actively typing (prevents keyboard from closing)
+        const activeElement = document.activeElement;
+        const isTyping = activeElement && (
+            activeElement.tagName === 'INPUT' || 
+            activeElement.tagName === 'TEXTAREA'
+        );
+        if (!isTyping && window.autoSaveDraft) {
+            window.autoSaveDraft();
+        }
+    }, 3000); // Increased delay to 3 seconds to avoid interfering with typing
 };
 
 window.clearUploadQueue = async function() {
