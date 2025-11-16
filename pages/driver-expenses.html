@@ -889,6 +889,16 @@
                 clearInterval(submissionQueueRetryTimer);
                 submissionQueueRetryTimer = null;
                 }
+                
+                // If queue is empty and uploads are complete, refresh the list
+                // Small delay to ensure Firestore has propagated
+                setTimeout(async () => {
+                    try {
+                        await loadExpenseBatches();
+                    } catch (error) {
+                        console.error('Error refreshing expense list after queue completion:', error);
+                    }
+                }, 500);
                 } else {
                 ensureSubmissionQueueRetryScheduled();
                 }
@@ -1094,7 +1104,8 @@
         });
  
         // Load all expense batches for this driver
-        async function loadExpenseBatches() {
+        // Make loadExpenseBatches globally available for upload queue
+        window.loadExpenseBatches = async function loadExpenseBatches() {
             const loadToken = Date.now();
             loadExpenseBatches.latestToken = loadToken;
             try {

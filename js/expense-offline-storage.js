@@ -712,6 +712,9 @@ class UploadQueue {
         const topNav = document.getElementById('topNav');
         const mainContent = document.getElementById('mainContent');
         
+        // Track previous upload state to detect when uploads complete
+        const wasUploading = banner && !banner.classList.contains('hidden');
+        
         if (isUploading) {
             // Show banner
             if (banner) {
@@ -739,6 +742,19 @@ class UploadQueue {
         } else {
             // Hide banner
             this.hideUploadBanner();
+            
+            // If banner was visible before and now it's hidden, refresh the expense list
+            if (wasUploading && typeof window.loadExpenseBatches === 'function') {
+                console.log('[UploadQueue] All uploads complete, refreshing expense list');
+                // Small delay to ensure Firestore has propagated
+                setTimeout(async () => {
+                    try {
+                        await window.loadExpenseBatches();
+                    } catch (error) {
+                        console.error('[UploadQueue] Error refreshing expense list:', error);
+                    }
+                }, 500);
+            }
         }
     }
     
