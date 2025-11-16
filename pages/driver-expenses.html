@@ -140,18 +140,25 @@
         </div>
     </div>
 
+    <!-- Upload Banner (shown when uploading) -->
+    <div id="uploadBanner" class="hidden fixed top-0 left-0 right-0 bg-red-600 text-white z-[100] shadow-lg">
+        <div class="flex items-center justify-center gap-3 px-4 py-3">
+            <span class="material-symbols-outlined animate-pulse">cloud_upload</span>
+            <div class="flex flex-col items-center">
+                <span id="uploadBannerText" class="font-semibold text-sm">Uploading expenses...</span>
+                <span class="text-xs opacity-90">DO NOT Leave this page</span>
+            </div>
+        </div>
+    </div>
+
     <!-- Top Navigation -->
-    <div class="bg-[#1a1f24] border-b border-gray-800 sticky top-0 z-50">
+    <div id="topNav" class="bg-[#1a1f24] border-b border-gray-800 sticky top-0 z-50">
         <div class="flex items-center justify-between px-4 py-3">
             <button onclick="goToPortal()" class="touch-target flex items-center text-gray-400 hover:text-white transition-colors">
                 <span class="material-symbols-outlined">arrow_back</span>
             </button>
             <div class="flex items-center gap-3">
                 <h1 class="text-xl font-semibold">My Expenses</h1>
-                <div id="uploadStatusIndicator" class="hidden flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 px-2.5 py-1 rounded-lg text-white text-xs font-medium transition-colors shadow-lg">
-                <span class="material-symbols-outlined text-sm animate-pulse">cloud_upload</span>
-                <span class="text-xs"></span>
-                </div>
             </div>
             <button onclick="window.location.href='/pages/driver-paid-expenses.html'" class="touch-target flex items-center text-green-500 hover:text-green-400 transition-colors text-sm font-semibold">
                 Processed Expenses
@@ -160,7 +167,7 @@
     </div>
 
     <!-- Main Content -->
-    <div class="container max-w-2xl mx-auto px-4 py-6 pb-24">
+    <div id="mainContent" class="container max-w-2xl mx-auto px-4 py-6 pb-24">
         
         <!-- Empty State -->
         <div id="emptyState" class="hidden text-center py-16">
@@ -964,6 +971,16 @@
                 await window.uploadQueue.init();
                 await window.uploadQueue.processQueue();
                 await window.uploadQueue.updateGlobalUploadStatus();
+                
+                // Set up periodic status updates while uploading
+                if (window.uploadStatusCheckInterval) {
+                    clearInterval(window.uploadStatusCheckInterval);
+                }
+                window.uploadStatusCheckInterval = setInterval(async () => {
+                    if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
+                        await window.uploadQueue.updateGlobalUploadStatus();
+                    }
+                }, 2000); // Check every 2 seconds
                 }
                 } catch (error) {
                 console.error('Error loading user data:', error);
@@ -1039,6 +1056,16 @@
                 runDriverExpensesInit();
             }
         }, { once: true });
+
+        // Warn user if they try to leave while uploading
+        window.addEventListener('beforeunload', (e) => {
+            const banner = document.getElementById('uploadBanner');
+            if (banner && !banner.classList.contains('hidden')) {
+                e.preventDefault();
+                e.returnValue = 'You have expenses uploading. Are you sure you want to leave?';
+                return e.returnValue;
+            }
+        });
  
         // Load all expense batches for this driver
         async function loadExpenseBatches() {
@@ -1689,6 +1716,11 @@
         
         // Save photos to existing expense
         async function savePhotosToExpense() {
+            // Block saving photos when offline to avoid losing them
+            if (!navigator.onLine) {
+        notifyError('You are currently offline. Photo uploads require an internet connection. Please try again when you are back online.', 'Offline Photo Upload Not Allowed');
+                return;
+            }
             if (window.editingExpenseIndex === undefined) {
         notifyError('No expense selected for editing.', 'Selection Required');
                 return;
@@ -1830,6 +1862,12 @@
             
             currentExpense.amount = amount;
             
+            // If offline and photos are attached, block the save so we never lose photos
+            if (!navigator.onLine && currentExpense.photos && currentExpense.photos.length > 0) {
+        notifyError('You are offline. To ensure your receipt photos are not lost, expenses with photos can only be saved when you have an internet connection.', 'Photos Require Internet');
+                return;
+            }
+
             if (currentExpense.photos && currentExpense.photos.length > MAX_PHOTOS_PER_EXPENSE) {
                 notifyWarning(`Each expense can include up to ${MAX_PHOTOS_PER_EXPENSE} photos. Remove some before saving.`, 'Photo Limit Reached');
                 return;
@@ -2034,9 +2072,13 @@
                 console.error('Error queueing draft for upload:', error);
             }
 
-            notifyInfo('This expense batch has been added to the upload queue. It will upload when the connection is adequate.', 'Upload queued');
+            // Update upload status immediately to show banner
+            if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
+                await window.uploadQueue.updateGlobalUploadStatus();
+            }
 
             if (!navigator.onLine) {
+                notifyInfo('This expense batch has been added to the upload queue. It will upload when the connection is adequate.', 'Upload queued');
                 document.getElementById('batchModal').classList.add('hidden');
                 currentBatch = null;
                 window.currentBatch = null;
@@ -2053,7 +2095,14 @@
                 }
                 }
 
-                notifySuccess('Draft saved successfully.', 'Draft Saved');
+                // Check if photos are still uploading
+                const finalPhotoCheck = batchIdForUploads && window.uploadQueue ? await window.uploadQueue.checkPendingUploads(batchIdForUploads, useLocalId) : { hasPending: false, count: 0 };
+                if (finalPhotoCheck.hasPending) {
+                    // Photos still uploading - banner will show automatically
+                    notifyInfo('Draft saved. Photos are uploading in the background. Please keep this page open until uploads complete.', 'Draft Saved');
+                } else {
+                    notifySuccess('Draft saved successfully.', 'Draft Saved');
+                }
                 document.getElementById('batchModal').classList.add('hidden');
                 currentBatch = null;
                 window.currentBatch = null;
@@ -2151,9 +2200,13 @@
                 console.error('Error queueing submission for upload:', error);
             }
 
-            notifyInfo('This expense batch has been added to the upload queue. It will upload when the connection is adequate.', 'Upload queued');
+            // Update upload status immediately to show banner
+            if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
+                await window.uploadQueue.updateGlobalUploadStatus();
+            }
 
             if (!navigator.onLine) {
+                notifyInfo('This expense batch has been added to the upload queue. It will upload when the connection is adequate.', 'Upload queued');
                 document.getElementById('batchModal').classList.add('hidden');
                 currentBatch = null;
                 window.currentBatch = null;
@@ -2170,7 +2223,14 @@
                 }
                 }
 
-                notifySuccess('Batch submitted successfully!', 'Submitted');
+                // Check if photos are still uploading
+                const finalPhotoCheck = batchIdForUploads && window.uploadQueue ? await window.uploadQueue.checkPendingUploads(batchIdForUploads, useLocalId) : { hasPending: false, count: 0 };
+                if (finalPhotoCheck.hasPending) {
+                    // Photos still uploading - banner will show automatically
+                    notifyInfo('Batch submitted. Photos are uploading in the background. Please keep this page open until uploads complete.', 'Submitted');
+                } else {
+                    notifySuccess('Batch submitted successfully! All photos have been uploaded.', 'Submitted');
+                }
                 document.getElementById('batchModal').classList.add('hidden');
                 currentBatch = null;
                 window.currentBatch = null;
@@ -2334,7 +2394,7 @@
                 window.uploadQueue.processQueue();
             }
             
-            // Update upload status indicator
+            // Update upload status indicator (shows banner if photos are uploading)
             if (window.uploadQueue && window.uploadQueue.updateGlobalUploadStatus) {
                 await window.uploadQueue.updateGlobalUploadStatus();
             }

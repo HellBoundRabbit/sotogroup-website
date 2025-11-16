@@ -634,8 +634,7 @@ class UploadQueue {
         await this.init();
         if (!this.db) {
             console.error('Database not initialized in updateGlobalUploadStatus');
-            const indicator = document.getElementById('uploadStatusIndicator');
-            if (indicator) indicator.classList.add('hidden');
+            this.hideUploadBanner();
             return;
         }
         const transaction = this.db.transaction(['uploadQueue'], 'readonly');
@@ -667,59 +666,60 @@ class UploadQueue {
                 console.warn('[UploadQueue] Unable to read submission queue info', error);
             }
         }
-        console.debug('[UploadQueue] status counts', {pending, uploading, failed});
-        const indicator = document.getElementById('uploadStatusIndicator');
-        if (indicator) {
-            const icon = indicator.querySelector('.material-symbols-outlined');
-            const text = indicator.querySelector('span:last-child');
-            if (pending > 0 || uploading > 0) {
-                 indicator.classList.remove('hidden', 'bg-red-600', 'hover:bg-red-700');
-                 indicator.classList.add('bg-blue-600', 'hover:bg-blue-700');
-                 if (icon) {
-                     icon.textContent = 'cloud_upload';
-                     icon.classList.add('animate-pulse');
-                 }
-                if (text) {
-                    const parts = [];
-                    if (submissionQueued > 0) {
-                        parts.push(`Uploading ${submissionQueued} expense${submissionQueued === 1 ? '' : 's'}...`);
-                    }
-                    if (uploading > 0) {
-                        parts.push(`${uploading} photo${uploading === 1 ? '' : 's'} in progress`);
-                    } else if (pending > 0) {
-                        parts.push(`${pending} photo${pending === 1 ? '' : 's'} pending`);
-                    }
-                    if (parts.length === 0) {
-                        parts.push('Uploading...');
-                    }
-                    text.classList.remove('text-red-100');
-                    text.textContent = parts.join(' · ');
-                }
-            } else if (submissionQueued > 0) {
-                indicator.classList.remove('hidden', 'bg-red-600', 'hover:bg-red-700');
-                indicator.classList.add('bg-blue-600', 'hover:bg-blue-700');
-                if (icon) {
-                    icon.textContent = 'cloud_upload';
-                    icon.classList.add('animate-pulse');
-                }
-                if (text) {
-                    text.classList.remove('text-red-100');
-                    text.textContent = `Uploading ${submissionQueued} expense${submissionQueued === 1 ? '' : 's'}...`;
-                }
-            } else if (failed > 0) {
-                indicator.classList.remove('hidden', 'bg-blue-600', 'hover:bg-blue-700');
-                indicator.classList.add('bg-red-600', 'hover:bg-red-700');
-                if (icon) {
-                    icon.textContent = 'error';
-                    icon.classList.remove('animate-pulse');
-                }
-                if (text) {
-                    text.textContent = `${failed} failed`;
-                    text.classList.add('text-red-100');
-                }
-            } else {
-                indicator.classList.add('hidden');
+        
+        const totalPhotos = pending + uploading;
+        const isUploading = submissionQueued > 0 || totalPhotos > 0;
+        
+        console.debug('[UploadQueue] status counts', {pending, uploading, failed, submissionQueued, isUploading});
+        
+        const banner = document.getElementById('uploadBanner');
+        const bannerText = document.getElementById('uploadBannerText');
+        const topNav = document.getElementById('topNav');
+        const mainContent = document.getElementById('mainContent');
+        
+        if (isUploading) {
+            // Show banner
+            if (banner) {
+                banner.classList.remove('hidden');
             }
+            
+            // Adjust top nav and content to account for banner
+            if (topNav) {
+                topNav.style.marginTop = '48px'; // Banner height
+            }
+            if (mainContent) {
+                mainContent.style.marginTop = '0';
+            }
+            
+            // Update banner text
+            if (bannerText) {
+                if (submissionQueued > 0) {
+                    bannerText.textContent = `Uploading ${submissionQueued} Expense${submissionQueued === 1 ? '' : 's'}`;
+                } else if (totalPhotos > 0) {
+                    bannerText.textContent = `Uploading ${totalPhotos} Photo${totalPhotos === 1 ? '' : 's'}`;
+                } else {
+                    bannerText.textContent = 'Uploading...';
+                }
+            }
+        } else {
+            // Hide banner
+            this.hideUploadBanner();
+        }
+    }
+    
+    hideUploadBanner() {
+        const banner = document.getElementById('uploadBanner');
+        const topNav = document.getElementById('topNav');
+        const mainContent = document.getElementById('mainContent');
+        
+        if (banner) {
+            banner.classList.add('hidden');
+        }
+        if (topNav) {
+            topNav.style.marginTop = '0';
+        }
+        if (mainContent) {
+            mainContent.style.marginTop = '0';
         }
     }
 
