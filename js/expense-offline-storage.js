@@ -117,14 +117,49 @@ class ExpenseDraftDB {
 
     async savePhotoBlob(localId, expenseIndex, photoIndex, blob) {
         if (!this.db) await this.init();
-        const transaction = this.db.transaction(['photos'], 'readwrite');
-        await transaction.objectStore('photos').put({
-            photoId: `${localId}_exp${expenseIndex}_photo${photoIndex}`,
-            expenseKey: `${localId}_exp${expenseIndex}`,
-            batchLocalId: localId,
-            blob,
-            timestamp: Date.now()
-        });
+        
+        // Ensure we have a proper Blob object (not File, which can't be cloned)
+        let blobToStore = blob;
+        if (blob instanceof File) {
+            // Convert File to Blob to ensure it can be stored in IndexedDB
+            try {
+                const arrayBuffer = await blob.arrayBuffer();
+                blobToStore = new Blob([arrayBuffer], { type: blob.type || 'image/jpeg' });
+                console.log('[savePhotoBlob] Converted File to Blob', {
+                    localId,
+                    expenseIndex,
+                    photoIndex,
+                    originalType: blob.type,
+                    size: blob.size
+                });
+            } catch (error) {
+                console.error('[savePhotoBlob] Error converting File to Blob:', error);
+                throw new Error(`Failed to convert File to Blob: ${error.message}`);
+            }
+        }
+        
+        const photoId = `${localId}_exp${expenseIndex}_photo${photoIndex}`;
+        const expenseKey = `${localId}_exp${expenseIndex}`;
+        
+        try {
+            const transaction = this.db.transaction(['photos'], 'readwrite');
+            await transaction.objectStore('photos').put({
+                photoId,
+                expenseKey,
+                batchLocalId: localId,
+                blob: blobToStore,
+                timestamp: Date.now()
+            });
+            console.log('[savePhotoBlob] Successfully saved photo blob', { photoId, expenseKey, size: blobToStore.size });
+        } catch (error) {
+            console.error('[savePhotoBlob] Failed to save photo blob to IndexedDB:', error, {
+                photoId,
+                expenseKey,
+                blobType: blobToStore.constructor.name,
+                blobSize: blobToStore.size
+            });
+            throw error;
+        }
     }
 
     async getPhotoBlob(localId, expenseIndex, photoIndex) {
@@ -296,10 +331,29 @@ class UploadQueue {
 
         if (uploadTask.photoFile) {
             try {
+                console.log('[UploadQueue] Saving photo blob to IndexedDB', {
+                    batchLocalId: uploadTask.batchLocalId,
+                    batchId: uploadTask.batchId,
+                    expenseIndex: uploadTask.expenseIndex,
+                    photoIndex: uploadTask.photoIndex,
+                    fileType: uploadTask.photoFile.constructor.name,
+                    fileSize: uploadTask.photoFile.size
+                });
                 await window.expenseDraftDB.savePhotoBlob(uploadTask.batchLocalId || uploadTask.batchId, uploadTask.expenseIndex, uploadTask.photoIndex, uploadTask.photoFile);
+                console.log('[UploadQueue] Photo blob saved successfully');
             } catch (error) {
-                console.warn('[UploadQueue] Failed to cache photo blob', error);
+                console.error('[UploadQueue] Failed to cache photo blob', error, {
+                    batchLocalId: uploadTask.batchLocalId,
+                    batchId: uploadTask.batchId,
+                    expenseIndex: uploadTask.expenseIndex,
+                    photoIndex: uploadTask.photoIndex,
+                    errorMessage: error.message,
+                    errorStack: error.stack
+                });
+                // Don't throw - we'll try to get the blob again during upload
             }
+        } else {
+            console.warn('[UploadQueue] No photoFile provided in uploadTask', uploadTask);
         }
 
         console.log('[UploadQueue] Enqueued task', task);

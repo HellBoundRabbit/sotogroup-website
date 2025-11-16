@@ -2252,21 +2252,48 @@
                 console.log(`Queueing ${expense.photos.length} photos for expense ${expense.category}...`);
                 
                 // Queue each photo for upload (in background)
+                console.log(`[saveExpenses] Processing ${expense.photos.length} photos for expense ${expense.category}`, {
+                    expenseIndex,
+                    expenseDocId,
+                    photos: expense.photos.map((p, idx) => ({
+                        index: idx,
+                        type: typeof p,
+                        isFile: p instanceof File,
+                        isBlob: p instanceof Blob,
+                        isString: typeof p === 'string',
+                        size: p instanceof File || p instanceof Blob ? p.size : null
+                    }))
+                });
+                
                 for (let photoIndex = 0; photoIndex < expense.photos.length; photoIndex++) {
                 const photoFile = expense.photos[photoIndex];
                 
                 // Skip if already a URL (already uploaded)
                 if (typeof photoFile === 'string') {
+                console.log(`[saveExpenses] Skipping photo ${photoIndex} - already uploaded (URL)`);
                 continue;
                 }
                 
                 // Only queue File/Blob objects
                 if (photoFile instanceof File || photoFile instanceof Blob) {
+                console.log(`[saveExpenses] Queueing photo ${photoIndex} for upload`, {
+                    batchId,
+                    batchLocalId: batchRef.localId,
+                    expenseIndex,
+                    expenseDocId,
+                    photoIndex,
+                    filename: `expenses/${batchId}/${expense.category}_${Date.now()}_${photoIndex}.jpg`,
+                    fileType: photoFile.constructor.name,
+                    fileSize: photoFile.size,
+                    mimeType: photoFile.type
+                });
+                
                 const timestamp = Date.now();
                 const filename = `expenses/${batchId}/${expense.category}_${timestamp}_${photoIndex}.jpg`;
                 
                 // Queue the upload - will process in background
                 if (window.uploadQueue) {
+                try {
                 await window.uploadQueue.enqueue({
                 batchId: batchId,
                 batchLocalId: batchRef.localId || null,
@@ -2276,7 +2303,22 @@
                 photoFile: photoFile,
                 filename: filename
                 });
+                console.log(`[saveExpenses] Successfully queued photo ${photoIndex}`);
+                } catch (enqueueError) {
+                console.error(`[saveExpenses] Failed to queue photo ${photoIndex}:`, enqueueError, {
+                    errorMessage: enqueueError.message,
+                    errorStack: enqueueError.stack
+                });
+                // Continue with other photos even if one fails
                 }
+                } else {
+                console.error('[saveExpenses] uploadQueue not available!');
+                }
+                } else {
+                console.warn(`[saveExpenses] Photo ${photoIndex} is not a File or Blob`, {
+                    type: typeof photoFile,
+                    constructor: photoFile?.constructor?.name
+                });
                 }
                 }
                 }
