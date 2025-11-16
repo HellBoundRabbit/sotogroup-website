@@ -118,8 +118,19 @@
         </div>
     </div>
 
+    <!-- Upload Banner (shown when uploading) -->
+    <div id="availabilityUploadBanner" class="hidden fixed top-0 left-0 right-0 bg-red-600 text-white z-[100] shadow-lg">
+        <div class="flex items-center justify-center gap-3 px-4 py-3">
+            <span class="material-symbols-outlined animate-pulse">cloud_upload</span>
+            <div class="flex flex-col items-center">
+                <span id="availabilityUploadBannerText" class="font-semibold text-sm">Marking availability...</span>
+                <span class="text-xs opacity-90">DO NOT Leave this page</span>
+            </div>
+        </div>
+    </div>
+
     <!-- Top Navigation -->
-    <div class="bg-[#1a1f24] border-b border-gray-800 sticky top-0 z-50">
+    <div id="topNav" class="bg-[#1a1f24] border-b border-gray-800 sticky top-0 z-50">
         <div class="flex items-center justify-between px-4 py-3">
             <button onclick="window.location.href='/pages/driver-portal.html'" class="touch-target flex items-center text-gray-400 hover:text-white transition-colors">
                 <span class="material-symbols-outlined">arrow_back</span>
@@ -139,7 +150,7 @@
     </div>
 
     <!-- Main Content -->
-    <div class="container max-w-2xl mx-auto px-4 py-6">
+    <div id="mainContent" class="container max-w-2xl mx-auto px-4 py-6">
         
         <!-- Instructions -->
         <div class="bg-blue-900 bg-opacity-20 border border-blue-500 rounded-lg p-4 mb-6">
@@ -319,15 +330,18 @@
             const { showToast = true } = options;
 
             if (!navigator.onLine) {
+                updateAvailabilityUploadBanner();
                 return;
             }
 
             if (!currentUser) {
+                updateAvailabilityUploadBanner();
                 return;
             }
 
             const queue = loadAvailabilityQueue();
             if (!queue.length) {
+                updateAvailabilityUploadBanner();
                 return;
             }
 
@@ -335,10 +349,15 @@
             const remaining = [];
             let processed = 0;
 
+            // Update banner before processing
+            updateAvailabilityUploadBanner();
+
             for (const change of queue) {
                 try {
                     await applyAvailabilityChange(change.date, change.newAvailability, change);
                     processed++;
+                    // Update banner during processing
+                    updateAvailabilityUploadBanner();
                 } catch (error) {
                     console.error('Error syncing queued availability change:', change, error);
                     remaining.push(change);
@@ -364,10 +383,44 @@
             if (remaining.length > 0) {
                 console.warn('Some availability changes could not be synced and remain queued.');
             }
+
+            // Update banner after processing
+            updateAvailabilityUploadBanner();
         }
 
         window.processAvailabilityQueue = processAvailabilityQueue;
-        window.addEventListener('online', () => processAvailabilityQueue({ showToast: true }));
+        window.addEventListener('online', () => {
+            processAvailabilityQueue({ showToast: true });
+            updateAvailabilityUploadBanner();
+        });
+        
+        // Warn user if they try to leave while uploading
+        window.addEventListener('beforeunload', (e) => {
+            const banner = document.getElementById('availabilityUploadBanner');
+            if (banner && !banner.classList.contains('hidden')) {
+                e.preventDefault();
+                e.returnValue = 'You have availability changes uploading. Are you sure you want to leave?';
+                return e.returnValue;
+            }
+        });
+        
+        // Set up periodic status updates while uploading
+        let availabilityStatusCheckInterval = null;
+        function startAvailabilityStatusCheck() {
+            if (availabilityStatusCheckInterval) {
+                clearInterval(availabilityStatusCheckInterval);
+            }
+            availabilityStatusCheckInterval = setInterval(() => {
+                updateAvailabilityUploadBanner();
+                // Stop checking if nothing is uploading
+                const queue = loadAvailabilityQueue();
+                const hasPendingChanges = Object.keys(pendingChanges).length > 0;
+                if (!isSaving && queue.length === 0 && !hasPendingChanges) {
+                    clearInterval(availabilityStatusCheckInterval);
+                    availabilityStatusCheckInterval = null;
+                }
+            }, 2000); // Check every 2 seconds
+        }
 
         // Check for unread messages
         async function checkForUnreadMessages() {
@@ -472,6 +525,10 @@
                 renderCalendar();
                 document.getElementById('loadingOverlay').style.display = 'none';
                 console.log('Loading complete!');
+                
+                // Initialize banner status and start periodic checks
+                updateAvailabilityUploadBanner();
+                startAvailabilityStatusCheck();
             } catch (error) {
                 console.error('Error loading user data:', error);
                 notifyError('Error loading user data. Please try again.');
@@ -657,6 +714,8 @@
             pendingChanges[dateString] = newAvailability; // Track pending changes
             renderCalendar();
             updateSaveButtonVisibility();
+            updateAvailabilityUploadBanner(); // Update banner when changes are made
+            startAvailabilityStatusCheck(); // Start periodic status updates
         }
 
         // Update save button visibility based on pending changes
@@ -670,6 +729,92 @@
                 } else {
                     saveBtn.classList.add('hidden');
                 }
+            }
+        }
+
+        // Update availability upload banner
+        function updateAvailabilityUploadBanner() {
+            const queue = loadAvailabilityQueue();
+            const hasPendingChanges = Object.keys(pendingChanges).length > 0;
+            const hasQueuedChanges = queue.length > 0;
+            const isUploading = isSaving || hasQueuedChanges || hasPendingChanges;
+            
+            const banner = document.getElementById('availabilityUploadBanner');
+            const bannerText = document.getElementById('availabilityUploadBannerText');
+            const topNav = document.getElementById('topNav');
+            const mainContent = document.getElementById('mainContent');
+            
+            if (isUploading) {
+                // Count available vs unavailable days
+                let availableCount = 0;
+                let unavailableCount = 0;
+                
+                // Count from pending changes
+                Object.values(pendingChanges).forEach(newAvailability => {
+                    if (newAvailability) {
+                        availableCount++;
+                    } else {
+                        unavailableCount++;
+                    }
+                });
+                
+                // Count from queue
+                queue.forEach(change => {
+                    if (change.newAvailability) {
+                        availableCount++;
+                    } else {
+                        unavailableCount++;
+                    }
+                });
+                
+                // Show banner
+                if (banner) {
+                    banner.classList.remove('hidden');
+                }
+                
+                // Adjust top nav and content to account for banner
+                if (topNav) {
+                    topNav.style.marginTop = '48px'; // Banner height
+                }
+                if (mainContent) {
+                    mainContent.style.marginTop = '0';
+                }
+                
+                // Update banner text
+                if (bannerText) {
+                    const parts = [];
+                    if (availableCount > 0) {
+                        parts.push(`${availableCount} day${availableCount === 1 ? '' : 's'} available`);
+                    }
+                    if (unavailableCount > 0) {
+                        parts.push(`${unavailableCount} day${unavailableCount === 1 ? '' : 's'} off`);
+                    }
+                    
+                    if (parts.length > 0) {
+                        bannerText.textContent = `Marking ${parts.join(', and ')}`;
+                    } else {
+                        bannerText.textContent = 'Marking availability...';
+                    }
+                }
+            } else {
+                // Hide banner
+                hideAvailabilityUploadBanner();
+            }
+        }
+        
+        function hideAvailabilityUploadBanner() {
+            const banner = document.getElementById('availabilityUploadBanner');
+            const topNav = document.getElementById('topNav');
+            const mainContent = document.getElementById('mainContent');
+            
+            if (banner) {
+                banner.classList.add('hidden');
+            }
+            if (topNav) {
+                topNav.style.marginTop = '0';
+            }
+            if (mainContent) {
+                mainContent.style.marginTop = '0';
             }
         }
 
@@ -691,13 +836,17 @@
             const changesToSave = { ...pendingChanges };
             pendingChanges = {};
             updateSaveButtonVisibility();
+            
+            // Update banner immediately
+            updateAvailabilityUploadBanner();
 
             try {
                 if (!navigator.onLine) {
                     queueAvailabilityChanges(changesToSave);
                     if (statusText) statusText.textContent = 'Saved offline';
                     setTimeout(() => statusIndicator && statusIndicator.classList.add('hidden'), 1500);
-                    notifyInfo('No network connection detected. Changes saved locally and will sync once you reconnect.', 'Offline Mode');
+                    // Don't show dialog - banner will show status
+                    updateAvailabilityUploadBanner();
                     return;
                 }
 
@@ -706,6 +855,8 @@
                 for (const [dateString, newAvailability] of Object.entries(changesToSave)) {
                     try {
                         await applyAvailabilityChange(dateString, newAvailability);
+                        // Update banner during save
+                        updateAvailabilityUploadBanner();
                     } catch (error) {
                         console.error('Error saving availability change for', dateString, error);
                         failedChanges[dateString] = newAvailability;
@@ -715,21 +866,25 @@
                 if (Object.keys(failedChanges).length > 0) {
                     queueAvailabilityChanges(failedChanges);
                     if (statusText) statusText.textContent = 'Saved offline';
-                    notifyWarning('Some changes could not sync. They have been saved locally and will retry automatically.', 'Partial Sync');
+                    // Don't show dialog - banner will show status
+                    updateAvailabilityUploadBanner();
                 } else {
                     if (statusText) statusText.textContent = 'Saved!';
                     setTimeout(() => statusIndicator && statusIndicator.classList.add('hidden'), 1500);
                     notifySuccess('Availability updated successfully.');
+                    updateAvailabilityUploadBanner();
                 }
             } catch (error) {
                 console.error('Error saving changes:', error);
                 queueAvailabilityChanges(changesToSave);
                 if (statusText) statusText.textContent = 'Saved offline';
                 setTimeout(() => statusIndicator && statusIndicator.classList.add('hidden'), 1500);
-                notifyWarning('Unable to sync right now. Changes were saved locally and will retry when you are online.', 'Offline Mode');
+                // Don't show dialog - banner will show status
+                updateAvailabilityUploadBanner();
             } finally {
                 isSaving = false;
                 await processAvailabilityQueue({ showToast: false });
+                updateAvailabilityUploadBanner();
             }
         }
 

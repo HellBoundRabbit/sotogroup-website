@@ -424,9 +424,6 @@
     </div>
 
     <!-- Debug Info (hidden by default) -->
-    <div id="expensesDebugInfo" class="hidden fixed bottom-4 left-4 bg-black bg-opacity-70 text-xs p-3 rounded">
-        Debug
-    </div>
 
     <script>
         // Global variables
@@ -912,7 +909,6 @@
         async function initializeDriverExpensesApp() {
             console.log('Initializing driver expenses app...');
             const overlay = document.getElementById('loadingOverlay');
-            const debugEl = document.getElementById('expensesDebugInfo');
             try {
                 const session = await window.sotoSession.bootstrap(['driver']);
                 if (!session) {
@@ -925,9 +921,6 @@
                 window.__driverExpensesDebug = { step: 'session-loaded', currentUser };
                 if (overlay) {
                 overlay.setAttribute('data-step', 'session-loaded');
-                }
-                if (debugEl) {
-                debugEl.textContent = `session loaded for ${currentUser.uid}`;
                 }
             } catch (error) {
                 console.error('Unable to establish session for driver expenses:', error);
@@ -953,18 +946,12 @@
                 if (overlay) {
                 overlay.setAttribute('data-step', 'before-load-batches');
                 }
-                if (debugEl) {
-                debugEl.textContent = 'loading batches...';
-                }
                 await loadExpenseBatches();
                 document.getElementById('loadingOverlay').style.display = 'none';
                 console.log('Loading complete!');
                 window.__driverExpensesDebug.step = 'after-load-batches';
                 if (overlay) {
                 overlay.setAttribute('data-step', 'after-load-batches');
-                }
-                if (debugEl) {
-                debugEl.textContent = `batches loaded: ${allBatches.length}`;
                 }
                 
                 if (window.uploadQueue) {
@@ -986,9 +973,6 @@
                 } catch (error) {
                 console.error('Error loading user data:', error);
                 notifyError('Error loading user data. Please try again.');
-                if (debugEl) {
-                debugEl.textContent = `init failed: ${error?.message || error}`;
-                }
                 }
         }
 
@@ -1047,12 +1031,7 @@
             if (overlay) {
                 overlay.setAttribute('data-step', label);
             }
-            const debugEl = document.getElementById('expensesDebugInfo');
-            if (debugEl) {
-                debugEl.classList.remove('hidden');
-                const text = error ? `${label}: ${error}` : label;
-                debugEl.textContent = `${text}\nqueue pending: ${(window.getExpenseSubmissionQueueInfo?.().pending) || 0}`;
-            }
+            // Debug info removed - check console for details
         };
 
         const runDriverExpensesInit = () => {

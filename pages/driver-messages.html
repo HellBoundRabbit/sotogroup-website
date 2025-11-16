@@ -163,10 +163,38 @@
                 );
                 const snapshot = await window.getDocs(messagesQuery);
                 allMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                // Sync read messages from Firebase on load
+                await syncReadMessagesFromFirebase();
+                
                 displayMessages();
             } catch (error) {
                 console.error('Error loading messages:', error);
                 document.getElementById('messagesList').innerHTML = '<div class="text-center py-8 text-red-400">Error loading messages</div>';
+            }
+        }
+        
+        // Sync read messages from Firebase to localStorage
+        async function syncReadMessagesFromFirebase() {
+            try {
+                if (!currentUser || !currentUser.uid) return;
+                
+                // Get read messages from localStorage
+                let readMessages = JSON.parse(localStorage.getItem('driver_read_messages') || '[]');
+                
+                // Also get read messages from Firebase (for persistence across devices/sessions)
+                const userDocRef = window.doc(window.db, 'users', currentUser.uid);
+                const userDoc = await window.getDoc(userDocRef);
+                if (userDoc.exists()) {
+                    const userData = userDoc.data();
+                    const firebaseReadMessages = userData.readMessages || [];
+                    // Merge Firebase read messages with localStorage (deduplicate)
+                    readMessages = [...new Set([...readMessages, ...firebaseReadMessages])];
+                    // Update localStorage with merged list
+                    localStorage.setItem('driver_read_messages', JSON.stringify(readMessages));
+                }
+            } catch (error) {
+                console.warn('Could not sync read messages from Firebase:', error);
             }
         }
 
@@ -204,6 +232,8 @@
         let currentViewingMessageId = null;
 
         function checkIfMessageRead(messageId) {
+            // This function is called frequently, so we just check localStorage
+            // The sync with Firebase happens on page load and when marking as read
             const readMessages = JSON.parse(localStorage.getItem('driver_read_messages') || '[]');
             return readMessages.includes(messageId);
         }

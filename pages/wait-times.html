@@ -318,6 +318,7 @@
             await loadOfficeLogo(getCurrentOfficeId());
             await initializeNotifications();
             startWaitTimesListener();
+            startExpiredWaitTimesCheck(); // Start checking for expired wait times
             document.getElementById('loadingOverlay').classList.add('hidden');
             setupProcessModal();
         } catch (error) {
@@ -366,6 +367,10 @@
                 return bTime - aTime;
             });
             renderWaitTimes();
+            
+            // Check for expired wait times when data updates
+            checkAndDeleteExpiredWaitTimes();
+            
             if (isManualRefresh) {
                 notifySuccess('Wait times refreshed.');
                 isManualRefresh = false;
@@ -767,6 +772,67 @@
             console.error('Error deleting wait time:', error);
             notifyError('Unable to delete wait time.');
         }
+    }
+
+    // Check and delete expired wait times
+    async function checkAndDeleteExpiredWaitTimes() {
+        try {
+            const now = new Date();
+            const expiredWaitTimes = [];
+
+            // Check all wait times for expiration
+            for (const waitTime of allWaitTimes) {
+                if (waitTime.processingStatus !== 'processed') {
+                    continue; // Only check processed wait times
+                }
+
+                const expiryDate = waitTime.expiresAt ? toDate(waitTime.expiresAt) : null;
+                if (!expiryDate) {
+                    // Fallback: check processedAt + 3 days
+                    const processedAt = toDate(waitTime.processedAt);
+                    if (processedAt) {
+                        const fallbackExpiry = new Date(processedAt.getTime() + THREE_DAYS_MS);
+                        if (now >= fallbackExpiry) {
+                            expiredWaitTimes.push(waitTime);
+                        }
+                    }
+                } else if (now >= expiryDate) {
+                    expiredWaitTimes.push(waitTime);
+                }
+            }
+
+            // Delete expired wait times
+            for (const waitTime of expiredWaitTimes) {
+                try {
+                    await window.deleteDoc(window.doc(window.db, 'waitTimes', waitTime.id));
+                    console.log(`Auto-deleted expired wait time: ${waitTime.registration || waitTime.id}`);
+                } catch (error) {
+                    console.error(`Error deleting expired wait time ${waitTime.id}:`, error);
+                }
+            }
+
+            // Reload if any were deleted
+            if (expiredWaitTimes.length > 0) {
+                console.log(`Deleted ${expiredWaitTimes.length} expired wait time(s)`);
+                // The listener will automatically update the UI
+            }
+        } catch (error) {
+            console.error('Error checking for expired wait times:', error);
+        }
+    }
+
+    // Start periodic check for expired wait times
+    function startExpiredWaitTimesCheck() {
+        // Check immediately on load
+        checkAndDeleteExpiredWaitTimes();
+
+        // Then check every hour
+        if (window.expiredWaitTimesInterval) {
+            clearInterval(window.expiredWaitTimesInterval);
+        }
+        window.expiredWaitTimesInterval = setInterval(() => {
+            checkAndDeleteExpiredWaitTimes();
+        }, 60 * 60 * 1000); // Check every hour
     }
 
     async function loadOfficeLogo(officeId) {
