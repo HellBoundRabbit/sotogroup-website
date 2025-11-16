@@ -2275,6 +2275,7 @@
             }
 
             try {
+                const batchId = currentBatch.id;
                 await syncDraftToFirestore(currentBatch, 'pending');
 
                 if (queuedLocalId) {
@@ -2282,6 +2283,16 @@
                 if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
                 await window.uploadQueue.updateGlobalUploadStatus();
                 }
+                }
+
+                // Update local batch status immediately for instant UI feedback
+                if (batchId) {
+                    const batchIndex = allBatches.findIndex(b => b.id === batchId);
+                    if (batchIndex >= 0) {
+                        allBatches[batchIndex].status = 'pending';
+                        allBatches[batchIndex].updatedAt = Date.now();
+                        displayBatches(); // Update UI immediately
+                    }
                 }
 
                 // Check if photos are still uploading
@@ -2295,6 +2306,11 @@
                 document.getElementById('batchModal').classList.add('hidden');
                 currentBatch = null;
                 window.currentBatch = null;
+                
+                // Small delay to ensure Firestore has propagated the status change
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // Force a fresh reload of batches to ensure consistency with Firestore
                 await loadExpenseBatches();
             } catch (error) {
                 console.error('Error submitting batch:', error);
