@@ -389,6 +389,71 @@ class UploadQueue {
         });
     }
 
+    /**
+     * Check if there are any pending or uploading photos for a batch
+     * @param {string} batchId - The batch ID (Firestore ID) or localId
+     * @param {boolean} useLocalId - If true, match by batchLocalId; if false, match by batchId
+     * @returns {Promise<{hasPending: boolean, count: number, tasks: Array}>}
+     */
+    async checkPendingUploads(batchId, useLocalId = false) {
+        await this.init();
+        if (!this.db || !batchId) {
+            return { hasPending: false, count: 0, tasks: [] };
+        }
+        
+        const allTasks = await this.getAllTasks();
+        const pendingTasks = allTasks.filter(task => {
+            if (task.status !== 'pending' && task.status !== 'uploading') {
+                return false;
+            }
+            if (useLocalId) {
+                return (task.batchLocalId === batchId);
+            } else {
+                return (task.batchId === batchId);
+            }
+        });
+        
+        return {
+            hasPending: pendingTasks.length > 0,
+            count: pendingTasks.length,
+            tasks: pendingTasks
+        };
+    }
+
+    /**
+     * Wait for all pending uploads for a batch to complete
+     * @param {string} batchId - The batch ID (Firestore ID) or localId
+     * @param {boolean} useLocalId - If true, match by batchLocalId; if false, match by batchId
+     * @param {number} timeoutMs - Maximum time to wait in milliseconds (default: 60000 = 60 seconds)
+     * @returns {Promise<{success: boolean, remaining: number}>}
+     */
+    async waitForUploads(batchId, useLocalId = false, timeoutMs = 60000) {
+        const startTime = Date.now();
+        const checkInterval = 500; // Check every 500ms
+        
+        while (Date.now() - startTime < timeoutMs) {
+            // Process the queue to keep uploads moving
+            if (navigator.onLine && !this.isProcessing) {
+                await this.processQueue();
+            }
+            
+            const check = await this.checkPendingUploads(batchId, useLocalId);
+            
+            if (!check.hasPending) {
+                console.log(`[UploadQueue] All uploads completed for batch ${batchId}`);
+                return { success: true, remaining: 0 };
+            }
+            
+            // Wait before checking again
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+        }
+        
+        // Timeout reached
+        const finalCheck = await this.checkPendingUploads(batchId, useLocalId);
+        console.warn(`[UploadQueue] Timeout waiting for uploads for batch ${batchId}, ${finalCheck.count} still pending`);
+        return { success: false, remaining: finalCheck.count };
+    }
+
     async uploadPhoto(task) {
         const blob = await window.expenseDraftDB.getPhotoBlob(task.batchLocalId || task.batchId, task.expenseIndex, task.photoIndex);
         if (!blob) {
