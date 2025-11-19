@@ -63,9 +63,40 @@
             --primary-color: #0d7ff2;
             --success-color: #22c55e;
         }
+        #hyperspeed-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .login-content {
+            position: relative;
+            z-index: 10;
+        }
     </style>
+    <!-- Three.js and Postprocessing - Load from local files -->
+    <script src="/assets/js/three.min.js"></script>
+    <script src="/assets/js/postprocessing.min.js"></script>
+    <script>
+        // Verify libraries loaded - the postprocessing.min.js file now exposes itself to window
+        window.addEventListener('load', function() {
+            console.log('Page loaded - Checking libraries:');
+            console.log('THREE:', typeof THREE);
+            console.log('window.postprocessing:', typeof window.postprocessing);
+            console.log('window.PP:', typeof window.PP);
+            console.log('window.POSTPROCESSING:', typeof window.POSTPROCESSING);
+        });
+    </script>
+    <script src="/assets/js/hyperspeed.js"></script>
 </head>
 <body class="bg-[#111418] text-white" style='font-family: Inter, "Noto Sans", sans-serif;'>
+    <!-- Hyperspeed Background -->
+    <div id="hyperspeed-container"></div>
+    
     <div class="relative flex h-auto min-h-screen w-full flex-col dark group/design-root overflow-x-hidden">
         <div class="flex h-full grow flex-col">
             <!-- Header -->
@@ -87,7 +118,7 @@
             </header>
 
             <!-- Main Content -->
-            <main class="flex-1 flex items-center justify-center px-6 py-8">
+            <main class="flex-1 flex items-center justify-center px-6 py-8 login-content">
                 <div class="w-full max-w-md">
                     <div class="text-center mb-8">
                         <h1 class="text-3xl font-bold mb-2">Welcome to SOTO Routes</h1>
@@ -309,6 +340,114 @@
                 console.error('Initialization error:', error);
             }
         });
+
+        // Initialize Hyperspeed animation
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, checking libraries...');
+            console.log('THREE available:', typeof THREE !== 'undefined');
+            console.log('postprocessing available:', typeof postprocessing !== 'undefined');
+            console.log('PP namespace:', typeof PP !== 'undefined' ? PP : 'not found');
+            
+            // Wait for Three.js and postprocessing to load
+            const checkLibraries = setInterval(() => {
+                const threeReady = typeof THREE !== 'undefined' || typeof window.THREE !== 'undefined';
+                const ppReady = typeof postprocessing !== 'undefined' || 
+                               typeof window.postprocessing !== 'undefined' || 
+                               typeof PP !== 'undefined' || 
+                               typeof window.PP !== 'undefined' ||
+                               typeof window.POSTPROCESSING !== 'undefined';
+                
+                if (threeReady && ppReady) {
+                    clearInterval(checkLibraries);
+                    console.log('All libraries loaded, initializing Hyperspeed...');
+                    console.log('THREE:', typeof THREE, typeof window.THREE);
+                    console.log('PP:', typeof window.postprocessing, typeof window.PP, typeof window.POSTPROCESSING);
+                    initializeHyperspeed();
+                } else {
+                    console.log('Waiting for libraries...', { 
+                        three: threeReady, 
+                        pp: ppReady,
+                        'window.THREE': typeof window.THREE,
+                        'window.postprocessing': typeof window.postprocessing,
+                        'window.PP': typeof window.PP,
+                        'window.POSTPROCESSING': typeof window.POSTPROCESSING
+                    });
+                }
+            }, 100);
+
+            // Timeout after 10 seconds
+            setTimeout(() => {
+                clearInterval(checkLibraries);
+                console.error('Hyperspeed libraries not loaded in time');
+                console.error('THREE:', typeof THREE);
+                console.error('postprocessing:', typeof postprocessing);
+                console.error('PP:', typeof PP);
+            }, 10000);
+        });
+
+        function initializeHyperspeed() {
+            try {
+                const container = document.getElementById('hyperspeed-container');
+                if (!container) {
+                    console.error('Hyperspeed container not found');
+                    return;
+                }
+
+                console.log('Initializing Hyperspeed with container:', container);
+
+                // Use default options from the preset
+                const options = {
+                    onSpeedUp: () => {},
+                    onSlowDown: () => {},
+                    distortion: 'turbulentDistortion',
+                    length: 400,
+                    roadWidth: 10,
+                    islandWidth: 2,
+                    lanesPerRoad: 4,
+                    fov: 90,
+                    fovSpeedUp: 150,
+                    speedUp: 2,
+                    carLightsFade: 0.4,
+                    totalSideLightSticks: 20,
+                    lightPairsPerRoadWay: 40,
+                    shoulderLinesWidthPercentage: 0.05,
+                    brokenLinesWidthPercentage: 0.1,
+                    brokenLinesLengthPercentage: 0.5,
+                    lightStickWidth: [0.12, 0.5],
+                    lightStickHeight: [1.3, 1.7],
+                    movingAwaySpeed: [60, 80],
+                    movingCloserSpeed: [-120, -160],
+                    carLightsLength: [400 * 0.03, 400 * 0.2],
+                    carLightsRadius: [0.05, 0.14],
+                    carWidthPercentage: [0.3, 0.5],
+                    carShiftX: [-0.8, 0.8],
+                    carFloorSeparation: [0, 5],
+                    colors: {
+                        roadColor: 0x080808,
+                        islandColor: 0x0a0a0a,
+                        background: 0x000000,
+                        shoulderLines: 0xFFFFFF,
+                        brokenLines: 0xFFFFFF,
+                        leftCars: [0xFF0000, 0xFF3333, 0xCC0000, 0xFF6666], // Reds on the left
+                        rightCars: [0xFFFFFF, 0xEEEEEE, 0xDDDDDD], // Whites on the right
+                        sticks: 0xFFFFFF, // White light sticks
+                    }
+                };
+
+                // Initialize the animation
+                if (window.HyperspeedAnimation) {
+                    console.log('Creating HyperspeedAnimation instance...');
+                    window.hyperspeedApp = new window.HyperspeedAnimation(container, options);
+                    console.log('HyperspeedAnimation instance created:', window.hyperspeedApp);
+                } else {
+                    console.error('HyperspeedAnimation class not available');
+                    console.error('Available globals:', Object.keys(window).filter(k => k.includes('Hyper')));
+                }
+            } catch (error) {
+                console.error('Error initializing Hyperspeed:', error);
+                console.error('Stack:', error.stack);
+            }
+        }
     </script>
 </body>
 </html>
