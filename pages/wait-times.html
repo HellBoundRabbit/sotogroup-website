@@ -257,7 +257,11 @@
                         </div>
                         <div class="bg-[#1f2730] border border-[#2f3944] rounded-xl p-4">
                             <p class="text-xs text-gray-400 uppercase tracking-wide mb-1">Adjustment</p>
-                            <p id="processSummaryDifference" class="text-sm text-gray-200">--</p>
+                            <p id="processSummaryDifference" class="text-sm text-gray-200 mb-3">--</p>
+                            <div id="processSummaryNotes" class="hidden mt-3 pt-3 border-t border-[#2f3944]">
+                                <p class="text-xs text-gray-400 uppercase tracking-wide mb-2">Notes</p>
+                                <p id="processSummaryNotesText" class="text-sm text-gray-200 leading-relaxed">--</p>
+                            </div>
                         </div>
                     </div>
                     <div class="flex flex-col sm:flex-row sm:justify-between gap-3 pt-4">
@@ -635,6 +639,18 @@
                     summaryDifference.textContent = `Reduced by ${formatDuration(reduction)}`;
                 } else {
                     summaryDifference.textContent = 'No change';
+                }
+            }
+            
+            // Update Notes display
+            const summaryNotes = document.getElementById('processSummaryNotes');
+            const summaryNotesText = document.getElementById('processSummaryNotesText');
+            if (summaryNotes && summaryNotesText && waitTimeToProcess) {
+                if (waitTimeToProcess.notes && waitTimeToProcess.notes.trim()) {
+                    summaryNotesText.textContent = waitTimeToProcess.notes;
+                    summaryNotes.classList.remove('hidden');
+                } else {
+                    summaryNotes.classList.add('hidden');
                 }
             }
         }
