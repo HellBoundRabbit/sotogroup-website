@@ -241,6 +241,9 @@
 
                 <div id="processStep2" class="hidden">
                     <div class="bg-[#151b21] border border-[#283039] rounded-2xl p-5 space-y-4">
+                        <div class="flex justify-center mb-4">
+                            <span id="processSummaryReg" class="license-plate">--</span>
+                        </div>
                         <h4 class="text-sm font-semibold text-gray-300 uppercase tracking-wide">Review Changes</h4>
                         <div class="grid gap-4 md:grid-cols-2">
                             <div class="bg-[#1f2730] border border-[#2f3944] rounded-xl p-4">
@@ -615,9 +618,16 @@
         }
 
         if (processModalStep === 2) {
+            const summaryReg = document.getElementById('processSummaryReg');
             const summaryOriginal = document.getElementById('processSummaryOriginal');
             const summaryUpdated = document.getElementById('processSummaryUpdated');
             const summaryDifference = document.getElementById('processSummaryDifference');
+            
+            // Update REG display
+            if (summaryReg && waitTimeToProcess) {
+                summaryReg.textContent = waitTimeToProcess.registration || 'UNKNOWN';
+            }
+            
             if (summaryOriginal) summaryOriginal.textContent = formatDuration(originalMinutes);
             if (summaryUpdated) summaryUpdated.textContent = formatDuration(updatedMinutes);
             if (summaryDifference) {
