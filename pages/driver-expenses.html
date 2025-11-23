@@ -128,12 +128,44 @@
         .flash-red {
             animation: flash 1s infinite;
         }
+        
+        /* Animated border panel */
+        .animated-border-panel {
+            position: relative;
+            background: #1a1f24;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            isolation: isolate;
+        }
+        .animated-border-panel::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 0.5rem;
+            background: linear-gradient(45deg, rgb(186, 66, 255), rgb(0, 225, 255), rgb(186, 66, 255));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
+        .animated-border-panel::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 0.5rem;
+            background: #1a1f24;
+            z-index: -1;
+        }
+        @keyframes borderGradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
     </style>
 </head>
-<body class="bg-[#0f1419] text-white min-h-screen">
+<body class="bg-black text-white min-h-screen">
 
     <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="fixed inset-0 bg-[#0f1419] flex items-center justify-center z-50">
+    <div id="loadingOverlay" class="fixed inset-0 bg-black flex items-center justify-center z-50">
         <div class="text-center">
             <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
             <p class="text-gray-400">Loading your expenses...</p>
@@ -1304,7 +1336,7 @@
                 }
                 
                 return `
-                <div onclick="openBatch('${batch.id}')" class="bg-[#1a1f24] rounded-lg p-4 border border-gray-800 hover:border-gray-700 transition-colors cursor-pointer fade-in">
+                <div onclick="openBatch('${batch.id}')" class="animated-border-panel cursor-pointer fade-in">
                 <div class="flex items-start justify-between mb-2">
                 <div class="license-plate">${batch.registration}</div>
                 <span class="${statusColor} px-3 py-1 rounded-full text-xs font-semibold uppercase">${batch.status}</span>
@@ -2847,7 +2879,7 @@
                 const totalPhotos = batch.expenses?.reduce((sum, exp) => sum + (exp.photos?.length || 0), 0) || 0;
                 
                 return `
-                <div class="bg-[#1a1f24] rounded-lg p-4 border border-gray-800 fade-in">
+                <div class="animated-border-panel fade-in">
                 <div class="flex items-start justify-between mb-2">
                 <div class="license-plate">${batch.registration}</div>
                 <span class="bg-green-500 px-3 py-1 rounded-full text-xs font-semibold uppercase">PAID</span>
