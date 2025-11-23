@@ -90,16 +90,17 @@ vec3 StarLayer(vec2 uv) {
       float size = fract(seed * 345.32);
       float glossLocal = tri(uStarSpeed / (PERIOD * seed + 1.0));
       float flareSize = smoothstep(0.9, 1.0, size) * glossLocal;
-      float red = smoothstep(STAR_COLOR_CUTOFF, 1.0, Hash21(si + 1.0)) + STAR_COLOR_CUTOFF;
-      float blu = smoothstep(STAR_COLOR_CUTOFF, 1.0, Hash21(si + 3.0)) + STAR_COLOR_CUTOFF;
-      float grn = min(red, blu) * seed;
-      vec3 base = vec3(red, grn, blu);
+      // Purple and Cyan color scheme
+      // Purple: rgb(186, 66, 255) = vec3(0.729, 0.259, 1.0)
+      // Cyan: rgb(0, 225, 255) = vec3(0.0, 0.882, 1.0)
+      float colorChoice = Hash21(si + 5.0);
+      vec3 purple = vec3(0.729, 0.259, 1.0);
+      vec3 cyan = vec3(0.0, 0.882, 1.0);
+      vec3 base = mix(cyan, purple, step(0.5, colorChoice));
       
-      float hue = atan(base.g - base.r, base.b - base.r) / (2.0 * 3.14159) + 0.5;
-      hue = fract(hue + uHueShift / 360.0);
-      float sat = length(base - vec3(dot(base, vec3(0.299, 0.587, 0.114)))) * uSaturation;
-      float val = max(max(base.r, base.g), base.b);
-      base = hsv2rgb(vec3(hue, sat, val));
+      // Add some variation in brightness
+      float brightness = 0.7 + Hash21(si + 7.0) * 0.3;
+      base *= brightness;
       vec2 pad = vec2(tris(seed * 34.0 + uTime * uSpeed / 10.0), tris(seed * 38.0 + uTime * uSpeed / 30.0)) - 0.5;
       float star = Star(gv - offset - pad, flareSize);
       vec3 color = base;
