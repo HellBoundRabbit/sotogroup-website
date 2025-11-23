@@ -76,9 +76,49 @@
             color: rgba(255, 255, 255, 0.8);
             margin-bottom: 2rem;
         }
+        
+        #galaxy-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0;
+            pointer-events: none;
+        }
+        
+        body {
+            position: relative;
+        }
+        
+        .container, .back-btn {
+            position: relative;
+            z-index: 10;
+        }
     </style>
+    <script src="../assets/js/ogl.min.js"></script>
+    <script src="../assets/js/galaxy.js"></script>
+    <script>
+        window.addEventListener('load', function() {
+            const galaxyContainer = document.getElementById('galaxy-container');
+            if (galaxyContainer && window.GalaxyAnimation) {
+                const galaxy = new window.GalaxyAnimation(galaxyContainer, {
+                    mouseRepulsion: true,
+                    mouseInteraction: true,
+                    density: 0.2,
+                    glowIntensity: 0.3,
+                    saturation: 0.0,
+                    hueShift: 0,
+                    transparent: true
+                });
+                galaxy.init();
+                window.galaxyInstance = galaxy;
+            }
+        });
+    </script>
 </head>
 <body>
+    <div id="galaxy-container"></div>
     <a href="/" class="back-btn">← Back</a>
     
     <div class="container">
