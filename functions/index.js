@@ -1587,3 +1587,318 @@ exports.deleteUser = onCall(CALLABLE_OPTIONS, async (request) => {
     throw new Error(`Failed to delete user: ${error.message}`);
   }
 });
+
+/**
+ * Exchange Asana OAuth authorization code for access token
+ * SECURE: Client secret is stored server-side only
+ */
+exports.exchangeAsanaToken = onCall({
+  ...CALLABLE_OPTIONS,
+  secrets: ["ASANA_CLIENT_ID", "ASANA_CLIENT_SECRET"],
+}, async (request) => {
+  try {
+    requireAuth(request);
+
+    const {code, redirect_uri: redirectUri} = request.data;
+
+    if (!code || !redirectUri) {
+      throw new HttpsError("invalid-argument",
+          "Code and redirect_uri are required");
+    }
+
+    // Get Asana credentials from secrets (Firebase Functions v2)
+    // Secrets are automatically available via process.env when declared in function options
+    // Trim whitespace/newlines that may have been added when setting secrets
+    const ASANA_CLIENT_ID = (process.env.ASANA_CLIENT_ID || "1212057669835882").trim();
+    const ASANA_CLIENT_SECRET = (process.env.ASANA_CLIENT_SECRET ||
+        "a5e5f2ea1dd6bcaaef390a6af4193407").trim();
+
+    // Debug logging (remove in production)
+    logger.info("Asana credentials check", {
+      hasClientIdEnv: !!process.env.ASANA_CLIENT_ID,
+      clientIdLength: ASANA_CLIENT_ID ? ASANA_CLIENT_ID.length : 0,
+      hasSecretEnv: !!process.env.ASANA_CLIENT_SECRET,
+      secretLength: ASANA_CLIENT_SECRET ? ASANA_CLIENT_SECRET.length : 0,
+      usingFallback: !process.env.ASANA_CLIENT_ID || !process.env.ASANA_CLIENT_SECRET,
+    });
+
+    if (!ASANA_CLIENT_ID || ASANA_CLIENT_ID === "") {
+      throw new HttpsError("failed-precondition",
+          "Asana client ID not configured");
+    }
+
+    if (!ASANA_CLIENT_SECRET || ASANA_CLIENT_SECRET === "") {
+      throw new HttpsError("failed-precondition",
+          "Asana client secret not configured");
+    }
+
+    // Exchange code for token
+    const tokenUrl = "https://app.asana.com/-/oauth_token";
+
+    // Log for debugging (remove sensitive data in production)
+    logger.info("Exchanging Asana token", {
+      hasCode: !!code,
+      codeLength: code ? code.length : 0,
+      redirectUri: redirectUri,
+      clientId: ASANA_CLIENT_ID,
+      clientIdLength: ASANA_CLIENT_ID ? ASANA_CLIENT_ID.length : 0,
+      hasSecret: !!ASANA_CLIENT_SECRET,
+      secretLength: ASANA_CLIENT_SECRET ? ASANA_CLIENT_SECRET.length : 0,
+    });
+
+    const tokenResponse = await fetch(tokenUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: ASANA_CLIENT_ID,
+        client_secret: ASANA_CLIENT_SECRET,
+        redirect_uri: redirectUri,
+        code: code,
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      const errorText = await tokenResponse.text();
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch (e) {
+        errorData = {error: errorText};
+      }
+      logger.error("Asana token exchange failed:", {
+        status: tokenResponse.status,
+        statusText: tokenResponse.statusText,
+        error: errorData,
+        hasClientId: !!ASANA_CLIENT_ID,
+        hasClientSecret: !!ASANA_CLIENT_SECRET,
+        redirectUri: redirectUri,
+      });
+      throw new HttpsError("internal",
+          `Failed to exchange token: ${tokenResponse.status} - ${errorData.error || errorData.error_description || errorText}`);
+    }
+
+    const tokenData = await tokenResponse.json();
+
+    if (!tokenData.access_token) {
+      throw new HttpsError("internal", "No access token in response");
+    }
+
+    return {
+      success: true,
+      access_token: tokenData.access_token,
+      expires_in: tokenData.expires_in || null,
+      refresh_token: tokenData.refresh_token || null,
+    };
+  } catch (error) {
+    logger.error("Asana token exchange error:", error);
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    throw new HttpsError("internal", `Token exchange failed: ${error.message}`);
+  }
+});
+
+/**
+ * Fetch Asana user info (email, name, etc.)
+ * SECURE: Handles API calls server-side
+ */
+exports.fetchAsanaUser = onCall(CALLABLE_OPTIONS, async (request) => {
+  try {
+    requireAuth(request);
+
+    const {access_token: accessToken} = request.data;
+
+    if (!accessToken) {
+      throw new HttpsError("invalid-argument",
+          "access_token is required");
+    }
+
+    // Fetch user info from Asana API
+    const apiUrl = "https://app.asana.com/api/1.0/users/me";
+
+    const response = await fetch(apiUrl, {
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new HttpsError("unauthenticated",
+            "Asana access token is invalid or expired");
+      }
+      const errorText = await response.text();
+      logger.error("Asana API error:", errorText);
+      throw new HttpsError("internal",
+          `Asana API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    return {
+      success: true,
+      user: data.data || {},
+    };
+  } catch (error) {
+    logger.error("Asana user fetch error:", error);
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    throw new HttpsError("internal", `Failed to fetch user: ${error.message}`);
+  }
+});
+
+/**
+ * Fetch tasks from Asana API for a specific date
+ * SECURE: Handles API calls server-side
+ */
+/**
+ * Fetch workspaces from Asana API
+ * SECURE: Handles API calls server-side
+ */
+exports.fetchAsanaWorkspaces = onCall(CALLABLE_OPTIONS, async (request) => {
+  try {
+    requireAuth(request);
+
+    const {access_token: accessToken} = request.data;
+
+    if (!accessToken) {
+      throw new HttpsError("invalid-argument",
+          "access_token is required");
+    }
+
+    const workspacesUrl = "https://app.asana.com/api/1.0/workspaces";
+    const workspacesResponse = await fetch(workspacesUrl, {
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!workspacesResponse.ok) {
+      if (workspacesResponse.status === 401) {
+        throw new HttpsError("unauthenticated",
+            "Asana access token is invalid or expired");
+      }
+      const errorText = await workspacesResponse.text();
+      logger.error("Asana workspaces API error:", errorText);
+      throw new HttpsError("internal",
+          `Asana API error: ${workspacesResponse.status}`);
+    }
+
+    const workspacesData = await workspacesResponse.json();
+    const workspaces = workspacesData.data || [];
+
+    return {
+      success: true,
+      workspaces: workspaces,
+    };
+  } catch (error) {
+    logger.error("Asana workspaces fetch error:", error);
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    throw new HttpsError("internal", `Failed to fetch workspaces: ${error.message}`);
+  }
+});
+
+/**
+ * Fetch tasks from Asana API for a specific project and date
+ * SECURE: Handles API calls server-side
+ */
+exports.fetchAsanaTasks = onCall(CALLABLE_OPTIONS, async (request) => {
+  try {
+    requireAuth(request);
+
+    const {access_token: accessToken, date, project_id: projectId} = request.data;
+
+    if (!accessToken || !date) {
+      throw new HttpsError("invalid-argument",
+          "access_token and date are required");
+    }
+
+    if (!projectId) {
+      throw new HttpsError("invalid-argument",
+          "project_id is required");
+    }
+
+    // Fetch tasks from the specific project with pagination
+    let tasks = [];
+    let nextPageUrl = `https://app.asana.com/api/1.0/projects/${projectId}/tasks?opt_fields=name,due_on,notes,assignee,projects,custom_fields,workspace&limit=100`;
+    let pageCount = 0;
+    const maxPages = 50; // Safety limit to prevent infinite loops
+
+    while (nextPageUrl && pageCount < maxPages) {
+      const projectTasksResponse = await fetch(nextPageUrl, {
+        headers: {
+          "Authorization": `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!projectTasksResponse.ok) {
+        if (projectTasksResponse.status === 401) {
+          throw new HttpsError("unauthenticated",
+              "Asana access token is invalid or expired");
+        }
+        const errorText = await projectTasksResponse.text();
+        logger.error("Asana tasks API error:", errorText);
+        throw new HttpsError("internal",
+            `Asana API error: ${projectTasksResponse.status}`);
+      }
+
+      const projectTasksData = await projectTasksResponse.json();
+      const pageTasks = projectTasksData.data || [];
+      tasks = tasks.concat(pageTasks);
+
+      // Check for next page
+      // Asana API returns next_page as either a string URL or an object with uri property
+      const nextPage = projectTasksData.next_page;
+      if (nextPage) {
+        if (typeof nextPage === "string") {
+          nextPageUrl = nextPage;
+        } else if (nextPage.uri) {
+          nextPageUrl = nextPage.uri;
+        } else {
+          nextPageUrl = null;
+        }
+
+        if (nextPageUrl) {
+          pageCount++;
+          logger.info(`Fetched page ${pageCount}, ${pageTasks.length} tasks (total: ${tasks.length})`);
+        }
+      } else {
+        nextPageUrl = null; // No more pages
+      }
+    }
+
+    logger.info(`Fetched ${tasks.length} total tasks from project ${projectId} across ${pageCount + 1} page(s)`);
+
+    // Filter tasks by due date (client-side since API doesn't support due_on filter)
+    // Format: date should be YYYY-MM-DD
+    if (date) {
+      const originalCount = tasks.length;
+      tasks = tasks.filter((task) => {
+        if (!task.due_on) return false;
+        // Asana returns dates in YYYY-MM-DD format
+        return task.due_on === date;
+      });
+      logger.info(`Filtered ${originalCount} tasks to ${tasks.length} tasks for date ${date} in project ${projectId}`);
+    }
+
+    logger.info(`Fetched ${tasks.length} tasks for date ${date || "all"} from project ${projectId}`);
+
+    return {
+      success: true,
+      tasks: tasks,
+      count: tasks.length,
+    };
+  } catch (error) {
+    logger.error("Asana tasks fetch error:", error);
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    throw new HttpsError("internal", `Failed to fetch tasks: ${error.message}`);
+  }
+});

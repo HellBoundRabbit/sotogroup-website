@@ -17,6 +17,7 @@
     <script src="/assets/js/tailwind-runtime.js"></script>
     <script src="/js/mobile-nav.js"></script>
     <script src="/js/session-manager.js"></script>
+    <script src="/js/settings.js"></script>
     <script>
         tailwind.config = {
             plugins: {
@@ -28,6 +29,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         
@@ -44,11 +46,15 @@
         
         // Initialize Firebase
         const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
         const auth = getAuth(app);
         const functions = getFunctions(app);
         
         // Make Firebase available globally
         window.firebaseApp = app;
+        window.firestore = db;
+        window.firebaseDoc = doc;
+        window.firebaseGetDoc = getDoc;
         window.auth = auth;
         window.functions = functions;
         window.firebase = {
@@ -102,17 +108,20 @@
         </div>
     </div>
 </div>
-<div class="relative">
+<div class="relative flex items-center gap-3">
+    <span id="asanaUserEmail" class="text-xs text-gray-400 hidden flex items-center gap-1">
+        <span class="material-symbols-outlined text-sm">account_circle</span>
+        <span id="asanaUserEmailText"></span>
+    </span>
     <button onclick="toggleProfileDropdown()" class="flex items-center justify-center rounded-full size-10 bg-[#283039] overflow-hidden hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
-        <img id="officeLogoImg" src="/assets/logos/favicon.svg" alt="Office Logo" class="w-full h-full object-cover" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-        <span class="hidden w-full h-full items-center justify-center text-white text-xs font-bold">User</span>
+        <img id="officeLogoImg" src="/assets/logos/favicon.svg" alt="Office Logo" class="w-full h-full object-cover" onerror="this.src='/assets/logos/favicon.svg'">
     </button>
     <!-- Profile Dropdown -->
     <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50">
-        <a href="/pages/automaticroutes.html" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors rounded-t-lg">
-            <span class="material-symbols-outlined inline-block align-middle text-base mr-2">route</span>
-            Automatic Routes
-        </a>
+        <button onclick="showSettings()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors rounded-t-lg">
+            <span class="material-symbols-outlined inline-block align-middle text-base mr-2">settings</span>
+            Settings
+        </button>
         <button onclick="showChangePassword()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors">
             <span class="material-symbols-outlined inline-block align-middle text-base mr-2">lock</span>
             Change Password
@@ -132,13 +141,1799 @@
 
     <!-- Main Content -->
     <main class="flex-1 px-6 py-8 max-w-7xl mx-auto w-full">
-        <!-- Content will go here -->
+        <!-- Asana Connection Screen -->
+        <div id="asanaConnectionScreen" class="hidden">
+            <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-8 max-w-md mx-auto">
+                <div class="text-center mb-6">
+                    <h2 class="text-2xl font-bold text-white mb-2">Connect to Asana</h2>
+                    <p class="text-gray-400 text-sm">Connect your Asana account to import routes automatically</p>
+                </div>
+                <button 
+                    id="connectAsanaBtn" 
+                    onclick="connectToAsana()"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
+                >
+                    <span class="material-symbols-outlined">link</span>
+                    Connect to Asana
+                </button>
+            </div>
+        </div>
+
+        <!-- Project Picker Screen -->
+        <div id="projectPickerScreen" class="hidden">
+            <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-8 max-w-md mx-auto">
+                <div class="text-center mb-6">
+                    <h2 class="text-2xl font-bold text-white mb-2">Select Project</h2>
+                    <p class="text-gray-400 text-sm">Choose the Asana project to import routes from</p>
+                </div>
+                <div class="mb-4">
+                    <label for="projectSelect" class="block text-sm font-medium text-gray-300 mb-2">Project</label>
+                    <select 
+                        id="projectSelect" 
+                        class="w-full px-4 py-2 bg-[#283039] border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                    >
+                        <option value="">Loading projects...</option>
+                    </select>
+                </div>
+                <button 
+                    id="selectProjectBtn" 
+                    onclick="selectProject()"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
+                >
+                    <span class="material-symbols-outlined">arrow_forward</span>
+                    Continue
+                </button>
+            </div>
+        </div>
+
+        <!-- Day Picker Screen -->
+        <div id="dayPickerScreen" class="hidden">
+            <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-8 max-w-md mx-auto">
+                <div class="text-center mb-6">
+                    <h2 class="text-2xl font-bold text-white mb-2">Select Date</h2>
+                    <p class="text-gray-400 text-sm" id="selectedProjectText">Choose the date to import routes from Asana</p>
+                </div>
+                <div class="mb-4">
+                    <label for="routeDate" class="block text-sm font-medium text-gray-300 mb-2">Date</label>
+                    <input 
+                        type="date" 
+                        id="routeDate" 
+                        class="w-full px-4 py-2 bg-[#283039] border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                    >
+                </div>
+                <button 
+                    id="checkTasksBtn" 
+                    onclick="checkTasksForDate()"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
+                >
+                    <span class="material-symbols-outlined">search</span>
+                    Check Tasks
+                </button>
+                <button 
+                    onclick="showScreen('projectPickerScreen')"
+                    class="w-full mt-3 bg-[#283039] hover:bg-[#3a444e] text-white px-6 py-3 rounded-lg transition-colors font-medium"
+                >
+                    Back
+                </button>
+            </div>
+        </div>
+
+        <!-- Tasks Count Screen -->
+        <div id="tasksCountScreen" class="hidden">
+            <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-8 max-w-lg mx-auto">
+                <div class="text-center mb-6">
+                    <h2 class="text-2xl font-bold text-white mb-2">Tasks Found</h2>
+                    <p class="text-gray-400 text-sm" id="selectedDateText"></p>
+                </div>
+                <div class="mb-6 text-center">
+                    <div class="text-4xl font-bold text-blue-500 mb-2" id="tasksCount">0</div>
+                    <p class="text-gray-400 text-sm mb-4">tasks found for this date</p>
+                </div>
+                
+                <!-- Task Titles List -->
+                <div class="mb-6 max-h-64 overflow-y-auto">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-3">Task Titles:</h3>
+                    <div id="taskTitlesList" class="space-y-2">
+                        <!-- Task titles will be populated here -->
+                    </div>
+                </div>
+                
+                <button 
+                    id="processJobsBtn" 
+                    onclick="processJobs()"
+                    class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
+                >
+                    <span class="material-symbols-outlined">play_arrow</span>
+                    Process Jobs
+                </button>
+                <button 
+                    onclick="showScreen('dayPickerScreen')"
+                    class="w-full mt-3 bg-[#283039] hover:bg-[#3a444e] text-white px-6 py-3 rounded-lg transition-colors font-medium"
+                >
+                    Back
+                </button>
+            </div>
+        </div>
+
+        <!-- Loading Screen -->
+        <div id="loadingScreen" class="hidden">
+            <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-8 max-w-md mx-auto text-center">
+                <div class="relative w-16 h-16 mx-auto mb-4">
+                    <div class="absolute inset-0 border-4 border-gray-700 rounded-full"></div>
+                    <div class="absolute inset-0 border-4 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
+                </div>
+                <p class="text-white text-lg font-semibold" id="loadingText">Loading...</p>
+            </div>
+        </div>
+
+        <!-- Route Grouping Instructions Screen -->
+        <div id="routeGroupingInstructionsScreen" class="hidden">
+            <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-8 max-w-2xl mx-auto">
+                <div class="text-center mb-8">
+                    <h2 class="text-3xl font-bold text-white mb-4">Group Jobs into Routes</h2>
+                    <p class="text-gray-400 text-lg mb-6">Follow these simple steps to organize your jobs:</p>
+                </div>
+                
+                <div class="space-y-6 mb-8">
+                    <div class="flex items-start gap-4 bg-[#283039] rounded-lg p-4">
+                        <div class="flex-shrink-0 w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">1</div>
+                        <div>
+                            <h3 class="text-white font-semibold mb-2">Press <kbd class="px-2 py-1 bg-[#1a1f24] rounded text-sm">Enter</kbd> to start</h3>
+                            <p class="text-gray-400 text-sm">Begin grouping jobs into routes</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-start gap-4 bg-[#283039] rounded-lg p-4">
+                        <div class="flex-shrink-0 w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">2</div>
+                        <div>
+                            <h3 class="text-white font-semibold mb-2">Press <kbd class="px-2 py-1 bg-[#1a1f24] rounded text-sm">Enter</kbd> on jobs to select</h3>
+                            <p class="text-gray-400 text-sm">Select jobs to group together (they will be highlighted)</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-start gap-4 bg-[#283039] rounded-lg p-4">
+                        <div class="flex-shrink-0 w-10 h-10 rounded-full bg-green-600 flex items-center justify-center text-white font-bold">3</div>
+                        <div>
+                            <h3 class="text-white font-semibold mb-2">Press <kbd class="px-2 py-1 bg-[#1a1f24] rounded text-sm">S</kbd> to group selected jobs</h3>
+                            <p class="text-gray-400 text-sm">Selected jobs will be grouped into a route and disappear</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-start gap-4 bg-[#283039] rounded-lg p-4">
+                        <div class="flex-shrink-0 w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold">4</div>
+                        <div>
+                            <h3 class="text-white font-semibold mb-2">Repeat until all jobs are grouped</h3>
+                            <p class="text-gray-400 text-sm">Continue grouping until all jobs are organized into routes</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="text-center">
+                    <button 
+                        id="startGroupingBtn"
+                        onclick="startRouteGrouping()"
+                        class="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-lg flex items-center justify-center gap-2 mx-auto"
+                    >
+                        <span class="material-symbols-outlined">play_arrow</span>
+                        Press Enter to Begin
+                    </button>
+                    <p class="text-gray-400 text-sm mt-4">Or click the button above</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Route Grouping Screen -->
+        <div id="routeGroupingScreen" class="hidden">
+            <div class="mb-6 flex items-center justify-between">
+                <div>
+                    <h2 class="text-2xl font-bold text-white mb-2">Group Jobs into Routes</h2>
+                    <p class="text-gray-400 text-sm" id="selectedDateDisplay"></p>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="bg-[#283039] px-4 py-2 rounded-lg flex items-center gap-2">
+                        <span class="text-gray-400 text-sm">Routes:</span>
+                        <span class="text-white font-bold text-lg" id="routesCount">0</span>
+                    </div>
+                    <button 
+                        id="processRoutesBtn"
+                        onclick="processRoutes()"
+                        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
+                        disabled
+                    >
+                        Process Routes
+                    </button>
+                    <button 
+                        onclick="showScreen('jobsDisplayScreen')"
+                        class="px-4 py-2 bg-[#283039] hover:bg-[#3a444e] text-white rounded-lg transition-colors text-sm"
+                    >
+                        Back
+                    </button>
+                </div>
+            </div>
+            <div id="groupingJobsContainer" class="space-y-4">
+                <!-- Jobs will be displayed here for grouping -->
+            </div>
+        </div>
+
+        <!-- Route Review Screen -->
+        <div id="routeReviewScreen" class="hidden">
+            <div class="mb-6 flex items-center justify-between">
+                <div>
+                    <h2 class="text-2xl font-bold text-white mb-2">Review & Edit Routes</h2>
+                    <p class="text-gray-400 text-sm">Review parsed data and make corrections before saving</p>
+                </div>
+                <button 
+                    onclick="saveAllRoutes()"
+                    class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium flex items-center gap-2"
+                >
+                    <span class="material-symbols-outlined">save</span>
+                    Save All Routes
+                </button>
+            </div>
+            <div id="routeReviewContainer" class="space-y-4">
+                <!-- Routes will be displayed here for review -->
+            </div>
+        </div>
+
+        <!-- Jobs Display Screen -->
+        <div id="jobsDisplayScreen" class="hidden">
+            <div class="mb-6 flex items-center justify-between">
+                <div>
+                    <h2 class="text-2xl font-bold text-white mb-2">Parsed Jobs</h2>
+                    <p class="text-gray-400 text-sm" id="selectedDateDisplay"></p>
+                </div>
+                <button 
+                    onclick="showScreen('tasksCountScreen')"
+                    class="px-4 py-2 bg-[#283039] hover:bg-[#3a444e] text-white rounded-lg transition-colors text-sm"
+                >
+                    Back
+                </button>
+            </div>
+            <div id="jobsContainer" class="space-y-4">
+                <!-- Jobs will be displayed here -->
+            </div>
+        </div>
     </main>
 </div>
 </div>
 
 <script>
     let currentSession = null;
+
+    // Load office logo from Firebase
+    async function loadOfficeLogo(officeId) {
+        if (!officeId) {
+            console.log('No officeId provided, skipping logo load');
+            return;
+        }
+        
+        console.log('Loading office logo for officeId:', officeId);
+        
+        try {
+            // Wait for Firebase to be ready with retries
+            let attempts = 0;
+            while (attempts < 20 && (!window.firestore || !window.firebaseGetDoc || !window.firebaseDoc)) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                attempts++;
+            }
+            
+            if (!window.firestore || !window.firebaseGetDoc || !window.firebaseDoc) {
+                console.error('Firebase not ready after waiting');
+                return;
+            }
+            
+            console.log('Fetching office document...');
+            const officeDoc = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'offices', officeId));
+            
+            if (!officeDoc.exists()) {
+                console.log('Office document does not exist');
+                return;
+            }
+            
+            const officeData = officeDoc.data();
+            console.log('Office data:', officeData);
+            console.log('Office logoUrl:', officeData.logoUrl);
+            
+            const logoImg = document.getElementById('officeLogoImg');
+            if (!logoImg) {
+                console.error('Logo image element not found');
+                return;
+            }
+            
+            if (officeData.logoUrl) {
+                logoImg.src = officeData.logoUrl;
+                logoImg.onerror = () => {
+                    logoImg.src = '/assets/logos/favicon.svg';
+                };
+            }
+        } catch (error) {
+            console.error('Error loading office logo:', error);
+        }
+    }
+
+    // Asana OAuth configuration
+    const ASANA_CLIENT_ID = '1212057669835882';
+    // Use exact URL including protocol - must match Asana app settings exactly
+    const ASANA_REDIRECT_URI = window.location.origin + window.location.pathname;
+    const ASANA_AUTH_URL = 'https://app.asana.com/-/oauth_authorize';
+    const ASANA_TOKEN_URL = 'https://app.asana.com/-/oauth_token';
+    const ASANA_API_BASE = 'https://app.asana.com/api/1.0';
+
+    // Check for Asana OAuth callback
+    function handleAsanaCallback() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        const error = urlParams.get('error');
+
+        if (error) {
+            console.error('Asana OAuth error:', error);
+            showScreen('asanaConnectionScreen');
+            return;
+        }
+
+        if (code) {
+            // Exchange authorization code for access token
+            exchangeCodeForToken(code);
+            // Clean up URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    }
+
+    // Exchange authorization code for access token
+    // NOTE: This should be done via Firebase Cloud Function for security
+    async function exchangeCodeForToken(code) {
+        showScreen('loadingScreen');
+        document.getElementById('loadingText').textContent = 'Connecting to Asana...';
+
+        try {
+            // Use Firebase Cloud Function to exchange code for token (secure)
+            if (window.firebase && window.firebase.httpsCallable && window.firebase.functions) {
+                // Use the same redirect URI that was used in the authorization request
+                const redirectUri = window.location.origin + window.location.pathname;
+                console.log('Exchanging token with redirect_uri:', redirectUri);
+                
+                const exchangeTokenFunction = window.firebase.httpsCallable(window.firebase.functions, 'exchangeAsanaToken');
+                const result = await exchangeTokenFunction({
+                    code: code,
+                    redirect_uri: redirectUri
+                });
+
+                if (result.data.success && result.data.access_token) {
+                    const accessToken = result.data.access_token;
+
+                    // Store token securely
+                    if (currentSession && currentSession.officeId) {
+                        const tokenKey = `asana_token_${currentSession.officeId}`;
+                        localStorage.setItem(tokenKey, accessToken);
+                    }
+
+                    // Fetch Asana user info to display email
+                    await fetchAndDisplayAsanaUser(accessToken);
+
+                    // Show project picker
+                    await loadProjects(accessToken);
+                    showScreen('projectPickerScreen');
+                } else {
+                    throw new Error(result.data.error || 'Failed to exchange code for token');
+                }
+            } else {
+                // Fallback: Direct API call (NOT RECOMMENDED for production)
+                // This requires client secret which should never be exposed
+                throw new Error('Firebase Functions not available. Please configure exchangeAsanaToken Cloud Function.');
+            }
+        } catch (error) {
+            console.error('Error exchanging code for token:', error);
+            alert('Failed to connect to Asana: ' + error.message);
+            showScreen('asanaConnectionScreen');
+        }
+    }
+
+    // Connect to Asana
+    async function connectToAsana() {
+        // Check if already connected
+        if (currentSession && currentSession.officeId) {
+            const tokenKey = `asana_token_${currentSession.officeId}`;
+            const existingToken = localStorage.getItem(tokenKey);
+            
+            if (existingToken) {
+                // Already connected, show project picker
+                await loadProjects(existingToken);
+                showScreen('projectPickerScreen');
+                return;
+            }
+        }
+
+        // Redirect to Asana OAuth
+        // Note: If "Full permissions" is enabled in Asana app settings,
+        // do not include scope parameter. If using specific scopes, register
+        // them in the developer console first.
+        const authUrl = new URL(ASANA_AUTH_URL);
+        authUrl.searchParams.set('client_id', ASANA_CLIENT_ID);
+        authUrl.searchParams.set('redirect_uri', ASANA_REDIRECT_URI);
+        authUrl.searchParams.set('response_type', 'code');
+        // Scope parameter removed - using "Full permissions" from app settings
+        
+        window.location.href = authUrl.toString();
+    }
+
+    // Show specific screen
+    function showScreen(screenId) {
+        const screens = ['asanaConnectionScreen', 'projectPickerScreen', 'dayPickerScreen', 'loadingScreen', 'routesDisplayScreen', 'tasksCountScreen', 'jobsDisplayScreen', 'routeGroupingInstructionsScreen', 'routeGroupingScreen', 'routeReviewScreen'];
+        screens.forEach(id => {
+            const screen = document.getElementById(id);
+            if (screen) {
+                screen.classList.add('hidden');
+            }
+        });
+        
+        const targetScreen = document.getElementById(screenId);
+        if (targetScreen) {
+            targetScreen.classList.remove('hidden');
+        }
+    }
+
+    // Store tasks and selected date globally
+    let currentTasks = [];
+    let selectedDate = null;
+    let selectedProjectId = null;
+    let selectedProjectName = null;
+    let availableProjects = [];
+
+    // Load projects from Asana
+    async function loadProjects(accessToken) {
+        try {
+            showScreen('loadingScreen');
+            document.getElementById('loadingText').textContent = 'Loading projects...';
+
+            // Use direct Asana API calls (simpler and was working before)
+            // First, get workspaces
+            const workspacesUrl = 'https://app.asana.com/api/1.0/workspaces';
+            const workspacesResponse = await fetch(workspacesUrl, {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            });
+
+            if (!workspacesResponse.ok) {
+                if (workspacesResponse.status === 401) {
+                    // Token expired - need to reconnect
+                    if (currentSession && currentSession.officeId) {
+                        localStorage.removeItem(`asana_token_${currentSession.officeId}`);
+                    }
+                    throw new Error('Asana connection expired. Please reconnect to Asana.');
+                }
+                throw new Error(`Failed to fetch workspaces: ${workspacesResponse.status}`);
+            }
+
+            const workspacesData = await workspacesResponse.json();
+            const workspaceId = workspacesData.data?.[0]?.gid;
+
+            if (!workspaceId) {
+                throw new Error('No workspace found');
+            }
+
+            // Fetch projects from workspace
+            const projectsUrl = `https://app.asana.com/api/1.0/workspaces/${workspaceId}/projects?opt_fields=gid,name&limit=100`;
+            const projectsResponse = await fetch(projectsUrl, {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            });
+
+            if (!projectsResponse.ok) {
+                throw new Error(`Failed to fetch projects: ${projectsResponse.status}`);
+            }
+
+            const projectsData = await projectsResponse.json();
+            availableProjects = projectsData.data || [];
+
+            // Populate project select dropdown
+            const projectSelect = document.getElementById('projectSelect');
+            if (projectSelect) {
+                projectSelect.innerHTML = '<option value="">Select a project...</option>';
+
+                availableProjects.forEach(project => {
+                    const option = document.createElement('option');
+                    option.value = project.gid;
+                    option.textContent = project.name;
+                    projectSelect.appendChild(option);
+                });
+            }
+        } catch (error) {
+            console.error('Error loading projects:', error);
+            alert('Failed to load projects: ' + error.message);
+            // If token expired, show connection screen
+            if (error.message.includes('expired') || error.message.includes('401')) {
+                showScreen('asanaConnectionScreen');
+            }
+        }
+    }
+
+    // Select project and move to date picker
+    function selectProject() {
+        const projectSelect = document.getElementById('projectSelect');
+        const projectId = projectSelect.value;
+        
+        if (!projectId) {
+            alert('Please select a project');
+            return;
+        }
+
+        selectedProjectId = projectId;
+        selectedProjectName = availableProjects.find(p => p.gid === projectId)?.name || 'Selected Project';
+        
+        // Update the date picker screen to show selected project
+        const projectText = document.getElementById('selectedProjectText');
+        if (projectText) {
+            projectText.textContent = `Choose the date to import routes from "${selectedProjectName}"`;
+        }
+        
+        showScreen('dayPickerScreen');
+    }
+
+    // Check tasks for selected date
+    async function checkTasksForDate() {
+        const dateInput = document.getElementById('routeDate');
+        selectedDate = dateInput.value;
+
+        if (!selectedDate) {
+            alert('Please select a date');
+            return;
+        }
+
+        if (!selectedProjectId) {
+            alert('Please select a project first');
+            showScreen('projectPickerScreen');
+            return;
+        }
+
+        showScreen('loadingScreen');
+        document.getElementById('loadingText').textContent = 'Checking tasks in Asana...';
+
+        try {
+            // Get stored token
+            if (!currentSession || !currentSession.officeId) {
+                throw new Error('Session not available');
+            }
+
+            const tokenKey = `asana_token_${currentSession.officeId}`;
+            const accessToken = localStorage.getItem(tokenKey);
+
+            if (!accessToken) {
+                throw new Error('Not connected to Asana');
+            }
+
+            // Fetch tasks from Asana with project ID
+            currentTasks = await fetchAsanaTasks(accessToken, selectedDate, selectedProjectId);
+
+            // Display task count with titles
+            displayTaskCount(currentTasks.length, selectedDate);
+        } catch (error) {
+            console.error('Error checking tasks:', error);
+            alert('Failed to check tasks: ' + error.message);
+            showScreen('dayPickerScreen');
+        }
+    }
+
+    // Extract driver name from task title
+    // Examples: "Chris (1) Deliver Carryover" -> "Chris"
+    //          "Chris Free" -> "Chris"
+    //          "Martin (2) United Rental..." -> "Martin"
+    function extractDriverName(taskName) {
+        if (!taskName) return 'Unknown';
+        
+        // Remove leading/trailing whitespace
+        const trimmed = taskName.trim();
+        
+        // Match pattern: Name followed by space and either:
+        // - (number) or (number)
+        // - "Free"
+        // - Just the name if no pattern matches
+        const match = trimmed.match(/^([^\(]+?)(?:\s*\(?\d+\)?|\s+Free|$)/i);
+        if (match && match[1]) {
+            return match[1].trim();
+        }
+        
+        // Fallback: return first word or first few words before any number
+        const beforeNumber = trimmed.split(/\s*\(?\d/)[0].trim();
+        if (beforeNumber) {
+            return beforeNumber;
+        }
+        
+        return trimmed.split(' ')[0] || 'Unknown';
+    }
+
+    // Sort tasks by driver name, then by job number
+    function sortTasksByDriver(tasks) {
+        return [...tasks].sort((a, b) => {
+            const nameA = extractDriverName(a.name || '');
+            const nameB = extractDriverName(b.name || '');
+            
+            // First sort by driver name (case-insensitive)
+            const nameCompare = nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+            if (nameCompare !== 0) {
+                return nameCompare;
+            }
+            
+            // If same driver, sort by job number (extract number from title)
+            const getJobNumber = (taskName) => {
+                const match = taskName.match(/\((\d+)\)/);
+                return match ? parseInt(match[1], 10) : 999; // Put items without numbers at end
+            };
+            
+            const numA = getJobNumber(a.name || '');
+            const numB = getJobNumber(b.name || '');
+            
+            return numA - numB;
+        });
+    }
+
+    // Display task count with titles
+    function displayTaskCount(count, date) {
+        const countElement = document.getElementById('tasksCount');
+        const dateText = document.getElementById('selectedDateText');
+        const titlesList = document.getElementById('taskTitlesList');
+        
+        if (countElement) {
+            countElement.textContent = count;
+        }
+        
+        if (dateText) {
+            const dateObj = new Date(date);
+            const formattedDate = dateObj.toLocaleDateString('en-US', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+            dateText.textContent = `Tasks for ${formattedDate} in "${selectedProjectName}"`;
+        }
+        
+        // Display task titles (sorted by driver)
+        if (titlesList) {
+            titlesList.innerHTML = '';
+            if (currentTasks.length === 0) {
+                titlesList.innerHTML = '<p class="text-gray-400 text-sm">No tasks found</p>';
+            } else {
+                // Sort tasks by driver name
+                const sortedTasks = sortTasksByDriver(currentTasks);
+                
+                sortedTasks.forEach((task, index) => {
+                    const taskItem = document.createElement('div');
+                    taskItem.className = 'bg-[#283039] rounded-lg p-3 text-sm text-white';
+                    taskItem.textContent = `${index + 1}. ${task.name || 'Untitled Task'}`;
+                    titlesList.appendChild(taskItem);
+                });
+            }
+        }
+        
+        showScreen('tasksCountScreen');
+    }
+
+    // Process jobs - parse all tasks
+    async function processJobs() {
+        if (!currentTasks || currentTasks.length === 0) {
+            alert('No tasks to process');
+            return;
+        }
+
+        showScreen('loadingScreen');
+        document.getElementById('loadingText').textContent = `Processing ${currentTasks.length} jobs...`;
+
+        try {
+            // Parse all tasks using the parseJobText function
+            const parsedJobs = [];
+            
+            for (let i = 0; i < currentTasks.length; i++) {
+                const task = currentTasks[i];
+                const taskText = `${task.name || ''}\n${task.notes || ''}`;
+                
+                // Use Firebase Cloud Function to parse job text
+                if (window.firebase && window.firebase.httpsCallable && window.firebase.functions) {
+                    try {
+                        const parseFunction = window.firebase.httpsCallable(window.firebase.functions, 'parseJobText');
+                        const result = await parseFunction({
+                            rawText: taskText
+                        });
+
+                        if (result.data && result.data.success && result.data.parsed_data) {
+                            const parsedData = result.data.parsed_data;
+                            parsedJobs.push({
+                                task: task,
+                                parsedData: parsedData,
+                                confidence: parsedData.overall_confidence || 0
+                            });
+                        } else {
+                            // If parsing fails, still add the task with empty data
+                            parsedJobs.push({
+                                task: task,
+                                parsedData: {
+                                    collection_address: 'Not found',
+                                    postcode_delivery: 'Not found',
+                                    price: 0,
+                                    reg_number: 'Not found',
+                                    confidence_scores: {
+                                        collection: 0,
+                                        delivery: 0,
+                                        price: 0,
+                                        reg: 0
+                                    },
+                                    overall_confidence: 0
+                                },
+                                confidence: 0
+                            });
+                        }
+                    } catch (parseError) {
+                        console.error('Error parsing task:', parseError);
+                        // Fallback: basic parsing
+                        parsedJobs.push({
+                            task: task,
+                            parsedData: {
+                                ...parseTaskBasic(task),
+                                confidence_scores: {
+                                    collection: 40,
+                                    delivery: 40,
+                                    price: 40,
+                                    reg: 40
+                                },
+                                overall_confidence: 40
+                            },
+                            confidence: 40
+                        });
+                    }
+                } else {
+                    // Fallback: basic parsing
+                    const basicParsed = parseTaskBasic(task);
+                    parsedJobs.push({
+                        task: task,
+                        parsedData: {
+                            ...basicParsed,
+                            confidence_scores: {
+                                collection: 40,
+                                delivery: 40,
+                                price: 40,
+                                reg: 40
+                            },
+                            overall_confidence: 40
+                        },
+                        confidence: 40
+                    });
+                }
+            }
+
+            // Store parsed jobs globally
+            parsedJobsData = parsedJobs;
+            
+            // Display parsed jobs
+            displayParsedJobs(parsedJobs, selectedDate);
+            
+            // Show route grouping instructions screen
+            showScreen('routeGroupingInstructionsScreen');
+        } catch (error) {
+            console.error('Error processing jobs:', error);
+            alert('Failed to process jobs: ' + error.message);
+            showScreen('tasksCountScreen');
+        }
+    }
+
+    // Basic task parsing (fallback)
+    function parseTaskBasic(task) {
+        const notes = task.notes || '';
+        const name = task.name || '';
+        const text = `${name}\n${notes}`.toUpperCase();
+        
+        // Simple regex patterns
+        const postcodeRegex = /\b([A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2})\b/g;
+        const postcodes = [];
+        let match;
+        while ((match = postcodeRegex.exec(text)) !== null) {
+            postcodes.push(match[1]);
+        }
+        
+        const priceRegex = /£?\s?(\d+(?:[.,]\d{2})?)/g;
+        const prices = [];
+        while ((match = priceRegex.exec(text)) !== null) {
+            const price = parseFloat(match[1].replace(',', '.'));
+            if (price >= 20 && price <= 1000) {
+                prices.push(price);
+            }
+        }
+        
+        const regRegex = /\b([A-Z]{1,2}\d{1,2}\s?[A-Z]{3}|[A-Z]{1,3}\d{1,3}\s?[A-Z]{0,3})\b/g;
+        const regs = [];
+        while ((match = regRegex.exec(text)) !== null) {
+            regs.push(match[1]);
+        }
+        
+        return {
+            collection_address: postcodes[0] || 'Not found',
+            postcode_delivery: postcodes[1] || postcodes[0] || 'Not found',
+            price: prices[0] || 0,
+            reg_number: regs[0] || 'Not found'
+        };
+    }
+
+    // Fetch Asana user info and display email
+    async function fetchAndDisplayAsanaUser(accessToken) {
+        try {
+            // Use Firebase Cloud Function to fetch user info (recommended for security)
+            if (window.firebase && window.firebase.httpsCallable && window.firebase.functions) {
+                const fetchUserFunction = window.firebase.httpsCallable(window.firebase.functions, 'fetchAsanaUser');
+                const result = await fetchUserFunction({
+                    access_token: accessToken
+                });
+
+                if (result.data.success && result.data.user) {
+                    const userEmail = result.data.user.email || result.data.user.name || 'Asana User';
+                    displayAsanaUserEmail(userEmail);
+                    
+                    // Store email for later use
+                    if (currentSession && currentSession.officeId) {
+                        const emailKey = `asana_email_${currentSession.officeId}`;
+                        localStorage.setItem(emailKey, userEmail);
+                    }
+                }
+            } else {
+                // Fallback: Direct API call
+                const response = await fetch(`${ASANA_API_BASE}/users/me`, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    const userData = await response.json();
+                    const userEmail = userData.data?.email || userData.data?.name || 'Asana User';
+                    displayAsanaUserEmail(userEmail);
+                    
+                    // Store email for later use
+                    if (currentSession && currentSession.officeId) {
+                        const emailKey = `asana_email_${currentSession.officeId}`;
+                        localStorage.setItem(emailKey, userEmail);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching Asana user info:', error);
+            // Don't block the flow if user info fetch fails
+        }
+    }
+
+    // Display Asana user email in header
+    function displayAsanaUserEmail(email) {
+        const emailContainer = document.getElementById('asanaUserEmail');
+        const emailText = document.getElementById('asanaUserEmailText');
+        if (emailContainer && emailText) {
+            emailText.textContent = email;
+            emailContainer.classList.remove('hidden');
+        }
+    }
+
+    // Fetch tasks from Asana API
+    async function fetchAsanaTasks(accessToken, date, projectId) {
+        try {
+            // Use Firebase Cloud Function to fetch tasks (recommended for security)
+            if (window.firebase && window.firebase.httpsCallable && window.firebase.functions) {
+                const fetchTasksFunction = window.firebase.httpsCallable(window.firebase.functions, 'fetchAsanaTasks');
+                const result = await fetchTasksFunction({
+                    access_token: accessToken,
+                    date: date,
+                    project_id: projectId
+                });
+
+                if (result.data && result.data.success) {
+                    return result.data.tasks || [];
+                } else {
+                    throw new Error(result.data?.error || 'Failed to fetch tasks');
+                }
+            } else {
+                // Fallback: Direct API call
+                // Note: You may need to specify workspace/project IDs
+                // Adjust the query parameters based on your Asana setup
+                const response = await fetch(`${ASANA_API_BASE}/tasks?opt_fields=name,due_on,notes,assignee,projects,custom_fields&due_on=${date}&limit=100`, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        // Token expired or invalid
+                        if (currentSession && currentSession.officeId) {
+                            localStorage.removeItem(`asana_token_${currentSession.officeId}`);
+                        }
+                        throw new Error('Asana connection expired. Please reconnect.');
+                    }
+                    throw new Error(`Asana API error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                return data.data || [];
+            }
+        } catch (error) {
+            console.error('Error fetching Asana tasks:', error);
+            throw error;
+        }
+    }
+
+    // Display parsed jobs with confidence ratings
+    function displayParsedJobs(parsedJobs, selectedDate) {
+        const container = document.getElementById('jobsContainer');
+        const dateDisplay = document.getElementById('selectedDateDisplay');
+        
+        // Format date for display
+        const dateObj = new Date(selectedDate);
+        const formattedDate = dateObj.toLocaleDateString('en-US', { 
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+        });
+        dateDisplay.textContent = `Jobs for ${formattedDate}`;
+
+        // Clear container
+        container.innerHTML = '';
+
+        if (parsedJobs.length === 0) {
+            container.innerHTML = `
+                <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-6 text-center">
+                    <p class="text-gray-400">No jobs to display.</p>
+                </div>
+            `;
+            showScreen('jobsDisplayScreen');
+            return;
+        }
+
+        // Display each parsed job
+        parsedJobs.forEach((jobData, index) => {
+            const jobCard = createParsedJobCard(jobData, index + 1);
+            container.appendChild(jobCard);
+        });
+
+        showScreen('jobsDisplayScreen');
+    }
+
+    // Create job card with parsed data and confidence ratings
+    function createParsedJobCard(jobData, jobNumber) {
+        const { task, parsedData, confidence } = jobData;
+        const card = document.createElement('div');
+        card.className = 'bg-[#1a1f24] border border-[#283039] rounded-lg p-6';
+        card.dataset.jobIndex = jobNumber - 1;
+        
+        // Get confidence scores
+        const confScores = parsedData.confidence_scores || {};
+        const collectionConf = confScores.collection || confScores.collection_address || 0;
+        const deliveryConf = confScores.delivery || confScores.postcode_delivery || 0;
+        const priceConf = confScores.price || 0;
+        const regConf = confScores.reg || confScores.reg_number || 0;
+        
+        // Get parsed values
+        const collection = parsedData.collection_address || 'Not found';
+        const delivery = parsedData.postcode_delivery || 'Not found';
+        const price = parsedData.price || 0;
+        const reg = parsedData.reg_number || 'Not found';
+        
+        // Confidence color helper
+        const getConfidenceColor = (conf) => {
+            if (conf >= 80) return 'text-green-400';
+            if (conf >= 60) return 'text-yellow-400';
+            return 'text-red-400';
+        };
+        
+        // Confidence badge helper
+        const getConfidenceBadge = (conf) => {
+            const color = getConfidenceColor(conf);
+            return `<span class="text-xs ${color} font-semibold">${conf}%</span>`;
+        };
+
+        card.innerHTML = `
+            <div class="flex items-start justify-between mb-4">
+                <div class="flex-1">
+                    <div class="flex items-center gap-2 mb-1">
+                        <h3 class="text-lg font-semibold text-white">Job ${jobNumber}</h3>
+                        <span class="px-2 py-1 rounded text-xs font-semibold ${getConfidenceColor(confidence)} bg-opacity-20">
+                            ${confidence}% Confidence
+                        </span>
+                    </div>
+                    <p class="text-sm text-gray-400">${task.name || 'Untitled Task'}</p>
+                </div>
+                <button 
+                    onclick="editJob(${jobNumber - 1})"
+                    class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition-colors flex items-center gap-1"
+                >
+                    <span class="material-symbols-outlined text-sm">edit</span>
+                    Edit
+                </button>
+            </div>
+            <div class="grid grid-cols-2 gap-4 mt-4">
+                <div class="bg-[#283039] rounded-lg p-3">
+                    <div class="flex items-center justify-between mb-1">
+                        <p class="text-xs text-gray-400">Collection Postcode</p>
+                        ${getConfidenceBadge(collectionConf)}
+                    </div>
+                    <p class="text-sm text-white font-medium" id="job-${jobNumber}-collection">${collection}</p>
+                </div>
+                <div class="bg-[#283039] rounded-lg p-3">
+                    <div class="flex items-center justify-between mb-1">
+                        <p class="text-xs text-gray-400">Delivery Postcode</p>
+                        ${getConfidenceBadge(deliveryConf)}
+                    </div>
+                    <p class="text-sm text-white font-medium" id="job-${jobNumber}-delivery">${delivery}</p>
+                </div>
+                <div class="bg-[#283039] rounded-lg p-3">
+                    <div class="flex items-center justify-between mb-1">
+                        <p class="text-xs text-gray-400">Price</p>
+                        ${getConfidenceBadge(priceConf)}
+                    </div>
+                    <p class="text-sm text-white font-medium" id="job-${jobNumber}-price">£${price.toFixed(2)}</p>
+                </div>
+                <div class="bg-[#283039] rounded-lg p-3">
+                    <div class="flex items-center justify-between mb-1">
+                        <p class="text-xs text-gray-400">REG</p>
+                        ${getConfidenceBadge(regConf)}
+                    </div>
+                    <p class="text-sm text-white font-medium" id="job-${jobNumber}-reg">${reg}</p>
+                </div>
+            </div>
+        `;
+
+        return card;
+    }
+
+    // Store parsed jobs globally for editing
+    let parsedJobsData = [];
+    
+    // Route grouping state
+    let routeGroupingMode = false;
+    let selectedJobsForRoute = [];
+    let routeCounter = 0;
+    let ungroupedJobs = [];
+    let savedRoutes = []; // Store routes that have been created
+    let routeReviewData = []; // Store routes for review
+
+    // Edit job data
+    function editJob(jobIndex) {
+        if (!parsedJobsData || jobIndex >= parsedJobsData.length) {
+            alert('Job not found');
+            return;
+        }
+
+        const jobData = parsedJobsData[jobIndex];
+        showEditJobModal(jobData, jobIndex);
+    }
+
+    // Store current editing job index
+    let currentEditingJobIndex = null;
+
+    // Show edit job modal
+    function showEditJobModal(jobData, jobIndex) {
+        const { task, parsedData } = jobData;
+        const confScores = parsedData.confidence_scores || {};
+        currentEditingJobIndex = jobIndex;
+        
+        // Create or get modal
+        let modal = document.getElementById('editJobModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'editJobModal';
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden';
+            modal.innerHTML = `
+                <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-bold text-white">Edit Job</h3>
+                        <button onclick="closeEditJobModal()" class="text-gray-400 hover:text-white">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
+                    <div id="editJobForm" class="space-y-4">
+                        <!-- Form will be populated here -->
+                    </div>
+                    <div class="mt-6 flex justify-end gap-3">
+                        <button onclick="closeEditJobModal()" class="px-4 py-2 bg-[#283039] hover:bg-[#3a444e] text-white rounded-lg transition-colors">
+                            Cancel
+                        </button>
+                        <button onclick="saveJobEdits()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
+                            Save Changes
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        // Escape HTML for safe display
+        const escapeHtml = (text) => {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        };
+
+        // Populate form
+        const form = document.getElementById('editJobForm');
+        form.innerHTML = `
+            <div>
+                <label class="block text-sm font-medium text-gray-300 mb-2">Task Name</label>
+                <input type="text" id="editJobName" value="${escapeHtml(task.name || '')}" 
+                    class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white" readonly>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">
+                        Collection Postcode 
+                        <span class="text-xs text-gray-400">(${confScores.collection || confScores.collection_address || 0}% confidence)</span>
+                    </label>
+                    <input type="text" id="editJobCollection" value="${escapeHtml(parsedData.collection_address || '')}" 
+                        class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">
+                        Delivery Postcode 
+                        <span class="text-xs text-gray-400">(${confScores.delivery || confScores.postcode_delivery || 0}% confidence)</span>
+                    </label>
+                    <input type="text" id="editJobDelivery" value="${escapeHtml(parsedData.postcode_delivery || '')}" 
+                        class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">
+                        Price 
+                        <span class="text-xs text-gray-400">(${confScores.price || 0}% confidence)</span>
+                    </label>
+                    <input type="number" step="0.01" id="editJobPrice" value="${parsedData.price || 0}" 
+                        class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">
+                        REG 
+                        <span class="text-xs text-gray-400">(${confScores.reg || confScores.reg_number || 0}% confidence)</span>
+                    </label>
+                    <input type="text" id="editJobReg" value="${escapeHtml(parsedData.reg_number || '')}" 
+                        class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+        `;
+
+        modal.classList.remove('hidden');
+    }
+
+    // Close edit job modal
+    function closeEditJobModal() {
+        const modal = document.getElementById('editJobModal');
+        if (modal) {
+            modal.classList.add('hidden');
+        }
+    }
+
+    // Save job edits
+    function saveJobEdits() {
+        if (currentEditingJobIndex === null) {
+            alert('No job selected for editing');
+            return;
+        }
+
+        const jobIndex = currentEditingJobIndex;
+        const collection = document.getElementById('editJobCollection').value;
+        const delivery = document.getElementById('editJobDelivery').value;
+        const price = parseFloat(document.getElementById('editJobPrice').value) || 0;
+        const reg = document.getElementById('editJobReg').value;
+
+        if (!parsedJobsData || jobIndex >= parsedJobsData.length) {
+            alert('Job not found');
+            return;
+        }
+
+        // Update parsed data
+        parsedJobsData[jobIndex].parsedData.collection_address = collection;
+        parsedJobsData[jobIndex].parsedData.postcode_delivery = delivery;
+        parsedJobsData[jobIndex].parsedData.price = price;
+        parsedJobsData[jobIndex].parsedData.reg_number = reg;
+
+        // Update display
+        updateJobDisplay(jobIndex);
+        closeEditJobModal();
+        currentEditingJobIndex = null;
+    }
+
+    // Update job display after editing
+    function updateJobDisplay(jobIndex) {
+        const jobData = parsedJobsData[jobIndex];
+        const { parsedData } = jobData;
+        const jobNumber = jobIndex + 1;
+
+        // Update the displayed values
+        const collectionEl = document.getElementById(`job-${jobNumber}-collection`);
+        const deliveryEl = document.getElementById(`job-${jobNumber}-delivery`);
+        const priceEl = document.getElementById(`job-${jobNumber}-price`);
+        const regEl = document.getElementById(`job-${jobNumber}-reg`);
+
+        if (collectionEl) collectionEl.textContent = parsedData.collection_address || 'Not found';
+        if (deliveryEl) deliveryEl.textContent = parsedData.postcode_delivery || 'Not found';
+        if (priceEl) priceEl.textContent = `£${(parsedData.price || 0).toFixed(2)}`;
+        if (regEl) regEl.textContent = parsedData.reg_number || 'Not found';
+    }
+
+    // Start route grouping mode
+    function startRouteGrouping() {
+        routeGroupingMode = true;
+        selectedJobsForRoute = [];
+        routeCounter = 0;
+        ungroupedJobs = [...parsedJobsData]; // Copy all jobs
+        
+        // Display jobs for grouping
+        displayJobsForGrouping();
+        
+        // Set up keyboard listeners
+        setupRouteGroupingKeyboard();
+        
+        showScreen('routeGroupingScreen');
+    }
+
+    // Display jobs for grouping (smaller cards, grouped by driver)
+    function displayJobsForGrouping() {
+        const container = document.getElementById('groupingJobsContainer');
+        if (!container) return;
+        
+        container.innerHTML = '';
+        
+        if (ungroupedJobs.length === 0) {
+            container.innerHTML = `
+                <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-8 text-center">
+                    <h3 class="text-xl font-bold text-white mb-2">All Jobs Grouped!</h3>
+                    <p class="text-gray-400 mb-4">You've successfully organized all ${parsedJobsData.length} jobs into ${routeCounter} routes.</p>
+                    <button 
+                        onclick="finishRouteGrouping()"
+                        class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium"
+                    >
+                        Finish & Save Routes
+                    </button>
+                </div>
+            `;
+            return;
+        }
+        
+        // Sort jobs by driver name so they appear together (but no visual grouping)
+        const jobsWithIndices = ungroupedJobs.map((jobData, index) => ({
+            jobData,
+            originalIndex: index,
+            driverName: extractDriverName(jobData.task.name || '')
+        }));
+        
+        // Sort by driver name, then by job number within driver
+        jobsWithIndices.sort((a, b) => {
+            const nameCompare = a.driverName.localeCompare(b.driverName, undefined, { sensitivity: 'base' });
+            if (nameCompare !== 0) return nameCompare;
+            
+            // If same driver, sort by job number
+            const getJobNumber = (taskName) => {
+                const match = taskName.match(/\((\d+)\)/);
+                return match ? parseInt(match[1], 10) : 999;
+            };
+            return getJobNumber(a.jobData.task.name || '') - getJobNumber(b.jobData.task.name || '');
+        });
+        
+        // Display jobs in continuous list (grouped by driver but no headers)
+        jobsWithIndices.forEach(({ jobData, originalIndex }) => {
+            const { task, parsedData } = jobData;
+            const isSelected = selectedJobsForRoute.includes(originalIndex);
+            
+            const jobCard = document.createElement('div');
+            jobCard.className = `bg-[#1a1f24] border-2 rounded-lg p-2 cursor-pointer transition-all mb-2 ${
+                isSelected 
+                    ? 'border-green-500 bg-[#283039] shadow-lg shadow-green-500/20' 
+                    : 'border-[#283039] hover:border-gray-600'
+            }`;
+            jobCard.dataset.jobIndex = originalIndex;
+            jobCard.onclick = () => toggleJobSelection(originalIndex);
+            
+            jobCard.innerHTML = `
+                <div class="flex items-center justify-between gap-2">
+                    <div class="flex-1 min-w-0">
+                        <h4 class="text-sm font-semibold text-white truncate mb-1">${task.name || 'Untitled Task'}</h4>
+                        <div class="grid grid-cols-4 gap-2 text-xs">
+                            <div>
+                                <p class="text-gray-500">Collection</p>
+                                <p class="text-white font-medium truncate">${parsedData.collection_address || '-'}</p>
+                            </div>
+                            <div>
+                                <p class="text-gray-500">Delivery</p>
+                                <p class="text-white font-medium truncate">${parsedData.postcode_delivery || '-'}</p>
+                            </div>
+                            <div>
+                                <p class="text-gray-500">Price</p>
+                                <p class="text-white font-medium">£${(parsedData.price || 0).toFixed(2)}</p>
+                            </div>
+                            <div>
+                                <p class="text-gray-500">REG</p>
+                                <p class="text-white font-medium truncate">${parsedData.reg_number || '-'}</p>
+                            </div>
+                        </div>
+                    </div>
+                    ${isSelected ? '<span class="material-symbols-outlined text-green-500 text-xl flex-shrink-0">check_circle</span>' : ''}
+                </div>
+            `;
+            
+            container.appendChild(jobCard);
+        });
+        
+        // Update routes count and enable process button
+        const routesCountEl = document.getElementById('routesCount');
+        if (routesCountEl) {
+            routesCountEl.textContent = routeCounter;
+        }
+        
+        const processBtn = document.getElementById('processRoutesBtn');
+        if (processBtn) {
+            processBtn.disabled = routeCounter === 0 || ungroupedJobs.length > 0;
+        }
+    }
+
+    // Toggle job selection
+    function toggleJobSelection(jobIndex) {
+        const index = selectedJobsForRoute.indexOf(jobIndex);
+        if (index > -1) {
+            selectedJobsForRoute.splice(index, 1);
+        } else {
+            selectedJobsForRoute.push(jobIndex);
+        }
+        displayJobsForGrouping();
+    }
+
+    // Group selected jobs into a route
+    async function groupSelectedJobs() {
+        if (selectedJobsForRoute.length === 0) {
+            alert('Please select at least one job to group');
+            return;
+        }
+        
+        // Get selected jobs
+        const selectedJobs = selectedJobsForRoute.map(idx => ungroupedJobs[idx]);
+        
+        // Create route
+        routeCounter++;
+        const routeId = routeCounter;
+        
+        // Save route to Firebase (similar to soto-lp)
+        await saveRouteToFirebase(routeId, selectedJobs);
+        
+        // Remove grouped jobs from ungrouped list
+        // Sort indices in descending order to remove from end first
+        const sortedIndices = [...selectedJobsForRoute].sort((a, b) => b - a);
+        sortedIndices.forEach(idx => {
+            ungroupedJobs.splice(idx, 1);
+        });
+        
+        // Clear selection
+        selectedJobsForRoute = [];
+        
+        // Animate removal
+        animateJobGrouping(selectedJobs);
+        
+        // Update display
+        setTimeout(() => {
+            displayJobsForGrouping();
+        }, 500);
+    }
+
+    // Animate job grouping
+    function animateJobGrouping(jobs) {
+        selectedJobsForRoute.forEach(idx => {
+            const jobCard = document.querySelector(`[data-job-index="${idx}"]`);
+            if (jobCard) {
+                jobCard.style.transition = 'all 0.5s ease-out';
+                jobCard.style.opacity = '0';
+                jobCard.style.transform = 'scale(0.8) translateY(-20px)';
+                setTimeout(() => {
+                    if (jobCard.parentNode) {
+                        jobCard.parentNode.removeChild(jobCard);
+                    }
+                }, 500);
+            }
+        });
+    }
+
+    // Save route to Firebase (temporary - will be saved after review)
+    async function saveRouteToFirebase(routeId, jobs) {
+        // Store route data locally (don't save to Firebase yet - wait for review)
+        savedRoutes.push({
+            routeId: routeId,
+            jobs: jobs,
+            createdAt: new Date()
+        });
+        
+        console.log(`Route ${routeId} prepared with ${jobs.length} jobs (will be saved after review)`);
+    }
+
+    // Process routes - parse all job details and show review screen
+    async function processRoutes() {
+        if (savedRoutes.length === 0) {
+            alert('No routes to process. Please create some routes first.');
+            return;
+        }
+
+        showScreen('loadingScreen');
+        document.getElementById('loadingText').textContent = 'Processing routes and parsing job details...';
+
+        try {
+            routeReviewData = [];
+            
+            // Process each route
+            for (const route of savedRoutes) {
+                const routeJobs = [];
+                let minConfidence = 100;
+                
+                // Parse each job in the route
+                for (const jobData of route.jobs) {
+                    const taskText = `${jobData.task.name || ''}\n${jobData.task.notes || ''}`;
+                    
+                    // Use parseJobText function to get detailed parsing
+                    let parsedData = jobData.parsedData;
+                    let confidence = parsedData.overall_confidence || 50;
+                    
+                    if (window.firebase && window.firebase.httpsCallable && window.firebase.functions) {
+                        try {
+                            const parseFunction = window.firebase.httpsCallable(window.firebase.functions, 'parseJobText');
+                            const result = await parseFunction({
+                                rawText: taskText
+                            });
+                            
+                            if (result.data && result.data.success && result.data.parsed_data) {
+                                parsedData = result.data.parsed_data;
+                                confidence = parsedData.overall_confidence || 50;
+                            }
+                        } catch (error) {
+                            console.warn('Error parsing job text:', error);
+                        }
+                    }
+                    
+                    if (confidence < minConfidence) {
+                        minConfidence = confidence;
+                    }
+                    
+                    routeJobs.push({
+                        task: jobData.task,
+                        parsedData: parsedData,
+                        confidence: confidence,
+                        rawText: taskText
+                    });
+                }
+                
+                routeReviewData.push({
+                    routeId: route.routeId,
+                    jobs: routeJobs,
+                    minConfidence: minConfidence,
+                    jobCount: routeJobs.length
+                });
+            }
+            
+            // Sort by confidence (worst first)
+            routeReviewData.sort((a, b) => a.minConfidence - b.minConfidence);
+            
+            // Display review screen
+            displayRouteReview();
+            
+        } catch (error) {
+            console.error('Error processing routes:', error);
+            alert('Failed to process routes: ' + error.message);
+            showScreen('routeGroupingScreen');
+        }
+    }
+
+    // Display route review screen
+    function displayRouteReview() {
+        const container = document.getElementById('routeReviewContainer');
+        if (!container) return;
+        
+        container.innerHTML = '';
+        
+        routeReviewData.forEach((routeData, routeIndex) => {
+            const routeCard = document.createElement('div');
+            routeCard.className = 'bg-[#1a1f24] border border-[#283039] rounded-lg p-4';
+            
+            let jobsHtml = '';
+            routeData.jobs.forEach((job, jobIndex) => {
+                const jobKey = `${routeData.routeId}-${jobIndex}`;
+                jobsHtml += `
+                    <div class="bg-[#283039] rounded-lg p-3 mb-2">
+                        <div class="grid grid-cols-5 gap-4">
+                            <div class="col-span-1">
+                                <p class="text-xs text-gray-400 mb-1">Job Preview</p>
+                                <div class="text-xs text-gray-300 max-h-20 overflow-y-auto bg-[#1a1f24] p-2 rounded">
+                                    ${job.rawText.substring(0, 200)}${job.rawText.length > 200 ? '...' : ''}
+                                </div>
+                            </div>
+                            <div class="col-span-4 grid grid-cols-4 gap-3">
+                                <div>
+                                    <label class="text-xs text-gray-400 mb-1 block">REG</label>
+                                    <input 
+                                        type="text" 
+                                        id="${jobKey}-reg"
+                                        value="${job.parsedData.reg_number || ''}"
+                                        class="w-full px-2 py-1 bg-[#1a1f24] border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-400 mb-1 block">Collection</label>
+                                    <input 
+                                        type="text" 
+                                        id="${jobKey}-collection"
+                                        value="${job.parsedData.collection_address || ''}"
+                                        class="w-full px-2 py-1 bg-[#1a1f24] border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-400 mb-1 block">Delivery</label>
+                                    <input 
+                                        type="text" 
+                                        id="${jobKey}-delivery"
+                                        value="${job.parsedData.postcode_delivery || ''}"
+                                        class="w-full px-2 py-1 bg-[#1a1f24] border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-400 mb-1 block">Price</label>
+                                    <input 
+                                        type="number" 
+                                        step="0.01"
+                                        id="${jobKey}-price"
+                                        value="${job.parsedData.price || 0}"
+                                        class="w-full px-2 py-1 bg-[#1a1f24] border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            routeCard.innerHTML = `
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-lg font-semibold text-white">
+                        Route ${routeData.routeId.replace('route_', '')} 
+                        <span class="text-sm text-gray-400">(${routeData.jobCount} jobs)</span>
+                    </h3>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-gray-400">Confidence:</span>
+                        <span class="px-2 py-1 rounded text-xs font-semibold ${
+                            routeData.minConfidence < 60 ? 'bg-red-500/20 text-red-400' :
+                            routeData.minConfidence < 80 ? 'bg-yellow-500/20 text-yellow-400' :
+                            'bg-green-500/20 text-green-400'
+                        }">
+                            ${routeData.minConfidence}%
+                        </span>
+                    </div>
+                </div>
+                ${jobsHtml}
+            `;
+            
+            container.appendChild(routeCard);
+        });
+        
+        showScreen('routeReviewScreen');
+    }
+
+    // Save all routes to Firebase
+    async function saveAllRoutes() {
+        if (!currentSession || !currentSession.officeId) {
+            alert('Session not available');
+            return;
+        }
+
+        showScreen('loadingScreen');
+        document.getElementById('loadingText').textContent = 'Saving all routes to database...';
+
+        try {
+            const officeId = currentSession.officeId;
+            
+            // Save each route
+            for (const routeData of routeReviewData) {
+                const savedJobIds = [];
+                
+                // Save each job
+                routeData.jobs.forEach((job, jobIndex) => {
+                    const jobKey = `${routeData.routeId}-${jobIndex}`;
+                    
+                    // Get updated values from inputs
+                    const regEl = document.getElementById(`${jobKey}-reg`);
+                    const collectionEl = document.getElementById(`${jobKey}-collection`);
+                    const deliveryEl = document.getElementById(`${jobKey}-delivery`);
+                    const priceEl = document.getElementById(`${jobKey}-price`);
+                    
+                    // Update parsed data with edited values
+                    job.parsedData.reg_number = regEl ? regEl.value : job.parsedData.reg_number;
+                    job.parsedData.collection_address = collectionEl ? collectionEl.value : job.parsedData.collection_address;
+                    job.parsedData.postcode_delivery = deliveryEl ? deliveryEl.value : job.parsedData.postcode_delivery;
+                    job.parsedData.price = priceEl ? parseFloat(priceEl.value) || 0 : job.parsedData.price;
+                });
+                
+                // Save jobs to Firebase
+                for (let i = 0; i < routeData.jobs.length; i++) {
+                    const job = routeData.jobs[i];
+                    const jobKey = `${routeData.routeId}-${i}`;
+                    
+                    // Get final values
+                    const regEl = document.getElementById(`${jobKey}-reg`);
+                    const collectionEl = document.getElementById(`${jobKey}-collection`);
+                    const deliveryEl = document.getElementById(`${jobKey}-delivery`);
+                    const priceEl = document.getElementById(`${jobKey}-price`);
+                    
+                    const firebaseJobData = {
+                        routeId: routeData.routeId,
+                        jobNumber: i + 1,
+                        rawText: job.rawText,
+                        parsedData: {
+                            ...job.parsedData,
+                            reg_number: regEl ? regEl.value : job.parsedData.reg_number,
+                            collection_address: collectionEl ? collectionEl.value : job.parsedData.collection_address,
+                            postcode_delivery: deliveryEl ? deliveryEl.value : job.parsedData.postcode_delivery,
+                            price: priceEl ? parseFloat(priceEl.value) || 0 : job.parsedData.price
+                        },
+                        status: 'parsed',
+                        createdAt: new Date(),
+                        assignedRouteId: routeData.routeId,
+                        officeId: officeId
+                    };
+                    
+                    if (window.firebaseAddDoc && window.firebaseCollection && window.firestore) {
+                        const docRef = await window.firebaseAddDoc(
+                            window.firebaseCollection(window.firestore, 'jobs'),
+                            firebaseJobData
+                        );
+                        savedJobIds.push(docRef.id);
+                    }
+                }
+                
+                // Create route summary
+                if (window.firebaseAddDoc && window.firebaseCollection && window.firestore) {
+                    const routeSummary = {
+                        routeId: routeData.routeId,
+                        jobCount: routeData.jobs.length,
+                        jobs: routeData.jobs.map((job, idx) => ({
+                            jobNumber: idx + 1
+                        })),
+                        createdAt: new Date(),
+                        status: 'active',
+                        officeId: officeId
+                    };
+                    
+                    await window.firebaseAddDoc(
+                        window.firebaseCollection(window.firestore, 'routes'),
+                        routeSummary
+                    );
+                }
+            }
+            
+            // Success - redirect to routes page
+            alert(`Successfully saved ${routeReviewData.length} routes!`);
+            window.location.href = '/pages/soto-lp.html';
+            
+        } catch (error) {
+            console.error('Error saving routes:', error);
+            alert('Failed to save routes: ' + error.message);
+            showScreen('routeReviewScreen');
+        }
+    }
+
+    // Setup keyboard handlers for route grouping
+    function setupRouteGroupingKeyboard() {
+        const handleKeyPress = (e) => {
+            if (!routeGroupingMode) return;
+            
+            // Prevent default for arrow keys to stop scrolling
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                e.preventDefault();
+                // Handle arrow key navigation
+                if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+                    // Select next job
+                    const sortedIndices = ungroupedJobs.map((_, idx) => idx).sort((a, b) => {
+                        const aDriver = extractDriverName(ungroupedJobs[a].task.name || '');
+                        const bDriver = extractDriverName(ungroupedJobs[b].task.name || '');
+                        const nameCompare = aDriver.localeCompare(bDriver, undefined, { sensitivity: 'base' });
+                        if (nameCompare !== 0) return nameCompare;
+                        const getJobNum = (name) => {
+                            const match = name.match(/\((\d+)\)/);
+                            return match ? parseInt(match[1], 10) : 999;
+                        };
+                        return getJobNum(ungroupedJobs[a].task.name || '') - getJobNum(ungroupedJobs[b].task.name || '');
+                    });
+                    const currentSelected = selectedJobsForRoute.length > 0 ? selectedJobsForRoute[selectedJobsForRoute.length - 1] : -1;
+                    const currentIndex = sortedIndices.indexOf(currentSelected);
+                    const nextIndex = currentIndex < sortedIndices.length - 1 ? sortedIndices[currentIndex + 1] : sortedIndices[0];
+                    if (nextIndex !== undefined) {
+                        toggleJobSelection(nextIndex);
+                        // Scroll into view
+                        const jobCard = document.querySelector(`[data-job-index="${nextIndex}"]`);
+                        if (jobCard) jobCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+                    // Select previous job
+                    const sortedIndices = ungroupedJobs.map((_, idx) => idx).sort((a, b) => {
+                        const aDriver = extractDriverName(ungroupedJobs[a].task.name || '');
+                        const bDriver = extractDriverName(ungroupedJobs[b].task.name || '');
+                        const nameCompare = aDriver.localeCompare(bDriver, undefined, { sensitivity: 'base' });
+                        if (nameCompare !== 0) return nameCompare;
+                        const getJobNum = (name) => {
+                            const match = name.match(/\((\d+)\)/);
+                            return match ? parseInt(match[1], 10) : 999;
+                        };
+                        return getJobNum(ungroupedJobs[a].task.name || '') - getJobNum(ungroupedJobs[b].task.name || '');
+                    });
+                    const currentSelected = selectedJobsForRoute.length > 0 ? selectedJobsForRoute[selectedJobsForRoute.length - 1] : -1;
+                    const currentIndex = sortedIndices.indexOf(currentSelected);
+                    const prevIndex = currentIndex > 0 ? sortedIndices[currentIndex - 1] : sortedIndices[sortedIndices.length - 1];
+                    if (prevIndex !== undefined) {
+                        toggleJobSelection(prevIndex);
+                        const jobCard = document.querySelector(`[data-job-index="${prevIndex}"]`);
+                        if (jobCard) jobCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }
+                return;
+            }
+            
+            // Prevent default only for keys we handle
+            if (e.key === 'Enter' || e.key === 's' || e.key === 'S') {
+                e.preventDefault();
+            }
+            
+            if (e.key === 'Enter') {
+                // If no jobs selected, select first job
+                if (selectedJobsForRoute.length === 0 && ungroupedJobs.length > 0) {
+                    toggleJobSelection(0);
+                } else if (ungroupedJobs.length > 0) {
+                    // If jobs are selected, select next unselected job
+                    const nextIndex = ungroupedJobs.findIndex((_, idx) => !selectedJobsForRoute.includes(idx));
+                    if (nextIndex !== -1) {
+                        toggleJobSelection(nextIndex);
+                    }
+                }
+            } else if (e.key === 's' || e.key === 'S') {
+                // Group selected jobs
+                if (selectedJobsForRoute.length > 0) {
+                    groupSelectedJobs();
+                }
+            }
+        };
+        
+        // Remove existing listener if any
+        if (window.routeGroupingKeyHandler) {
+            document.removeEventListener('keydown', window.routeGroupingKeyHandler);
+        }
+        
+        // Add new listener
+        window.routeGroupingKeyHandler = handleKeyPress;
+        document.addEventListener('keydown', handleKeyPress);
+    }
+
+    // Add Enter key handler for instructions screen
+    document.addEventListener('DOMContentLoaded', () => {
+        const startBtn = document.getElementById('startGroupingBtn');
+        if (startBtn) {
+            document.addEventListener('keydown', (e) => {
+                const instructionsScreen = document.getElementById('routeGroupingInstructionsScreen');
+                if (instructionsScreen && !instructionsScreen.classList.contains('hidden') && e.key === 'Enter') {
+                    e.preventDefault();
+                    startRouteGrouping();
+                }
+            });
+        }
+    });
+
+    // Finish route grouping
+    function finishRouteGrouping() {
+        routeGroupingMode = false;
+        if (window.routeGroupingKeyHandler) {
+            document.removeEventListener('keydown', window.routeGroupingKeyHandler);
+        }
+        
+        // Enable process routes button
+        const processBtn = document.getElementById('processRoutesBtn');
+        if (processBtn) {
+            processBtn.disabled = false;
+        }
+        
+        // Show message and stay on grouping screen
+        alert(`Successfully created ${routeCounter} routes! Click "Process Routes" to review and save.`);
+    }
 
     async function initializePage() {
         try {
@@ -147,6 +1942,56 @@
             if (!currentSession) {
                 window.location.href = '/pages/soto-routes-login.html';
                 return;
+            }
+            
+            // Load office logo if officeId is available
+            if (currentSession.officeId) {
+                await loadOfficeLogo(currentSession.officeId);
+            }
+
+            // Handle Asana OAuth callback
+            handleAsanaCallback();
+
+            // Check if already connected to Asana
+            if (currentSession && currentSession.officeId) {
+                const tokenKey = `asana_token_${currentSession.officeId}`;
+                const existingToken = localStorage.getItem(tokenKey);
+                const emailKey = `asana_email_${currentSession.officeId}`;
+                const existingEmail = localStorage.getItem(emailKey);
+                
+                if (existingToken) {
+                    // Already connected, try to load projects
+                    try {
+                        await loadProjects(existingToken);
+                        showScreen('projectPickerScreen');
+                    } catch (error) {
+                        // If loading fails (e.g., token expired), show connection screen
+                        console.error('Failed to load projects with existing token:', error);
+                        const errorMessage = error.message || error.toString() || '';
+                        if (errorMessage.includes('expired') || errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
+                            // Clear expired token
+                            localStorage.removeItem(tokenKey);
+                            localStorage.removeItem(emailKey);
+                            showScreen('asanaConnectionScreen');
+                        } else {
+                            // Other error - still show connection screen as fallback
+                            showScreen('asanaConnectionScreen');
+                        }
+                    }
+                    
+                    // Display stored email if available
+                    if (existingEmail) {
+                        displayAsanaUserEmail(existingEmail);
+                    } else {
+                        // Fetch user info if email not stored
+                        await fetchAndDisplayAsanaUser(existingToken);
+                    }
+                } else {
+                    // Not connected, show connection screen
+                    showScreen('asanaConnectionScreen');
+                }
+            } else {
+                showScreen('asanaConnectionScreen');
             }
         } catch (error) {
             console.error('Failed to initialize page:', error);
@@ -162,6 +2007,32 @@
     function showChangePassword() {
         // TODO: Implement change password
         console.log('Change password clicked');
+    }
+
+    // Settings functions
+    function showSettings() {
+        const modal = document.getElementById('settingsModal');
+        const dropdown = document.getElementById('profileDropdown');
+        dropdown.classList.add('hidden');
+        modal.classList.remove('hidden');
+        
+        // Load current setting value
+        const useAsanaApi = window.sotoSettings?.getUseAsanaApiForRoutes() || false;
+        const toggle = document.getElementById('useAsanaApiToggle');
+        if (toggle) {
+            toggle.checked = useAsanaApi;
+        }
+    }
+
+    function hideSettings() {
+        document.getElementById('settingsModal').classList.add('hidden');
+    }
+
+    function handleAsanaApiToggle(checked) {
+        if (window.sotoSettings) {
+            window.sotoSettings.setUseAsanaApiForRoutes(checked);
+            console.log('Asana API for routes setting updated:', checked);
+        }
     }
 
     function viewUsage() {
@@ -208,9 +2079,22 @@
     // Make functions globally available
     window.toggleProfileDropdown = toggleProfileDropdown;
     window.showChangePassword = showChangePassword;
+    window.showSettings = showSettings;
+    window.hideSettings = hideSettings;
+    window.handleAsanaApiToggle = handleAsanaApiToggle;
     window.viewUsage = viewUsage;
     window.logout = logout;
     window.showNotifications = showNotifications;
+    window.checkTasksForDate = checkTasksForDate;
+    window.processJobs = processJobs;
+    window.editJob = editJob;
+    window.closeEditJobModal = closeEditJobModal;
+    window.saveJobEdits = saveJobEdits;
+    window.selectProject = selectProject;
+    window.startRouteGrouping = startRouteGrouping;
+    window.finishRouteGrouping = finishRouteGrouping;
+    window.processRoutes = processRoutes;
+    window.saveAllRoutes = saveAllRoutes;
 
     // Initialize on page load
     if (document.readyState === 'loading') {
@@ -219,6 +2103,47 @@
         initializePage();
     }
 </script>
+
+<!-- Settings Modal -->
+<div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-6 w-full max-w-md">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-xl font-bold text-white">Settings</h3>
+            <button onclick="hideSettings()" class="text-gray-400 hover:text-white">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        
+        <div class="space-y-4">
+            <div class="flex items-center justify-between py-3 border-b border-[#283039]">
+                <div class="flex-1">
+                    <label for="useAsanaApiToggle" class="block text-sm font-medium text-white mb-1">
+                        Use Asana API for route input
+                    </label>
+                    <p class="text-xs text-gray-400">When enabled, routes button will redirect to automatic routes page</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input 
+                        type="checkbox" 
+                        id="useAsanaApiToggle" 
+                        class="sr-only peer"
+                        onchange="handleAsanaApiToggle(this.checked)"
+                    >
+                    <div class="w-11 h-6 bg-[#283039] peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+            </div>
+        </div>
+        
+        <div class="mt-6 flex justify-end">
+            <button 
+                onclick="hideSettings()"
+                class="px-4 py-2 bg-[#283039] hover:bg-[#3a444e] text-white rounded-lg transition-colors font-medium"
+            >
+                Close
+            </button>
+        </div>
+    </div>
+</div>
 </body>
 </html>
 

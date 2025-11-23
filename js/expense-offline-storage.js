@@ -835,6 +835,12 @@ window.addEventListener('offline', () => {
 window.autoSaveDraft = async function() {
     if (!window.currentBatch || !window.currentUser) return;
     try {
+        // Read notes from textarea before saving
+        const notesInput = document.getElementById('notesInput');
+        if (notesInput && window.currentBatch) {
+            window.currentBatch.notes = notesInput.value.trim() || '';
+        }
+        
         const batchCopy = JSON.parse(JSON.stringify(window.currentBatch));
         const photos = {};
         if (batchCopy.expenses) {
@@ -849,7 +855,7 @@ window.autoSaveDraft = async function() {
         if (window.currentBatch) {
             window.currentBatch.localId = localId;
         }
-        console.log('💾 Draft auto-saved to IndexedDB');
+        console.log('💾 Draft auto-saved to IndexedDB', { notes: batchCopy.notes || '(no notes)' });
     } catch (error) {
         console.error('Error auto-saving draft:', error);
     }

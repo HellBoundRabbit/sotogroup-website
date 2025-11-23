@@ -729,7 +729,7 @@
       this.camera.position.x = 0;
 
       this.scene = new THREE.Scene();
-      this.scene.background = null;
+      this.scene.background = new THREE.Color(0x000000);
 
       let fog = new THREE.Fog(options.colors.background, options.length * 0.2, options.length * 500);
       this.scene.fog = fog;

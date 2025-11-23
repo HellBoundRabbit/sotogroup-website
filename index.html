@@ -411,6 +411,32 @@
             min-height: 100vh;
         }
 
+        /* Galaxy animation container */
+        #galaxy-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+
+        #galaxy-container canvas {
+            pointer-events: auto;
+        }
+
+        .main-content {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 0;
+            width: 100%;
+        }
+
         .soto-group-logo {
             position: fixed;
             top: 2rem;
@@ -430,41 +456,35 @@
             color: white;
         }
 
-        .main-content {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            padding: 0;
-            width: 100%;
-        }
 
         .service-buttons {
             display: flex;
             flex-direction: row;
-            gap: 0.5rem;
+            gap: 2rem;
             width: 100%;
             justify-content: space-between;
             align-items: center;
-            padding: 0 0.5rem;
+            padding: 0 2rem;
         }
 
         .service-button {
             background: transparent;
-            border: none;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 20px;
             cursor: pointer;
             transition: all 0.3s ease;
             display: flex;
             flex-direction: column;
             align-items: center;
             gap: 0;
-            padding: 0;
+            padding: 10px;
             flex: 1;
         }
 
         .service-button:hover {
             transform: translateY(-5px);
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.5);
         }
 
         .service-button.disabled {
@@ -477,8 +497,8 @@
         }
 
         .service-icon {
-            width: 300px;
-            height: 300px;
+            width: 169px;
+            height: 169px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -488,6 +508,7 @@
             width: 100%;
             height: 100%;
             object-fit: contain;
+            border-radius: 18px;
         }
 
         /* Responsive design */
@@ -510,19 +531,19 @@
 
             .service-button {
                 width: 100%;
-                max-width: 200px;
+                max-width: 113px;
             }
 
             .service-icon {
-                width: 150px;
-                height: 150px;
+                width: 84px;
+                height: 84px;
             }
         }
 
         @media (max-width: 480px) {
             .service-icon {
-                width: 120px;
-                height: 120px;
+                width: 68px;
+                height: 68px;
             }
         }
 
@@ -574,6 +595,27 @@
 </head>
 <body>
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDTbiSXo9tg1Tx8SlZCZKsR_R0zIQ4N1VA&libraries=places"></script>
+    <script src="assets/js/ogl.min.js"></script>
+    <script src="assets/js/galaxy.js"></script>
+    <script>
+        // Initialize Galaxy Animation
+        window.addEventListener('load', function() {
+            const galaxyContainer = document.getElementById('galaxy-container');
+            if (galaxyContainer && window.GalaxyAnimation) {
+                const galaxy = new window.GalaxyAnimation(galaxyContainer, {
+                    mouseRepulsion: true,
+                    mouseInteraction: true,
+                    density: 0.5,
+                    glowIntensity: 0.3,
+                    saturation: 0.0,
+                    hueShift: 0,
+                    transparent: true
+                });
+                galaxy.init();
+                window.galaxyInstance = galaxy; // Store for cleanup if needed
+            }
+        });
+    </script>
     <script>
         // Ensure main page is shown by default and clear any URL hash
         window.addEventListener('load', function() {
@@ -588,6 +630,7 @@
     
     <!-- Main Page -->
     <div id="main" class="page active main-page">
+        <div id="galaxy-container"></div>
         <div class="main-content">
             <div class="service-buttons">
                 <button class="service-button" onclick="window.location.href='/pages/property.html'">

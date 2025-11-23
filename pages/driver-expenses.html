@@ -1405,6 +1405,23 @@
                 }
             } catch (error) {
                 console.warn('Failed to fetch latest expenses for batch', batchId, error);
+                // If offline or Firestore fails, try loading from IndexedDB
+                if (batch.localId && window.expenseDraftDB) {
+                    try {
+                        const draft = await window.expenseDraftDB.getDraft(batch.localId);
+                        if (draft) {
+                            // Merge draft data (especially notes) with batch
+                            if (draft.notes && !batch.notes) {
+                                batch.notes = draft.notes;
+                            }
+                            if (draft.expenses && (!batch.expenses || batch.expenses.length === 0)) {
+                                batch.expenses = draft.expenses;
+                            }
+                        }
+                    } catch (dbError) {
+                        console.warn('Failed to load draft from IndexedDB:', dbError);
+                    }
+                }
             }
 
             currentBatch = batch;

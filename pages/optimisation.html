@@ -16,6 +16,7 @@
     <script src="/assets/js/tailwind-runtime.js"></script>
     <script src="/js/mobile-nav.js"></script>
     <script src="/js/session-manager.js"></script>
+    <script src="/js/settings.js"></script>
     <script>
         tailwind.config = {
             plugins: {
@@ -143,10 +144,10 @@
                     </button>
                     <!-- Profile Dropdown -->
                     <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50">
-                        <a href="/pages/automaticroutes.html" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors rounded-t-lg">
-                            <span class="material-symbols-outlined inline-block align-middle text-base mr-2">route</span>
-                            Automatic Routes
-                        </a>
+                        <button onclick="showSettings()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors rounded-t-lg">
+                            <span class="material-symbols-outlined inline-block align-middle text-base mr-2">settings</span>
+                            Settings
+                        </button>
                         <button onclick="showChangePassword()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors">
                             <span class="material-symbols-outlined inline-block align-middle text-base mr-2">lock</span>
                             Change Password
@@ -4607,6 +4608,32 @@
             document.getElementById('profileDropdown').classList.add('hidden');
         }
 
+        // Settings functions
+        function showSettings() {
+            const modal = document.getElementById('settingsModal');
+            const dropdown = document.getElementById('profileDropdown');
+            dropdown.classList.add('hidden');
+            modal.classList.remove('hidden');
+            
+            // Load current setting value
+            const useAsanaApi = window.sotoSettings?.getUseAsanaApiForRoutes() || false;
+            const toggle = document.getElementById('useAsanaApiToggle');
+            if (toggle) {
+                toggle.checked = useAsanaApi;
+            }
+        }
+
+        function hideSettings() {
+            document.getElementById('settingsModal').classList.add('hidden');
+        }
+
+        function handleAsanaApiToggle(checked) {
+            if (window.sotoSettings) {
+                window.sotoSettings.setUseAsanaApiForRoutes(checked);
+                console.log('Asana API for routes setting updated:', checked);
+            }
+        }
+
         function hideChangePassword() {
             document.getElementById('changePasswordModal').classList.add('hidden');
             document.getElementById('changePasswordForm').reset();
@@ -4734,6 +4761,47 @@
                     Change Password
                 </button>
             </form>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-6 w-full max-w-md">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-white">Settings</h3>
+                <button onclick="hideSettings()" class="text-gray-400 hover:text-white">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            
+            <div class="space-y-4">
+                <div class="flex items-center justify-between py-3 border-b border-[#283039]">
+                    <div class="flex-1">
+                        <label for="useAsanaApiToggle" class="block text-sm font-medium text-white mb-1">
+                            Use Asana API for route input
+                        </label>
+                        <p class="text-xs text-gray-400">When enabled, routes button will redirect to automatic routes page</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input 
+                            type="checkbox" 
+                            id="useAsanaApiToggle" 
+                            class="sr-only peer"
+                            onchange="handleAsanaApiToggle(this.checked)"
+                        >
+                        <div class="w-11 h-6 bg-[#283039] peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+            </div>
+            
+            <div class="mt-6 flex justify-end">
+                <button 
+                    onclick="hideSettings()"
+                    class="px-4 py-2 bg-[#283039] hover:bg-[#3a444e] text-white rounded-lg transition-colors font-medium"
+                >
+                    Close
+                </button>
+            </div>
         </div>
     </div>
 </body>
