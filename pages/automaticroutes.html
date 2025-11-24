@@ -290,11 +290,11 @@
                 
                 <button 
                     id="processJobsBtn" 
-                    onclick="processJobs()"
+                    onclick="startRouteGrouping()"
                     class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
                 >
                     <span class="material-symbols-outlined">play_arrow</span>
-                    Process Jobs
+                    Group Jobs into Routes
                 </button>
                 <button 
                     onclick="showScreen('dayPickerScreen')"
@@ -328,7 +328,7 @@
                     <div class="flex items-start gap-4 bg-[#283039] rounded-lg p-4">
                         <div class="flex-shrink-0 w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">1</div>
                         <div>
-                            <h3 class="text-white font-semibold mb-2">Press <kbd class="px-2 py-1 bg-[#1a1f24] rounded text-sm">Enter</kbd> to start</h3>
+                            <h3 class="text-white font-semibold mb-2">Press <kbd class="px-2 py-1 bg-[#1a1f24] rounded text-sm">Space</kbd> to start</h3>
                             <p class="text-gray-400 text-sm">Begin grouping jobs into routes</p>
                         </div>
                     </div>
@@ -336,7 +336,7 @@
                     <div class="flex items-start gap-4 bg-[#283039] rounded-lg p-4">
                         <div class="flex-shrink-0 w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">2</div>
                         <div>
-                            <h3 class="text-white font-semibold mb-2">Press <kbd class="px-2 py-1 bg-[#1a1f24] rounded text-sm">Enter</kbd> on jobs to select</h3>
+                            <h3 class="text-white font-semibold mb-2">Press <kbd class="px-2 py-1 bg-[#1a1f24] rounded text-sm">Space</kbd> on jobs to select</h3>
                             <p class="text-gray-400 text-sm">Select jobs to group together (they will be highlighted)</p>
                         </div>
                     </div>
@@ -365,7 +365,7 @@
                         class="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-lg flex items-center justify-center gap-2 mx-auto"
                     >
                         <span class="material-symbols-outlined">play_arrow</span>
-                        Press Enter to Begin
+                        Press Space to Begin
                     </button>
                     <p class="text-gray-400 text-sm mt-4">Or click the button above</p>
                 </div>
@@ -393,15 +393,21 @@
                         Process Routes
                     </button>
                     <button 
-                        onclick="showScreen('jobsDisplayScreen')"
+                        onclick="showScreen('tasksCountScreen')"
                         class="px-4 py-2 bg-[#283039] hover:bg-[#3a444e] text-white rounded-lg transition-colors text-sm"
                     >
                         Back
                     </button>
                 </div>
             </div>
-            <div id="groupingJobsContainer" class="space-y-4">
+            <div id="groupingJobsContainer" class="space-y-4 relative">
                 <!-- Jobs will be displayed here for grouping -->
+                <!-- Greyed out overlay when not started -->
+                <div id="groupingStartOverlay" class="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 rounded-lg">
+                    <div class="text-center">
+                        <p class="text-white text-xl font-semibold mb-2">Press <kbd class="px-3 py-1 bg-[#1a1f24] rounded text-lg border border-gray-600">Space</kbd> to start</p>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -1236,6 +1242,8 @@
     // Route grouping state
     let routeGroupingMode = false;
     let selectedJobsForRoute = [];
+    let currentFocusedJobIndex = -1; // Track which job the cursor is on (for navigation)
+    let routeGroupingStarted = false; // Track if user has pressed Space to start
     let routeCounter = 0;
     let ungroupedJobs = [];
     let savedRoutes = []; // Store routes that have been created
@@ -1403,10 +1411,21 @@
 
     // Start route grouping mode
     function startRouteGrouping() {
+        if (!currentTasks || currentTasks.length === 0) {
+            alert('No tasks to group. Please check tasks first.');
+            return;
+        }
+
         routeGroupingMode = true;
+        routeGroupingStarted = false; // Not started until Space is pressed
         selectedJobsForRoute = [];
+        currentFocusedJobIndex = -1; // No job focused until started
         routeCounter = 0;
-        ungroupedJobs = [...parsedJobsData]; // Copy all jobs
+        // Use unparsed tasks - parsing will happen later when routes are processed
+        ungroupedJobs = currentTasks.map(task => ({
+            task: task,
+            parsedData: null // Will be parsed later
+        }));
         
         // Display jobs for grouping
         displayJobsForGrouping();
@@ -1422,10 +1441,24 @@
         const container = document.getElementById('groupingJobsContainer');
         if (!container) return;
         
-        container.innerHTML = '';
+        // Show or hide the start overlay
+        const overlay = document.getElementById('groupingStartOverlay');
+        if (overlay) {
+            overlay.style.display = routeGroupingStarted ? 'none' : 'flex';
+        }
+        
+        // Clear jobs container (but keep overlay)
+        const jobsList = container.querySelector('.jobs-list');
+        if (jobsList) {
+            jobsList.remove();
+        }
+        
+        const jobsListDiv = document.createElement('div');
+        jobsListDiv.className = 'jobs-list';
+        container.appendChild(jobsListDiv);
         
         if (ungroupedJobs.length === 0) {
-            container.innerHTML = `
+            jobsListDiv.innerHTML = `
                 <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-8 text-center">
                     <h3 class="text-xl font-bold text-white mb-2">All Jobs Grouped!</h3>
                     <p class="text-gray-400 mb-4">You've successfully organized all ${parsedJobsData.length} jobs into ${routeCounter} routes.</p>
@@ -1462,46 +1495,35 @@
         
         // Display jobs in continuous list (grouped by driver but no headers)
         jobsWithIndices.forEach(({ jobData, originalIndex }) => {
-            const { task, parsedData } = jobData;
+            const { task } = jobData;
             const isSelected = selectedJobsForRoute.includes(originalIndex);
+            const isFocused = currentFocusedJobIndex === originalIndex;
             
             const jobCard = document.createElement('div');
-            jobCard.className = `bg-[#1a1f24] border-2 rounded-lg p-2 cursor-pointer transition-all mb-2 ${
-                isSelected 
-                    ? 'border-green-500 bg-[#283039] shadow-lg shadow-green-500/20' 
-                    : 'border-[#283039] hover:border-gray-600'
-            }`;
+            let cardClasses = 'bg-[#1a1f24] border-2 rounded-lg p-2 cursor-pointer transition-all mb-2 ';
+            if (isSelected) {
+                cardClasses += 'border-green-500 bg-[#283039] shadow-lg shadow-green-500/20';
+            } else if (isFocused) {
+                cardClasses += 'border-blue-500 bg-[#283039] shadow-lg shadow-blue-500/20';
+            } else {
+                cardClasses += 'border-[#283039] hover:border-gray-600';
+            }
+            jobCard.className = cardClasses;
             jobCard.dataset.jobIndex = originalIndex;
             jobCard.onclick = () => toggleJobSelection(originalIndex);
             
+            // Display only task name since parsing hasn't happened yet
             jobCard.innerHTML = `
                 <div class="flex items-center justify-between gap-2">
                     <div class="flex-1 min-w-0">
                         <h4 class="text-sm font-semibold text-white truncate mb-1">${task.name || 'Untitled Task'}</h4>
-                        <div class="grid grid-cols-4 gap-2 text-xs">
-                            <div>
-                                <p class="text-gray-500">Collection</p>
-                                <p class="text-white font-medium truncate">${parsedData.collection_address || '-'}</p>
-                            </div>
-                            <div>
-                                <p class="text-gray-500">Delivery</p>
-                                <p class="text-white font-medium truncate">${parsedData.postcode_delivery || '-'}</p>
-                            </div>
-                            <div>
-                                <p class="text-gray-500">Price</p>
-                                <p class="text-white font-medium">£${(parsedData.price || 0).toFixed(2)}</p>
-                            </div>
-                            <div>
-                                <p class="text-gray-500">REG</p>
-                                <p class="text-white font-medium truncate">${parsedData.reg_number || '-'}</p>
-                            </div>
-                        </div>
+                        <p class="text-xs text-gray-400">Parsing will occur after routes are created</p>
                     </div>
                     ${isSelected ? '<span class="material-symbols-outlined text-green-500 text-xl flex-shrink-0">check_circle</span>' : ''}
                 </div>
             `;
             
-            container.appendChild(jobCard);
+            jobsListDiv.appendChild(jobCard);
         });
         
         // Update routes count and enable process button
@@ -1512,7 +1534,7 @@
         
         const processBtn = document.getElementById('processRoutesBtn');
         if (processBtn) {
-            processBtn.disabled = routeCounter === 0 || ungroupedJobs.length > 0;
+            processBtn.disabled = routeCounter === 0;
         }
     }
 
@@ -1537,6 +1559,24 @@
         // Get selected jobs
         const selectedJobs = selectedJobsForRoute.map(idx => ungroupedJobs[idx]);
         
+        // Before removing, find the last selected job's position in sorted order
+        // This will help us find the next job after grouping
+        const sortedIndicesBefore = ungroupedJobs.map((_, idx) => idx).sort((a, b) => {
+            const aDriver = extractDriverName(ungroupedJobs[a].task.name || '');
+            const bDriver = extractDriverName(ungroupedJobs[b].task.name || '');
+            const nameCompare = aDriver.localeCompare(bDriver, undefined, { sensitivity: 'base' });
+            if (nameCompare !== 0) return nameCompare;
+            const getJobNum = (name) => {
+                const match = name.match(/\((\d+)\)/);
+                return match ? parseInt(match[1], 10) : 999;
+            };
+            return getJobNum(ungroupedJobs[a].task.name || '') - getJobNum(ungroupedJobs[b].task.name || '');
+        });
+        
+        // Find the last selected job in the sorted order
+        const lastSelectedIndex = Math.max(...selectedJobsForRoute);
+        const lastSelectedPosition = sortedIndicesBefore.indexOf(lastSelectedIndex);
+        
         // Create route
         routeCounter++;
         const routeId = routeCounter;
@@ -1546,13 +1586,70 @@
         
         // Remove grouped jobs from ungrouped list
         // Sort indices in descending order to remove from end first
-        const sortedIndices = [...selectedJobsForRoute].sort((a, b) => b - a);
-        sortedIndices.forEach(idx => {
+        const indicesToRemove = [...selectedJobsForRoute].sort((a, b) => b - a);
+        indicesToRemove.forEach(idx => {
             ungroupedJobs.splice(idx, 1);
         });
         
-        // Clear selection
+        // Clear selection and move focus to next job
         selectedJobsForRoute = [];
+        
+        // After removing jobs, find the next job in sorted order
+        if (ungroupedJobs.length > 0) {
+            // Get sorted indices after removal (same sorting logic)
+            const sortedIndicesAfter = ungroupedJobs.map((_, idx) => idx).sort((a, b) => {
+                const aDriver = extractDriverName(ungroupedJobs[a].task.name || '');
+                const bDriver = extractDriverName(ungroupedJobs[b].task.name || '');
+                const nameCompare = aDriver.localeCompare(bDriver, undefined, { sensitivity: 'base' });
+                if (nameCompare !== 0) return nameCompare;
+                const getJobNum = (name) => {
+                    const match = name.match(/\((\d+)\)/);
+                    return match ? parseInt(match[1], 10) : 999;
+                };
+                return getJobNum(ungroupedJobs[a].task.name || '') - getJobNum(ungroupedJobs[b].task.name || '');
+            });
+            
+            // Find the next job: the one that comes after the last selected in sorted order
+            // Iterate through the old sorted list starting from after the last selected
+            let foundNextJob = false;
+            for (let pos = lastSelectedPosition + 1; pos < sortedIndicesBefore.length; pos++) {
+                const oldIndex = sortedIndicesBefore[pos];
+                // Check if this job wasn't removed
+                if (!indicesToRemove.includes(oldIndex)) {
+                    // This job still exists - find its new index after removal
+                    // Count how many jobs before it were removed
+                    let removedBefore = 0;
+                    for (const removedIdx of indicesToRemove) {
+                        if (removedIdx < oldIndex) {
+                            removedBefore++;
+                        }
+                    }
+                    const newIndex = oldIndex - removedBefore;
+                    // Find this job in the sorted list by matching task
+                    const targetTask = ungroupedJobs[newIndex];
+                    if (targetTask) {
+                        // Find its position in sortedIndicesAfter
+                        const positionInSorted = sortedIndicesAfter.findIndex(idx => {
+                            return ungroupedJobs[idx].task.gid === targetTask.task.gid;
+                        });
+                        if (positionInSorted !== -1) {
+                            currentFocusedJobIndex = sortedIndicesAfter[positionInSorted];
+                            foundNextJob = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // If no next job found (last selected was at the end), wrap to first
+            if (!foundNextJob && sortedIndicesAfter.length > 0) {
+                currentFocusedJobIndex = sortedIndicesAfter[0];
+            } else if (!foundNextJob) {
+                currentFocusedJobIndex = -1;
+            }
+        } else {
+            currentFocusedJobIndex = -1;
+        }
         
         // Animate removal
         animateJobGrouping(selectedJobs);
@@ -1594,7 +1691,8 @@
 
     // Process routes - parse all job details and show review screen
     async function processRoutes() {
-        if (savedRoutes.length === 0) {
+        console.log('processRoutes called, savedRoutes:', savedRoutes);
+        if (!savedRoutes || savedRoutes.length === 0) {
             alert('No routes to process. Please create some routes first.');
             return;
         }
@@ -1614,9 +1712,21 @@
                 for (const jobData of route.jobs) {
                     const taskText = `${jobData.task.name || ''}\n${jobData.task.notes || ''}`;
                     
-                    // Use parseJobText function to get detailed parsing
-                    let parsedData = jobData.parsedData;
-                    let confidence = parsedData.overall_confidence || 50;
+                    // Parse job text using Firebase Cloud Function (parsing happens here, not earlier)
+                    let parsedData = {
+                        collection_address: 'Not found',
+                        postcode_delivery: 'Not found',
+                        price: 0,
+                        reg_number: 'Not found',
+                        confidence_scores: {
+                            collection: 0,
+                            delivery: 0,
+                            price: 0,
+                            reg: 0
+                        },
+                        overall_confidence: 0
+                    };
+                    let confidence = 0;
                     
                     if (window.firebase && window.firebase.httpsCallable && window.firebase.functions) {
                         try {
@@ -1674,59 +1784,295 @@
         
         container.innerHTML = '';
         
+        // Helper function to get ordinal suffix (1st, 2nd, 3rd, etc.)
+        function getOrdinalSuffix(num) {
+            const j = num % 10;
+            const k = num % 100;
+            if (j === 1 && k !== 11) return num + 'st';
+            if (j === 2 && k !== 12) return num + 'nd';
+            if (j === 3 && k !== 13) return num + 'rd';
+            return num + 'th';
+        }
+        
+        // Helper function to get confidence color
+        function getConfidenceColor(score) {
+            if (score < 60) return 'text-red-400';
+            if (score < 80) return 'text-yellow-400';
+            return 'text-green-400';
+        }
+        
+        // Helper function to get confidence background color
+        function getConfidenceBgColor(score) {
+            if (score < 60) return 'bg-red-500/30 border-red-500/50';
+            if (score < 80) return 'bg-yellow-500/30 border-yellow-500/50';
+            return 'bg-green-500/30 border-green-500/50';
+        }
+        
+        // Function to highlight parsed values in raw text
+        function highlightParsedText(rawText, parsedData, confidenceScores) {
+            // First escape HTML to prevent XSS
+            let highlightedText = rawText
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+            
+            const highlights = [];
+            
+            // Helper to escape special regex characters
+            function escapeRegex(str) {
+                return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            }
+            
+            // Track positions to avoid double-highlighting
+            const usedPositions = new Set();
+            
+            // Highlight REG number
+            if (parsedData.reg_number && parsedData.reg_number !== 'Not found' && parsedData.reg_number.trim()) {
+                const regScore = confidenceScores.reg || 0;
+                const regEscaped = escapeRegex(parsedData.reg_number);
+                const regRegex = new RegExp(regEscaped, 'gi');
+                const matches = [...highlightedText.matchAll(regRegex)];
+                matches.forEach(match => {
+                    if (!usedPositions.has(match.index)) {
+                        highlights.push({
+                            start: match.index,
+                            end: match.index + match[0].length,
+                            text: match[0],
+                            score: regScore
+                        });
+                        usedPositions.add(match.index);
+                    }
+                });
+            }
+            
+            // Highlight collection address/postcode
+            // ONLY highlight postcodes that come AFTER "Collection" keyword
+            if (parsedData.collection_address && parsedData.collection_address !== 'Not found' && parsedData.collection_address.trim()) {
+                const collScore = confidenceScores.collection || 0;
+                // Remove spaces from parsed postcode to match both "CV37 8QR" and "CV378QR"
+                const collNormalized = parsedData.collection_address.replace(/\s+/g, '').toUpperCase();
+                
+                // Find "Collection" keyword position
+                const collectionKeywordIndex = highlightedText.toLowerCase().indexOf('collection');
+                
+                if (collectionKeywordIndex !== -1) {
+                    // Only search in text after "Collection"
+                    const textAfterCollection = highlightedText.substring(collectionKeywordIndex + 'collection'.length);
+                    
+                    // Create regex that matches postcode with or without spaces
+                    // Pattern: letters + digits + optional letter + optional space + digit + letters
+                    const collPattern = collNormalized.replace(/([A-Z]{1,2})(\d{1,2})([A-Z]?)(\d)([A-Z]{2})/, '$1$2$3\\s?$4$5');
+                    const collRegex = new RegExp(collPattern, 'gi');
+                    const matches = [...textAfterCollection.matchAll(collRegex)];
+                    
+                    // Only use the first match (the one after "Collection")
+                    if (matches.length > 0) {
+                        const match = matches[0];
+                        const absoluteIndex = collectionKeywordIndex + 'collection'.length + match.index;
+                        if (!usedPositions.has(absoluteIndex)) {
+                            highlights.push({
+                                start: absoluteIndex,
+                                end: absoluteIndex + match[0].length,
+                                text: match[0],
+                                score: collScore
+                            });
+                            usedPositions.add(absoluteIndex);
+                        }
+                    }
+                }
+            }
+            
+            // Highlight delivery postcode
+            // ONLY highlight postcodes that come AFTER the collection postcode
+            if (parsedData.postcode_delivery && parsedData.postcode_delivery !== 'Not found' && parsedData.postcode_delivery.trim()) {
+                const delScore = confidenceScores.delivery || 0;
+                // Remove spaces from parsed postcode to match both "SK4 2PD" and "SK42PD"
+                const delNormalized = parsedData.postcode_delivery.replace(/\s+/g, '').toUpperCase();
+                
+                // Find collection postcode position first
+                let collectionPostcodeEndIndex = -1;
+                if (parsedData.collection_address && parsedData.collection_address !== 'Not found') {
+                    const collNormalized = parsedData.collection_address.replace(/\s+/g, '').toUpperCase();
+                    const collectionKeywordIndex = highlightedText.toLowerCase().indexOf('collection');
+                    
+                    if (collectionKeywordIndex !== -1) {
+                        const textAfterCollection = highlightedText.substring(collectionKeywordIndex + 'collection'.length);
+                        const collPattern = collNormalized.replace(/([A-Z]{1,2})(\d{1,2})([A-Z]?)(\d)([A-Z]{2})/, '$1$2$3\\s?$4$5');
+                        const collRegex = new RegExp(collPattern, 'gi');
+                        const collMatch = collRegex.exec(textAfterCollection);
+                        
+                        if (collMatch) {
+                            collectionPostcodeEndIndex = collectionKeywordIndex + 'collection'.length + collMatch.index + collMatch[0].length;
+                        }
+                    }
+                }
+                
+                // If we found collection postcode, search after it; otherwise search after "Collection"
+                let searchStartIndex = 0;
+                if (collectionPostcodeEndIndex >= 0) {
+                    searchStartIndex = collectionPostcodeEndIndex;
+                } else {
+                    const collectionKeywordIndex = highlightedText.toLowerCase().indexOf('collection');
+                    if (collectionKeywordIndex !== -1) {
+                        searchStartIndex = collectionKeywordIndex + 'collection'.length;
+                    }
+                }
+                
+                if (searchStartIndex > 0) {
+                    const textAfterCollectionPostcode = highlightedText.substring(searchStartIndex);
+                    
+                    // Create regex that matches postcode with or without spaces
+                    const delPattern = delNormalized.replace(/([A-Z]{1,2})(\d{1,2})([A-Z]?)(\d)([A-Z]{2})/, '$1$2$3\\s?$4$5');
+                    const delRegex = new RegExp(delPattern, 'gi');
+                    const matches = [...textAfterCollectionPostcode.matchAll(delRegex)];
+                    
+                    // Only use the first match (the one after collection postcode)
+                    if (matches.length > 0) {
+                        const match = matches[0];
+                        const absoluteIndex = searchStartIndex + match.index;
+                        if (!usedPositions.has(absoluteIndex)) {
+                            highlights.push({
+                                start: absoluteIndex,
+                                end: absoluteIndex + match[0].length,
+                                text: match[0],
+                                score: delScore
+                            });
+                            usedPositions.add(absoluteIndex);
+                        }
+                    }
+                }
+            }
+            
+            // Highlight price (try multiple formats)
+            if (parsedData.price && parsedData.price > 0) {
+                const priceScore = confidenceScores.price || 0;
+                const priceFormats = [
+                    `£${parsedData.price}`,
+                    `£${parsedData.price.toFixed(2)}`,
+                    `${parsedData.price}`,
+                    `${parsedData.price.toFixed(2)}`
+                ];
+                
+                priceFormats.forEach(priceStr => {
+                    const priceEscaped = escapeRegex(priceStr);
+                    const priceRegex = new RegExp(priceEscaped, 'gi');
+                    const matches = [...highlightedText.matchAll(priceRegex)];
+                    matches.forEach(match => {
+                        if (!usedPositions.has(match.index)) {
+                            highlights.push({
+                                start: match.index,
+                                end: match.index + match[0].length,
+                                text: match[0],
+                                score: priceScore
+                            });
+                            usedPositions.add(match.index);
+                        }
+                    });
+                });
+            }
+            
+            // Sort highlights by position (from end to start to avoid index shifting)
+            highlights.sort((a, b) => b.start - a.start);
+            
+            // Apply highlights
+            highlights.forEach(highlight => {
+                const bgColor = getConfidenceBgColor(highlight.score);
+                const before = highlightedText.substring(0, highlight.start);
+                const match = highlightedText.substring(highlight.start, highlight.end);
+                const after = highlightedText.substring(highlight.end);
+                highlightedText = before + `<span class="px-1 rounded border ${bgColor} font-semibold">${match}</span>` + after;
+            });
+            
+            return highlightedText;
+        }
+        
         routeReviewData.forEach((routeData, routeIndex) => {
             const routeCard = document.createElement('div');
-            routeCard.className = 'bg-[#1a1f24] border border-[#283039] rounded-lg p-4';
+            routeCard.className = 'bg-[#1a1f24] border border-[#283039] rounded-lg p-6 mb-4';
             
             let jobsHtml = '';
             routeData.jobs.forEach((job, jobIndex) => {
                 const jobKey = `${routeData.routeId}-${jobIndex}`;
+                const jobNumber = getOrdinalSuffix(jobIndex + 1);
+                const confidenceScores = job.parsedData.confidence_scores || {};
+                
+                // Highlight parsed text
+                const highlightedText = highlightParsedText(job.rawText, job.parsedData, confidenceScores);
+                
                 jobsHtml += `
-                    <div class="bg-[#283039] rounded-lg p-3 mb-2">
-                        <div class="grid grid-cols-5 gap-4">
-                            <div class="col-span-1">
-                                <p class="text-xs text-gray-400 mb-1">Job Preview</p>
-                                <div class="text-xs text-gray-300 max-h-20 overflow-y-auto bg-[#1a1f24] p-2 rounded">
-                                    ${job.rawText.substring(0, 200)}${job.rawText.length > 200 ? '...' : ''}
+                    <div class="bg-[#283039] rounded-lg p-4 mb-3">
+                        <h4 class="text-sm font-semibold text-white mb-3">${jobNumber} Job</h4>
+                        <div class="grid grid-cols-2 gap-6">
+                            <!-- Left side: Raw task text with highlights -->
+                            <div>
+                                <label class="text-xs text-gray-400 mb-2 block">Complete Task Info</label>
+                                <div class="bg-[#1a1f24] border border-gray-600 rounded p-4 text-sm text-gray-300 whitespace-pre-wrap max-h-96 overflow-y-auto">
+                                    ${highlightedText}
                                 </div>
                             </div>
-                            <div class="col-span-4 grid grid-cols-4 gap-3">
-                                <div>
-                                    <label class="text-xs text-gray-400 mb-1 block">REG</label>
-                                    <input 
-                                        type="text" 
-                                        id="${jobKey}-reg"
-                                        value="${job.parsedData.reg_number || ''}"
-                                        class="w-full px-2 py-1 bg-[#1a1f24] border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    />
-                                </div>
-                                <div>
-                                    <label class="text-xs text-gray-400 mb-1 block">Collection</label>
-                                    <input 
-                                        type="text" 
-                                        id="${jobKey}-collection"
-                                        value="${job.parsedData.collection_address || ''}"
-                                        class="w-full px-2 py-1 bg-[#1a1f24] border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    />
-                                </div>
-                                <div>
-                                    <label class="text-xs text-gray-400 mb-1 block">Delivery</label>
-                                    <input 
-                                        type="text" 
-                                        id="${jobKey}-delivery"
-                                        value="${job.parsedData.postcode_delivery || ''}"
-                                        class="w-full px-2 py-1 bg-[#1a1f24] border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    />
-                                </div>
-                                <div>
-                                    <label class="text-xs text-gray-400 mb-1 block">Price</label>
-                                    <input 
-                                        type="number" 
-                                        step="0.01"
-                                        id="${jobKey}-price"
-                                        value="${job.parsedData.price || 0}"
-                                        class="w-full px-2 py-1 bg-[#1a1f24] border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    />
+                            <!-- Right side: Editable fields -->
+                            <div>
+                                <label class="text-xs text-gray-400 mb-2 block">Parsed Details</label>
+                                <div class="space-y-3">
+                                    <div>
+                                        <label class="text-xs text-gray-400 mb-1 block">REG</label>
+                                        <div class="flex items-center gap-2">
+                                            <input 
+                                                type="text" 
+                                                id="${jobKey}-reg"
+                                                value="${job.parsedData.reg_number || ''}"
+                                                class="flex-1 px-3 py-2 bg-[#1a1f24] border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                            <span class="text-xs ${getConfidenceColor(confidenceScores.reg || 0)} font-semibold">
+                                                ${confidenceScores.reg || 0}%
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-400 mb-1 block">Collection Postcode</label>
+                                        <div class="flex items-center gap-2">
+                                            <input 
+                                                type="text" 
+                                                id="${jobKey}-collection"
+                                                value="${job.parsedData.collection_address || ''}"
+                                                class="flex-1 px-3 py-2 bg-[#1a1f24] border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                            <span class="text-xs ${getConfidenceColor(confidenceScores.collection || 0)} font-semibold">
+                                                ${confidenceScores.collection || 0}%
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-400 mb-1 block">Delivery Postcode</label>
+                                        <div class="flex items-center gap-2">
+                                            <input 
+                                                type="text" 
+                                                id="${jobKey}-delivery"
+                                                value="${job.parsedData.postcode_delivery || ''}"
+                                                class="flex-1 px-3 py-2 bg-[#1a1f24] border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                            <span class="text-xs ${getConfidenceColor(confidenceScores.delivery || 0)} font-semibold">
+                                                ${confidenceScores.delivery || 0}%
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-400 mb-1 block">Price</label>
+                                        <div class="flex items-center gap-2">
+                                            <input 
+                                                type="number" 
+                                                step="0.01"
+                                                id="${jobKey}-price"
+                                                value="${job.parsedData.price || 0}"
+                                                class="flex-1 px-3 py-2 bg-[#1a1f24] border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                            <span class="text-xs ${getConfidenceColor(confidenceScores.price || 0)} font-semibold">
+                                                ${confidenceScores.price || 0}%
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1735,14 +2081,13 @@
             });
             
             routeCard.innerHTML = `
-                <div class="flex items-center justify-between mb-3">
-                    <h3 class="text-lg font-semibold text-white">
-                        Route ${routeData.routeId.replace('route_', '')} 
-                        <span class="text-sm text-gray-400">(${routeData.jobCount} jobs)</span>
+                <div class="flex items-center justify-between mb-4 pb-3 border-b border-[#283039]">
+                    <h3 class="text-xl font-bold text-white">
+                        Route ${routeIndex + 1}
                     </h3>
                     <div class="flex items-center gap-2">
-                        <span class="text-xs text-gray-400">Confidence:</span>
-                        <span class="px-2 py-1 rounded text-xs font-semibold ${
+                        <span class="text-xs text-gray-400">Overall Confidence:</span>
+                        <span class="px-3 py-1 rounded text-sm font-semibold ${
                             routeData.minConfidence < 60 ? 'bg-red-500/20 text-red-400' :
                             routeData.minConfidence < 80 ? 'bg-yellow-500/20 text-yellow-400' :
                             'bg-green-500/20 text-green-400'
@@ -1755,6 +2100,85 @@
             `;
             
             container.appendChild(routeCard);
+        });
+        
+        // Add event listeners to update confidence to 100% when fields are edited
+        routeReviewData.forEach((routeData, routeIndex) => {
+            routeData.jobs.forEach((job, jobIndex) => {
+                const jobKey = `${routeData.routeId}-${jobIndex}`;
+                
+                // REG field
+                const regInput = document.getElementById(`${jobKey}-reg`);
+                if (regInput) {
+                    const regContainer = regInput.closest('.flex.items-center');
+                    const regConfidence = regContainer?.querySelector('span');
+                    if (regConfidence) {
+                        regInput.addEventListener('input', () => {
+                            regConfidence.textContent = '100%';
+                            regConfidence.className = 'text-xs text-green-400 font-semibold';
+                            // Update the confidence in the data
+                            if (!job.parsedData.confidence_scores) {
+                                job.parsedData.confidence_scores = {};
+                            }
+                            job.parsedData.confidence_scores.reg = 100;
+                        });
+                    }
+                }
+                
+                // Collection field
+                const collectionInput = document.getElementById(`${jobKey}-collection`);
+                if (collectionInput) {
+                    const collectionContainer = collectionInput.closest('.flex.items-center');
+                    const collectionConfidence = collectionContainer?.querySelector('span');
+                    if (collectionConfidence) {
+                        collectionInput.addEventListener('input', () => {
+                            collectionConfidence.textContent = '100%';
+                            collectionConfidence.className = 'text-xs text-green-400 font-semibold';
+                            // Update the confidence in the data
+                            if (!job.parsedData.confidence_scores) {
+                                job.parsedData.confidence_scores = {};
+                            }
+                            job.parsedData.confidence_scores.collection = 100;
+                        });
+                    }
+                }
+                
+                // Delivery field
+                const deliveryInput = document.getElementById(`${jobKey}-delivery`);
+                if (deliveryInput) {
+                    const deliveryContainer = deliveryInput.closest('.flex.items-center');
+                    const deliveryConfidence = deliveryContainer?.querySelector('span');
+                    if (deliveryConfidence) {
+                        deliveryInput.addEventListener('input', () => {
+                            deliveryConfidence.textContent = '100%';
+                            deliveryConfidence.className = 'text-xs text-green-400 font-semibold';
+                            // Update the confidence in the data
+                            if (!job.parsedData.confidence_scores) {
+                                job.parsedData.confidence_scores = {};
+                            }
+                            job.parsedData.confidence_scores.delivery = 100;
+                        });
+                    }
+                }
+                
+                // Price field
+                const priceInput = document.getElementById(`${jobKey}-price`);
+                if (priceInput) {
+                    const priceContainer = priceInput.closest('.flex.items-center');
+                    const priceConfidence = priceContainer?.querySelector('span');
+                    if (priceConfidence) {
+                        priceInput.addEventListener('input', () => {
+                            priceConfidence.textContent = '100%';
+                            priceConfidence.className = 'text-xs text-green-400 font-semibold';
+                            // Update the confidence in the data
+                            if (!job.parsedData.confidence_scores) {
+                                job.parsedData.confidence_scores = {};
+                            }
+                            job.parsedData.confidence_scores.price = 100;
+                        });
+                    }
+                }
+            });
         });
         
         showScreen('routeReviewScreen');
@@ -1867,12 +2291,13 @@
         const handleKeyPress = (e) => {
             if (!routeGroupingMode) return;
             
-            // Prevent default for arrow keys to stop scrolling
-            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+            // Handle Space key
+            if (e.key === ' ') {
                 e.preventDefault();
-                // Handle arrow key navigation
-                if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
-                    // Select next job
+                if (!routeGroupingStarted) {
+                    // Start grouping - focus first job in sorted display order
+                    routeGroupingStarted = true;
+                    // Find first job in sorted order (same sorting logic as displayJobsForGrouping)
                     const sortedIndices = ungroupedJobs.map((_, idx) => idx).sort((a, b) => {
                         const aDriver = extractDriverName(ungroupedJobs[a].task.name || '');
                         const bDriver = extractDriverName(ungroupedJobs[b].task.name || '');
@@ -1884,17 +2309,55 @@
                         };
                         return getJobNum(ungroupedJobs[a].task.name || '') - getJobNum(ungroupedJobs[b].task.name || '');
                     });
-                    const currentSelected = selectedJobsForRoute.length > 0 ? selectedJobsForRoute[selectedJobsForRoute.length - 1] : -1;
-                    const currentIndex = sortedIndices.indexOf(currentSelected);
+                    currentFocusedJobIndex = sortedIndices.length > 0 ? sortedIndices[0] : -1;
+                    displayJobsForGrouping(); // Update display to hide overlay and show focus
+                    // Scroll first job into view
+                    setTimeout(() => {
+                        if (currentFocusedJobIndex >= 0) {
+                            const jobCard = document.querySelector(`[data-job-index="${currentFocusedJobIndex}"]`);
+                            if (jobCard) jobCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                    }, 100);
+                } else {
+                    // Toggle selection of currently focused job
+                    if (currentFocusedJobIndex >= 0 && currentFocusedJobIndex < ungroupedJobs.length) {
+                        toggleJobSelection(currentFocusedJobIndex);
+                    }
+                }
+                return;
+            }
+            
+            // Only handle arrow keys and S if grouping has started
+            if (!routeGroupingStarted) return;
+            
+            // Prevent default for arrow keys to stop scrolling
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                e.preventDefault();
+                // Handle arrow key navigation (only move cursor, don't select)
+                if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+                    // Move to next job
+                    const sortedIndices = ungroupedJobs.map((_, idx) => idx).sort((a, b) => {
+                        const aDriver = extractDriverName(ungroupedJobs[a].task.name || '');
+                        const bDriver = extractDriverName(ungroupedJobs[b].task.name || '');
+                        const nameCompare = aDriver.localeCompare(bDriver, undefined, { sensitivity: 'base' });
+                        if (nameCompare !== 0) return nameCompare;
+                        const getJobNum = (name) => {
+                            const match = name.match(/\((\d+)\)/);
+                            return match ? parseInt(match[1], 10) : 999;
+                        };
+                        return getJobNum(ungroupedJobs[a].task.name || '') - getJobNum(ungroupedJobs[b].task.name || '');
+                    });
+                    const currentIndex = sortedIndices.indexOf(currentFocusedJobIndex);
                     const nextIndex = currentIndex < sortedIndices.length - 1 ? sortedIndices[currentIndex + 1] : sortedIndices[0];
                     if (nextIndex !== undefined) {
-                        toggleJobSelection(nextIndex);
+                        currentFocusedJobIndex = nextIndex;
+                        displayJobsForGrouping(); // Update display to show new focus
                         // Scroll into view
                         const jobCard = document.querySelector(`[data-job-index="${nextIndex}"]`);
                         if (jobCard) jobCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
                 } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
-                    // Select previous job
+                    // Move to previous job
                     const sortedIndices = ungroupedJobs.map((_, idx) => idx).sort((a, b) => {
                         const aDriver = extractDriverName(ungroupedJobs[a].task.name || '');
                         const bDriver = extractDriverName(ungroupedJobs[b].task.name || '');
@@ -1906,11 +2369,11 @@
                         };
                         return getJobNum(ungroupedJobs[a].task.name || '') - getJobNum(ungroupedJobs[b].task.name || '');
                     });
-                    const currentSelected = selectedJobsForRoute.length > 0 ? selectedJobsForRoute[selectedJobsForRoute.length - 1] : -1;
-                    const currentIndex = sortedIndices.indexOf(currentSelected);
+                    const currentIndex = sortedIndices.indexOf(currentFocusedJobIndex);
                     const prevIndex = currentIndex > 0 ? sortedIndices[currentIndex - 1] : sortedIndices[sortedIndices.length - 1];
                     if (prevIndex !== undefined) {
-                        toggleJobSelection(prevIndex);
+                        currentFocusedJobIndex = prevIndex;
+                        displayJobsForGrouping(); // Update display to show new focus
                         const jobCard = document.querySelector(`[data-job-index="${prevIndex}"]`);
                         if (jobCard) jobCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
@@ -1919,22 +2382,8 @@
             }
             
             // Prevent default only for keys we handle
-            if (e.key === 'Enter' || e.key === 's' || e.key === 'S') {
+            if (e.key === 's' || e.key === 'S') {
                 e.preventDefault();
-            }
-            
-            if (e.key === 'Enter') {
-                // If no jobs selected, select first job
-                if (selectedJobsForRoute.length === 0 && ungroupedJobs.length > 0) {
-                    toggleJobSelection(0);
-                } else if (ungroupedJobs.length > 0) {
-                    // If jobs are selected, select next unselected job
-                    const nextIndex = ungroupedJobs.findIndex((_, idx) => !selectedJobsForRoute.includes(idx));
-                    if (nextIndex !== -1) {
-                        toggleJobSelection(nextIndex);
-                    }
-                }
-            } else if (e.key === 's' || e.key === 'S') {
                 // Group selected jobs
                 if (selectedJobsForRoute.length > 0) {
                     groupSelectedJobs();

@@ -1346,8 +1346,21 @@ function parseJobTextSimple(rawText) {
 
   // Extract postcodes (UK format: comprehensive pattern)
   // Matches: A9 9AA, A9A 9AA, A99 9AA, AA9 9AA, AA9A 9AA, AA99 9AA
-  const postcodeRegex = /\b([A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2})\b/gi;
-  const postcodes = rawText.match(postcodeRegex) || [];
+  // Also matches without spaces: A99AA, AA99AA, etc.
+  // Also matches when attached to words: WarwickshireCV378QR
+  // Pattern: 1-2 letters, 1-2 digits, optional letter, then 1 digit and 2 letters
+  // Use lookbehind/lookahead to handle postcodes attached to words
+  const postcodeRegex = /([A-Z]{1,2}\d{1,2}[A-Z]?)\s?(\d[A-Z]{2})/gi;
+  const postcodes = [];
+  let match;
+  while ((match = postcodeRegex.exec(rawText)) !== null) {
+    // Combine the two parts (with or without space)
+    postcodes.push({
+      postcode: match[1] + match[2],
+      index: match.index,
+      fullMatch: match[0],
+    });
+  }
 
   // Normalize postcodes (ensure space before last 3 chars)
   const normalizePostcode = (pc) => {
@@ -1357,51 +1370,75 @@ function parseJobTextSimple(rawText) {
   };
 
   // Extract collection postcode
-  // Look for postcodes after "Collection" or "Collect" or similar
-  const collectionKeywords = /collection|collect|pickup|pick\s?up/gi;
+  // ONLY use postcodes that come AFTER the word "Collection"
+  // NEVER use postcodes that come before "Collection"
   let collectionAddress = "";
   let collectionConfidence = 0;
+  let collectionPostcodeEndIndex = -1; // Track end position of collection postcode
 
-  const collectionMatches = rawText.matchAll(
-      new RegExp(`(${collectionKeywords.source}).*?` +
-      `(${postcodeRegex.source})`, "gi"));
-  const collectionMatchArray = Array.from(collectionMatches);
+  // Find "Collection" keyword (case-insensitive)
+  const rawTextLower = rawText.toLowerCase();
+  const keywordIndex = rawTextLower.indexOf("collection");
 
-  if (collectionMatchArray.length > 0) {
-    collectionAddress = normalizePostcode(collectionMatchArray[0][2]);
-    collectionConfidence = 95; // High confidence - found with keyword
-  } else if (postcodes.length > 0) {
-    collectionAddress = normalizePostcode(postcodes[0]);
-    collectionConfidence = 60; // Medium confidence - first postcode found
-  } else {
-    collectionAddress = "Unknown";
-    collectionConfidence = 0; // No confidence
+  if (keywordIndex !== -1) {
+    // Found "Collection" keyword - only search for postcodes AFTER this position
+    const keywordEndIndex = keywordIndex + "collection".length;
+    const textAfterCollection = rawText.substring(keywordEndIndex);
+
+    // Find first postcode after "Collection"
+    // Regex handles: postcodes with spaces, without spaces, and attached to words (e.g., "WarwickshireCV378QR")
+    // Use case-insensitive flag to handle both uppercase and lowercase
+    // Pattern: 1-2 letters, 1-2 digits, optional letter, optional space, then 1 digit and 2 letters
+    const postcodeRegexAfter = /([A-Za-z]{1,2}\d{1,2}[A-Za-z]?)\s?(\d[A-Za-z]{2})/gi;
+    const postcodeMatch = postcodeRegexAfter.exec(textAfterCollection);
+
+    if (postcodeMatch) {
+      // Convert to uppercase for consistency
+      const postcode = (postcodeMatch[1] + postcodeMatch[2]).toUpperCase();
+      collectionAddress = normalizePostcode(postcode);
+      // Calculate absolute end index of this postcode in the original text
+      // postcodeMatch.index is the position in textAfterCollection
+      // postcodeMatch[0].length is the length of the matched postcode (with or without space)
+      const postcodeStartInOriginal = keywordEndIndex + postcodeMatch.index;
+      collectionPostcodeEndIndex = postcodeStartInOriginal + postcodeMatch[0].length;
+      collectionConfidence = 95; // High confidence - found after "Collection"
+    }
+  }
+
+  // If no collection postcode found, don't use any postcode
+  // DO NOT fallback to first postcode - it might be before "Collection"
+  if (!collectionAddress) {
+    collectionAddress = "Not found";
+    collectionConfidence = 0;
   }
 
   confidence.collection = collectionConfidence;
 
   // Extract delivery postcode
-  // Look for postcodes after "Delivery" or "Deliver" or similar
-  const deliveryKeywords = /delivery|deliver|destination|drop\s?off/gi;
+  // ONLY use postcodes that come AFTER the collection postcode
   let deliveryAddress = "";
   let deliveryConfidence = 0;
 
-  const deliveryMatches = rawText.matchAll(
-      new RegExp(`(${deliveryKeywords.source}).*?` +
-      `(${postcodeRegex.source})`, "gi"));
-  const deliveryMatchArray = Array.from(deliveryMatches);
+  if (collectionPostcodeEndIndex >= 0 && collectionAddress !== "Not found") {
+    // Find text after the collection postcode ends
+    const textAfterCollectionPostcode = rawText.substring(collectionPostcodeEndIndex);
 
-  if (deliveryMatchArray.length > 0) {
-    deliveryAddress = normalizePostcode(deliveryMatchArray[0][2]);
-    deliveryConfidence = 95; // High confidence - found with keyword
-  } else if (postcodes.length >= 2) {
-    deliveryAddress = normalizePostcode(postcodes[1]);
-    deliveryConfidence = 60; // Medium confidence - second postcode found
-  } else if (postcodes.length === 1) {
-    // If only one postcode, use it for both collection and delivery
-    deliveryAddress = normalizePostcode(postcodes[0]);
-    deliveryConfidence = 40; // Low confidence - same as collection
+    // Find first postcode after the collection postcode
+    // Use case-insensitive flag to handle both uppercase and lowercase
+    const postcodeRegexAfter = /([A-Za-z]{1,2}\d{1,2}[A-Za-z]?)\s?(\d[A-Za-z]{2})/gi;
+    const postcodeMatch = postcodeRegexAfter.exec(textAfterCollectionPostcode);
+
+    if (postcodeMatch) {
+      // Convert to uppercase for consistency
+      const postcode = (postcodeMatch[1] + postcodeMatch[2]).toUpperCase();
+      deliveryAddress = normalizePostcode(postcode);
+      deliveryConfidence = 95; // High confidence - found after collection postcode
+    } else {
+      deliveryAddress = "Not found";
+      deliveryConfidence = 0;
+    }
   } else {
+    // No collection postcode found, so no delivery postcode
     deliveryAddress = "Not found";
     deliveryConfidence = 0;
   }
@@ -1473,39 +1510,82 @@ function parseJobTextSimple(rawText) {
   const regKeywords = /\b(?:reg(?:istration)?|vrm|number\s?plate)\b/gi;
 
   // Comprehensive UK registration patterns
-  const currentRegex = /\b([A-Z]{2}\d{2}\s?[A-Z]{3})\b/gi; // AA11 AAA
-  const prefixRegex = /\b([A-Z]\d{1,3}\s?[A-Z]{3})\b/gi; // A111 AAA
-  const suffixRegex = /\b([A-Z]{3}\s?\d{1,3}[A-Z])\b/gi; // AAA 111A
-  const oldRegex = /\b([A-Z]{3}\s?\d{1,3})\b/gi; // AAA 111
+  // Updated to handle cases with or without spaces
+  const currentRegex = /([A-Z]{2}\d{2})\s?([A-Z]{3})/gi; // AA11 AAA (with or without space)
+  const prefixRegex = /([A-Z]\d{1,3})\s?([A-Z]{3})/gi; // A111 AAA (with or without space)
+  const suffixRegex = /([A-Z]{3})\s?(\d{1,3}[A-Z])/gi; // AAA 111A (with or without space)
+  const oldRegex = /([A-Z]{3})\s?(\d{1,3})/gi; // AAA 111 (with or without space)
 
   let regNumber = "";
   let regConfidence = 0;
   let isChassisNumber = false;
 
+  // Helper function to combine REG parts and normalize
+  const combineRegParts = (match) => {
+    if (match[1] && match[2]) {
+      return (match[1] + " " + match[2]).toUpperCase().trim();
+    }
+    return match[0].replace(/\s+/g, " ").toUpperCase().trim();
+  };
+
   // First, try to find registration with keywords
-  const regWithKeywordRegex = new RegExp(
-      `(${regKeywords.source}).*?` +
-      `(${currentRegex.source}|${prefixRegex.source}|` +
-      `${suffixRegex.source}|${oldRegex.source})`,
-      "gi");
+  let regFound = false;
+  const regKeywordMatches = Array.from(rawText.matchAll(regKeywords));
 
-  const regMatches = Array.from(rawText.matchAll(regWithKeywordRegex));
+  for (const keywordMatch of regKeywordMatches) {
+    const textAfterKeyword = rawText.substring(keywordMatch.index + keywordMatch[0].length);
 
-  if (regMatches.length > 0) {
-    // Found with keyword - high confidence
-    regNumber = regMatches[0][2].replace(/\s+/g, " ").toUpperCase().trim();
-    regConfidence = 90;
-  } else {
+    // Try each REG pattern in the text after keyword
+    let regMatch = currentRegex.exec(textAfterKeyword);
+    if (!regMatch) {
+      regMatch = prefixRegex.exec(textAfterKeyword);
+    }
+    if (!regMatch) {
+      regMatch = suffixRegex.exec(textAfterKeyword);
+    }
+    if (!regMatch) {
+      regMatch = oldRegex.exec(textAfterKeyword);
+    }
+
+    if (regMatch) {
+      regNumber = combineRegParts(regMatch);
+      regConfidence = 90; // High confidence - found with keyword
+      regFound = true;
+      break;
+    }
+
+    // Reset regex lastIndex for next iteration
+    currentRegex.lastIndex = 0;
+    prefixRegex.lastIndex = 0;
+    suffixRegex.lastIndex = 0;
+    oldRegex.lastIndex = 0;
+  }
+
+  if (!regFound) {
     // Try to find registration patterns without keyword
-    const allRegMatches = [
-      ...Array.from(rawText.matchAll(currentRegex)),
-      ...Array.from(rawText.matchAll(prefixRegex)),
-      ...Array.from(rawText.matchAll(suffixRegex)),
-    ];
+    const allRegMatches = [];
+
+    // Reset regex lastIndex
+    currentRegex.lastIndex = 0;
+    prefixRegex.lastIndex = 0;
+    suffixRegex.lastIndex = 0;
+    oldRegex.lastIndex = 0;
+
+    let match;
+    while ((match = currentRegex.exec(rawText)) !== null) {
+      allRegMatches.push({match: combineRegParts(match), index: match.index});
+    }
+    while ((match = prefixRegex.exec(rawText)) !== null) {
+      allRegMatches.push({match: combineRegParts(match), index: match.index});
+    }
+    while ((match = suffixRegex.exec(rawText)) !== null) {
+      allRegMatches.push({match: combineRegParts(match), index: match.index});
+    }
 
     if (allRegMatches.length > 0) {
-      regNumber = allRegMatches[0][0].replace(/\s+/g, " ")
-          .toUpperCase().trim();
+      // Sort by index to get first occurrence
+      allRegMatches.sort((a, b) => a.index - b.index);
+      regNumber = allRegMatches[0].match;
       regConfidence = 65; // Medium confidence - pattern found without keyword
     } else {
       // Check for chassis number
