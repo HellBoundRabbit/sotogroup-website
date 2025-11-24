@@ -32,7 +32,7 @@
         }
 
         .back-btn {
-            position: absolute;
+            position: fixed;
             top: 20px;
             left: 20px;
             background: rgba(255, 255, 255, 0.1);
@@ -43,6 +43,7 @@
             text-decoration: none;
             font-size: 14px;
             transition: all 0.3s ease;
+            z-index: 100;
         }
 
         .back-btn:hover {
@@ -91,7 +92,7 @@
             position: relative;
         }
         
-        .container, .back-btn {
+        .container {
             position: relative;
             z-index: 10;
         }

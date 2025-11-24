@@ -33,7 +33,7 @@
         }
 
         .back-btn {
-            position: absolute;
+            position: fixed;
             top: 20px;
             left: 20px;
             background: rgba(255, 255, 255, 0.1);
@@ -44,6 +44,7 @@
             text-decoration: none;
             font-size: 14px;
             transition: all 0.3s ease;
+            z-index: 100;
         }
 
         .back-btn:hover {
@@ -129,9 +130,45 @@
             position: relative;
         }
         
-        .container, .back-btn {
+        .container {
             position: relative;
             z-index: 10;
+        }
+        
+        /* Mobile responsive */
+        @media (max-width: 768px) {
+            .software-grid {
+                grid-template-columns: 1fr;
+                gap: 1.5rem;
+            }
+            
+            .software-logo {
+                width: 120px;
+                height: 120px;
+            }
+            
+            .container {
+                padding: 1.5rem;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .software-logo {
+                width: 100px;
+                height: 100px;
+            }
+            
+            .container {
+                padding: 1rem;
+            }
+            
+            h1 {
+                font-size: 1.75rem;
+            }
         }
     </style>
     <script src="../assets/js/ogl.min.js"></script>

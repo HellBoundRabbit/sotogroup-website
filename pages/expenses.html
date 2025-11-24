@@ -143,6 +143,53 @@
             z-index: 9999;
         }
         
+        /* Loading spinner */
+        .spinner-wrapper {
+            width: 32px;
+            height: 32px;
+            position: relative;
+        }
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            animation: spinning82341 1.7s linear infinite;
+            filter: blur(1px);
+        }
+        .spinner::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(186, 66, 255) 35%, rgb(0, 225, 255));
+            box-shadow: 0px -5px 20px 0px rgb(186, 66, 255), 0px 5px 20px 0px rgb(0, 225, 255);
+        }
+        .spinner1 {
+            background-color: rgb(36, 36, 36);
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2;
+        }
+        @keyframes spinning82341 {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        
         @keyframes flash {
             0%, 50% { opacity: 1; }
             51%, 100% { opacity: 0.3; }
@@ -226,7 +273,10 @@
     <!-- Loading Overlay -->
     <div id="loadingOverlay" class="loading-overlay">
         <div class="flex items-center gap-4">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            <div class="spinner-wrapper">
+                <div class="spinner"></div>
+                <div class="spinner1"></div>
+            </div>
             <span class="text-gray-400">Loading...</span>
         </div>
     </div>
@@ -637,7 +687,12 @@
                         }
                     }
 
-                    batchData.expenses = expensesByBatch[doc.id] || [];
+                    // Filter out expenses with incomplete photos (photosUploading flag)
+                    const allExpenses = expensesByBatch[doc.id] || [];
+                    batchData.expenses = allExpenses.filter(exp => {
+                        // Only show expenses where photosUploading is false or undefined (not actively uploading)
+                        return exp.photosUploading !== true;
+                    });
                     allBatches.push(batchData);
                 }
 

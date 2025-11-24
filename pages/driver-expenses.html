@@ -129,23 +129,13 @@
             animation: flash 1s infinite;
         }
         
-        /* Animated border panel */
+        /* Animated border panel base */
         .animated-border-panel {
             position: relative;
             background: #1a1f24;
             border-radius: 0.5rem;
             padding: 1rem;
             isolation: isolate;
-        }
-        .animated-border-panel::before {
-            content: '';
-            position: absolute;
-            inset: -2px;
-            border-radius: 0.5rem;
-            background: linear-gradient(45deg, rgb(186, 66, 255), rgb(0, 225, 255), rgb(186, 66, 255));
-            background-size: 200% 200%;
-            animation: borderGradient 3s ease infinite;
-            z-index: -1;
         }
         .animated-border-panel::after {
             content: '';
@@ -155,19 +145,323 @@
             background: #1a1f24;
             z-index: -1;
         }
+        
+        /* Draft: black and grey */
+        .animated-border-draft::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 0.5rem;
+            background: linear-gradient(45deg, rgb(0, 0, 0), rgb(128, 128, 128), rgb(0, 0, 0));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
+        
+        /* Pending/Validated: black and orange */
+        .animated-border-pending::before,
+        .animated-border-validated::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 0.5rem;
+            background: linear-gradient(45deg, rgb(0, 0, 0), rgb(255, 165, 0), rgb(0, 0, 0));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
+        
+        /* Paid: black and green */
+        .animated-border-paid::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 0.5rem;
+            background: linear-gradient(45deg, rgb(0, 0, 0), rgb(0, 255, 0), rgb(0, 0, 0));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
+        
+        /* Returned: solid glowing red */
+        .animated-border-returned::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 0.5rem;
+            background: linear-gradient(45deg, rgb(255, 0, 0), rgb(255, 100, 100), rgb(255, 0, 0));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            box-shadow: 0px -5px 20px 0px rgb(255, 0, 0), 0px 5px 20px 0px rgb(255, 100, 100);
+            z-index: -1;
+        }
+        
         @keyframes borderGradient {
             0% { background-position: 0% 50%; }
             50% { background-position: 100% 50%; }
             100% { background-position: 0% 50%; }
+        }
+        
+        /* Animated border modal */
+        .animated-border-modal {
+            position: relative;
+            background: #1a1f24;
+            border-radius: 1rem;
+            isolation: isolate;
+        }
+        .animated-border-modal::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 1rem;
+            background: #1a1f24;
+            z-index: -1;
+        }
+        
+        /* Draft modal: black and grey */
+        .animated-border-modal-draft::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 1rem;
+            background: linear-gradient(45deg, rgb(0, 0, 0), rgb(128, 128, 128), rgb(0, 0, 0));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
+        
+        /* Pending/Validated modal: black and orange */
+        .animated-border-modal-pending::before,
+        .animated-border-modal-validated::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 1rem;
+            background: linear-gradient(45deg, rgb(0, 0, 0), rgb(255, 165, 0), rgb(0, 0, 0));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
+        
+        /* Paid modal: black and green */
+        .animated-border-modal-paid::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 1rem;
+            background: linear-gradient(45deg, rgb(0, 0, 0), rgb(0, 255, 0), rgb(0, 0, 0));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
+        
+        /* Returned modal: solid glowing red */
+        .animated-border-modal-returned::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 1rem;
+            background: linear-gradient(45deg, rgb(255, 0, 0), rgb(255, 100, 100), rgb(255, 0, 0));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            box-shadow: 0px -5px 20px 0px rgb(255, 0, 0), 0px 5px 20px 0px rgb(255, 100, 100);
+            z-index: -1;
+        }
+        
+        /* Animated button borders */
+        .animated-button {
+            position: relative;
+            background: rgb(36, 36, 36);
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            isolation: isolate;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 48px;
+        }
+        .animated-button::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 0.5rem;
+            background: rgb(36, 36, 36);
+            z-index: -1;
+        }
+        
+        /* Add Expense: purple and cyan */
+        .animated-button-add::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 0.5rem;
+            background: linear-gradient(45deg, rgb(186, 66, 255), rgb(0, 225, 255), rgb(186, 66, 255));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
+        
+        /* Save Draft: black and grey */
+        .animated-button-draft::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 0.5rem;
+            background: linear-gradient(45deg, rgb(0, 0, 0), rgb(128, 128, 128), rgb(0, 0, 0));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
+        
+        /* Submit: black and green */
+        .animated-button-submit::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 0.5rem;
+            background: linear-gradient(45deg, rgb(0, 0, 0), rgb(0, 255, 0), rgb(0, 0, 0));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
+        
+        /* Discard: red and black */
+        .animated-button-discard::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 0.5rem;
+            background: linear-gradient(45deg, rgb(255, 0, 0), rgb(0, 0, 0), rgb(255, 0, 0));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
+        
+        /* Save Expense: green and black (same as submit) */
+        .animated-button-save::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 0.5rem;
+            background: linear-gradient(45deg, rgb(0, 255, 0), rgb(0, 0, 0), rgb(0, 255, 0));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
+        
+        /* Expense Modal: purple and cyan */
+        .animated-border-expense-modal {
+            position: relative;
+            background: #1a1f24;
+            border-radius: 1rem;
+            isolation: isolate;
+        }
+        .animated-border-expense-modal::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 1rem;
+            background: #1a1f24;
+            z-index: -1;
+        }
+        .animated-border-expense-modal::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 1rem;
+            background: linear-gradient(45deg, rgb(186, 66, 255), rgb(0, 225, 255), rgb(186, 66, 255));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
+        
+        /* Circular animated buttons */
+        .spinner-wrapper {
+            width: 56px;
+            height: 56px;
+            position: relative;
+        }
+        .spinner {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            animation: spinning82341 1.7s linear infinite;
+            filter: blur(1px);
+        }
+        .spinner::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(186, 66, 255) 35%, rgb(0, 225, 255));
+            box-shadow: 0px -5px 20px 0px rgb(186, 66, 255), 0px 5px 20px 0px rgb(0, 225, 255);
+        }
+        .spinner-green {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            animation: spinning82341 1.7s linear infinite;
+            filter: blur(1px);
+        }
+        .spinner-green::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(0, 0, 0) 35%, rgb(0, 255, 0));
+            box-shadow: 0px -5px 20px 0px rgb(0, 0, 0), 0px 5px 20px 0px rgb(0, 255, 0);
+        }
+        .spinner1 {
+            background-color: rgb(36, 36, 36);
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2;
+        }
+        .spinner-icon {
+            position: relative;
+            z-index: 3;
+            color: white;
+            font-size: 1.875rem;
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+            filter: none !important;
+        }
+        @keyframes spinning82341 {
+            to {
+                transform: rotate(360deg);
+            }
         }
     </style>
 </head>
 <body class="bg-black text-white min-h-screen">
 
     <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="fixed inset-0 bg-black flex items-center justify-center z-50">
+    <div id="loadingOverlay" class="fixed inset-0 bg-black flex items-center justify-center z-[9999]">
         <div class="text-center">
-            <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <div class="spinner-wrapper mx-auto mb-4">
+                <div class="spinner"></div>
+                <div class="spinner1"></div>
+            </div>
             <p class="text-gray-400">Loading your expenses...</p>
         </div>
     </div>
@@ -184,22 +478,32 @@
     </div>
 
     <!-- Top Navigation -->
-    <div id="topNav" class="bg-[#1a1f24] border-b border-gray-800 sticky top-0 z-50">
+    <div id="topNav" class="bg-black border-b border-gray-800 sticky top-0 z-50 hidden">
         <div class="flex items-center justify-between px-4 py-3">
-            <button onclick="goToPortal()" class="touch-target flex items-center text-gray-400 hover:text-white transition-colors">
-                <span class="material-symbols-outlined">arrow_back</span>
+            <button onclick="goToPortal()" class="touch-target">
+                <div class="spinner-wrapper">
+                    <div class="spinner"></div>
+                    <div class="spinner1">
+                        <span class="material-symbols-outlined spinner-icon">arrow_back</span>
+                    </div>
+                </div>
             </button>
             <div class="flex items-center gap-3">
                 <h1 class="text-xl font-semibold">My Expenses</h1>
             </div>
-            <button onclick="window.location.href='/pages/driver-paid-expenses.html'" class="touch-target flex items-center text-green-500 hover:text-green-400 transition-colors text-sm font-semibold">
-                Processed Expenses
+            <button onclick="window.location.href='/pages/driver-paid-expenses.html'" class="touch-target">
+                <div class="spinner-wrapper">
+                    <div class="spinner"></div>
+                    <div class="spinner1">
+                        <span class="material-symbols-outlined spinner-icon">receipt</span>
+                    </div>
+                </div>
             </button>
         </div>
     </div>
 
     <!-- Main Content -->
-    <div id="mainContent" class="container max-w-2xl mx-auto px-4 py-6 pb-24">
+    <div id="mainContent" class="container max-w-2xl mx-auto px-4 py-6 pb-24 hidden">
         
         <!-- Empty State -->
         <div id="emptyState" class="hidden text-center py-16">
@@ -216,7 +520,7 @@
 
         <!-- Draft Batches Section -->
         <div id="draftSection" class="hidden mb-6">
-            <h2 class="text-sm font-bold text-blue-500 mb-3 px-1">DRAFTS</h2>
+            <h2 class="text-sm font-bold text-gray-500 mb-3 px-1">DRAFTS</h2>
             <div id="draftBatches" class="space-y-3"></div>
         </div>
 
@@ -241,17 +545,22 @@
     </div>
 
     <!-- Floating Add Button -->
-    <button onclick="createNewBatch()" class="fixed bottom-6 right-6 bg-green-600 hover:bg-green-700 text-white rounded-full w-16 h-16 flex items-center justify-center shadow-lg transition-all transform hover:scale-110 active:scale-95 z-40">
-        <span class="material-symbols-outlined text-3xl">add</span>
+    <button onclick="createNewBatch()" class="fixed bottom-6 right-6 z-40">
+        <div class="spinner-wrapper">
+            <div class="spinner"></div>
+            <div class="spinner1">
+                <span class="material-symbols-outlined spinner-icon">add</span>
+            </div>
+        </div>
     </button>
 
     <!-- Batch Detail Modal -->
     <div id="batchModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 overflow-y-auto">
         <div class="min-h-screen px-4 flex items-end sm:items-center justify-center">
-            <div class="bg-[#1a1f24] rounded-t-3xl sm:rounded-3xl w-full max-w-2xl transform transition-all">
+            <div id="batchModalContent" class="bg-[#1a1f24] rounded-2xl w-full max-w-2xl transform transition-all animated-border-modal">
                 
                 <!-- Modal Header -->
-                <div class="sticky top-0 bg-[#1a1f24] border-b border-gray-800 rounded-t-3xl z-10">
+                <div class="sticky top-0 bg-[#1a1f24] border-b border-gray-800 rounded-t-2xl z-10">
                 <div class="flex items-center justify-between px-6 py-4">
                 <h2 id="modalTitle" class="text-lg font-semibold px-4 py-2 rounded-lg border">DRAFT</h2>
                 <div class="flex gap-2">
@@ -295,9 +604,9 @@
                 <div id="expensesList" class="space-y-2 mb-4">
                 <!-- Expenses will be added here -->
                 </div>
-                <button id="addExpenseBtn" onclick="addExpense()" class="w-1/2 mx-auto py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2 touch-target">
-                <span class="material-symbols-outlined">add</span>
-                Add Expense
+                <button id="addExpenseBtn" onclick="addExpense()" class="w-1/2 mx-auto animated-button animated-button-add flex items-center justify-center gap-2 touch-target">
+                <span class="material-symbols-outlined text-white">add</span>
+                <span class="text-white font-semibold">Add Expense</span>
                 </button>
                 </div>
 
@@ -314,11 +623,11 @@
 
                 <!-- Action Buttons -->
                 <div class="space-y-3" id="actionButtons">
-                <button onclick="saveDraft()" class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors touch-target">
-                Save as Draft
+                <button onclick="saveDraft()" class="w-full animated-button animated-button-draft touch-target">
+                <span class="text-white font-semibold">Save as Draft</span>
                 </button>
-                <button id="submitBtn" onclick="submitBatch()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors touch-target">
-                Submit for Processing
+                <button id="submitBtn" onclick="submitBatch()" class="w-full animated-button animated-button-submit touch-target">
+                <span class="text-white font-semibold">Submit for Processing</span>
                 </button>
                 </div>
 
@@ -330,10 +639,10 @@
     <!-- Add Expense Modal -->
     <div id="expenseModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 overflow-y-auto">
         <div class="min-h-screen px-4 flex items-end sm:items-center justify-center">
-            <div class="bg-[#1a1f24] rounded-t-3xl sm:rounded-3xl w-full max-w-lg transform transition-all">
+            <div class="bg-[#1a1f24] rounded-2xl w-full max-w-lg transform transition-all animated-border-expense-modal">
                 
                 <!-- Modal Header -->
-                <div class="sticky top-0 bg-[#1a1f24] border-b border-gray-800 rounded-t-3xl z-10">
+                <div class="sticky top-0 bg-[#1a1f24] border-b border-gray-800 rounded-t-2xl z-10">
                 <div class="flex items-center justify-between px-6 py-4">
                 <button onclick="closeExpenseModal()" class="touch-target text-gray-400 hover:text-white transition-colors">
                 <span class="material-symbols-outlined">close</span>
@@ -347,7 +656,7 @@
                 <div class="p-6 pb-24">
                 
                 <!-- Category Selection -->
-                <div class="mb-6">
+                <div id="categorySection" class="mb-6">
                 <label class="text-sm text-gray-400 mb-3 block">CATEGORY</label>
                 <div class="grid grid-cols-2 gap-3">
                 <button onclick="selectCategory('Fuel')" class="category-btn p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-2">
@@ -429,8 +738,8 @@
                 </div>
 
                 <!-- Save Button -->
-                <button onclick="saveExpense()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors touch-target">
-                Save Expense
+                <button id="saveExpenseBtn" onclick="saveExpense()" class="w-full animated-button animated-button-save touch-target">
+                <span class="text-white font-semibold">Save Expense</span>
                 </button>
 
                 </div>
@@ -991,7 +1300,22 @@
                 overlay.setAttribute('data-step', 'before-load-batches');
                 }
                 await loadExpenseBatches();
-                document.getElementById('loadingOverlay').style.display = 'none';
+                
+                // Hide loading overlay and show content
+                const loadingOverlay = document.getElementById('loadingOverlay');
+                const topNav = document.getElementById('topNav');
+                const mainContent = document.getElementById('mainContent');
+                
+                if (loadingOverlay) {
+                    loadingOverlay.style.display = 'none';
+                }
+                if (topNav) {
+                    topNav.classList.remove('hidden');
+                }
+                if (mainContent) {
+                    mainContent.classList.remove('hidden');
+                }
+                
                 console.log('Loading complete!');
                 window.__driverExpensesDebug.step = 'after-load-batches';
                 if (overlay) {
@@ -1017,6 +1341,21 @@
                 } catch (error) {
                 console.error('Error loading user data:', error);
                 notifyError('Error loading user data. Please try again.');
+                
+                // Still show content even if there's an error
+                const loadingOverlay = document.getElementById('loadingOverlay');
+                const topNav = document.getElementById('topNav');
+                const mainContent = document.getElementById('mainContent');
+                
+                if (loadingOverlay) {
+                    loadingOverlay.style.display = 'none';
+                }
+                if (topNav) {
+                    topNav.classList.remove('hidden');
+                }
+                if (mainContent) {
+                    mainContent.classList.remove('hidden');
+                }
                 }
         }
 
@@ -1207,8 +1546,13 @@
                 const expenseKey = expenseData.id || `${doc.id}_${expenseData.category || 'expense'}_${expenseData.createdAt?.seconds || expenseData.createdAt || Math.random()}`;
                 expenseMap.set(expenseKey, expenseData);
                 }
-                batchData.expenses = Array.from(expenseMap.values());
-                console.log(`Loaded ${batchData.expenses.length} expenses for batch ${doc.id}`);
+                // Filter out expenses with incomplete photos (photosUploading flag)
+                const allExpenses = Array.from(expenseMap.values());
+                batchData.expenses = allExpenses.filter(exp => {
+                    // Only show expenses where photosUploading is false or undefined (not actively uploading)
+                    return exp.photosUploading !== true;
+                });
+                console.log(`Loaded ${batchData.expenses.length} expenses for batch ${doc.id} (filtered ${allExpenses.length - batchData.expenses.length} with incomplete photos)`);
                 } catch (expenseError) {
                 console.error(`Error loading expenses for batch ${doc.id}:`, expenseError);
                 batchData.expenses = [];
@@ -1335,8 +1679,22 @@
                 }
                 }
                 
+                // Get border class based on status
+                let borderClass = 'animated-border-panel';
+                if (batch.status === 'draft') {
+                    borderClass = 'animated-border-panel animated-border-draft';
+                } else if (batch.status === 'pending') {
+                    borderClass = 'animated-border-panel animated-border-pending';
+                } else if (batch.status === 'validated') {
+                    borderClass = 'animated-border-panel animated-border-validated';
+                } else if (batch.status === 'paid') {
+                    borderClass = 'animated-border-panel animated-border-paid';
+                } else if (batch.status === 'returned') {
+                    borderClass = 'animated-border-panel animated-border-returned';
+                }
+                
                 return `
-                <div onclick="openBatch('${batch.id}')" class="animated-border-panel cursor-pointer fade-in">
+                <div onclick="openBatch('${batch.id}')" class="${borderClass} cursor-pointer fade-in">
                 <div class="flex items-start justify-between mb-2">
                 <div class="license-plate">${batch.registration}</div>
                 <span class="${statusColor} px-3 py-1 rounded-full text-xs font-semibold uppercase">${batch.status}</span>
@@ -1401,11 +1759,11 @@
             // Show action buttons
             const actionButtons = document.getElementById('actionButtons');
             actionButtons.innerHTML = `
-                <button onclick="saveDraft()" class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors touch-target">
-                Save as Draft
+                <button onclick="saveDraft()" class="w-full animated-button animated-button-draft touch-target">
+                <span class="text-white font-semibold">Save as Draft</span>
                 </button>
-                <button onclick="submitBatch()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors touch-target">
-                Submit for Processing
+                <button onclick="submitBatch()" class="w-full animated-button animated-button-submit touch-target">
+                <span class="text-white font-semibold">Submit for Processing</span>
                 </button>
             `;
             
@@ -1461,6 +1819,30 @@
             // Update global reference for offline storage
             window.currentBatch = currentBatch;
             
+            // Apply animated border to modal based on status
+            const modalContent = document.getElementById('batchModalContent');
+            if (modalContent) {
+                // Remove all border classes
+                modalContent.classList.remove(
+                    'animated-border-modal-draft',
+                    'animated-border-modal-pending',
+                    'animated-border-modal-validated',
+                    'animated-border-modal-paid',
+                    'animated-border-modal-returned'
+                );
+                
+                // Add appropriate border class
+                if (batch.status === 'draft') {
+                    modalContent.classList.add('animated-border-modal-draft');
+                } else if (batch.status === 'pending' || batch.status === 'validated') {
+                    modalContent.classList.add('animated-border-modal-pending');
+                } else if (batch.status === 'paid') {
+                    modalContent.classList.add('animated-border-modal-paid');
+                } else if (batch.status === 'returned') {
+                    modalContent.classList.add('animated-border-modal-returned');
+                }
+            }
+            
             // Set title to status with styling
             setStatusTitle(batch.status);
             document.getElementById('regInput').value = batch.registration;
@@ -1503,30 +1885,29 @@
             
             if (batch.status === 'returned') {
                 // For returned batches, only show resubmit and discard buttons
-                submitBtn.textContent = 'Resubmit for Processing';
                 actionButtons.innerHTML = `
-                <button onclick="submitBatch()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors touch-target">
-                Resubmit for Processing
+                <button onclick="submitBatch()" class="w-full animated-button animated-button-submit touch-target">
+                <span class="text-white font-semibold">Resubmit for Processing</span>
                 </button>
-                <button onclick="discardReturnedBatch()" class="w-full py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors touch-target">
-                Discard Expense
+                <button onclick="discardReturnedBatch()" class="w-full animated-button animated-button-discard touch-target">
+                <span class="text-white font-semibold">Discard Expense</span>
                 </button>
                 `;
             } else if (batch.status === 'draft') {
                 // For drafts, show normal buttons
                 actionButtons.innerHTML = `
-                <button onclick="saveDraft()" class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors touch-target">
-                Save as Draft
+                <button onclick="saveDraft()" class="w-full animated-button animated-button-draft touch-target">
+                <span class="text-white font-semibold">Save as Draft</span>
                 </button>
-                <button onclick="submitBatch()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors touch-target">
-                Submit for Processing
+                <button onclick="submitBatch()" class="w-full animated-button animated-button-submit touch-target">
+                <span class="text-white font-semibold">Submit for Processing</span>
                 </button>
                 `;
             } else if (batch.status === 'pending' || batch.status === 'validated') {
                 // For submitted batches, show "Add Additional Expenses" button
                 actionButtons.innerHTML = `
-                <button onclick="addAdditionalExpenses()" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors touch-target">
-                Add Additional Expenses
+                <button onclick="addAdditionalExpenses()" class="w-full animated-button animated-button-add touch-target">
+                <span class="text-white font-semibold">Add Additional Expenses</span>
                 </button>
                 `;
             } else {
@@ -1821,11 +2202,20 @@
             }
             
             // Hide category selector and amount input, show only photo section
-            document.getElementById('categorySection').classList.add('hidden');
-            document.getElementById('amountInput').parentElement.classList.add('hidden');
+            const categorySection = document.getElementById('categorySection');
+            const amountInputParent = document.getElementById('amountInput')?.parentElement;
             const saveBtn = document.getElementById('saveExpenseBtn');
-            saveBtn.textContent = 'Add Photos';
-            saveBtn.onclick = savePhotosToExpense;
+            
+            if (categorySection) {
+                categorySection.classList.add('hidden');
+            }
+            if (amountInputParent) {
+                amountInputParent.classList.add('hidden');
+            }
+            if (saveBtn) {
+                saveBtn.innerHTML = '<span class="text-white font-semibold">Add Photos</span>';
+                saveBtn.onclick = savePhotosToExpense;
+            }
             
             document.getElementById('expenseModal').classList.remove('hidden');
         }
@@ -2132,47 +2522,8 @@
                 return;
             }
 
-            // CRITICAL: Check for pending photo uploads before saving
-            const batchIdForUploads = currentBatch.localId || currentBatch.id;
-            if (batchIdForUploads && window.uploadQueue) {
-                const useLocalId = !!currentBatch.localId && !currentBatch.id;
-                const pendingCheck = await window.uploadQueue.checkPendingUploads(batchIdForUploads, useLocalId);
-                
-                if (pendingCheck.hasPending) {
-                    console.warn('[saveDraft] Blocking save: photos still uploading', {
-                        pendingCount: pendingCheck.count,
-                        tasks: pendingCheck.tasks.map(t => ({
-                            expenseIndex: t.expenseIndex,
-                            photoIndex: t.photoIndex,
-                            status: t.status
-                        }))
-                    });
-                    
-                    // Try to wait for uploads to complete (with timeout)
-                    if (navigator.onLine) {
-                        notifyInfo(`Waiting for ${pendingCheck.count} photo${pendingCheck.count === 1 ? '' : 's'} to upload...`, 'Uploading Photos');
-                        
-                        const waitResult = await window.uploadQueue.waitForUploads(batchIdForUploads, useLocalId, 30000);
-                        
-                        if (!waitResult.success) {
-                            notifyError(
-                                `Cannot save draft: ${waitResult.remaining} photo${waitResult.remaining === 1 ? '' : 's'} still uploading. Please wait for uploads to complete or remove the photos.`,
-                                'Photos Still Uploading'
-                            );
-                            return; // Block the save
-                        }
-                        
-                        notifySuccess('All photos uploaded! Saving draft...', 'Uploads Complete');
-                    } else {
-                        // Offline - block the save entirely
-                        notifyError(
-                            `Cannot save draft: ${pendingCheck.count} photo${pendingCheck.count === 1 ? '' : 's'} not yet uploaded. Please wait until you're online and photos have finished uploading.`,
-                            'Photos Not Uploaded'
-                        );
-                        return; // Block the save
-                    }
-                }
-            }
+            // Photos will be uploaded synchronously in saveExpenses before expenses are saved
+            // No need to check for pending uploads here
 
             // Prepare batch details prior to queueing so the offline copy is complete
             currentBatch.registration = registration;
@@ -2215,14 +2566,8 @@
                 }
                 }
 
-                // Check if photos are still uploading
-                const finalPhotoCheck = batchIdForUploads && window.uploadQueue ? await window.uploadQueue.checkPendingUploads(batchIdForUploads, useLocalId) : { hasPending: false, count: 0 };
-                if (finalPhotoCheck.hasPending) {
-                    // Photos still uploading - banner will show automatically
-                    notifyInfo('Draft saved. Photos are uploading in the background. Please keep this page open until uploads complete.', 'Draft Saved');
-                } else {
-                    notifySuccess('Draft saved successfully.', 'Draft Saved');
-                }
+                // All photos were uploaded synchronously in saveExpenses before expenses were saved
+                notifySuccess('Draft saved successfully. All photos have been uploaded.', 'Draft Saved');
                 document.getElementById('batchModal').classList.add('hidden');
                 currentBatch = null;
                 window.currentBatch = null;
@@ -2249,47 +2594,8 @@
                 return;
             }
 
-            // CRITICAL: Check for pending photo uploads before submitting
-            const batchIdForUploads = currentBatch.localId || currentBatch.id;
-            if (batchIdForUploads && window.uploadQueue) {
-                const useLocalId = !!currentBatch.localId && !currentBatch.id;
-                const pendingCheck = await window.uploadQueue.checkPendingUploads(batchIdForUploads, useLocalId);
-                
-                if (pendingCheck.hasPending) {
-                    console.warn('[submitBatch] Blocking submission: photos still uploading', {
-                        pendingCount: pendingCheck.count,
-                        tasks: pendingCheck.tasks.map(t => ({
-                            expenseIndex: t.expenseIndex,
-                            photoIndex: t.photoIndex,
-                            status: t.status
-                        }))
-                    });
-                    
-                    // Try to wait for uploads to complete (with timeout)
-                    if (navigator.onLine) {
-                        notifyInfo(`Waiting for ${pendingCheck.count} photo${pendingCheck.count === 1 ? '' : 's'} to upload before submission...`, 'Uploading Photos');
-                        
-                        const waitResult = await window.uploadQueue.waitForUploads(batchIdForUploads, useLocalId, 30000);
-                        
-                        if (!waitResult.success) {
-                            notifyError(
-                                `Cannot submit batch: ${waitResult.remaining} photo${waitResult.remaining === 1 ? '' : 's'} still uploading. Please wait for uploads to complete or remove the photos before submitting.`,
-                                'Photos Still Uploading'
-                            );
-                            return; // Block the submission
-                        }
-                        
-                        notifySuccess('All photos uploaded! Proceeding with submission...', 'Uploads Complete');
-                    } else {
-                        // Offline - block the submission entirely
-                        notifyError(
-                            `Cannot submit batch: ${pendingCheck.count} photo${pendingCheck.count === 1 ? '' : 's'} not yet uploaded. Please wait until you're online and all photos have finished uploading.`,
-                            'Photos Not Uploaded'
-                        );
-                        return; // Block the submission
-                    }
-                }
-            }
+            // Photos will be uploaded synchronously in saveExpenses before expenses are saved
+            // No need to check for pending uploads here
 
             const confirmed = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
                 title: 'Submit Expense Batch',
@@ -2354,14 +2660,8 @@
                     }
                 }
 
-                // Check if photos are still uploading
-                const finalPhotoCheck = batchIdForUploads && window.uploadQueue ? await window.uploadQueue.checkPendingUploads(batchIdForUploads, useLocalId) : { hasPending: false, count: 0 };
-                if (finalPhotoCheck.hasPending) {
-                    // Photos still uploading - banner will show automatically
-                    notifyInfo('Batch submitted. Photos are uploading in the background. Please keep this page open until uploads complete.', 'Submitted');
-                } else {
-                    notifySuccess('Batch submitted successfully! All photos have been uploaded.', 'Submitted');
-                }
+                // All photos were uploaded synchronously in saveExpenses before expenses were saved
+                notifySuccess('Batch submitted successfully! All photos have been uploaded.', 'Submitted');
                 document.getElementById('batchModal').classList.add('hidden');
                 currentBatch = null;
                 window.currentBatch = null;
@@ -2411,129 +2711,129 @@
             await Promise.all(deletePromises);
             console.log(`Deleted ${existingSnapshot.docs.length} existing expenses for batch ${batchId}`);
 
-            // Add new expenses
             if (expensesToSave.length === 0) {
                 console.warn(`No expenses to save for batch ${batchId}. Expenses array is empty.`);
+                return;
             }
+
+            // STEP 1: Upload ALL photos first (in parallel) before creating expense documents
+            const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            const photoUploadTasks = [];
+            
+            if (!isLocalhost) {
+                console.log('[saveExpenses] Step 1: Uploading all photos before saving expenses...');
+                
+                for (let expenseIndex = 0; expenseIndex < expensesToSave.length; expenseIndex++) {
+                    const expense = expensesToSave[expenseIndex];
+                    if (!expense.photos || expense.photos.length === 0) continue;
+                    
+                    for (let photoIndex = 0; photoIndex < expense.photos.length; photoIndex++) {
+                        const photoFile = expense.photos[photoIndex];
+                        
+                        // Skip if already a URL (already uploaded)
+                        if (typeof photoFile === 'string') {
+                            continue;
+                        }
+                        
+                        // Only upload File/Blob objects
+                        if (photoFile instanceof File || photoFile instanceof Blob) {
+                            const timestamp = Date.now();
+                            const filename = `expenses/${batchId}/${expense.category}_${timestamp}_${expenseIndex}_${photoIndex}.jpg`;
+                            
+                            photoUploadTasks.push({
+                                expenseIndex,
+                                photoIndex,
+                                photoFile,
+                                filename,
+                                category: expense.category
+                            });
+                        }
+                    }
+                }
+                
+                if (photoUploadTasks.length > 0) {
+                    console.log(`[saveExpenses] Uploading ${photoUploadTasks.length} photos in parallel...`);
+                    notifyInfo(`Uploading ${photoUploadTasks.length} photo${photoUploadTasks.length === 1 ? '' : 's'}...`, 'Uploading Photos');
+                    
+                    // Upload all photos in parallel (up to 5 at a time)
+                    const CONCURRENT_UPLOADS = 5;
+                    const uploadedPhotos = new Map(); // Map: "expenseIndex_photoIndex" -> downloadURL
+                    
+                    for (let i = 0; i < photoUploadTasks.length; i += CONCURRENT_UPLOADS) {
+                        const batch = photoUploadTasks.slice(i, i + CONCURRENT_UPLOADS);
+                        const uploadPromises = batch.map(async (task) => {
+                            try {
+                                const photoRef = window.ref(window.storage, task.filename);
+                                await window.uploadBytes(photoRef, task.photoFile);
+                                const downloadURL = await window.getDownloadURL(photoRef);
+                                const key = `${task.expenseIndex}_${task.photoIndex}`;
+                                uploadedPhotos.set(key, downloadURL);
+                                console.log(`[saveExpenses] Uploaded photo ${task.expenseIndex}_${task.photoIndex}`);
+                                return { success: true, task, url: downloadURL };
+                            } catch (error) {
+                                console.error(`[saveExpenses] Failed to upload photo ${task.expenseIndex}_${task.photoIndex}:`, error);
+                                return { success: false, task, error };
+                            }
+                        });
+                        
+                        await Promise.all(uploadPromises);
+                    }
+                    
+                    console.log(`[saveExpenses] All photos uploaded. ${uploadedPhotos.size} successful uploads.`);
+                    
+                    // Update expense photos with uploaded URLs
+                    for (let expenseIndex = 0; expenseIndex < expensesToSave.length; expenseIndex++) {
+                        const expense = expensesToSave[expenseIndex];
+                        if (!expense.photos) continue;
+                        
+                        const updatedPhotos = expense.photos.map((photo, photoIndex) => {
+                            if (typeof photo === 'string') {
+                                return photo; // Already a URL, keep it
+                            }
+                            const key = `${expenseIndex}_${photoIndex}`;
+                            return uploadedPhotos.get(key) || photo; // Use uploaded URL or keep original
+                        });
+                        
+                        expense.photos = updatedPhotos;
+                    }
+                }
+            } else {
+                console.warn('Running on localhost: Photo upload is disabled due to CORS restrictions.');
+            }
+
+            // STEP 2: Now save expenses with all photo URLs
+            console.log('[saveExpenses] Step 2: Saving expenses to Firestore with uploaded photo URLs...');
+            
             const addPromises = expensesToSave.map(async (expense, expenseIndex) => {
-                const existingPhotoURLs = (expense.photos || []).filter((p) => typeof p === 'string');
+                // All photos should now be URLs (either already were, or just uploaded)
+                const photoURLs = (expense.photos || []).filter((p) => typeof p === 'string');
+                
                 const expenseData = {
-                batchId: batchId,
-                driverId: batchRef.driverId || currentUser.uid,
-                officeId: batchRef.officeId || currentUser.officeId,
-                category: expense.category,
-                amount: parseFloat(expense.amount),
-                photos: existingPhotoURLs, // Preserve already uploaded photos; new ones will be queued
-                createdAt: window.serverTimestamp()
+                    batchId: batchId,
+                    driverId: batchRef.driverId || currentUser.uid,
+                    officeId: batchRef.officeId || currentUser.officeId,
+                    category: expense.category,
+                    amount: parseFloat(expense.amount),
+                    photos: photoURLs,
+                    photosUploading: false, // All photos are uploaded
+                    createdAt: window.serverTimestamp()
                 };
 
-                // Create expense document first (with empty photos array)
+                // Create expense document with all photo URLs
                 const expenseDocRef = await window.addDoc(window.collection(window.db, 'expenses'), expenseData);
                 const expenseDocId = expenseDocRef.id;
-                console.log(`Created expense doc ${expenseDocId} for batch ${batchId}: ${expenseData.category}, £${expenseData.amount}`);
+                console.log(`[saveExpenses] Created expense doc ${expenseDocId} for batch ${batchId}: ${expenseData.category}, £${expenseData.amount}, ${photoURLs.length} photos`);
 
                 if (currentBatch && currentBatch.expenses && currentBatch.expenses[expenseIndex]) {
-                currentBatch.expenses[expenseIndex].serverId = expenseDocId;
-                currentBatch.expenses[expenseIndex].id = expenseDocId;
-                }
-
-                // Handle photo uploads using the upload queue system
-                if (expense.photos && expense.photos.length > 0) {
-                const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                
-                if (isLocalhost) {
-                console.warn('Running on localhost: Photo upload is disabled due to CORS restrictions.');
-                console.log(`Note: ${expense.photos.length} photo(s) were selected but will be queued for upload on production.`);
-                } else {
-                console.log(`Queueing ${expense.photos.length} photos for expense ${expense.category}...`);
-                
-                // Queue each photo for upload (in background)
-                console.log(`[saveExpenses] Processing ${expense.photos.length} photos for expense ${expense.category}`, {
-                    expenseIndex,
-                    expenseDocId,
-                    photos: expense.photos.map((p, idx) => ({
-                        index: idx,
-                        type: typeof p,
-                        isFile: p instanceof File,
-                        isBlob: p instanceof Blob,
-                        isString: typeof p === 'string',
-                        size: p instanceof File || p instanceof Blob ? p.size : null
-                    }))
-                });
-                
-                for (let photoIndex = 0; photoIndex < expense.photos.length; photoIndex++) {
-                const photoFile = expense.photos[photoIndex];
-                
-                // Skip if already a URL (already uploaded)
-                if (typeof photoFile === 'string') {
-                console.log(`[saveExpenses] Skipping photo ${photoIndex} - already uploaded (URL)`);
-                continue;
-                }
-                
-                // Only queue File/Blob objects
-                if (photoFile instanceof File || photoFile instanceof Blob) {
-                console.log(`[saveExpenses] Queueing photo ${photoIndex} for upload`, {
-                    batchId,
-                    batchLocalId: batchRef.localId,
-                    expenseIndex,
-                    expenseDocId,
-                    photoIndex,
-                    filename: `expenses/${batchId}/${expense.category}_${Date.now()}_${photoIndex}.jpg`,
-                    fileType: photoFile.constructor.name,
-                    fileSize: photoFile.size,
-                    mimeType: photoFile.type
-                });
-                
-                const timestamp = Date.now();
-                const filename = `expenses/${batchId}/${expense.category}_${timestamp}_${photoIndex}.jpg`;
-                
-                // Queue the upload - will process in background
-                if (window.uploadQueue) {
-                try {
-                await window.uploadQueue.enqueue({
-                batchId: batchId,
-                batchLocalId: batchRef.localId || null,
-                expenseIndex: expenseIndex,
-                expenseDocId: expenseDocId,
-                photoIndex: photoIndex,
-                photoFile: photoFile,
-                filename: filename
-                });
-                console.log(`[saveExpenses] Successfully queued photo ${photoIndex}`);
-                } catch (enqueueError) {
-                console.error(`[saveExpenses] Failed to queue photo ${photoIndex}:`, enqueueError, {
-                    errorMessage: enqueueError.message,
-                    errorStack: enqueueError.stack
-                });
-                // Continue with other photos even if one fails
-                }
-                } else {
-                console.error('[saveExpenses] uploadQueue not available!');
-                }
-                } else {
-                console.warn(`[saveExpenses] Photo ${photoIndex} is not a File or Blob`, {
-                    type: typeof photoFile,
-                    constructor: photoFile?.constructor?.name
-                });
-                }
-                }
-                }
+                    currentBatch.expenses[expenseIndex].serverId = expenseDocId;
+                    currentBatch.expenses[expenseIndex].id = expenseDocId;
                 }
                 
                 return expenseDocRef;
             });
 
             await Promise.all(addPromises);
-            
-            // Kick the upload queue (just in case setTimeout is throttled)
-            if (window.uploadQueue) {
-                window.uploadQueue.processQueue();
-            }
-            
-            // Update upload status indicator (shows banner if photos are uploading)
-            if (window.uploadQueue && window.uploadQueue.updateGlobalUploadStatus) {
-                await window.uploadQueue.updateGlobalUploadStatus();
-            }
+            console.log('[saveExpenses] All expenses saved to Firestore.');
         }
 
         // Delete batch
@@ -2714,11 +3014,11 @@
                 // Update action buttons to show draft buttons
                 const actionButtons = document.getElementById('actionButtons');
                 actionButtons.innerHTML = `
-                <button onclick="saveDraft()" class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors touch-target">
-                Save as Draft
+                <button onclick="saveDraft()" class="w-full animated-button animated-button-draft touch-target">
+                <span class="text-white font-semibold">Save as Draft</span>
                 </button>
-                <button onclick="submitBatch()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors touch-target">
-                Submit for Processing
+                <button onclick="submitBatch()" class="w-full animated-button animated-button-submit touch-target">
+                <span class="text-white font-semibold">Submit for Processing</span>
                 </button>
                 `;
             } catch (error) {
@@ -2879,7 +3179,7 @@
                 const totalPhotos = batch.expenses?.reduce((sum, exp) => sum + (exp.photos?.length || 0), 0) || 0;
                 
                 return `
-                <div class="animated-border-panel fade-in">
+                <div class="animated-border-panel animated-border-paid fade-in">
                 <div class="flex items-start justify-between mb-2">
                 <div class="license-plate">${batch.registration}</div>
                 <span class="bg-green-500 px-3 py-1 rounded-full text-xs font-semibold uppercase">PAID</span>

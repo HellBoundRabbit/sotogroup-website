@@ -402,46 +402,61 @@ class UploadQueue {
             const allTasks = await this.getAllTasks();
             const tasksToProcess = allTasks.filter((task) => task.status === 'pending' || task.status === 'uploading');
 
+            // Reset stuck uploads
             for (const task of tasksToProcess) {
                 if (task.status === 'uploading') {
-                    // Reset stuck uploads back to pending
                     task.status = 'pending';
                     await this.saveTask(task);
                 }
+            }
 
-                console.debug('[UploadQueue] Processing task', task.uploadId, task.filename);
-
-                if (task.retries >= this.maxRetries) {
-                    console.warn('[UploadQueue] Task exceeded max retries, removing', task.uploadId);
-                    await this.deleteTask(task.uploadId);
-                    await window.expenseDraftDB.deletePhotoBlob(task.batchLocalId || task.batchId, task.expenseIndex, task.photoIndex);
-                    continue;
-                }
-
-                try {
-                    await this.uploadPhoto(task);
-                    console.debug('[UploadQueue] Upload succeeded', task.uploadId);
-                    await this.deleteTask(task.uploadId);
-                    await window.expenseDraftDB.deletePhotoBlob(task.batchLocalId || task.batchId, task.expenseIndex, task.photoIndex);
-                } catch (error) {
-                    if (error && error.code === 'EXPENSE_DOC_MISSING') {
-                        console.warn('[UploadQueue] Expense document missing, dropping task', task.uploadId);
+            // Process tasks in parallel (up to 5 at a time for better performance)
+            const CONCURRENT_UPLOADS = 5;
+            const pendingTasks = tasksToProcess.filter(t => t.status === 'pending' && t.retries < this.maxRetries);
+            
+            // Process in batches of CONCURRENT_UPLOADS
+            for (let i = 0; i < pendingTasks.length; i += CONCURRENT_UPLOADS) {
+                const batch = pendingTasks.slice(i, i + CONCURRENT_UPLOADS);
+                const uploadPromises = batch.map(async (task) => {
+                    try {
+                        console.debug('[UploadQueue] Processing task', task.uploadId, task.filename);
+                        await this.uploadPhoto(task);
+                        console.debug('[UploadQueue] Upload succeeded', task.uploadId);
                         await this.deleteTask(task.uploadId);
                         await window.expenseDraftDB.deletePhotoBlob(task.batchLocalId || task.batchId, task.expenseIndex, task.photoIndex);
-                    } else if (error && error.code === 'PHOTO_BLOB_MISSING') {
-                        console.warn('[UploadQueue] Cached photo missing, dropping task', task.uploadId);
-                        await this.deleteTask(task.uploadId);
-                    } else {
-                        console.error('[UploadQueue] Upload failed', task.uploadId, error);
-                        task.retries++;
-                        task.status = 'pending';
-                        task.error = error.message;
-                        task.lastRetryAt = Date.now();
-                        await this.saveTask(task);
+                        return { success: true, task };
+                    } catch (error) {
+                        if (error && error.code === 'EXPENSE_DOC_MISSING') {
+                            console.warn('[UploadQueue] Expense document missing, dropping task', task.uploadId);
+                            await this.deleteTask(task.uploadId);
+                            await window.expenseDraftDB.deletePhotoBlob(task.batchLocalId || task.batchId, task.expenseIndex, task.photoIndex);
+                            return { success: false, task, error: 'EXPENSE_DOC_MISSING' };
+                        } else if (error && error.code === 'PHOTO_BLOB_MISSING') {
+                            console.warn('[UploadQueue] Cached photo missing, dropping task', task.uploadId);
+                            await this.deleteTask(task.uploadId);
+                            return { success: false, task, error: 'PHOTO_BLOB_MISSING' };
+                        } else {
+                            console.error('[UploadQueue] Upload failed', task.uploadId, error);
+                            task.retries++;
+                            task.status = 'pending';
+                            task.error = error.message;
+                            task.lastRetryAt = Date.now();
+                            await this.saveTask(task);
+                            return { success: false, task, error: error.message };
+                        }
                     }
-                }
-
+                });
+                
+                await Promise.all(uploadPromises);
                 await this.updateGlobalUploadStatus();
+            }
+
+            // Remove tasks that exceeded max retries
+            const failedTasks = tasksToProcess.filter(t => t.retries >= this.maxRetries);
+            for (const task of failedTasks) {
+                console.warn('[UploadQueue] Task exceeded max retries, removing', task.uploadId);
+                await this.deleteTask(task.uploadId);
+                await window.expenseDraftDB.deletePhotoBlob(task.batchLocalId || task.batchId, task.expenseIndex, task.photoIndex);
             }
         } catch (error) {
             console.error('Error processing queue:', error);

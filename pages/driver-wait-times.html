@@ -57,6 +57,182 @@
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
+        
+        /* Loading spinner */
+        .spinner-wrapper {
+            width: 64px;
+            height: 64px;
+            position: relative;
+        }
+        .spinner {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            animation: spinning82341 1.7s linear infinite;
+            filter: blur(1px);
+        }
+        .spinner::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(186, 66, 255) 35%, rgb(0, 225, 255));
+            box-shadow: 0px -5px 20px 0px rgb(186, 66, 255), 0px 5px 20px 0px rgb(0, 225, 255);
+        }
+        .spinner1 {
+            background-color: rgb(36, 36, 36);
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2;
+        }
+        .spinner-icon {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 3;
+            color: white;
+            font-size: 1.5rem;
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+            filter: none !important;
+        }
+        @keyframes spinning82341 {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        
+        /* Animated border panels for wait time cards */
+        .animated-border-panel {
+            position: relative;
+            background: #1a1f24;
+            border-radius: 1rem;
+            padding: 1rem;
+            isolation: isolate;
+        }
+        .animated-border-panel::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 1rem;
+            background: #1a1f24;
+            z-index: -1;
+        }
+        
+        /* Pending: orange and black */
+        .animated-border-pending::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 1rem;
+            background: linear-gradient(45deg, rgb(0, 0, 0), rgb(255, 165, 0), rgb(0, 0, 0));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
+        
+        /* Processed: green and black */
+        .animated-border-processed::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 1rem;
+            background: linear-gradient(45deg, rgb(0, 0, 0), rgb(0, 255, 0), rgb(0, 0, 0));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
+        
+        @keyframes borderGradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        /* Modal: purple and cyan border */
+        .animated-border-modal {
+            position: relative;
+            background: #1a1f24;
+            isolation: isolate;
+        }
+        .animated-border-modal::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 1.5rem;
+            background: #1a1f24;
+            z-index: -1;
+        }
+        .animated-border-modal::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 1.5rem;
+            background: linear-gradient(45deg, rgb(186, 66, 255), rgb(0, 225, 255), rgb(186, 66, 255));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
+        
+        /* Animated button borders */
+        .animated-button {
+            position: relative;
+            background: rgb(36, 36, 36);
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            isolation: isolate;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 48px;
+        }
+        .animated-button::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 0.5rem;
+            background: rgb(36, 36, 36);
+            z-index: -1;
+        }
+        
+        /* Submit: green and black */
+        .animated-button-submit::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 0.5rem;
+            background: linear-gradient(45deg, rgb(0, 0, 0), rgb(0, 255, 0), rgb(0, 0, 0));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
+        
+        /* Discard: grey and black */
+        .animated-button-discard::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 0.5rem;
+            background: linear-gradient(45deg, rgb(0, 0, 0), rgb(128, 128, 128), rgb(0, 0, 0));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
     </style>
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
@@ -115,18 +291,26 @@
         }
     </script>
 </head>
-<body class="bg-[#0f1419] text-white min-h-screen">
+<body class="bg-black text-white min-h-screen">
     <div id="loadingOverlay" class="loading-overlay">
         <div class="text-center">
-            <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <div class="spinner-wrapper mx-auto mb-4">
+                <div class="spinner"></div>
+                <div class="spinner1"></div>
+            </div>
             <p class="text-gray-400">Loading your wait times...</p>
         </div>
     </div>
 
-    <div class="bg-[#1a1f24] border-b border-gray-800 sticky top-0 z-50">
+    <div class="bg-black border-b border-gray-800 sticky top-0 z-50">
         <div class="flex items-center px-4 py-3">
-            <button onclick="goToPortal()" class="touch-target flex items-center text-gray-400 hover:text-white transition-colors">
-                <span class="material-symbols-outlined">arrow_back</span>
+            <button onclick="goToPortal()" class="touch-target">
+                <div class="spinner-wrapper">
+                    <div class="spinner"></div>
+                    <div class="spinner1">
+                        <span class="material-symbols-outlined spinner-icon">arrow_back</span>
+                    </div>
+                </div>
             </button>
             <h1 class="flex-1 text-center text-xl font-semibold">My Wait Times</h1>
             <div class="w-6"></div>
@@ -155,13 +339,18 @@
         </section>
     </main>
 
-    <button onclick="openWaitTimeModal()" class="fixed bottom-6 right-6 bg-green-600 hover:bg-green-700 text-white rounded-full w-16 h-16 flex items-center justify-center shadow-lg transition-all transform hover:scale-110 active:scale-95 z-40">
-        <span class="material-symbols-outlined text-3xl">add</span>
+    <button onclick="openWaitTimeModal()" class="fixed bottom-6 right-6 z-40">
+        <div class="spinner-wrapper">
+            <div class="spinner"></div>
+            <div class="spinner1">
+                <span class="material-symbols-outlined spinner-icon">add</span>
+            </div>
+        </div>
     </button>
 
     <div id="waitTimeModal" class="hidden fixed inset-0 bg-black bg-opacity-70 z-50 overflow-y-auto">
         <div class="min-h-screen px-4 flex items-end sm:items-center justify-center">
-            <div class="bg-[#1a1f24] rounded-t-3xl sm:rounded-3xl w-full max-w-2xl transform transition-all">
+            <div class="bg-[#1a1f24] rounded-t-3xl sm:rounded-3xl w-full max-w-2xl transform transition-all animated-border-modal">
                 <div class="sticky top-0 bg-[#1a1f24] border-b border-gray-800 rounded-t-3xl z-10">
                     <div class="flex items-center justify-between px-6 py-4">
                         <h2 class="text-lg font-semibold">Log Wait Time</h2>
@@ -255,11 +444,11 @@
                     </div>
 
                     <div class="space-y-3 pt-2">
-                        <button id="saveWaitTimeBtn" type="submit" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors touch-target disabled:opacity-50 disabled:cursor-not-allowed">
-                            Save Wait Time
+                        <button id="saveWaitTimeBtn" type="submit" class="w-full animated-button animated-button-submit touch-target disabled:opacity-50 disabled:cursor-not-allowed">
+                            <span class="text-white font-semibold">Save Wait Time</span>
                         </button>
-                        <button type="button" onclick="closeWaitTimeModal()" class="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors touch-target">
-                            Discard
+                        <button type="button" onclick="closeWaitTimeModal()" class="w-full animated-button animated-button-discard touch-target">
+                            <span class="text-white font-semibold">Discard</span>
                         </button>
                     </div>
                 </form>
@@ -632,8 +821,11 @@
                 ${processedBy ? `<p class="text-xs text-gray-500">Processed by ${escapeHtml(processedBy)}</p>` : ''}
             ` : '';
 
+            const isPending = (item.processingStatus || 'pending') !== 'processed';
+            const borderClass = isPending ? 'animated-border-panel animated-border-pending' : 'animated-border-panel animated-border-processed';
+            
             return `
-                <article class="bg-[#1a1f24] border border-gray-800 rounded-2xl p-4 sm:p-5 shadow-sm">
+                <article class="${borderClass}">
                     <div class="flex items-start justify-between gap-4">
                         <div class="flex flex-wrap items-center gap-3">
                             <span class="license-plate">${escapeHtml(item.registration || 'UNKNOWN')}</span>
@@ -773,7 +965,12 @@
 
             isSaving = true;
             saveBtn.disabled = true;
-            saveBtn.textContent = 'Saving...';
+            const saveBtnSpan = saveBtn.querySelector('span');
+            if (saveBtnSpan) {
+                saveBtnSpan.textContent = 'Saving...';
+            } else {
+                saveBtn.textContent = 'Saving...';
+            }
 
             try {
                 if (!navigator.onLine) {
@@ -793,7 +990,12 @@
             } finally {
                 isSaving = false;
                 saveBtn.disabled = false;
-                saveBtn.textContent = 'Save Wait Time';
+                const saveBtnSpan = saveBtn.querySelector('span');
+                if (saveBtnSpan) {
+                    saveBtnSpan.textContent = 'Save Wait Time';
+                } else {
+                    saveBtn.textContent = 'Save Wait Time';
+                }
                 validateWaitTimeForm();
             }
         }

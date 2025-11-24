@@ -156,6 +156,54 @@ function initializeDrivers() {
         box-shadow: 0 0 15px 5px rgba(34, 197, 94, 0.4);
       }
     </style>
+    <style>
+        /* Loading spinner */
+        .spinner-wrapper {
+            width: 64px;
+            height: 64px;
+            position: relative;
+        }
+        .spinner {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            animation: spinning82341 1.7s linear infinite;
+            filter: blur(1px);
+        }
+        .spinner::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(186, 66, 255) 35%, rgb(0, 225, 255));
+            box-shadow: 0px -5px 20px 0px rgb(186, 66, 255), 0px 5px 20px 0px rgb(0, 225, 255);
+        }
+        .spinner1 {
+            background-color: rgb(36, 36, 36);
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2;
+        }
+        @keyframes spinning82341 {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
 </head>
 <body class="bg-[#111418] text-white" style='font-family: Inter, "Noto Sans", sans-serif;'>
 <div class="relative flex h-auto min-h-screen w-full flex-col dark group/design-root overflow-x-hidden">
@@ -229,9 +277,9 @@ function initializeDrivers() {
 <!-- Loading Overlay -->
 <div id="loading-overlay" class="fixed inset-0 bg-[#0f1419] bg-opacity-95 flex items-center justify-center z-50">
     <div class="text-center">
-        <div class="relative w-16 h-16 mx-auto mb-4">
-            <div class="absolute inset-0 border-4 border-gray-700 rounded-full"></div>
-            <div class="absolute inset-0 border-4 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
+        <div class="spinner-wrapper mx-auto mb-4">
+            <div class="spinner"></div>
+            <div class="spinner1"></div>
         </div>
         <p class="text-white text-lg font-semibold">Loading Drivers...</p>
         <p class="text-gray-400 text-sm mt-1">Please wait</p>
