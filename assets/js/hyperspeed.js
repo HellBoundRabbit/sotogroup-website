@@ -1026,11 +1026,11 @@
           roadColor: 0x080808,
           islandColor: 0x0a0a0a,
           background: 0x000000,
-          shoulderLines: 0xFFFFFF,
-          brokenLines: 0xFFFFFF,
-          leftCars: [0xD856BF, 0x6750A2, 0xC247AC],
-          rightCars: [0x03B3C3, 0x0E5EA5, 0x324555],
-          sticks: 0x03B3C3,
+          shoulderLines: 0xBA42FF, // Purple
+          brokenLines: 0x00E1FF, // Cyan
+          leftCars: [0xBA42FF, 0xC966FF, 0x9D1AFF, 0xD88AFF], // Purples on the left
+          rightCars: [0x00E1FF, 0x33E8FF, 0x00B8CC], // Cyans on the right
+          sticks: 0x00E1FF, // Cyan light sticks
         }
       };
       
