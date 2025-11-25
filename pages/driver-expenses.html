@@ -472,7 +472,10 @@
             <span class="material-symbols-outlined animate-pulse">cloud_upload</span>
             <div class="flex flex-col items-center">
                 <span id="uploadBannerText" class="font-semibold text-sm">Uploading expenses...</span>
-                <span class="text-xs opacity-90">DO NOT Leave this page</span>
+                <div class="flex items-center gap-2 text-xs opacity-90">
+                    <span>DO NOT Leave this page</span>
+                    <span id="uploadBannerSpeed" class="hidden">• <span id="uploadSpeedValue">0</span> Mbps</span>
+                </div>
             </div>
         </div>
     </div>
@@ -567,7 +570,7 @@
                 <button id="deleteBatchBtn" onclick="deleteBatch()" class="touch-target text-red-500 hover:text-red-400 transition-colors hidden">
                 <span class="material-symbols-outlined">delete</span>
                 </button>
-                <button onclick="closeBatchModal()" class="touch-target text-gray-400 hover:text-white transition-colors">
+                <button id="closeBatchModalBtn" onclick="closeBatchModal()" class="touch-target text-gray-400 hover:text-white transition-colors">
                 <span class="material-symbols-outlined">close</span>
                 </button>
                 </div>
@@ -703,6 +706,8 @@
                 placeholder="0.00"
                 step="0.01"
                 min="0"
+                inputmode="decimal"
+                pattern="[0-9]*"
                 class="w-full bg-[#283039] text-white text-2xl text-center px-4 py-4 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none"
                 >
                 </div>
@@ -1769,11 +1774,23 @@
             
             document.getElementById('expensesList').innerHTML = '<p class="text-gray-500 text-center py-4">No expenses added yet</p>';
             document.getElementById('totalAmount').textContent = '£0.00';
+            
+            // Prevent opening during upload
+            if (window.isUploadingExpense) {
+                notifyWarning('Please wait for the current upload to complete before creating a new batch.', 'Upload in Progress');
+                return;
+            }
+            
             document.getElementById('batchModal').classList.remove('hidden');
         }
 
         // Open existing batch
         async function openBatch(batchId) {
+            // Prevent opening during upload
+            if (window.isUploadingExpense) {
+                notifyWarning('Please wait for the current upload to complete before opening this batch.', 'Upload in Progress');
+                return;
+            }
             let batch = allBatches.find(b => b.id === batchId);
             if (!batch) return;
 
@@ -2522,6 +2539,30 @@
                 return;
             }
 
+            // Confirmation dialog
+            const confirmed = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
+                title: 'Save Draft',
+                message: 'Are you sure you want to save this draft?',
+                confirmText: 'Save Draft',
+                cancelText: 'Cancel',
+                tone: 'info'
+            }) : window.confirm('Are you sure you want to save this draft?');
+            if (!confirmed) {
+                return;
+            }
+
+            // Disable buttons to prevent double submission
+            const saveBtn = document.querySelector('button[onclick="saveDraft()"]');
+            const submitBtn = document.querySelector('button[onclick="submitBatch()"]');
+            if (saveBtn) saveBtn.disabled = true;
+            if (submitBtn) submitBtn.disabled = true;
+
+            // Close modal immediately after confirmation
+            document.getElementById('batchModal').classList.add('hidden');
+            
+            // Prevent modal from being reopened during upload
+            window.isUploadingExpense = true;
+
             // Photos will be uploaded synchronously in saveExpenses before expenses are saved
             // No need to check for pending uploads here
 
@@ -2536,6 +2577,11 @@
             const notes = document.getElementById('notesInput').value.trim();
             currentBatch.notes = notes || '';
 
+            // Update upload status immediately to show banner
+            if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
+                await window.uploadQueue.updateGlobalUploadStatus();
+            }
+
             let queuedLocalId = null;
             try {
                 queuedLocalId = await queueExpenseAction('draft');
@@ -2543,16 +2589,18 @@
                 console.error('Error queueing draft for upload:', error);
             }
 
-            // Update upload status immediately to show banner
+            // Update upload status again after queueing
             if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
                 await window.uploadQueue.updateGlobalUploadStatus();
             }
 
             if (!navigator.onLine) {
                 // Upload banner will show the queue status, no need for dialog
-                document.getElementById('batchModal').classList.add('hidden');
                 currentBatch = null;
                 window.currentBatch = null;
+                window.isUploadingExpense = false;
+                if (saveBtn) saveBtn.disabled = false;
+                if (submitBtn) submitBtn.disabled = false;
                 return;
             }
 
@@ -2566,18 +2614,22 @@
                 }
                 }
 
-                // All photos were uploaded synchronously in saveExpenses before expenses were saved
-                notifySuccess('Draft saved successfully. All photos have been uploaded.', 'Draft Saved');
-                document.getElementById('batchModal').classList.add('hidden');
+                // No success message - red banner is enough
                 currentBatch = null;
                 window.currentBatch = null;
-                await loadExpenseBatches();
+                window.isUploadingExpense = false;
+                if (saveBtn) saveBtn.disabled = false;
+                if (submitBtn) submitBtn.disabled = false;
+                
+                // Refresh batches list after upload completes (handled by upload queue)
             } catch (error) {
                 console.error('Error syncing draft:', error);
                 // Upload banner will show the queue status, no need for dialog
-                document.getElementById('batchModal').classList.add('hidden');
                 currentBatch = null;
                 window.currentBatch = null;
+                window.isUploadingExpense = false;
+                if (saveBtn) saveBtn.disabled = false;
+                if (submitBtn) submitBtn.disabled = false;
             }
         }
 
@@ -2599,14 +2651,26 @@
 
             const confirmed = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
                 title: 'Submit Expense Batch',
-                message: 'Submit this batch for review? You won\'t be able to edit it after submission.',
-                confirmText: 'Submit Batch',
+                message: 'Are you sure you want to submit this expense?',
+                confirmText: 'Submit',
                 cancelText: 'Cancel',
                 tone: 'info'
-            }) : window.confirm('Submit this batch for review? You\'ll lose the ability to edit it.');
+            }) : window.confirm('Are you sure you want to submit this expense?');
             if (!confirmed) {
                 return;
             }
+
+            // Disable buttons to prevent double submission
+            const saveBtn = document.querySelector('button[onclick="saveDraft()"]');
+            const submitBtn = document.querySelector('button[onclick="submitBatch()"]');
+            if (saveBtn) saveBtn.disabled = true;
+            if (submitBtn) submitBtn.disabled = true;
+
+            // Close modal immediately after confirmation
+            document.getElementById('batchModal').classList.add('hidden');
+            
+            // Prevent modal from being reopened during upload
+            window.isUploadingExpense = true;
 
             // Prepare batch for queueing
             currentBatch.registration = registration;
@@ -2619,6 +2683,11 @@
             const notes = document.getElementById('notesInput').value.trim();
             currentBatch.notes = notes || '';
 
+            // Update upload status immediately to show banner
+            if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
+                await window.uploadQueue.updateGlobalUploadStatus();
+            }
+
             let queuedLocalId = null;
             try {
                 queuedLocalId = await queueExpenseAction('pending');
@@ -2626,16 +2695,18 @@
                 console.error('Error queueing submission for upload:', error);
             }
 
-            // Update upload status immediately to show banner
+            // Update upload status again after queueing
             if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
                 await window.uploadQueue.updateGlobalUploadStatus();
             }
 
             if (!navigator.onLine) {
                 // Upload banner will show the queue status, no need for dialog
-                document.getElementById('batchModal').classList.add('hidden');
                 currentBatch = null;
                 window.currentBatch = null;
+                window.isUploadingExpense = false;
+                if (saveBtn) saveBtn.disabled = false;
+                if (submitBtn) submitBtn.disabled = false;
                 return;
             }
 
@@ -2650,33 +2721,23 @@
                 }
                 }
 
-                // Update local batch status immediately for instant UI feedback
-                if (batchId) {
-                    const batchIndex = allBatches.findIndex(b => b.id === batchId);
-                    if (batchIndex >= 0) {
-                        allBatches[batchIndex].status = 'pending';
-                        allBatches[batchIndex].updatedAt = Date.now();
-                        displayBatches(); // Update UI immediately
-                    }
-                }
-
-                // All photos were uploaded synchronously in saveExpenses before expenses were saved
-                notifySuccess('Batch submitted successfully! All photos have been uploaded.', 'Submitted');
-                document.getElementById('batchModal').classList.add('hidden');
+                // No success message - red banner is enough
+                // Note: isUploadingExpense will be set to false after all uploads complete
+                // (handled by upload queue when banner is hidden)
                 currentBatch = null;
                 window.currentBatch = null;
+                if (saveBtn) saveBtn.disabled = false;
+                if (submitBtn) submitBtn.disabled = false;
                 
-                // Small delay to ensure Firestore has propagated the status change
-                await new Promise(resolve => setTimeout(resolve, 500));
-                
-                // Force a fresh reload of batches to ensure consistency with Firestore
-                await loadExpenseBatches();
+                // Refresh batches list after upload completes (handled by upload queue)
             } catch (error) {
                 console.error('Error submitting batch:', error);
                 // Upload banner will show the queue status, no need for dialog
-                document.getElementById('batchModal').classList.add('hidden');
                 currentBatch = null;
                 window.currentBatch = null;
+                window.isUploadingExpense = false;
+                if (saveBtn) saveBtn.disabled = false;
+                if (submitBtn) submitBtn.disabled = false;
             }
         }
 
@@ -2753,22 +2814,46 @@
                 
                 if (photoUploadTasks.length > 0) {
                     console.log(`[saveExpenses] Uploading ${photoUploadTasks.length} photos in parallel...`);
-                    notifyInfo(`Uploading ${photoUploadTasks.length} photo${photoUploadTasks.length === 1 ? '' : 's'}...`, 'Uploading Photos');
+                    // No notification - red banner is enough
                     
                     // Upload all photos in parallel (up to 5 at a time)
                     const CONCURRENT_UPLOADS = 5;
                     const uploadedPhotos = new Map(); // Map: "expenseIndex_photoIndex" -> downloadURL
+                    
+                    // Track upload speed
+                    const uploadSpeedTracker = {
+                        bytesUploaded: 0,
+                        startTime: Date.now(),
+                        updateSpeed: (bytes) => {
+                            uploadSpeedTracker.bytesUploaded += bytes;
+                            const elapsed = (Date.now() - uploadSpeedTracker.startTime) / 1000; // seconds
+                            if (elapsed > 0) {
+                                const mbps = (uploadSpeedTracker.bytesUploaded * 8) / (elapsed * 1000000); // Convert to Mbps
+                                const speedElement = document.getElementById('uploadSpeedValue');
+                                const speedContainer = document.getElementById('uploadBannerSpeed');
+                                if (speedElement) {
+                                    speedElement.textContent = mbps.toFixed(2);
+                                }
+                                if (speedContainer && mbps > 0) {
+                                    speedContainer.classList.remove('hidden');
+                                }
+                            }
+                        }
+                    };
                     
                     for (let i = 0; i < photoUploadTasks.length; i += CONCURRENT_UPLOADS) {
                         const batch = photoUploadTasks.slice(i, i + CONCURRENT_UPLOADS);
                         const uploadPromises = batch.map(async (task) => {
                             try {
                                 const photoRef = window.ref(window.storage, task.filename);
+                                const uploadStartTime = Date.now();
                                 await window.uploadBytes(photoRef, task.photoFile);
+                                const uploadTime = (Date.now() - uploadStartTime) / 1000;
+                                uploadSpeedTracker.updateSpeed(task.photoFile.size);
                                 const downloadURL = await window.getDownloadURL(photoRef);
                                 const key = `${task.expenseIndex}_${task.photoIndex}`;
                                 uploadedPhotos.set(key, downloadURL);
-                                console.log(`[saveExpenses] Uploaded photo ${task.expenseIndex}_${task.photoIndex}`);
+                                console.log(`[saveExpenses] Uploaded photo ${task.expenseIndex}_${task.photoIndex} in ${uploadTime.toFixed(2)}s`);
                                 return { success: true, task, url: downloadURL };
                             } catch (error) {
                                 console.error(`[saveExpenses] Failed to upload photo ${task.expenseIndex}_${task.photoIndex}:`, error);
@@ -3113,6 +3198,12 @@
 
         // Close modals
         async function closeBatchModal() {
+            // Prevent closing during upload
+            if (window.isUploadingExpense) {
+                notifyWarning('Please wait for the upload to complete before closing.', 'Upload in Progress');
+                return;
+            }
+
             // Check if there are unsaved changes
             if (hasUnsavedChanges()) {
                 // Show custom modal for save/discard choice
@@ -3138,6 +3229,25 @@
                 currentBatch = null;
             }
         }
+        
+        // Update close button state based on upload status
+        function updateCloseButtonState() {
+            const closeBtn = document.getElementById('closeBatchModalBtn');
+            if (closeBtn) {
+                if (window.isUploadingExpense) {
+                    closeBtn.disabled = true;
+                    closeBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                    closeBtn.classList.remove('hover:text-white');
+                } else {
+                    closeBtn.disabled = false;
+                    closeBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    closeBtn.classList.add('hover:text-white');
+                }
+            }
+        }
+        
+        // Monitor upload status and update close button
+        setInterval(updateCloseButtonState, 500);
 
         function closeExpenseModal() {
             const expenseModal = document.getElementById('expenseModal');

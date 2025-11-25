@@ -29,7 +29,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, addDoc, getDocs, query, where, updateDoc, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         
@@ -55,12 +55,28 @@
         window.firestore = db;
         window.firebaseDoc = doc;
         window.firebaseGetDoc = getDoc;
+        window.firebaseCollection = collection;
+        window.firebaseAddDoc = addDoc;
+        window.firebaseGetDocs = getDocs;
+        window.firebaseQuery = query;
+        window.firebaseWhere = where;
+        window.firebaseUpdateDoc = updateDoc;
         window.auth = auth;
         window.functions = functions;
         window.firebase = {
             functions,
             httpsCallable
         };
+        
+        // Make individual functions globally accessible (for compatibility)
+        window.query = query;
+        window.collection = collection;
+        window.addDoc = addDoc;
+        window.getDocs = getDocs;
+        window.updateDoc = updateDoc;
+        window.where = where;
+        window.doc = doc;
+        window.getDoc = getDoc;
         
         console.log('Firebase initialized successfully!');
     </script>
@@ -2200,6 +2216,7 @@
             // Save each route
             for (const routeData of routeReviewData) {
                 const savedJobIds = [];
+                const routeIdFormatted = `route_${routeData.routeId}`;
                 
                 // Save each job
                 routeData.jobs.forEach((job, jobIndex) => {
@@ -2242,7 +2259,7 @@
                         },
                         status: 'parsed',
                         createdAt: new Date(),
-                        assignedRouteId: routeData.routeId,
+                        assignedRouteId: routeIdFormatted, // Use route_${routeId} format to match original
                         officeId: officeId
                     };
                     
@@ -2252,27 +2269,12 @@
                             firebaseJobData
                         );
                         savedJobIds.push(docRef.id);
+                        console.log(`Job ${i + 1} saved to Firebase with ID:`, docRef.id);
                     }
                 }
                 
-                // Create route summary
-                if (window.firebaseAddDoc && window.firebaseCollection && window.firestore) {
-                    const routeSummary = {
-                        routeId: routeData.routeId,
-                        jobCount: routeData.jobs.length,
-                        jobs: routeData.jobs.map((job, idx) => ({
-                            jobNumber: idx + 1
-                        })),
-                        createdAt: new Date(),
-                        status: 'active',
-                        officeId: officeId
-                    };
-                    
-                    await window.firebaseAddDoc(
-                        window.firebaseCollection(window.firestore, 'routes'),
-                        routeSummary
-                    );
-                }
+                // Create route summary using the same logic as original soto-lp
+                await createRouteSummaryForAutomatic(routeData.routeId, savedJobIds, officeId);
             }
             
             // Success - redirect to routes page
@@ -2283,6 +2285,124 @@
             console.error('Error saving routes:', error);
             alert('Failed to save routes: ' + error.message);
             showScreen('routeReviewScreen');
+        }
+    }
+
+    // Create route summary for automatic routes (matching original soto-lp implementation)
+    async function createRouteSummaryForAutomatic(routeId, savedJobIds, officeId) {
+        try {
+            const routeIdFormatted = `route_${routeId}`;
+            console.log(`Creating route summary for ${routeIdFormatted}...`);
+            
+            if (!window.firestore || !window.firebaseCollection) {
+                console.error('Firebase is not initialized');
+                throw new Error('Firebase is not initialized. Please refresh the page and try again.');
+            }
+            
+            // Check if route summary already exists
+            const routesCollection = window.firebaseCollection(window.firestore, 'routes');
+            const routeQueries = [
+                window.firebaseQuery(
+                    routesCollection,
+                    window.where('officeId', '==', officeId),
+                    window.where('routeId', '==', routeIdFormatted)
+                ),
+                window.firebaseQuery(
+                    routesCollection,
+                    window.where('officeId', '==', null),
+                    window.where('routeId', '==', routeIdFormatted)
+                )
+            ];
+            
+            const existingRouteDocs = [];
+            for (const queryRef of routeQueries) {
+                const snapshot = await window.firebaseGetDocs(queryRef);
+                snapshot.forEach((doc) => existingRouteDocs.push(doc));
+            }
+            
+            const existingRoute = existingRouteDocs.find((doc) => {
+                const data = doc.data();
+                return !data.officeId || data.officeId === officeId;
+            });
+            
+            // Get all jobs for this route from Firebase
+            const jobsQuery = window.firebaseQuery(
+                window.firebaseCollection(window.firestore, 'jobs'),
+                window.where('assignedRouteId', '==', routeIdFormatted),
+                window.where('officeId', '==', officeId)
+            );
+            const jobsSnapshot = await window.firebaseGetDocs(jobsQuery);
+            
+            const jobs = [];
+            for (const doc of jobsSnapshot.docs) {
+                const jobData = doc.data();
+                if (jobData.officeId && jobData.officeId !== officeId) {
+                    console.warn(`Skipping job ${doc.id} due to mismatched officeId.`);
+                    continue;
+                }
+                if (!jobData.officeId) {
+                    try {
+                        await window.firebaseUpdateDoc(doc.ref, { officeId });
+                        jobData.officeId = officeId;
+                        console.log(`Backfilled officeId for job ${doc.id}`);
+                    } catch (error) {
+                        console.warn(`Failed to backfill officeId for job ${doc.id}:`, error);
+                    }
+                }
+                jobs.push({
+                    firebaseId: doc.id,
+                    ...jobData
+                });
+            }
+            
+            if (existingRoute) {
+                console.log(`Route summary for ${routeIdFormatted} already exists, updating...`);
+                
+                // Update existing route summary
+                if (!existingRoute.data().officeId) {
+                    try {
+                        await window.firebaseUpdateDoc(existingRoute.ref, { officeId });
+                        console.log(`Backfilled officeId for route summary ${existingRoute.id}`);
+                    } catch (error) {
+                        console.warn(`Failed to backfill officeId for route summary ${existingRoute.id}:`, error);
+                    }
+                }
+                
+                await window.firebaseUpdateDoc(existingRoute.ref, {
+                    jobCount: jobs.length,
+                    jobs: jobs.map(job => ({
+                        firebaseId: job.firebaseId,
+                        routeId: job.routeId,
+                        jobNumber: job.jobNumber
+                    })),
+                    updatedAt: new Date(),
+                    officeId: officeId
+                });
+                
+                console.log(`Updated route summary for ${routeIdFormatted} with ${jobs.length} jobs`);
+            } else {
+                // Create new route summary
+                const routeData = {
+                    routeId: routeIdFormatted,
+                    jobCount: jobs.length,
+                    jobs: jobs.map(job => ({
+                        firebaseId: job.firebaseId,
+                        routeId: job.routeId,
+                        jobNumber: job.jobNumber
+                    })),
+                    createdAt: new Date(),
+                    status: 'active',
+                    officeId: officeId
+                };
+                
+                console.log('Creating new route summary with data:', routeData);
+                await window.firebaseAddDoc(routesCollection, routeData);
+                console.log(`Route summary created successfully for ${routeIdFormatted} with ${jobs.length} jobs`);
+            }
+            
+        } catch (error) {
+            console.error('Error creating route summary:', error);
+            throw error;
         }
     }
 

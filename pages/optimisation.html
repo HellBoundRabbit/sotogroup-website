@@ -1010,7 +1010,29 @@
                         }
                     }
 
-                    const jobs = jobsByRoute[routeId] || [];
+                    // Get jobs for this route
+                    let jobs = jobsByRoute[routeId] || [];
+                    
+                    // If route has a jobs array with firebaseIds, filter to only those jobs
+                    // This ensures we only show jobs that are explicitly linked to this route version
+                    if (routeData.jobs && Array.isArray(routeData.jobs) && routeData.jobs.length > 0) {
+                        const routeJobIds = new Set(
+                            routeData.jobs
+                                .map(job => job.firebaseId || job.id)
+                                .filter(id => id)
+                        );
+                        
+                        if (routeJobIds.size > 0) {
+                            // Filter jobs to only those explicitly linked in the route document
+                            jobs = jobs.filter(job => routeJobIds.has(job.id));
+                            console.log(`Route ${routeId}: Filtered to ${jobs.length} jobs from route document (had ${jobsByRoute[routeId]?.length || 0} total jobs with this routeId)`);
+                        }
+                    }
+                    
+                    // If no jobs found but route has jobCount, log a warning
+                    if (jobs.length === 0 && routeData.jobCount > 0) {
+                        console.warn(`Route ${routeId} has jobCount ${routeData.jobCount} but no matching jobs found`);
+                    }
                     
                     const routeWithJobs = {
                         route: {

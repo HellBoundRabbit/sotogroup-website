@@ -754,9 +754,21 @@ class UploadQueue {
                     bannerText.textContent = 'Uploading...';
                 }
             }
+            
+            // Show speed if available
+            const speedContainer = document.getElementById('uploadBannerSpeed');
+            const speedValue = document.getElementById('uploadSpeedValue');
+            if (speedContainer && speedValue && parseFloat(speedValue.textContent) > 0) {
+                speedContainer.classList.remove('hidden');
+            }
         } else {
             // Hide banner
             this.hideUploadBanner();
+            
+            // Clear upload flag when all uploads are complete
+            if (typeof window !== 'undefined') {
+                window.isUploadingExpense = false;
+            }
             
             // If banner was visible before and now it's hidden, refresh the expense list
             if (wasUploading && typeof window.loadExpenseBatches === 'function') {
@@ -777,6 +789,8 @@ class UploadQueue {
         const banner = document.getElementById('uploadBanner');
         const topNav = document.getElementById('topNav');
         const mainContent = document.getElementById('mainContent');
+        const speedContainer = document.getElementById('uploadBannerSpeed');
+        const speedValue = document.getElementById('uploadSpeedValue');
         
         if (banner) {
             banner.classList.add('hidden');
@@ -786,6 +800,13 @@ class UploadQueue {
         }
         if (mainContent) {
             mainContent.style.marginTop = '0';
+        }
+        // Hide speed when banner is hidden
+        if (speedContainer) {
+            speedContainer.classList.add('hidden');
+        }
+        if (speedValue) {
+            speedValue.textContent = '0';
         }
     }
 
