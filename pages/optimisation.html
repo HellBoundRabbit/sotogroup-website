@@ -232,9 +232,14 @@
                         <button onclick="loadLastAssignedDrivers()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold">
                             Load Last Assigned Drivers
                         </button>
-                        <button onclick="showOptimiseSettings()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold">
-                            <span class="truncate">Optimise</span>
-                        </button>
+                        <div class="flex items-center gap-2">
+                            <button onclick="showOptimiseSettings()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold">
+                                <span class="truncate">Optimise</span>
+                            </button>
+                            <button onclick="showOptimizationInfo()" class="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg transition-colors" title="How optimization works">
+                                <span class="material-symbols-outlined text-sm">info</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 
@@ -1278,12 +1283,13 @@
                 const existingDynamicRoutes = routesContainer.querySelectorAll('.dynamic-route');
                 existingDynamicRoutes.forEach(route => route.remove());
                 
-                // Display each saved route
+                // Display each saved route (only routes with assigned drivers)
                 savedRoutes.forEach((routeData, index) => {
                     const route = routeData.route;
                     const jobs = routeData.jobs;
                     
-                    if (jobs.length > 0) {
+                    // Only display routes that have assigned drivers (skip driverless routes)
+                    if (jobs.length > 0 && routeData.route.assignedDriverName) {
                         const firstJob = jobs[0];
                         const routeElement = createRouteElement(route, jobs, index + 1);
                         routesContainer.appendChild(routeElement);
@@ -1411,7 +1417,12 @@
                         <span class="text-white font-bold" id="firebase-route-${routeNumber}-reg">-</span>
                     </div>
                     <div class="h-4 w-px bg-gray-600"></div>
-                    <span class="text-white font-semibold" id="firebase-route-${routeNumber}-driver">-</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-white font-semibold" id="firebase-route-${routeNumber}-driver">-</span>
+                        <button id="firebase-route-${routeNumber}-why-driver" onclick="showWhyThisDriver(${routeNumber})" class="hidden text-blue-400 hover:text-blue-300 transition-colors" title="Why this driver?">
+                            <span class="material-symbols-outlined text-sm">info</span>
+                        </button>
+                    </div>
                     <div class="h-4 w-px bg-gray-600"></div>
                     <div class="flex flex-col">
                         <div class="flex items-center gap-2">
@@ -2769,10 +2780,11 @@
                             if (step.type === 'transit') {
                                 const icon = step.mode === 'BUS' ? 'directions_bus' : 'train';
                                 const iconColor = step.mode === 'BUS' ? 'text-blue-400' : 'text-purple-400';
+                                const stationName = step.mode !== 'BUS' && step.departure ? ` (${step.departure})` : '';
                                 return `
                                     <div class="flex items-center gap-1">
                                         <span class="material-symbols-outlined ${iconColor}" style="font-size: 12px;">${icon}</span>
-                                        <span class="text-white text-xs">${formatTime(step.duration)}</span>
+                                        <span class="text-white text-xs">${formatTime(step.duration)}${stationName}</span>
                                     </div>
                                 `;
                             } else if (step.type === 'walk') {
@@ -2843,10 +2855,11 @@
                         } else if (step.type === 'transit') {
                             const icon = step.mode === 'BUS' ? 'directions_bus' : 'train';
                             const iconColor = step.mode === 'BUS' ? 'text-blue-400' : 'text-purple-400';
+                            const stationName = step.mode !== 'BUS' && step.departure ? ` (${step.departure})` : '';
                             return `
                                 <div class="flex items-center gap-1">
                                     <span class="material-symbols-outlined ${iconColor}" style="font-size: 12px;">${icon}</span>
-                                    <span class="text-white text-xs">${formatTime(step.duration)}</span>
+                                    <span class="text-white text-xs">${formatTime(step.duration)}${stationName}</span>
                                 </div>
                             `;
                         } else if (step.type === 'walk') {
@@ -2865,10 +2878,11 @@
                         if (step.type === 'transit') {
                             const icon = step.mode === 'BUS' ? 'directions_bus' : 'train';
                             const iconColor = step.mode === 'BUS' ? 'text-blue-400' : 'text-purple-400';
+                            const stationName = step.mode !== 'BUS' && step.departure ? ` (${step.departure})` : '';
                             return `
                                 <div class="flex items-center gap-1">
                                     <span class="material-symbols-outlined ${iconColor}" style="font-size: 12px;">${icon}</span>
-                                    <span class="text-white text-xs">${formatTime(step.duration)}</span>
+                                    <span class="text-white text-xs">${formatTime(step.duration)}${stationName}</span>
                                 </div>
                             `;
                         } else if (step.type === 'walk') {
@@ -2957,10 +2971,11 @@
                     if (step.type === 'transit') {
                         const icon = step.mode === 'BUS' ? 'directions_bus' : 'train';
                         const iconColor = step.mode === 'BUS' ? 'text-blue-400' : 'text-purple-400';
+                        const stationName = step.mode !== 'BUS' && step.departure ? ` (${step.departure})` : '';
                         return `
                             <div class="flex items-center gap-1">
                                 <span class="material-symbols-outlined ${iconColor}" style="font-size: 12px;">${icon}</span>
-                                <span class="text-white text-xs">${formatTime(step.duration)}</span>
+                                <span class="text-white text-xs">${formatTime(step.duration)}${stationName}</span>
                             </div>
                         `;
                     } else if (step.type === 'walk') {
@@ -3193,10 +3208,32 @@
             }, 2000);
         }
 
+        // Calculate total driving distance for a route (sum of all collection→delivery distances)
+        async function calculateRouteTotalDistance(routeData) {
+            const jobs = routeData.jobs || [];
+            let totalDistance = 0;
+            
+            for (const job of jobs) {
+                const collection = job.parsedData?.collection_address;
+                const delivery = job.parsedData?.postcode_delivery;
+                
+                if (collection && delivery) {
+                    try {
+                        const distance = await calculateDistance(collection, delivery);
+                        totalDistance += distance;
+                    } catch (error) {
+                        console.warn(`Error calculating distance for job ${job.jobNumber}:`, error);
+                    }
+                }
+            }
+            
+            return totalDistance;
+        }
+
         // Assign drivers to saved routes from Firebase using optimal assignment algorithm
         async function assignDriversToSavedRoutes(driversToUse = null) {
             // Step 1: Loading routes
-            updateOptimizationProgress(1, 20, 'Loading routes...');
+            updateOptimizationProgress(1, 10, 'Loading routes...');
             await new Promise(resolve => setTimeout(resolve, 300));
             
             const driversForAssignment = driversToUse || drivers;
@@ -3209,24 +3246,80 @@
                 return;
             }
             
-            // Step 2: Fetching driver data
-            updateOptimizationProgress(2, 40, 'Fetching driver data...');
-            await new Promise(resolve => setTimeout(resolve, 300));
-            
-            // Calculate total number of API calls for time estimation
-            totalCalculations = savedRoutes.length * driversForAssignment.length;
-            console.log(`📊 Total calculations needed: ${totalCalculations} (${savedRoutes.length} routes × ${driversForAssignment.length} drivers)`);
-            
-            // First pass: Calculate all routes to determine which ones need mixed mode
-            // A route needs mixed mode if ALL drivers have >2 hour original transit time
-            const routeNeedsMixedMode = new Array(savedRoutes.length).fill(false);
-            const routeCalculations = []; // Store all calculations
-            
-            // Calculate all possible driver-route combinations with travel options
-            const assignments = [];
+            // Step 2: Calculate total driving distance for each route
+            updateOptimizationProgress(2, 20, 'Calculating route distances...');
+            const routesWithDistances = [];
             
             for (let routeIndex = 0; routeIndex < savedRoutes.length; routeIndex++) {
                 const routeData = savedRoutes[routeIndex];
+                const totalDistance = await calculateRouteTotalDistance(routeData);
+                routesWithDistances.push({
+                    routeIndex,
+                    routeData,
+                    totalDistance
+                });
+                console.log(`Route ${routeIndex + 1}: Total driving distance = ${totalDistance} miles`);
+            }
+            
+            // Sort routes by total distance (shortest first)
+            routesWithDistances.sort((a, b) => a.totalDistance - b.totalDistance);
+            console.log('Routes sorted by total distance:', routesWithDistances.map(r => `Route ${r.routeIndex + 1}: ${r.totalDistance}mi`).join(', '));
+            
+            // Step 3: Separate carryover and non-carryover drivers
+            const carryoverDrivers = [];
+            const regularDrivers = [];
+            
+            for (let i = 0; i < driversForAssignment.length; i++) {
+                const driver = driversForAssignment[i];
+                if (driversWithCarryover.has(driver.id)) {
+                    carryoverDrivers.push({ driver, driverIndex: i });
+                } else {
+                    regularDrivers.push({ driver, driverIndex: i });
+                }
+            }
+            
+            console.log(`Carryover drivers: ${carryoverDrivers.length}, Regular drivers: ${regularDrivers.length}`);
+            
+            // Step 4: Assign shortest routes to carryover drivers
+            const carryoverRoutes = [];
+            const regularRoutes = [];
+            
+            const numCarryoverRoutes = Math.min(carryoverDrivers.length, routesWithDistances.length);
+            
+            // Take the N shortest routes for carryover drivers
+            for (let i = 0; i < numCarryoverRoutes; i++) {
+                carryoverRoutes.push(routesWithDistances[i]);
+            }
+            
+            // Remaining routes go to regular drivers
+            for (let i = numCarryoverRoutes; i < routesWithDistances.length; i++) {
+                regularRoutes.push(routesWithDistances[i]);
+            }
+            
+            console.log(`Carryover routes (${carryoverRoutes.length} shortest):`, carryoverRoutes.map(r => `Route ${r.routeIndex + 1} (${r.totalDistance}mi)`).join(', '));
+            console.log(`Regular routes (${regularRoutes.length} remaining):`, regularRoutes.map(r => `Route ${r.routeIndex + 1} (${r.totalDistance}mi)`).join(', '));
+            
+            // Step 5: Fetching driver data
+            updateOptimizationProgress(3, 30, 'Fetching driver data...');
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // Calculate total number of API calls for time estimation
+            const carryoverCalculations = carryoverRoutes.length * carryoverDrivers.length;
+            const regularCalculations = regularRoutes.length * regularDrivers.length;
+            totalCalculations = carryoverCalculations + regularCalculations;
+            console.log(`📊 Total calculations needed: ${totalCalculations} (Carryover: ${carryoverCalculations}, Regular: ${regularCalculations})`);
+            
+            // Step 6: Calculate all driver-route combinations
+            const allAssignments = [];
+            
+            // First pass: Calculate all routes to determine which ones need mixed mode
+            const routeNeedsMixedMode = new Array(savedRoutes.length).fill(false);
+            const routeCalculations = []; // Store all calculations
+            
+            // Process carryover routes
+            for (const routeInfo of carryoverRoutes) {
+                const routeIndex = routeInfo.routeIndex;
+                const routeData = routeInfo.routeData;
                 const jobs = routeData.jobs;
                 
                 if (jobs.length > 0) {
@@ -3235,36 +3328,28 @@
                     const collectionAddress = firstJob.parsedData?.collection_address || 'B797RU';
                     const deliveryAddress = lastJob.parsedData?.postcode_delivery || 'M1 4AN';
                     
-                    const routeDriverTimes = []; // Track times for this route across all drivers
+                    const routeDriverTimes = [];
                     
-                    // Calculate travel options for each driver with this route
-                    for (let driverIndex = 0; driverIndex < driversForAssignment.length; driverIndex++) {
-                        const driver = driversForAssignment[driverIndex];
-                        
-                        // Step 3: Calculating distances (update progress for each calculation)
-                        completedCalculations = routeIndex * driversForAssignment.length + driverIndex + 1;
-                        const calculationProgress = 40 + Math.floor((completedCalculations / totalCalculations) * 20);
-                        updateOptimizationProgress(3, calculationProgress, `Calculating distances (${completedCalculations}/${totalCalculations})...`, completedCalculations, totalCalculations);
+                    for (const { driver, driverIndex } of carryoverDrivers) {
+                        completedCalculations = allAssignments.length + 1;
+                        const calculationProgress = 30 + Math.floor((completedCalculations / totalCalculations) * 50);
+                        updateOptimizationProgress(4, calculationProgress, `Calculating distances (${completedCalculations}/${totalCalculations})...`, completedCalculations, totalCalculations);
                         
                         try {
                             const driverHomePostcode = driver.homePostcode || driver.postcode;
-                            const hasCarryover = driversWithCarryover.has(driver.id);
                             const carryoverPostcode = driversWithCarryover.get(driver.id);
                             
-                            // Use carryover postcode for "to work" if driver has one
-                            const toWorkOrigin = hasCarryover ? carryoverPostcode : driverHomePostcode;
+                            // Use carryover postcode for "to work"
+                            const toWorkOrigin = carryoverPostcode;
                             
-                            console.log(`Calculating travel options for driver ${driverIndex + 1} and route ${routeIndex + 1}... ${hasCarryover ? '(with carryover)' : ''}`);
+                            console.log(`Calculating travel options for carryover driver ${driverIndex + 1} and route ${routeIndex + 1}...`);
                             
-                            // Get travel options for both directions
                             const toWorkOptions = await calculateTravelOptions(toWorkOrigin, collectionAddress, true);
                             const fromWorkOptions = await calculateTravelOptions(deliveryAddress, driverHomePostcode, false);
                             
-                            // Track original total time for this driver on this route
                             const originalTotalTime = toWorkOptions.duration + fromWorkOptions.duration;
                             routeDriverTimes.push(originalTotalTime);
                             
-                            // Store the calculation for later processing
                             routeCalculations.push({
                                 routeIndex,
                                 driverIndex,
@@ -3273,14 +3358,14 @@
                                 toWorkOptions,
                                 fromWorkOptions,
                                 originalTotalTime,
-                                hasCarryover: hasCarryover,
-                                carryoverPostcode: carryoverPostcode
+                                hasCarryover: true,
+                                carryoverPostcode: carryoverPostcode,
+                                isCarryoverRoute: true
                             });
                             
                         } catch (error) {
                             const driverName = driver.name || (driver.firstName + ' ' + driver.lastName) || 'Unknown Driver';
                             console.error(`Error calculating travel options for driver ${driverName} and route ${routeIndex + 1}:`, error);
-                            // Add error placeholder
                             routeCalculations.push({
                                 routeIndex,
                                 driverIndex,
@@ -3288,19 +3373,81 @@
                                 routeData,
                                 toWorkOptions: { success: false },
                                 fromWorkOptions: { success: false },
-                                originalTotalTime: 999
+                                originalTotalTime: 999,
+                                hasCarryover: true,
+                                isCarryoverRoute: true
                             });
                             routeDriverTimes.push(999);
                         }
                     }
                     
-                    // Check if ALL drivers have >2 hours for this route
                     const allDriversOverThreshold = routeDriverTimes.every(time => time > 120);
                     routeNeedsMixedMode[routeIndex] = allDriversOverThreshold;
+                }
+            }
+            
+            // Process regular routes
+            for (const routeInfo of regularRoutes) {
+                const routeIndex = routeInfo.routeIndex;
+                const routeData = routeInfo.routeData;
+                const jobs = routeData.jobs;
+                
+                if (jobs.length > 0) {
+                    const firstJob = jobs[0];
+                    const lastJob = jobs[jobs.length - 1];
+                    const collectionAddress = firstJob.parsedData?.collection_address || 'B797RU';
+                    const deliveryAddress = lastJob.parsedData?.postcode_delivery || 'M1 4AN';
                     
-                    if (allDriversOverThreshold) {
-                        console.log(`🔄 Route ${routeIndex + 1} needs mixed mode (all drivers >2hrs)`);
+                    const routeDriverTimes = [];
+                    
+                    for (const { driver, driverIndex } of regularDrivers) {
+                        completedCalculations = routeCalculations.length + 1;
+                        const calculationProgress = 30 + Math.floor((completedCalculations / totalCalculations) * 50);
+                        updateOptimizationProgress(4, calculationProgress, `Calculating distances (${completedCalculations}/${totalCalculations})...`, completedCalculations, totalCalculations);
+                        
+                        try {
+                            const driverHomePostcode = driver.homePostcode || driver.postcode;
+                            
+                            console.log(`Calculating travel options for driver ${driverIndex + 1} and route ${routeIndex + 1}...`);
+                            
+                            const toWorkOptions = await calculateTravelOptions(driverHomePostcode, collectionAddress, true);
+                            const fromWorkOptions = await calculateTravelOptions(deliveryAddress, driverHomePostcode, false);
+                            
+                            const originalTotalTime = toWorkOptions.duration + fromWorkOptions.duration;
+                            routeDriverTimes.push(originalTotalTime);
+                            
+                            routeCalculations.push({
+                                routeIndex,
+                                driverIndex,
+                                driver,
+                                routeData,
+                                toWorkOptions,
+                                fromWorkOptions,
+                                originalTotalTime,
+                                hasCarryover: false,
+                                isCarryoverRoute: false
+                            });
+                            
+                        } catch (error) {
+                            const driverName = driver.name || (driver.firstName + ' ' + driver.lastName) || 'Unknown Driver';
+                            console.error(`Error calculating travel options for driver ${driverName} and route ${routeIndex + 1}:`, error);
+                            routeCalculations.push({
+                                routeIndex,
+                                driverIndex,
+                                driver,
+                                routeData,
+                                toWorkOptions: { success: false },
+                                fromWorkOptions: { success: false },
+                                originalTotalTime: 999,
+                                hasCarryover: false,
+                                isCarryoverRoute: false
+                            });
+                            routeDriverTimes.push(999);
+                        }
                     }
+                    
+                    const allDriversOverThreshold = routeDriverTimes.every(time => time > 120);
+                    routeNeedsMixedMode[routeIndex] = allDriversOverThreshold;
                 }
             }
             
@@ -3339,24 +3486,20 @@
                 const oneTaxi = (calc.toWorkOptions.mode === 'taxi') !== (calc.fromWorkOptions.mode === 'taxi');
                 const requiresAuth = calc.toWorkOptions.mode === 'requires_authorization' || calc.fromWorkOptions.mode === 'requires_authorization';
                             
-                            let priorityScore;
-                            if (requiresAuth) {
-                                // Very low priority - these need manual authorization
-                                priorityScore = -10000 + totalTime; // Negative score to de-prioritize
-                            } else if (bothTaxi) {
-                                priorityScore = 10000 - totalTime;
-                            } else if (oneTaxi) {
+                let priorityScore;
+                if (requiresAuth) {
+                    // Very low priority - these need manual authorization
+                    priorityScore = -10000 + totalTime; // Negative score to de-prioritize
+                } else if (bothTaxi) {
+                    priorityScore = 10000 - totalTime;
+                } else if (oneTaxi) {
                     const transitTime = calc.toWorkOptions.mode === 'transit' ? effectiveToWorkDuration : effectiveFromWorkDuration;
-                                priorityScore = 5000 - transitTime;
-                            } else {
-                                priorityScore = 1000 - totalTime;
+                    priorityScore = 5000 - transitTime;
+                } else {
+                    priorityScore = 1000 - totalTime;
                 }
                 
-                // BOOST priority for drivers with carryovers (add 50000 to ensure they get preference)
-                if (calc.hasCarryover) {
-                    priorityScore += 50000;
-                    console.log(`  🚚 Carryover driver - boosting priority: ${priorityScore}`);
-                            }
+                // Note: No longer boosting carryover drivers - they get shortest routes assigned separately
                             
                 const assignment = {
                     routeIndex: calc.routeIndex,
@@ -3372,22 +3515,48 @@
                     useMixedModeToWork: useMixedModeToWork,
                     useMixedModeFromWork: useMixedModeFromWork,
                     hasCarryover: calc.hasCarryover,
-                    carryoverPostcode: calc.carryoverPostcode
+                    carryoverPostcode: calc.carryoverPostcode,
+                    isCarryoverRoute: calc.isCarryoverRoute
                 };
                 
-                assignments.push(assignment);
+                allAssignments.push(assignment);
             }
             
             // Store assignments globally for authorization function
-            window.currentAssignments = assignments;
+            window.currentAssignments = allAssignments;
             
-            // Step 4: Running optimization
-            updateOptimizationProgress(4, 80, 'Running optimization algorithm...');
+            // Step 7: Running optimization - separate for carryover and regular
+            updateOptimizationProgress(5, 85, 'Running optimization algorithm...');
             await new Promise(resolve => setTimeout(resolve, 500));
             
-            // Find optimal assignment using priority score (not distance)
-            // Modified Hungarian algorithm to use priorityScore instead of totalDistance
-            const optimalAssignment = findOptimalAssignmentByPriority(assignments, savedRoutes.length, driversForAssignment.length);
+            // Separate assignments by type
+            const carryoverAssignments = allAssignments.filter(a => a.isCarryoverRoute);
+            const regularAssignments = allAssignments.filter(a => !a.isCarryoverRoute);
+            
+            // Optimize carryover drivers with their assigned routes
+            let carryoverOptimal = [];
+            if (carryoverAssignments.length > 0 && carryoverDrivers.length > 0) {
+                carryoverOptimal = findOptimalAssignmentByPriority(
+                    carryoverAssignments, 
+                    carryoverRoutes.length, 
+                    carryoverDrivers.length
+                );
+                console.log(`✅ Carryover optimization: ${carryoverOptimal.length} assignments`);
+            }
+            
+            // Optimize regular drivers with remaining routes
+            let regularOptimal = [];
+            if (regularAssignments.length > 0 && regularDrivers.length > 0) {
+                regularOptimal = findOptimalAssignmentByPriority(
+                    regularAssignments, 
+                    regularRoutes.length, 
+                    regularDrivers.length
+                );
+                console.log(`✅ Regular optimization: ${regularOptimal.length} assignments`);
+            }
+            
+            // Combine both optimizations
+            const optimalAssignment = [...carryoverOptimal, ...regularOptimal];
             
             console.log(`✅ Optimal assignment found with ${optimalAssignment.length} assignments`);
             
@@ -3436,6 +3605,12 @@
                 // Update driver name
                 if (driverElement) {
                     driverElement.textContent = driverName;
+                }
+                
+                // Show "why this driver" button
+                const whyDriverButton = document.getElementById(`firebase-route-${routeNumber}-why-driver`);
+                if (whyDriverButton) {
+                    whyDriverButton.classList.remove('hidden');
                 }
                 
                 // Update driver home
@@ -3540,35 +3715,75 @@
             await new Promise(resolve => setTimeout(resolve, 100));
             
             const routesContainer = document.getElementById('routes-container');
-            if (routesContainer && assignmentsWithScores.length > 0) {
-                // Re-fetch elements to ensure they exist
-                const sortedElements = assignmentsWithScores
-                    .map(item => {
-                        const el = document.getElementById(`firebase-route-${item.routeNumber}`);
-                        if (!el) {
-                            console.warn(`Route element not found: firebase-route-${item.routeNumber}`);
+            if (routesContainer) {
+                // Hide all driverless routes from main container (they're shown in driverless section)
+                const assignedRouteIndices = new Set(optimalAssignment.map(a => a.routeIndex));
+                savedRoutes.forEach((routeData, index) => {
+                    if (!assignedRouteIndices.has(index)) {
+                        const routeElement = document.getElementById(`firebase-route-${index + 1}`);
+                        if (routeElement) {
+                            routeElement.style.display = 'none'; // Hide driverless routes
                         }
-                        return el;
-                    })
-                    .filter(el => el);
-                
-                console.log(`Found ${sortedElements.length} route elements to sort`);
-                
-                // Detach elements from DOM first (preserves them)
-                sortedElements.forEach(el => el.remove());
-                
-                // Re-append in sorted order (highest score first)
-                sortedElements.forEach(element => {
-                    routesContainer.appendChild(element);
+                    }
                 });
                 
-                console.log('✅ Routes reordered: Top-left (highest) to bottom-right (lowest)');
+                if (assignmentsWithScores.length > 0) {
+                    // Re-fetch elements to ensure they exist
+                    const sortedElements = assignmentsWithScores
+                        .map(item => {
+                            const el = document.getElementById(`firebase-route-${item.routeNumber}`);
+                            if (!el) {
+                                console.warn(`Route element not found: firebase-route-${item.routeNumber}`);
+                            }
+                            return el;
+                        })
+                        .filter(el => el);
+                    
+                    console.log(`Found ${sortedElements.length} route elements to sort`);
+                    
+                    // Detach elements from DOM first (preserves them)
+                    sortedElements.forEach(el => el.remove());
+                    
+                    // Re-append in sorted order (highest score first)
+                    sortedElements.forEach(element => {
+                        routesContainer.appendChild(element);
+                    });
+                    
+                    console.log('✅ Routes reordered: Top-left (highest) to bottom-right (lowest)');
+                }
+            }
+            
+            // Store assignment details for each route (for "why this driver" info)
+            window.routeAssignmentDetails = {};
+            for (const assignment of optimalAssignment) {
+                const routeNumber = assignment.routeIndex + 1;
+                window.routeAssignmentDetails[routeNumber] = {
+                    driver: assignment.driver,
+                    priorityScore: assignment.priorityScore,
+                    totalTime: assignment.totalTime,
+                    bothTaxi: assignment.bothTaxi,
+                    oneTaxi: assignment.oneTaxi,
+                    toWorkOptions: assignment.toWorkOptions,
+                    fromWorkOptions: assignment.fromWorkOptions,
+                    hasCarryover: assignment.hasCarryover,
+                    carryoverPostcode: assignment.carryoverPostcode,
+                    isCarryoverRoute: assignment.isCarryoverRoute,
+                    routeData: assignment.routeData, // Store route data for map
+                    allConsideredDrivers: allAssignments
+                        .filter(a => a.routeIndex === assignment.routeIndex)
+                        .map(a => ({
+                            driver: a.driver,
+                            priorityScore: a.priorityScore,
+                            totalTime: a.totalTime
+                        }))
+                        .sort((a, b) => b.priorityScore - a.priorityScore)
+                };
             }
             
             // Display routes requiring authorization (detected during calculations)
             // Only show routes that require auth AND were NOT assigned in optimal assignment
             const assignedRouteIndices = new Set(optimalAssignment.map(a => a.routeIndex));
-            const routesRequiringAuth = assignments.filter(assignment => 
+            const routesRequiringAuth = allAssignments.filter(assignment => 
                 (assignment.toWorkOptions.mode === 'requires_authorization' || 
                  assignment.fromWorkOptions.mode === 'requires_authorization') &&
                 !assignedRouteIndices.has(assignment.routeIndex)
@@ -4370,6 +4585,11 @@
                 const routeData = savedRoutes[i];
                 const routeNumber = i + 1;
                 
+                // Only display routes that have assigned drivers (skip driverless routes)
+                if (!routeData.route.assignedDriverName) {
+                    continue; // Skip driverless routes - they're shown in driverless section
+                }
+                
                 // Create route card with assigned driver if available
                 const routeDiv = createRouteElement(routeData.route, routeData.jobs, routeNumber);
                 routesContainer.appendChild(routeDiv);
@@ -4613,6 +4833,538 @@
                 };
                 checkFirebase();
             });
+        }
+
+        // Show optimization info modal
+        function showOptimizationInfo() {
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4';
+            overlay.id = 'optimization-info-overlay';
+            overlay.onclick = function(e) {
+                if (e.target === overlay) {
+                    closeOptimizationInfo();
+                }
+            };
+            
+            overlay.innerHTML = `
+                <div class="bg-[#1a1f24] rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto border border-gray-700" onclick="event.stopPropagation()">
+                    <div class="p-6">
+                        <div class="flex items-center justify-between mb-6">
+                            <h3 class="text-2xl font-bold text-white">How Optimization Works</h3>
+                            <button onclick="closeOptimizationInfo()" class="text-gray-400 hover:text-white">
+                                <span class="material-symbols-outlined">close</span>
+                            </button>
+                        </div>
+                        
+                        <div class="space-y-6">
+                            <!-- Overview Tab -->
+                            <div id="info-overview" class="space-y-4">
+                                <div>
+                                    <h4 class="text-lg font-bold text-white mb-3">Step-by-Step Process</h4>
+                                    <div class="space-y-3 text-gray-300">
+                                        <div class="flex gap-3">
+                                            <span class="text-blue-400 font-bold">1.</span>
+                                            <div>
+                                                <p class="font-semibold">Calculate Route Distances</p>
+                                                <p class="text-sm text-gray-400">For each route, sum all collection→delivery driving distances (Col A→Del A + Col B→Del B + ...)</p>
+                                            </div>
+                                        </div>
+                                        <div class="flex gap-3">
+                                            <span class="text-blue-400 font-bold">2.</span>
+                                            <div>
+                                                <p class="font-semibold">Sort Routes by Distance</p>
+                                                <p class="text-sm text-gray-400">Routes are sorted from shortest to longest total driving distance</p>
+                                            </div>
+                                        </div>
+                                        <div class="flex gap-3">
+                                            <span class="text-blue-400 font-bold">3.</span>
+                                            <div>
+                                                <p class="font-semibold">Assign Shortest Routes to Carryover Drivers</p>
+                                                <p class="text-sm text-gray-400">If you have N carryover drivers, the N shortest routes are assigned to them (they start late, so need quick routes)</p>
+                                            </div>
+                                        </div>
+                                        <div class="flex gap-3">
+                                            <span class="text-blue-400 font-bold">4.</span>
+                                            <div>
+                                                <p class="font-semibold">Calculate Travel Times</p>
+                                                <p class="text-sm text-gray-400">For each driver-route combination, calculate time TO work (home/carryover → first collection) and FROM work (last delivery → home)</p>
+                                            </div>
+                                        </div>
+                                        <div class="flex gap-3">
+                                            <span class="text-blue-400 font-bold">5.</span>
+                                            <div>
+                                                <p class="font-semibold">Determine Travel Mode</p>
+                                                <p class="text-sm text-gray-400">≤18min drive = Taxi | >18min = Public Transport | No transit = Find train station | >2hrs = Mixed mode (drive + train)</p>
+                                            </div>
+                                        </div>
+                                        <div class="flex gap-3">
+                                            <span class="text-blue-400 font-bold">6.</span>
+                                            <div>
+                                                <p class="font-semibold">Calculate Priority Scores</p>
+                                                <p class="text-sm text-gray-400">Both Taxi: 10,000 - time | One Taxi: 5,000 - transit time | Both Transit: 1,000 - time</p>
+                                            </div>
+                                        </div>
+                                        <div class="flex gap-3">
+                                            <span class="text-blue-400 font-bold">7.</span>
+                                            <div>
+                                                <p class="font-semibold">Greedy Assignment</p>
+                                                <p class="text-sm text-gray-400">Sort all combinations by priority score, then assign highest-scoring available driver-route pairs</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="border-t border-gray-700 pt-4">
+                                    <h4 class="text-lg font-bold text-white mb-3">Carryover Logic</h4>
+                                    <div class="bg-blue-900 bg-opacity-20 border border-blue-700 rounded-lg p-4 text-gray-300">
+                                        <p class="mb-2"><strong>Why shortest routes for carryover drivers?</strong></p>
+                                        <p class="text-sm">Carryover drivers must deliver their previous day's vehicle first (usually to a business opening at 9am). This means they arrive at their first collection late. By giving them the shortest routes, we ensure they can complete all their jobs on time.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-6 flex justify-end">
+                            <button onclick="closeOptimizationInfo()" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(overlay);
+        }
+        
+        function closeOptimizationInfo() {
+            const overlay = document.getElementById('optimization-info-overlay');
+            if (overlay) {
+                overlay.remove();
+            }
+        }
+        
+        // Geocode a postcode to get coordinates
+        async function geocodePostcode(postcode) {
+            return new Promise((resolve, reject) => {
+                if (!window.google || !window.google.maps) {
+                    reject(new Error('Google Maps not loaded'));
+                    return;
+                }
+                
+                const geocoder = new google.maps.Geocoder();
+                geocoder.geocode({ address: `${postcode}, UK` }, (results, status) => {
+                    if (status === 'OK' && results[0]) {
+                        resolve(results[0].geometry.location);
+                    } else {
+                        reject(new Error(`Geocoding failed: ${status}`));
+                    }
+                });
+            });
+        }
+
+        // Get directions between two points (accepts postcodes, LatLng objects, or coordinate strings)
+        async function getDirections(origin, destination) {
+            return new Promise((resolve, reject) => {
+                if (!window.google || !window.google.maps) {
+                    reject(new Error('Google Maps not loaded'));
+                    return;
+                }
+                
+                // Format address - handle LatLng objects, coordinate strings, or postcodes
+                const formatAddress = (addr) => {
+                    // If it's a LatLng object
+                    if (addr && typeof addr.lat === 'function') {
+                        return addr;
+                    }
+                    // If it's a string
+                    if (typeof addr === 'string') {
+                        // Check if it's already coordinates (lat,lng format)
+                        if (addr.includes(',') && !isNaN(parseFloat(addr.split(',')[0]))) {
+                            return addr;
+                        }
+                        // Add UK to postcode
+                        return `${addr}, UK`;
+                    }
+                    return addr;
+                };
+                
+                const directionsService = new google.maps.DirectionsService();
+                directionsService.route({
+                    origin: formatAddress(origin),
+                    destination: formatAddress(destination),
+                    travelMode: google.maps.TravelMode.DRIVING
+                }, (result, status) => {
+                    if (status === 'OK') {
+                        resolve(result.routes[0].overview_path);
+                    } else {
+                        reject(new Error(`Directions failed: ${status}`));
+                    }
+                });
+            });
+        }
+
+        // Show "why this driver" info for a specific route
+        async function showWhyThisDriver(routeNumber) {
+            const details = window.routeAssignmentDetails?.[routeNumber];
+            if (!details) {
+                alert('Assignment details not available for this route.');
+                return;
+            }
+            
+            // Get route data from assignment details or savedRoutes
+            const routeData = details.routeData || savedRoutes.find((r, idx) => {
+                return (idx + 1) === routeNumber;
+            });
+            
+            if (!routeData) {
+                alert('Route data not available.');
+                return;
+            }
+            
+            const jobs = routeData.jobs || [];
+            const driverName = details.driver.name || (details.driver.firstName + ' ' + details.driver.lastName) || 'Unknown Driver';
+            const modeText = details.bothTaxi ? 'Both Taxi' : details.oneTaxi ? 'One Taxi' : 'Both Transit';
+            const carryoverText = details.hasCarryover ? ` (Carryover from ${details.carryoverPostcode})` : '';
+            
+            // Get starting postcode (carryover or home)
+            const startPostcode = details.hasCarryover ? details.carryoverPostcode : (details.driver.homePostcode || details.driver.postcode);
+            const endPostcode = details.driver.homePostcode || details.driver.postcode;
+            
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4';
+            overlay.id = 'why-driver-overlay';
+            overlay.onclick = function(e) {
+                if (e.target === overlay) {
+                    closeWhyThisDriver();
+                }
+            };
+            
+            overlay.innerHTML = `
+                <div class="bg-[#1a1f24] rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto border border-gray-700" onclick="event.stopPropagation()">
+                    <div class="p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-xl font-bold text-white">Why ${driverName} for Route ${routeNumber}?</h3>
+                            <button onclick="closeWhyThisDriver()" class="text-gray-400 hover:text-white">
+                                <span class="material-symbols-outlined">close</span>
+                            </button>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <!-- Left Column: Info -->
+                            <div class="space-y-4">
+                                <div class="bg-green-900 bg-opacity-20 border border-green-700 rounded-lg p-4">
+                                    <p class="text-green-400 font-semibold mb-2">Selected Driver</p>
+                                    <p class="text-white">${driverName}${carryoverText}</p>
+                                    <p class="text-sm text-gray-400 mt-2">Priority Score: ${details.priorityScore.toFixed(0)}</p>
+                                    <p class="text-sm text-gray-400">Total Time: ${details.totalTime} minutes</p>
+                                    <p class="text-sm text-gray-400">Mode: ${modeText}</p>
+                                </div>
+                                
+                                <div>
+                                    <p class="text-white font-semibold mb-2">All Drivers Considered:</p>
+                                    <div class="space-y-2 max-h-64 overflow-y-auto">
+                                        ${details.allConsideredDrivers.map((d, idx) => {
+                                            const dName = d.driver.name || (d.driver.firstName + ' ' + d.driver.lastName) || 'Unknown';
+                                            const isSelected = d.driver.id === details.driver.id;
+                                            return `
+                                                <div class="bg-gray-800 rounded p-3 ${isSelected ? 'border-2 border-green-500' : 'border border-gray-700'}">
+                                                    <div class="flex justify-between items-center">
+                                                        <span class="text-white ${isSelected ? 'font-bold' : ''}">${idx + 1}. ${dName}${isSelected ? ' ✓ SELECTED' : ''}</span>
+                                                        <span class="text-gray-400 text-sm">Score: ${d.priorityScore.toFixed(0)}</span>
+                                                    </div>
+                                                    <p class="text-xs text-gray-500 mt-1">Time: ${d.totalTime} min</p>
+                                                </div>
+                                            `;
+                                        }).join('')}
+                                    </div>
+                                </div>
+                                
+                                ${details.isCarryoverRoute ? `
+                                    <div class="bg-blue-900 bg-opacity-20 border border-blue-700 rounded-lg p-3">
+                                        <p class="text-blue-400 text-sm">ℹ️ This route was assigned to a carryover driver because it's one of the ${details.allConsideredDrivers.length} shortest routes.</p>
+                                    </div>
+                                ` : ''}
+                            </div>
+                            
+                            <!-- Right Column: Map -->
+                            <div>
+                                <p class="text-white font-semibold mb-2">Route Map</p>
+                                <div id="why-driver-map" class="w-full h-96 rounded-lg border border-gray-700 bg-gray-900"></div>
+                                <p class="text-xs text-gray-400 mt-2">
+                                    <span class="inline-block w-3 h-0.5 bg-blue-500 mr-1"></span> Delivery routes
+                                    <span class="inline-block w-3 h-0.5 border-dashed border-gray-400 mr-1 ml-3"></span> Travel between jobs
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-6 flex justify-end">
+                            <button onclick="closeWhyThisDriver()" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(overlay);
+            
+            // Initialize map after a short delay to ensure DOM is ready
+            setTimeout(async () => {
+                try {
+                    await initializeRouteMap(routeNumber, jobs, startPostcode, endPostcode, details.hasCarryover);
+                } catch (error) {
+                    console.error('Error initializing map:', error);
+                    const mapDiv = document.getElementById('why-driver-map');
+                    if (mapDiv) {
+                        mapDiv.innerHTML = '<p class="text-red-400 p-4">Error loading map. Please try again.</p>';
+                    }
+                }
+            }, 100);
+        }
+        
+        // Initialize the route map
+        async function initializeRouteMap(routeNumber, jobs, startPostcode, endPostcode, hasCarryover) {
+            if (!window.google || !window.google.maps) {
+                throw new Error('Google Maps not loaded');
+            }
+            
+            const mapDiv = document.getElementById('why-driver-map');
+            if (!mapDiv) return;
+            
+            // Initialize map centered on UK
+            const map = new google.maps.Map(mapDiv, {
+                zoom: 8,
+                center: { lat: 52.5, lng: -1.5 }, // Center of UK
+                styles: [
+                    { featureType: 'all', elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
+                    { featureType: 'all', elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
+                    { featureType: 'all', elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] }
+                ]
+            });
+            
+            const bounds = new google.maps.LatLngBounds();
+            const markers = [];
+            const polylines = [];
+            
+            try {
+                // Geocode starting point (carryover or home)
+                const startLocation = await geocodePostcode(startPostcode);
+                bounds.extend(startLocation);
+                
+                // Add marker for starting point
+                const startMarker = new google.maps.Marker({
+                    position: startLocation,
+                    map: map,
+                    title: hasCarryover ? `Carryover: ${startPostcode}` : `Driver Home: ${startPostcode}`,
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        scale: 8,
+                        fillColor: hasCarryover ? '#FF6B6B' : '#4ECDC4',
+                        fillOpacity: 1,
+                        strokeColor: '#FFF',
+                        strokeWeight: 2
+                    },
+                    label: {
+                        text: hasCarryover ? 'C' : 'H',
+                        color: '#FFF',
+                        fontSize: '10px',
+                        fontWeight: 'bold'
+                    }
+                });
+                markers.push(startMarker);
+                
+                let previousLocation = startLocation;
+                
+                // Process each job
+                for (let i = 0; i < jobs.length; i++) {
+                    const job = jobs[i];
+                    const collectionPostcode = job.parsedData?.collection_address;
+                    const deliveryPostcode = job.parsedData?.postcode_delivery;
+                    
+                    if (!collectionPostcode || !deliveryPostcode) continue;
+                    
+                    try {
+                        // Geocode collection point
+                        const collectionLocation = await geocodePostcode(collectionPostcode);
+                        bounds.extend(collectionLocation);
+                        
+                        // Draw straight dotted line from previous location to collection (travel - as the crow flies)
+                        // Always use straight line for travel segments
+                        const travelLine = new google.maps.Polyline({
+                            path: [previousLocation, collectionLocation],
+                            geodesic: true,
+                            strokeColor: '#9CA3AF',
+                            strokeOpacity: 0.6,
+                            strokeWeight: 2,
+                            icons: [{
+                                icon: {
+                                    path: 'M 0,-1 0,1',
+                                    strokeOpacity: 1,
+                                    scale: 3
+                                },
+                                offset: '0',
+                                repeat: '10px'
+                            }]
+                        });
+                        travelLine.setMap(map);
+                        polylines.push(travelLine);
+                        
+                        // Add marker for collection
+                        const collectionMarker = new google.maps.Marker({
+                            position: collectionLocation,
+                            map: map,
+                            title: `Collection ${String.fromCharCode(65 + i)}: ${collectionPostcode}`,
+                            icon: {
+                                path: google.maps.SymbolPath.CIRCLE,
+                                scale: 7,
+                                fillColor: '#10B981',
+                                fillOpacity: 1,
+                                strokeColor: '#FFF',
+                                strokeWeight: 2
+                            },
+                            label: {
+                                text: String.fromCharCode(65 + i),
+                                color: '#FFF',
+                                fontSize: '10px',
+                                fontWeight: 'bold'
+                            }
+                        });
+                        markers.push(collectionMarker);
+                        
+                        // Geocode delivery point
+                        const deliveryLocation = await geocodePostcode(deliveryPostcode);
+                        bounds.extend(deliveryLocation);
+                        
+                        // Draw blue solid line from collection to delivery (delivery route)
+                        try {
+                            const deliveryPath = await getDirections(collectionPostcode, deliveryPostcode);
+                            const deliveryLine = new google.maps.Polyline({
+                                path: deliveryPath,
+                                geodesic: true,
+                                strokeColor: '#3B82F6',
+                                strokeOpacity: 0.8,
+                                strokeWeight: 4
+                            });
+                            deliveryLine.setMap(map);
+                            polylines.push(deliveryLine);
+                        } catch (error) {
+                            console.warn('Could not get directions for delivery:', error);
+                            // Draw straight line as fallback
+                            const deliveryLine = new google.maps.Polyline({
+                                path: [collectionLocation, deliveryLocation],
+                                geodesic: true,
+                                strokeColor: '#3B82F6',
+                                strokeOpacity: 0.8,
+                                strokeWeight: 4
+                            });
+                            deliveryLine.setMap(map);
+                            polylines.push(deliveryLine);
+                        }
+                        
+                        // Add marker for delivery
+                        const deliveryMarker = new google.maps.Marker({
+                            position: deliveryLocation,
+                            map: map,
+                            title: `Delivery ${String.fromCharCode(65 + i)}: ${deliveryPostcode}`,
+                            icon: {
+                                path: google.maps.SymbolPath.CIRCLE,
+                                scale: 7,
+                                fillColor: '#EF4444',
+                                fillOpacity: 1,
+                                strokeColor: '#FFF',
+                                strokeWeight: 2
+                            },
+                            label: {
+                                text: String.fromCharCode(65 + i),
+                                color: '#FFF',
+                                fontSize: '10px',
+                                fontWeight: 'bold'
+                            }
+                        });
+                        markers.push(deliveryMarker);
+                        
+                        previousLocation = deliveryLocation;
+                        
+                    } catch (error) {
+                        console.error(`Error processing job ${i + 1}:`, error);
+                    }
+                }
+                
+                // Draw straight dotted line from last delivery back to driver home (as the crow flies)
+                if (jobs.length > 0 && endPostcode !== startPostcode) {
+                    try {
+                        const endLocation = await geocodePostcode(endPostcode);
+                        bounds.extend(endLocation);
+                        
+                        // Always use straight line for return journey
+                        const returnLine = new google.maps.Polyline({
+                            path: [previousLocation, endLocation],
+                            geodesic: true,
+                            strokeColor: '#9CA3AF',
+                            strokeOpacity: 0.6,
+                            strokeWeight: 2,
+                            icons: [{
+                                icon: {
+                                    path: 'M 0,-1 0,1',
+                                    strokeOpacity: 1,
+                                    scale: 3
+                                },
+                                offset: '0',
+                                repeat: '10px'
+                            }]
+                        });
+                        returnLine.setMap(map);
+                        polylines.push(returnLine);
+                        
+                        // Add marker for driver home (if different from start)
+                        const homeMarker = new google.maps.Marker({
+                            position: endLocation,
+                            map: map,
+                            title: `Driver Home: ${endPostcode}`,
+                            icon: {
+                                path: google.maps.SymbolPath.CIRCLE,
+                                scale: 8,
+                                fillColor: '#4ECDC4',
+                                fillOpacity: 1,
+                                strokeColor: '#FFF',
+                                strokeWeight: 2
+                            },
+                            label: {
+                                text: 'H',
+                                color: '#FFF',
+                                fontSize: '10px',
+                                fontWeight: 'bold'
+                            }
+                        });
+                        markers.push(homeMarker);
+                    } catch (error) {
+                        console.error('Error adding return route:', error);
+                    }
+                }
+                
+                // Fit map to show all markers
+                if (bounds.getNorthEast().equals(bounds.getSouthWest())) {
+                    // If all points are the same, zoom to that point
+                    map.setCenter(bounds.getCenter());
+                    map.setZoom(12);
+                } else {
+                    map.fitBounds(bounds);
+                    // Add padding
+                    const padding = 50;
+                    map.fitBounds(bounds, padding);
+                }
+                
+            } catch (error) {
+                console.error('Error initializing map:', error);
+                mapDiv.innerHTML = '<p class="text-red-400 p-4">Error loading map. Please try again.</p>';
+            }
+        }
+        
+        function closeWhyThisDriver() {
+            const overlay = document.getElementById('why-driver-overlay');
+            if (overlay) {
+                overlay.remove();
+            }
         }
 
         // Initialize the page when it loads

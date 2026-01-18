@@ -640,7 +640,7 @@
     </div>
 
     <!-- Add Expense Modal -->
-    <div id="expenseModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 overflow-y-auto">
+    <div id="expenseModal" class="hidden fixed inset-0 bg-black bg-opacity-95 z-50 overflow-y-auto">
         <div class="min-h-screen px-4 flex items-end sm:items-center justify-center">
             <div class="bg-[#1a1f24] rounded-2xl w-full max-w-lg transform transition-all animated-border-expense-modal">
                 
@@ -2044,7 +2044,11 @@
             document.getElementById('photoPreview').innerHTML = '';
             document.querySelectorAll('.category-btn').forEach(btn => btn.classList.remove('ring-2', 'ring-blue-500'));
             
-            document.getElementById('expenseModal').classList.remove('hidden');
+            const expenseModal = document.getElementById('expenseModal');
+            expenseModal.classList.remove('hidden');
+            
+            // Reset scroll position to top when opening modal
+            expenseModal.scrollTop = 0;
         }
 
         // Select category
