@@ -1283,13 +1283,13 @@
                 const existingDynamicRoutes = routesContainer.querySelectorAll('.dynamic-route');
                 existingDynamicRoutes.forEach(route => route.remove());
                 
-                // Display each saved route (only routes with assigned drivers)
+                // Display each saved route (display all routes with jobs, regardless of driver assignment)
                 savedRoutes.forEach((routeData, index) => {
                     const route = routeData.route;
                     const jobs = routeData.jobs;
                     
-                    // Only display routes that have assigned drivers (skip driverless routes)
-                    if (jobs.length > 0 && routeData.route.assignedDriverName) {
+                    // Display routes that have jobs (driver assignment is optional - can be assigned later)
+                    if (jobs.length > 0) {
                         const firstJob = jobs[0];
                         const routeElement = createRouteElement(route, jobs, index + 1);
                         routesContainer.appendChild(routeElement);

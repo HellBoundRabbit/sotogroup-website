@@ -7,6 +7,8 @@
     <script src="/assets/js/tailwind-runtime.js"></script>
     <script src="/js/session-manager.js"></script>
     <script src="../js/ui-dialogs.js"></script>
+    <!-- Offline Storage & Upload Queue System -->
+    <script src="/js/expense-offline-storage.js"></script>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
     <style>
         body {
@@ -30,7 +32,7 @@
             position: absolute;
             top: 0;
             left: 0;
-            animation: spinning82341 1.7s linear infinite;
+            /* animation: spinning82341 1.7s linear infinite; */
             filter: blur(1px);
         }
         .spinner::before {
@@ -51,7 +53,7 @@
             position: absolute;
             top: 0;
             left: 0;
-            animation: spinning82341 1.7s linear infinite;
+            /* animation: spinning82341 1.7s linear infinite; */
             filter: blur(1px);
         }
         .spinner-red::before {
@@ -101,7 +103,7 @@
             position: absolute;
             top: 0;
             left: 0;
-            animation: spinning82341 1.7s linear infinite;
+            /* animation: spinning82341 1.7s linear infinite; */
             filter: blur(1px);
         }
         .logo-spinner::before {
@@ -176,6 +178,19 @@
     </style>
 </head>
 <body class="bg-black text-white" style='font-family: Inter, "Noto Sans", sans-serif;'>
+    <!-- Upload Banner (shown when uploading) -->
+    <div id="uploadBanner" class="hidden fixed top-0 left-0 right-0 bg-red-600 text-white z-[100] shadow-lg">
+        <div class="flex items-center justify-center gap-3 px-4 py-3">
+            <span class="material-symbols-outlined animate-pulse">cloud_upload</span>
+            <div class="flex flex-col items-center">
+                <span id="uploadBannerText" class="font-semibold text-sm">Uploading expenses...</span>
+                <div class="flex items-center gap-2 text-xs opacity-90">
+                    <span>Uploads continuing in background</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Loading Overlay -->
     <div id="loadingOverlay" class="fixed inset-0 bg-black flex items-center justify-center z-50">
         <div class="text-center">
@@ -342,10 +357,37 @@
 
                 currentSession = session;
                 currentUser = { uid: session.uid, ...session };
+                window.currentUser = currentUser; // Set for ExpenseUploadQueue
             } catch (error) {
                 console.error('Failed to establish driver session:', error);
                 window.location.href = '/pages/soto-routes-login.html';
                     return;
+                }
+
+                // Check for pending uploads and show banner if needed
+                checkPendingUploads();
+
+                // Listen for Service Worker messages (auth token requests)
+                if ('serviceWorker' in navigator && navigator.serviceWorker) {
+                    navigator.serviceWorker.addEventListener('message', async (event) => {
+                        const { type } = event.data || {};
+                        if (type === 'get-auth-token') {
+                            try {
+                                const auth = window.auth;
+                                if (auth && auth.currentUser) {
+                                    const authToken = await auth.currentUser.getIdToken();
+                                    if (event.ports && event.ports[0]) {
+                                        event.ports[0].postMessage({ authToken });
+                                    }
+                                }
+                            } catch (error) {
+                                console.warn('[Driver Portal] Failed to get auth token for Service Worker:', error);
+                            }
+                        } else if (type === 'upload-status-changed') {
+                            // Service Worker updated upload status, check again
+                            checkPendingUploads();
+                        }
+                    });
                 }
 
                 try {
@@ -489,6 +531,17 @@
                 if (url) {
                     window.location.href = url;
                 }
+            }
+        }
+
+        // Check for pending uploads and show/hide banner
+        async function checkPendingUploads() {
+            try {
+                if (window.expenseUploadQueue) {
+                    await window.expenseUploadQueue.updateGlobalUploadStatus();
+                }
+            } catch (error) {
+                console.warn('[Driver Portal] Error checking pending uploads:', error);
             }
         }
 

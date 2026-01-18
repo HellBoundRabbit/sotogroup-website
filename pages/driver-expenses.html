@@ -77,6 +77,24 @@
         
         console.log('Firebase initialized successfully!');
     </script>
+    <script>
+        // Register Service Worker for background uploads
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        console.log('[SW] Service Worker registered:', registration.scope);
+                        // Check for updates periodically
+                        setInterval(() => {
+                            registration.update();
+                        }, 60000); // Check every minute
+                    })
+                    .catch(error => {
+                        console.warn('[SW] Service Worker registration failed:', error);
+                    });
+            });
+        }
+    </script>
     <style>
         /* Mobile-optimized touch targets */
         .touch-target { min-height: 44px; min-width: 44px; }
@@ -420,8 +438,8 @@
             width: 100%;
             height: 100%;
             border-radius: 50%;
-            background-image: linear-gradient(rgb(0, 0, 0) 35%, rgb(0, 255, 0));
-            box-shadow: 0px -5px 20px 0px rgb(0, 0, 0), 0px 5px 20px 0px rgb(0, 255, 0);
+            background-image: linear-gradient(rgb(0, 255, 0) 35%, rgb(0, 200, 0));
+            box-shadow: 0px -5px 20px 0px rgb(0, 255, 0), 0px 5px 20px 0px rgb(0, 200, 0);
         }
         .spinner1 {
             background-color: rgb(36, 36, 36);
@@ -496,7 +514,7 @@
             </div>
             <button onclick="window.location.href='/pages/driver-paid-expenses.html'" class="touch-target">
                 <div class="spinner-wrapper">
-                    <div class="spinner"></div>
+                    <div class="spinner-green"></div>
                     <div class="spinner1">
                         <span class="material-symbols-outlined spinner-icon">receipt</span>
                     </div>
@@ -642,7 +660,7 @@
     <!-- Add Expense Modal -->
     <div id="expenseModal" class="hidden fixed inset-0 bg-black bg-opacity-95 z-50 overflow-y-auto">
         <div class="min-h-screen px-4 flex items-end sm:items-center justify-center">
-            <div class="bg-[#1a1f24] rounded-2xl w-full max-w-lg transform transition-all animated-border-expense-modal">
+            <div id="expenseModalContent" class="bg-[#1a1f24] rounded-2xl w-full max-w-lg transform transition-all">
                 
                 <!-- Modal Header -->
                 <div class="sticky top-0 bg-[#1a1f24] border-b border-gray-800 rounded-t-2xl z-10">
@@ -961,9 +979,10 @@
             saveSubmissionQueue(queue);
             console.log(`Queued expense batch ${localId} for ${targetStatus} sync when online.`);
 
-            if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
+            // Update upload status using new ExpenseUploadQueue
+            if (window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
                 try {
-                await window.uploadQueue.updateGlobalUploadStatus();
+                await window.expenseUploadQueue.updateGlobalUploadStatus();
                 } catch (error) {
                 console.warn('Unable to refresh upload indicator after queue update:', error);
                 }
@@ -1001,9 +1020,12 @@
                 throw new Error('Registration is required to sync.');
             }
 
+            // Only check for unique registration when creating NEW batches (no ID)
+            // For existing batches (has ID), just normalize the registration
             if (!draft.id) {
                 registration = await getUniqueReg(registration);
             } else {
+                // Existing batch - just normalize, don't change to add "!"
                 registration = normalizeReg(registration);
             }
 
@@ -1227,8 +1249,9 @@
                 console.warn('Some expense submissions could not sync and remain queued.');
                 }
 
-                if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
-                await window.uploadQueue.updateGlobalUploadStatus();
+                // Update upload status using new ExpenseUploadQueue
+                if (window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
+                await window.expenseUploadQueue.updateGlobalUploadStatus();
                 }
 
                 const info = window.getExpenseSubmissionQueueInfo ? window.getExpenseSubmissionQueueInfo() : { pending: 0 };
@@ -1327,21 +1350,21 @@
                 overlay.setAttribute('data-step', 'after-load-batches');
                 }
                 
-                if (window.uploadQueue) {
-                await window.uploadQueue.init();
-                await window.uploadQueue.processQueue();
-                await window.uploadQueue.updateGlobalUploadStatus();
-                
-                // Set up periodic status updates while uploading (only when not typing)
-                if (window.uploadStatusCheckInterval) {
-                    clearInterval(window.uploadStatusCheckInterval);
-                }
-                window.uploadStatusCheckInterval = setInterval(async () => {
-                    // Skip update if user is actively typing to prevent keyboard from closing
-                    if (!window.isUserTyping && window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
-                        await window.uploadQueue.updateGlobalUploadStatus();
+                // Service Worker handles uploads in background - just update status
+                if (window.expenseUploadQueue) {
+                    await window.expenseUploadQueue.updateGlobalUploadStatus();
+                    
+                    // Set up periodic status updates while uploading (only when not typing)
+                    // Note: Service Worker handles actual uploads, this just updates UI
+                    if (window.uploadStatusCheckInterval) {
+                        clearInterval(window.uploadStatusCheckInterval);
                     }
-                }, 3000); // Check every 3 seconds (less frequent to avoid interference)
+                    window.uploadStatusCheckInterval = setInterval(async () => {
+                        // Skip update if user is actively typing to prevent keyboard from closing
+                        if (!window.isUserTyping && window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
+                            await window.expenseUploadQueue.updateGlobalUploadStatus();
+                        }
+                    }, 3000); // Check every 3 seconds (less frequent to avoid interference)
                 }
                 } catch (error) {
                 console.error('Error loading user data:', error);
@@ -1470,6 +1493,65 @@
                 runDriverExpensesInit();
             }
         }, { once: true });
+
+        // Listen for Service Worker upload completion messages
+        if ('BroadcastChannel' in window) {
+            const uploadChannel = new BroadcastChannel('expense-upload-channel');
+            uploadChannel.addEventListener('message', async (event) => {
+                const { type, uploadId, expenseDocId, downloadURLs } = event.data || {};
+                
+                if (type === 'upload-complete' && expenseDocId && downloadURLs && downloadURLs.length > 0) {
+                    console.log('[Main Thread] Received upload completion:', { expenseDocId, uploadId, photoCount: downloadURLs.length });
+                    
+                    try {
+                        // Update Firestore expense document with uploaded photo URLs
+                        const expenseRef = window.doc(window.db, 'expenses', expenseDocId);
+                        const expenseSnap = await window.getDoc(expenseRef);
+                        
+                        if (expenseSnap.exists()) {
+                            const currentData = expenseSnap.data();
+                            const existingPhotos = Array.isArray(currentData.photos) ? currentData.photos.filter(p => typeof p === 'string') : [];
+                            
+                            // Merge existing URLs with new uploads (avoid duplicates)
+                            const allPhotoURLs = [...existingPhotos];
+                            for (const newURL of downloadURLs) {
+                                if (!allPhotoURLs.includes(newURL)) {
+                                    allPhotoURLs.push(newURL);
+                                }
+                            }
+                            
+                            await window.updateDoc(expenseRef, {
+                                photos: allPhotoURLs,
+                                photosUploading: false,
+                                updatedAt: window.serverTimestamp ? window.serverTimestamp() : new Date()
+                            });
+                            
+                            console.log('[Main Thread] Updated expense document with photo URLs:', expenseDocId);
+                            
+                            // Update banner status
+                            if (window.expenseUploadQueue) {
+                                await window.expenseUploadQueue.updateGlobalUploadStatus();
+                            }
+                            
+                            // Refresh expense list if on the batches page
+                            if (typeof window.loadExpenseBatches === 'function') {
+                                setTimeout(async () => {
+                                    try {
+                                        await window.loadExpenseBatches();
+                                    } catch (error) {
+                                        console.error('[Main Thread] Error refreshing expense list:', error);
+                                    }
+                                }, 1000);
+                            }
+                        } else {
+                            console.warn('[Main Thread] Expense document not found:', expenseDocId);
+                        }
+                    } catch (error) {
+                        console.error('[Main Thread] Error updating expense with photo URLs:', error);
+                    }
+                }
+            });
+        }
 
         // Warn user if they try to leave while uploading
         window.addEventListener('beforeunload', (e) => {
@@ -2026,6 +2108,23 @@
             }
         }
 
+        // Helper function to ensure expense modal has no border classes
+        function clearExpenseModalBorders() {
+            const expenseModalContent = document.getElementById('expenseModalContent');
+            if (expenseModalContent) {
+                // Remove ALL possible border animation classes
+                expenseModalContent.classList.remove(
+                    'animated-border-modal',
+                    'animated-border-modal-draft',
+                    'animated-border-modal-pending',
+                    'animated-border-modal-validated',
+                    'animated-border-modal-paid',
+                    'animated-border-modal-returned',
+                    'animated-border-expense-modal'
+                );
+            }
+        }
+
         // Add expense button
         function addExpense() {
             // Only allow adding expenses if batch is draft (not returned)
@@ -2044,11 +2143,19 @@
             document.getElementById('photoPreview').innerHTML = '';
             document.querySelectorAll('.category-btn').forEach(btn => btn.classList.remove('ring-2', 'ring-blue-500'));
             
-            const expenseModal = document.getElementById('expenseModal');
-            expenseModal.classList.remove('hidden');
+            // Clear any border classes before showing modal
+            clearExpenseModalBorders();
             
-            // Reset scroll position to top when opening modal
-            expenseModal.scrollTop = 0;
+            // Get modal and show it
+            const expenseModal = document.getElementById('expenseModal');
+            if (expenseModal) {
+                expenseModal.classList.remove('hidden');
+                // Reset scroll position to top when opening modal
+                expenseModal.scrollTop = 0;
+            }
+            
+            // Clear borders again after showing (in case something else added them)
+            setTimeout(clearExpenseModalBorders, 10);
         }
 
         // Select category
@@ -2238,7 +2345,17 @@
                 saveBtn.onclick = savePhotosToExpense;
             }
             
-            document.getElementById('expenseModal').classList.remove('hidden');
+            // Clear any border classes before showing modal
+            clearExpenseModalBorders();
+            
+            // Get modal and show it
+            const expenseModal = document.getElementById('expenseModal');
+            if (expenseModal) {
+                expenseModal.classList.remove('hidden');
+            }
+            
+            // Clear borders again after showing (in case something else added them)
+            setTimeout(clearExpenseModalBorders, 10);
         }
         
         // Save photos to existing expense
@@ -2427,12 +2544,13 @@
             // Update global reference
             window.currentBatch = currentBatch;
             
+            // Clear typing flag to ensure renderExpenses doesn't defer
+            window.isUserTyping = false;
+            
             closeExpenseModal();
             
-            // Defer renderExpenses to avoid interfering with any ongoing input
-            setTimeout(() => {
-                renderExpenses();
-            }, 100);
+            // Render immediately - expense is already in the array
+            renderExpenses();
             
             // Auto-save draft to IndexedDB (will check if typing before saving)
             if (window.scheduleAutoSave) {
@@ -2582,8 +2700,8 @@
             currentBatch.notes = notes || '';
 
             // Update upload status immediately to show banner
-            if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
-                await window.uploadQueue.updateGlobalUploadStatus();
+            if (window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
+                await window.expenseUploadQueue.updateGlobalUploadStatus();
             }
 
             let queuedLocalId = null;
@@ -2594,8 +2712,8 @@
             }
 
             // Update upload status again after queueing
-            if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
-                await window.uploadQueue.updateGlobalUploadStatus();
+            if (window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
+                await window.expenseUploadQueue.updateGlobalUploadStatus();
             }
 
             if (!navigator.onLine) {
@@ -2609,12 +2727,19 @@
             }
 
             try {
-                await syncDraftToFirestore(currentBatch, 'draft');
+                const savedBatch = await syncDraftToFirestore(currentBatch, 'draft');
+                
+                // Ensure currentBatch.id is updated from syncDraftToFirestore
+                if (savedBatch && savedBatch.id && !currentBatch.id) {
+                    currentBatch.id = savedBatch.id;
+                    window.currentBatch = currentBatch;
+                }
 
                 if (queuedLocalId) {
                 removeSubmissionQueueEntry(queuedLocalId);
-                if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
-                await window.uploadQueue.updateGlobalUploadStatus();
+                // Update upload status using new ExpenseUploadQueue
+                if (window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
+                await window.expenseUploadQueue.updateGlobalUploadStatus();
                 }
                 }
 
@@ -2688,8 +2813,8 @@
             currentBatch.notes = notes || '';
 
             // Update upload status immediately to show banner
-            if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
-                await window.uploadQueue.updateGlobalUploadStatus();
+            if (window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
+                await window.expenseUploadQueue.updateGlobalUploadStatus();
             }
 
             let queuedLocalId = null;
@@ -2700,8 +2825,8 @@
             }
 
             // Update upload status again after queueing
-            if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
-                await window.uploadQueue.updateGlobalUploadStatus();
+            if (window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
+                await window.expenseUploadQueue.updateGlobalUploadStatus();
             }
 
             if (!navigator.onLine) {
@@ -2715,13 +2840,25 @@
             }
 
             try {
+                // Ensure currentBatch.id is set before syncing (should already be set from saveDraft, but double-check)
                 const batchId = currentBatch.id;
+                if (!batchId) {
+                    console.error('[submitBatch] currentBatch.id is missing - batch may not have been saved as draft first');
+                    notifyError('Cannot submit: batch ID is missing. Please save as draft first, then try submitting again.', 'Missing Batch ID');
+                    currentBatch = null;
+                    window.currentBatch = null;
+                    window.isUploadingExpense = false;
+                    if (saveBtn) saveBtn.disabled = false;
+                    if (submitBtn) submitBtn.disabled = false;
+                    return;
+                }
                 await syncDraftToFirestore(currentBatch, 'pending');
 
                 if (queuedLocalId) {
                 removeSubmissionQueueEntry(queuedLocalId);
-                if (window.uploadQueue && typeof window.uploadQueue.updateGlobalUploadStatus === 'function') {
-                await window.uploadQueue.updateGlobalUploadStatus();
+                // Update upload status using new ExpenseUploadQueue
+                if (window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
+                await window.expenseUploadQueue.updateGlobalUploadStatus();
                 }
                 }
 
@@ -2745,13 +2882,14 @@
             }
         }
 
-        // Save expenses to Firebase
+        // Save expenses to Firebase - WRITE-FIRST APPROACH
+        // All data written to IndexedDB immediately, uploads happen via Service Worker
         async function saveExpenses(batchId, sourceBatch = currentBatch) {
             const batchRef = sourceBatch || currentBatch;
             const expensesToSave = (batchRef && Array.isArray(batchRef.expenses)) ? batchRef.expenses : [];
             const officeId = batchRef.officeId || currentUser.officeId;
 
-            console.log(`Saving ${expensesToSave.length} expenses for batch ${batchId}, officeId: ${officeId}`, expensesToSave.map(exp => ({ category: exp.category, amount: exp.amount })));
+            console.log(`[saveExpenses] WRITE-FIRST: Saving ${expensesToSave.length} expenses for batch ${batchId}, officeId: ${officeId}`);
 
             // Delete existing expenses for this batch
             const existingExpensesQuery = window.query(
@@ -2774,128 +2912,25 @@
                 }
             });
             await Promise.all(deletePromises);
-            console.log(`Deleted ${existingSnapshot.docs.length} existing expenses for batch ${batchId}`);
+            console.log(`[saveExpenses] Deleted ${existingSnapshot.docs.length} existing expenses for batch ${batchId}`);
 
             if (expensesToSave.length === 0) {
-                console.warn(`No expenses to save for batch ${batchId}. Expenses array is empty.`);
+                console.warn(`[saveExpenses] No expenses to save for batch ${batchId}. Expenses array is empty.`);
                 return;
             }
 
-            // STEP 1: Upload ALL photos first (in parallel) before creating expense documents
             const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            const photoUploadTasks = [];
             
-            if (!isLocalhost) {
-                console.log('[saveExpenses] Step 1: Uploading all photos before saving expenses...');
-                
-                for (let expenseIndex = 0; expenseIndex < expensesToSave.length; expenseIndex++) {
-                    const expense = expensesToSave[expenseIndex];
-                    if (!expense.photos || expense.photos.length === 0) continue;
-                    
-                    for (let photoIndex = 0; photoIndex < expense.photos.length; photoIndex++) {
-                        const photoFile = expense.photos[photoIndex];
-                        
-                        // Skip if already a URL (already uploaded)
-                        if (typeof photoFile === 'string') {
-                            continue;
-                        }
-                        
-                        // Only upload File/Blob objects
-                        if (photoFile instanceof File || photoFile instanceof Blob) {
-                            const timestamp = Date.now();
-                            const filename = `expenses/${batchId}/${expense.category}_${timestamp}_${expenseIndex}_${photoIndex}.jpg`;
-                            
-                            photoUploadTasks.push({
-                                expenseIndex,
-                                photoIndex,
-                                photoFile,
-                                filename,
-                                category: expense.category
-                            });
-                        }
-                    }
-                }
-                
-                if (photoUploadTasks.length > 0) {
-                    console.log(`[saveExpenses] Uploading ${photoUploadTasks.length} photos in parallel...`);
-                    // No notification - red banner is enough
-                    
-                    // Upload all photos in parallel (up to 5 at a time)
-                    const CONCURRENT_UPLOADS = 5;
-                    const uploadedPhotos = new Map(); // Map: "expenseIndex_photoIndex" -> downloadURL
-                    
-                    // Track upload speed
-                    const uploadSpeedTracker = {
-                        bytesUploaded: 0,
-                        startTime: Date.now(),
-                        updateSpeed: (bytes) => {
-                            uploadSpeedTracker.bytesUploaded += bytes;
-                            const elapsed = (Date.now() - uploadSpeedTracker.startTime) / 1000; // seconds
-                            if (elapsed > 0) {
-                                const mbps = (uploadSpeedTracker.bytesUploaded * 8) / (elapsed * 1000000); // Convert to Mbps
-                                const speedElement = document.getElementById('uploadSpeedValue');
-                                const speedContainer = document.getElementById('uploadBannerSpeed');
-                                if (speedElement) {
-                                    speedElement.textContent = mbps.toFixed(2);
-                                }
-                                if (speedContainer && mbps > 0) {
-                                    speedContainer.classList.remove('hidden');
-                                }
-                            }
-                        }
-                    };
-                    
-                    for (let i = 0; i < photoUploadTasks.length; i += CONCURRENT_UPLOADS) {
-                        const batch = photoUploadTasks.slice(i, i + CONCURRENT_UPLOADS);
-                        const uploadPromises = batch.map(async (task) => {
-                            try {
-                                const photoRef = window.ref(window.storage, task.filename);
-                                const uploadStartTime = Date.now();
-                                await window.uploadBytes(photoRef, task.photoFile);
-                                const uploadTime = (Date.now() - uploadStartTime) / 1000;
-                                uploadSpeedTracker.updateSpeed(task.photoFile.size);
-                                const downloadURL = await window.getDownloadURL(photoRef);
-                                const key = `${task.expenseIndex}_${task.photoIndex}`;
-                                uploadedPhotos.set(key, downloadURL);
-                                console.log(`[saveExpenses] Uploaded photo ${task.expenseIndex}_${task.photoIndex} in ${uploadTime.toFixed(2)}s`);
-                                return { success: true, task, url: downloadURL };
-                            } catch (error) {
-                                console.error(`[saveExpenses] Failed to upload photo ${task.expenseIndex}_${task.photoIndex}:`, error);
-                                return { success: false, task, error };
-                            }
-                        });
-                        
-                        await Promise.all(uploadPromises);
-                    }
-                    
-                    console.log(`[saveExpenses] All photos uploaded. ${uploadedPhotos.size} successful uploads.`);
-                    
-                    // Update expense photos with uploaded URLs
-                    for (let expenseIndex = 0; expenseIndex < expensesToSave.length; expenseIndex++) {
-                        const expense = expensesToSave[expenseIndex];
-                        if (!expense.photos) continue;
-                        
-                        const updatedPhotos = expense.photos.map((photo, photoIndex) => {
-                            if (typeof photo === 'string') {
-                                return photo; // Already a URL, keep it
-                            }
-                            const key = `${expenseIndex}_${photoIndex}`;
-                            return uploadedPhotos.get(key) || photo; // Use uploaded URL or keep original
-                        });
-                        
-                        expense.photos = updatedPhotos;
-                    }
-                }
-            } else {
-                console.warn('Running on localhost: Photo upload is disabled due to CORS restrictions.');
-            }
-
-            // STEP 2: Now save expenses with all photo URLs
-            console.log('[saveExpenses] Step 2: Saving expenses to Firestore with uploaded photo URLs...');
+            // STEP 1: Create expense documents in Firestore immediately (with existing URLs only)
+            // Photos that are File/Blob objects will be uploaded later by Service Worker
+            console.log('[saveExpenses] Step 1: Creating expense documents in Firestore...');
             
+            const expenseDocIds = [];
             const addPromises = expensesToSave.map(async (expense, expenseIndex) => {
-                // All photos should now be URLs (either already were, or just uploaded)
-                const photoURLs = (expense.photos || []).filter((p) => typeof p === 'string');
+                // Only include URLs that are already uploaded (strings)
+                // File/Blob objects will be handled by Service Worker
+                const existingPhotoURLs = (expense.photos || []).filter((p) => typeof p === 'string');
+                const photoBlobs = (expense.photos || []).filter((p) => p instanceof File || p instanceof Blob);
                 
                 const expenseData = {
                     batchId: batchId,
@@ -2903,26 +2938,67 @@
                     officeId: batchRef.officeId || currentUser.officeId,
                     category: expense.category,
                     amount: parseFloat(expense.amount),
-                    photos: photoURLs,
-                    photosUploading: false, // All photos are uploaded
+                    photos: existingPhotoURLs, // Start with existing URLs only
+                    photosUploading: photoBlobs.length > 0, // Mark as uploading if we have blobs to upload
                     createdAt: window.serverTimestamp()
                 };
 
-                // Create expense document with all photo URLs
+                // Create expense document immediately (even if photos aren't uploaded yet)
                 const expenseDocRef = await window.addDoc(window.collection(window.db, 'expenses'), expenseData);
                 const expenseDocId = expenseDocRef.id;
-                console.log(`[saveExpenses] Created expense doc ${expenseDocId} for batch ${batchId}: ${expenseData.category}, £${expenseData.amount}, ${photoURLs.length} photos`);
+                expenseDocIds.push(expenseDocId);
+                
+                console.log(`[saveExpenses] Created expense doc ${expenseDocId}: ${expenseData.category}, £${expenseData.amount}, ${existingPhotoURLs.length} existing photos, ${photoBlobs.length} photos queued for upload`);
 
                 if (currentBatch && currentBatch.expenses && currentBatch.expenses[expenseIndex]) {
                     currentBatch.expenses[expenseIndex].serverId = expenseDocId;
                     currentBatch.expenses[expenseIndex].id = expenseDocId;
                 }
                 
-                return expenseDocRef;
+                return { expenseDocId, expenseIndex, expense, photoBlobs };
             });
 
-            await Promise.all(addPromises);
-            console.log('[saveExpenses] All expenses saved to Firestore.');
+            const expenseResults = await Promise.all(addPromises);
+            console.log('[saveExpenses] All expense documents created in Firestore.');
+
+            // STEP 2: WRITE-FIRST - Save all expense data + photo blobs to IndexedDB immediately
+            // No upload happens here - Service Worker handles it
+            if (!isLocalhost && window.expenseUploadQueue) {
+                console.log('[saveExpenses] Step 2: WRITE-FIRST - Saving to IndexedDB (Service Worker will handle uploads)...');
+                
+                for (const result of expenseResults) {
+                    const { expenseDocId, expenseIndex, expense, photoBlobs } = result;
+                    
+                    if (photoBlobs.length > 0) {
+                        // Enqueue this expense for upload
+                        try {
+                            const expenseUploadData = {
+                                batchId: batchId,
+                                category: expense.category,
+                                amount: parseFloat(expense.amount),
+                                officeId: officeId,
+                                driverId: batchRef.driverId || currentUser.uid
+                            };
+                            
+                            await window.expenseUploadQueue.enqueueExpenseUpload(
+                                batchId,
+                                expenseUploadData,
+                                photoBlobs,
+                                expenseDocId
+                            );
+                            
+                            console.log(`[saveExpenses] Enqueued ${photoBlobs.length} photos for expense ${expenseDocId}`);
+                        } catch (error) {
+                            console.error(`[saveExpenses] Failed to enqueue upload for expense ${expenseDocId}:`, error);
+                            // Continue - we'll try again later
+                        }
+                    }
+                }
+            } else if (isLocalhost) {
+                console.warn('[saveExpenses] Running on localhost: Photo upload queueing disabled.');
+            }
+
+            console.log('[saveExpenses] WRITE-FIRST complete. All data saved to IndexedDB and Firestore. Service Worker will handle photo uploads.');
         }
 
         // Delete batch
@@ -3254,6 +3330,9 @@
         setInterval(updateCloseButtonState, 500);
 
         function closeExpenseModal() {
+            // Clear any border classes when closing
+            clearExpenseModalBorders();
+            
             const expenseModal = document.getElementById('expenseModal');
             if (expenseModal) expenseModal.classList.add('hidden');
             
