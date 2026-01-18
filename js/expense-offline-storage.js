@@ -7,7 +7,7 @@
 class ExpenseDraftDB {
     constructor() {
         this.dbName = 'ExpenseDraftsDB';
-        this.version = 1;
+        this.version = 2; // Updated to support new expenseUploadQueue store
         this.db = null;
     }
 
@@ -77,6 +77,13 @@ class ExpenseDraftDB {
                 }
                 if (!db.objectStoreNames.contains('photoBlobs')) {
                     const photoBlobStore = db.createObjectStore('photoBlobs', { keyPath: 'blobId' });
+                }
+                // New write-first upload queue store
+                if (!db.objectStoreNames.contains('expenseUploadQueue')) {
+                    const expenseUploadStore = db.createObjectStore('expenseUploadQueue', { keyPath: 'uploadId' });
+                    expenseUploadStore.createIndex('batchId', 'batchId', { unique: false });
+                    expenseUploadStore.createIndex('status', 'status', { unique: false });
+                    expenseUploadStore.createIndex('expenseDocId', 'expenseDocId', { unique: false });
                 }
             };
         });
@@ -850,16 +857,282 @@ class UploadQueue {
     }
 }
 
+// NEW: Write-First Expense Upload Queue (replaces old UploadQueue)
+class ExpenseUploadQueue {
+    constructor() {
+        this.db = null;
+    }
+
+    async init() {
+        if (!window.expenseDraftDB) {
+            window.expenseDraftDB = new ExpenseDraftDB();
+        }
+        await window.expenseDraftDB.init();
+        
+        // Wait for database to be available
+        let retries = 0;
+        while (!window.expenseDraftDB.db && retries < 20) {
+            await new Promise(resolve => setTimeout(resolve, 50));
+            retries++;
+        }
+        
+        if (!window.expenseDraftDB.db) {
+            throw new Error('Failed to initialize IndexedDB');
+        }
+        
+        this.db = window.expenseDraftDB.db;
+    }
+
+    /**
+     * Write-first: Save expense data and photo blobs to IndexedDB immediately
+     * NO UPLOAD - that happens later via service worker
+     */
+    async enqueueExpenseUpload(batchId, expenseData, photoBlobs = [], expenseDocId = null) {
+        await this.init();
+        if (!this.db) {
+            throw new Error('Database not initialized');
+        }
+
+        const uploadId = `expense_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const timestamp = Date.now();
+        const uid = window.currentUser?.uid || null;
+
+        // Save photo blobs to photoBlobs store first
+        const photoBlobIds = [];
+        for (let i = 0; i < photoBlobs.length; i++) {
+            const blob = photoBlobs[i];
+            if (blob instanceof File || blob instanceof Blob) {
+                const blobId = `${uploadId}_photo${i}`;
+                
+                // Convert File to Blob if needed
+                let blobToStore = blob;
+                if (blob instanceof File) {
+                    try {
+                        const arrayBuffer = await blob.arrayBuffer();
+                        blobToStore = new Blob([arrayBuffer], { type: blob.type || 'image/jpeg' });
+                    } catch (error) {
+                        console.error('[ExpenseUploadQueue] Error converting File to Blob:', error);
+                        throw new Error(`Failed to convert File to Blob: ${error.message}`);
+                    }
+                }
+
+                // Store blob
+                const blobTx = this.db.transaction(['photoBlobs'], 'readwrite');
+                await new Promise((resolve, reject) => {
+                    const req = blobTx.objectStore('photoBlobs').put({
+                        blobId: blobId,
+                        blob: blobToStore,
+                        uploadId: uploadId,
+                        photoIndex: i,
+                        timestamp: timestamp
+                    });
+                    req.onsuccess = () => resolve();
+                    req.onerror = () => reject(req.error);
+                });
+
+                photoBlobIds.push({
+                    blobId: blobId,
+                    photoIndex: i,
+                    filename: `expenses/${batchId}/${expenseData.category}_${timestamp}_${i}.jpg`
+                });
+            }
+        }
+
+        // Create upload task record
+        const uploadTask = {
+            uploadId: uploadId,
+            batchId: batchId,
+            expenseDocId: expenseDocId, // Firestore expense document ID (to update after upload)
+            expenseData: expenseData, // All expense values
+            photoBlobIds: photoBlobIds, // References to stored blobs
+            uid: uid,
+            timestamp: timestamp,
+            status: 'pending', // Will be 'pending' -> 'uploading' -> 'completed'
+            retries: 0,
+            error: null,
+            createdAt: timestamp,
+            updatedAt: timestamp
+        };
+
+        // Save upload task to expenseUploadQueue
+        const taskTx = this.db.transaction(['expenseUploadQueue'], 'readwrite');
+        await new Promise((resolve, reject) => {
+            const req = taskTx.objectStore('expenseUploadQueue').put(uploadTask);
+            req.onsuccess = () => resolve();
+            req.onerror = () => reject(req.error);
+        });
+
+        console.log('[ExpenseUploadQueue] Enqueued expense upload', { uploadId, batchId, photoCount: photoBlobIds.length });
+        
+        // Update banner immediately
+        await this.updateGlobalUploadStatus();
+        
+        // Trigger service worker to process queue if online
+        if (navigator.onLine && 'serviceWorker' in navigator) {
+            try {
+                const registration = await navigator.serviceWorker.ready;
+                if (registration.active) {
+                    // Get Firebase Auth token to pass to Service Worker
+                    let authToken = null;
+                    try {
+                        if (window.auth && window.auth.currentUser) {
+                            authToken = await window.auth.currentUser.getIdToken();
+                        }
+                    } catch (tokenError) {
+                        console.warn('[ExpenseUploadQueue] Failed to get auth token:', tokenError);
+                    }
+                    
+                    registration.active.postMessage({ 
+                        type: 'process-queue',
+                        data: { authToken: authToken }
+                    });
+                }
+            } catch (error) {
+                console.warn('[ExpenseUploadQueue] Failed to notify service worker:', error);
+            }
+        }
+
+        return uploadId;
+    }
+
+    /**
+     * Get pending upload count for banner
+     */
+    async getPendingCount() {
+        await this.init();
+        if (!this.db) return 0;
+
+        const tx = this.db.transaction(['expenseUploadQueue'], 'readonly');
+        const store = tx.objectStore('expenseUploadQueue');
+        const statusIndex = store.index('status');
+        
+        const pending = await new Promise((resolve) => {
+            const req = statusIndex.count(IDBKeyRange.only('pending'));
+            req.onsuccess = () => resolve(req.result || 0);
+            req.onerror = () => resolve(0);
+        });
+
+        const uploading = await new Promise((resolve) => {
+            const req = statusIndex.count(IDBKeyRange.only('uploading'));
+            req.onsuccess = () => resolve(req.result || 0);
+            req.onerror = () => resolve(0);
+        });
+
+        return pending + uploading;
+    }
+
+    /**
+     * Update global upload status banner
+     */
+    async updateGlobalUploadStatus() {
+        await this.init();
+        if (!this.db) {
+            this.hideUploadBanner();
+            return;
+        }
+
+        // Skip if user is typing
+        const activeElement = document.activeElement;
+        const isTyping = (typeof window.isUserTyping !== 'undefined' && window.isUserTyping) ||
+            (activeElement && (
+                activeElement.tagName === 'INPUT' || 
+                activeElement.tagName === 'TEXTAREA'
+            ));
+        
+        if (isTyping) {
+            return;
+        }
+
+        const pendingCount = await this.getPendingCount();
+        
+        // Check for submission queue too
+        let submissionQueued = 0;
+        if (typeof window.getExpenseSubmissionQueueInfo === 'function') {
+            try {
+                const info = window.getExpenseSubmissionQueueInfo();
+                if (info && typeof info.pending === 'number') {
+                    submissionQueued = info.pending;
+                }
+            } catch (error) {
+                console.warn('[ExpenseUploadQueue] Unable to read submission queue info', error);
+            }
+        }
+
+        const totalPending = pendingCount + submissionQueued;
+        const isUploading = totalPending > 0;
+
+        const banner = document.getElementById('uploadBanner');
+        const bannerText = document.getElementById('uploadBannerText');
+        const topNav = document.getElementById('topNav');
+        const mainContent = document.getElementById('mainContent');
+
+        const wasUploading = banner && !banner.classList.contains('hidden');
+
+        if (isUploading) {
+            if (banner) {
+                banner.classList.remove('hidden');
+            }
+            if (topNav) {
+                topNav.style.marginTop = '48px';
+            }
+            if (mainContent) {
+                mainContent.style.marginTop = '0';
+            }
+            if (bannerText) {
+                if (submissionQueued > 0) {
+                    bannerText.textContent = `Uploading ${submissionQueued} Expense${submissionQueued === 1 ? '' : 's'}`;
+                } else if (pendingCount > 0) {
+                    bannerText.textContent = `Uploading ${pendingCount} Photo${pendingCount === 1 ? '' : 's'}`;
+                } else {
+                    bannerText.textContent = 'Uploading...';
+                }
+            }
+        } else {
+            this.hideUploadBanner();
+            if (typeof window !== 'undefined') {
+                window.isUploadingExpense = false;
+            }
+            if (wasUploading && typeof window.loadExpenseBatches === 'function') {
+                setTimeout(async () => {
+                    try {
+                        await window.loadExpenseBatches();
+                    } catch (error) {
+                        console.error('[ExpenseUploadQueue] Error refreshing expense list:', error);
+                    }
+                }, 500);
+            }
+        }
+    }
+
+    hideUploadBanner() {
+        const banner = document.getElementById('uploadBanner');
+        const topNav = document.getElementById('topNav');
+        const mainContent = document.getElementById('mainContent');
+        
+        if (banner) {
+            banner.classList.add('hidden');
+        }
+        if (topNav) {
+            topNav.style.marginTop = '0';
+        }
+        if (mainContent) {
+            mainContent.style.marginTop = '0';
+        }
+    }
+}
+
 // Initialize storage systems
 window.expenseDraftDB = new ExpenseDraftDB();
-window.uploadQueue = new UploadQueue();
+// Old UploadQueue removed - replaced by ExpenseUploadQueue with Service Worker
+window.expenseUploadQueue = new ExpenseUploadQueue(); // New write-first system with Service Worker
 
 // Network state monitoring
 window.addEventListener('online', async () => {
-    console.log('🟢 Network online - processing upload queue');
-    if (window.uploadQueue) {
-        await window.uploadQueue.processQueue();
-        await window.uploadQueue.updateGlobalUploadStatus();
+    console.log('🟢 Network online - Service Worker will process upload queue automatically');
+    // Service Worker handles uploads automatically when online - just update status if needed
+    if (window.expenseUploadQueue) {
+        await window.expenseUploadQueue.getAuthTokenAndProcessQueue();
+        await window.expenseUploadQueue.updateGlobalUploadStatus();
     }
 });
 
