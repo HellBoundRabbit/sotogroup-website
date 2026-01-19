@@ -1000,7 +1000,7 @@ class ExpenseUploadQueue {
      */
     async getPendingCount() {
         await this.init();
-        if (!this.db) return 0;
+        if (!this.db) return { expenseCount: 0, photoCount: 0 };
 
         const tx = this.db.transaction(['expenseUploadQueue'], 'readonly');
         const store = tx.objectStore('expenseUploadQueue');
@@ -1018,7 +1018,24 @@ class ExpenseUploadQueue {
             req.onerror = () => resolve(0);
         });
 
-        return pending + uploading;
+        // Get all tasks to count photos
+        const allTasks = await new Promise((resolve) => {
+            const req = store.getAll();
+            req.onsuccess = () => resolve(req.result || []);
+            req.onerror = () => resolve([]);
+        });
+
+        let photoCount = 0;
+        allTasks.forEach(task => {
+            if (task.status === 'pending' || task.status === 'uploading') {
+                photoCount += (task.photoBlobIds || []).length;
+            }
+        });
+
+        return {
+            expenseCount: pending + uploading,
+            photoCount: photoCount
+        };
     }
 
     /**
@@ -1043,7 +1060,8 @@ class ExpenseUploadQueue {
             return;
         }
 
-        const pendingCount = await this.getPendingCount();
+        const pendingCounts = await this.getPendingCount();
+        const { expenseCount, photoCount } = pendingCounts;
         
         // Check for submission queue too
         let submissionQueued = 0;
@@ -1058,11 +1076,13 @@ class ExpenseUploadQueue {
             }
         }
 
-        const totalPending = pendingCount + submissionQueued;
-        const isUploading = totalPending > 0;
+        const totalExpenseCount = expenseCount + submissionQueued;
+        const isUploading = totalExpenseCount > 0 || photoCount > 0;
 
         const banner = document.getElementById('uploadBanner');
         const bannerText = document.getElementById('uploadBannerText');
+        const bannerSubtitle = document.getElementById('uploadBannerSubtitle');
+        const progressFill = document.getElementById('uploadProgressFill');
         const topNav = document.getElementById('topNav');
         const mainContent = document.getElementById('mainContent');
 
@@ -1073,19 +1093,39 @@ class ExpenseUploadQueue {
                 banner.classList.remove('hidden');
             }
             if (topNav) {
-                topNav.style.marginTop = '48px';
+                topNav.style.marginTop = '56px'; // Thinner banner with progress bar
             }
             if (mainContent) {
                 mainContent.style.marginTop = '0';
             }
+            
+            // Update banner text - show expense count
             if (bannerText) {
                 if (submissionQueued > 0) {
-                    bannerText.textContent = `Uploading ${submissionQueued} Expense${submissionQueued === 1 ? '' : 's'}`;
-                } else if (pendingCount > 0) {
-                    bannerText.textContent = `Uploading ${pendingCount} Photo${pendingCount === 1 ? '' : 's'}`;
+                    bannerText.textContent = `Uploading ${submissionQueued} Job Expense${submissionQueued === 1 ? '' : 's'}`;
+                } else if (totalExpenseCount > 0) {
+                    bannerText.textContent = `Uploading ${totalExpenseCount} Job Expense${totalExpenseCount === 1 ? '' : 's'}`;
                 } else {
-                    bannerText.textContent = 'Uploading...';
+                    bannerText.textContent = 'Uploading expenses...';
                 }
+            }
+            
+            // Update subtitle - show what's actually happening
+            if (bannerSubtitle) {
+                if (photoCount > 0) {
+                    bannerSubtitle.textContent = `Uploading ${photoCount} photo${photoCount === 1 ? '' : 's'}...`;
+                } else if (submissionQueued > 0) {
+                    bannerSubtitle.textContent = 'Saving expenses...';
+                } else {
+                    bannerSubtitle.textContent = 'Processing...';
+                }
+            }
+            
+            // Update progress bar (simplified - shows based on tasks)
+            if (progressFill) {
+                // Simple progress: if we have tasks, show indeterminate progress
+                // In future, can track actual upload progress per task
+                progressFill.style.width = '50%'; // Indeterminate progress
             }
         } else {
             this.hideUploadBanner();
@@ -1106,17 +1146,77 @@ class ExpenseUploadQueue {
 
     hideUploadBanner() {
         const banner = document.getElementById('uploadBanner');
+        const progressFill = document.getElementById('uploadProgressFill');
         const topNav = document.getElementById('topNav');
         const mainContent = document.getElementById('mainContent');
         
         if (banner) {
             banner.classList.add('hidden');
         }
+        if (progressFill) {
+            progressFill.style.width = '0%';
+        }
         if (topNav) {
             topNav.style.marginTop = '0';
         }
         if (mainContent) {
             mainContent.style.marginTop = '0';
+        }
+    }
+
+    /**
+     * Clean up upload queue entries for a deleted batch
+     */
+    async cleanupBatchUploads(batchId) {
+        await this.init();
+        if (!this.db || !batchId) return;
+
+        try {
+            const tx = this.db.transaction(['expenseUploadQueue'], 'readwrite');
+            const store = tx.objectStore('expenseUploadQueue');
+            const batchIndex = store.index('batchId');
+            
+            // Get all tasks for this batch
+            const tasks = await new Promise((resolve, reject) => {
+                const req = batchIndex.getAll(batchId);
+                req.onsuccess = () => resolve(req.result || []);
+                req.onerror = () => reject(req.error);
+            });
+
+            // Delete all tasks and their associated blobs
+            for (const task of tasks) {
+                // Delete task
+                await new Promise((resolve, reject) => {
+                    const req = store.delete(task.uploadId);
+                    req.onsuccess = () => resolve();
+                    req.onerror = () => reject(req.error);
+                });
+
+                // Delete associated photo blobs
+                if (task.photoBlobIds && Array.isArray(task.photoBlobIds)) {
+                    const blobTx = this.db.transaction(['photoBlobs'], 'readwrite');
+                    const blobStore = blobTx.objectStore('photoBlobs');
+                    for (const photoBlobRef of task.photoBlobIds) {
+                        try {
+                            await new Promise((resolve, reject) => {
+                                const req = blobStore.delete(photoBlobRef.blobId);
+                                req.onsuccess = () => resolve();
+                                req.onerror = () => reject(req.error);
+                            });
+                        } catch (error) {
+                            console.warn('[ExpenseUploadQueue] Failed to delete photo blob:', photoBlobRef.blobId, error);
+                        }
+                    }
+                }
+            }
+
+            console.log(`[ExpenseUploadQueue] Cleaned up ${tasks.length} upload tasks for batch ${batchId}`);
+            
+            // Update banner status
+            await this.updateGlobalUploadStatus();
+        } catch (error) {
+            console.error('[ExpenseUploadQueue] Error cleaning up batch uploads:', error);
+            throw error;
         }
     }
 }
