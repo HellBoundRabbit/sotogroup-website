@@ -178,9 +178,6 @@
         window.doc = doc;
         
         console.log('Firebase initialized successfully!');
-        
-        // Initialize the app after Firebase is ready
-        initializeAccountPage();
     </script>
     <script>
         let currentUser = null;
@@ -231,6 +228,32 @@
                 console.error('Failed to establish driver session:', error);
                 window.location.href = '/pages/soto-routes-login.html';
             }
+        }
+
+        // Wait for Firebase to be ready before initializing
+        async function waitForFirebaseReady() {
+            const maxAttempts = 50;
+            const delayMs = 100;
+            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                if (window.auth && window.firebase?.functions && window.firebase?.httpsCallable) {
+                    console.log('Firebase ready, initializing account page...');
+                    initializeAccountPage();
+                    return;
+                }
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+            }
+            console.error('Firebase failed to initialize after waiting');
+            document.getElementById('loadingOverlay').style.display = 'none';
+            notifyError('Failed to initialize. Please refresh the page.', 'Initialization Error');
+        }
+
+        // Initialize the app after everything is loaded
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                waitForFirebaseReady();
+            });
+        } else {
+            waitForFirebaseReady();
         }
 
         function showChangePassword() {
