@@ -1165,6 +1165,62 @@ class ExpenseUploadQueue {
     }
 
     /**
+     * Get auth token and trigger Service Worker to process queue
+     */
+    async getAuthTokenAndProcessQueue() {
+        if (!navigator.onLine || !('serviceWorker' in navigator)) {
+            return;
+        }
+
+        try {
+            const registration = await navigator.serviceWorker.ready;
+            if (!registration.active) {
+                console.warn('[ExpenseUploadQueue] Service Worker not active');
+                return;
+            }
+
+            // Get Firebase Auth token
+            let authToken = null;
+            try {
+                if (window.auth && window.auth.currentUser) {
+                    authToken = await window.auth.currentUser.getIdToken();
+                    console.log('[ExpenseUploadQueue] Got auth token, triggering Service Worker to process queue');
+                } else {
+                    console.warn('[ExpenseUploadQueue] No authenticated user');
+                    return;
+                }
+            } catch (tokenError) {
+                console.warn('[ExpenseUploadQueue] Failed to get auth token:', tokenError);
+                return;
+            }
+
+            // Send message to Service Worker to process queue
+            const messageChannel = new MessageChannel();
+            messageChannel.port1.onmessage = (event) => {
+                const { success, result, error } = event.data || {};
+                if (success) {
+                    console.log('[ExpenseUploadQueue] Service Worker processed queue:', result);
+                } else {
+                    console.error('[ExpenseUploadQueue] Service Worker queue processing failed:', error);
+                }
+            };
+
+            registration.active.postMessage(
+                { 
+                    type: 'process-queue',
+                    data: { authToken: authToken }
+                },
+                [messageChannel.port2]
+            );
+
+            // Also update UI status
+            await this.updateGlobalUploadStatus();
+        } catch (error) {
+            console.error('[ExpenseUploadQueue] Failed to trigger Service Worker:', error);
+        }
+    }
+
+    /**
      * Clean up upload queue entries for a deleted batch
      */
     async cleanupBatchUploads(batchId) {
