@@ -230,30 +230,32 @@
             }
         }
 
-        // Wait for Firebase to be ready before initializing
-        async function waitForFirebaseReady() {
-            const maxAttempts = 50;
-            const delayMs = 100;
-            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        // Wait for Firebase to be ready, then initialize
+        async function waitAndInitialize() {
+            // Wait for module script to finish setting up Firebase
+            let attempts = 0;
+            const maxAttempts = 100; // 10 seconds max wait
+            while (attempts < maxAttempts) {
                 if (window.auth && window.firebase?.functions && window.firebase?.httpsCallable) {
                     console.log('Firebase ready, initializing account page...');
-                    initializeAccountPage();
+                    await initializeAccountPage();
                     return;
                 }
-                await new Promise(resolve => setTimeout(resolve, delayMs));
+                await new Promise(resolve => setTimeout(resolve, 100));
+                attempts++;
             }
-            console.error('Firebase failed to initialize after waiting');
+            console.error('Firebase not ready after waiting');
             document.getElementById('loadingOverlay').style.display = 'none';
-            notifyError('Failed to initialize. Please refresh the page.', 'Initialization Error');
+            notifyError('Failed to initialize Firebase. Please refresh the page.', 'Initialization Error');
         }
 
-        // Initialize the app after everything is loaded
+        // Initialize after DOM is ready
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => {
-                waitForFirebaseReady();
+                waitAndInitialize();
             });
         } else {
-            waitForFirebaseReady();
+            waitAndInitialize();
         }
 
         function showChangePassword() {
