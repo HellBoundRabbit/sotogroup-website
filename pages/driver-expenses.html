@@ -87,7 +87,7 @@
                     
                     // Listen for Service Worker requests for auth token
                     navigator.serviceWorker.addEventListener('message', async (event) => {
-                        const { type } = event.data || {};
+                        const { type, blob, path, expenseDocId } = event.data || {};
                         const ports = event.ports || [];
                         
                         if (type === 'get-auth-token' && ports.length > 0) {
@@ -108,6 +108,24 @@
                                 if (ports[0]) {
                                     ports[0].postMessage({ authToken: null });
                                 }
+                            }
+                        } else if (type === 'upload-photo-request' && ports.length > 0 && blob && path) {
+                            // Service Worker requesting main thread to upload photo using Firebase SDK
+                            try {
+                                console.log('[Main Thread] Received upload request from Service Worker:', { path, expenseDocId });
+                                
+                                // Upload using Firebase SDK (same as successful uploads)
+                                const photoRef = window.ref(window.storage, path);
+                                await window.uploadBytes(photoRef, blob);
+                                const downloadURL = await window.getDownloadURL(photoRef);
+                                
+                                console.log('[Main Thread] Upload successful:', downloadURL);
+                                
+                                // Send success back to Service Worker
+                                ports[0].postMessage({ success: true, downloadURL });
+                            } catch (error) {
+                                console.error('[Main Thread] Upload failed:', error);
+                                ports[0].postMessage({ success: false, error: error.message });
                             }
                         }
                     });
@@ -1381,18 +1399,18 @@
                 // Service Worker handles uploads in background - just update status
                 if (window.expenseUploadQueue) {
                     await window.expenseUploadQueue.updateGlobalUploadStatus();
-                    
-                    // Set up periodic status updates while uploading (only when not typing)
+                
+                // Set up periodic status updates while uploading (only when not typing)
                     // Note: Service Worker handles actual uploads, this just updates UI
-                    if (window.uploadStatusCheckInterval) {
-                        clearInterval(window.uploadStatusCheckInterval);
-                    }
-                    window.uploadStatusCheckInterval = setInterval(async () => {
-                        // Skip update if user is actively typing to prevent keyboard from closing
+                if (window.uploadStatusCheckInterval) {
+                    clearInterval(window.uploadStatusCheckInterval);
+                }
+                window.uploadStatusCheckInterval = setInterval(async () => {
+                    // Skip update if user is actively typing to prevent keyboard from closing
                         if (!window.isUserTyping && window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
                             await window.expenseUploadQueue.updateGlobalUploadStatus();
-                        }
-                    }, 3000); // Check every 3 seconds (less frequent to avoid interference)
+                    }
+                }, 3000); // Check every 3 seconds (less frequent to avoid interference)
                 }
                 } catch (error) {
                 console.error('Error loading user data:', error);
@@ -2187,9 +2205,9 @@
             // Get modal and show it
             const expenseModal = document.getElementById('expenseModal');
             if (expenseModal) {
-                expenseModal.classList.remove('hidden');
-                // Reset scroll position to top when opening modal
-                expenseModal.scrollTop = 0;
+            expenseModal.classList.remove('hidden');
+            // Reset scroll position to top when opening modal
+            expenseModal.scrollTop = 0;
             }
             
             // Clear borders again after showing (in case something else added them)
@@ -2588,7 +2606,7 @@
             closeExpenseModal();
             
             // Render immediately - expense is already in the array
-            renderExpenses();
+                renderExpenses();
             
             // Auto-save draft to IndexedDB (will check if typing before saving)
             if (window.scheduleAutoSave) {
@@ -3079,7 +3097,7 @@
                         console.warn('[deleteDraft] Failed to cleanup upload queue:', error);
                     }
                 }
-
+ 
                 if (deletedLocalId) {
                 removeSubmissionQueueEntry(deletedLocalId);
                 }
@@ -3102,7 +3120,7 @@
                 });
                 displayBatches();
                 }
-
+ 
                 notifySuccess('Batch deleted successfully.', 'Batch Deleted');
                 closeBatchModal();
                 await loadExpenseBatches();
