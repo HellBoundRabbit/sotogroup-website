@@ -11,13 +11,17 @@ const DB_VERSION = 2; // Match the version in expense-offline-storage.js
 
 // Firebase Storage REST API helper
 function getStorageUploadUrl(path) {
+  // Use bucket ID (soto-routes) instead of full domain for REST API
+  const bucketId = 'soto-routes';
   const encodedPath = encodeURIComponent(path);
-  return `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o?name=${encodedPath}&uploadType=multipart`;
+  return `https://firebasestorage.googleapis.com/v0/b/${bucketId}/o?name=${encodedPath}&uploadType=multipart`;
 }
 
 function getStorageDownloadUrl(path) {
+  // Use bucket ID (soto-routes) instead of full domain for REST API
+  const bucketId = 'soto-routes';
   const encodedPath = encodeURIComponent(path);
-  return `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodedPath}?alt=media`;
+  return `https://firebasestorage.googleapis.com/v0/b/${bucketId}/o/${encodedPath}?alt=media`;
 }
 
 // Get Firebase Auth token from IndexedDB (stored by main thread)
@@ -45,17 +49,55 @@ async function uploadPhotoBlob(blob, path, authToken) {
     contentType: 'image/jpeg'
   });
   
-  // Create multipart form data - Firebase Storage REST API format
-  const formData = new FormData();
-  formData.append('metadata', new Blob([metadata], { type: 'application/json' }));
-  formData.append('file', blob);
+  // Manually construct multipart/form-data body for Service Worker compatibility
+  const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2);
+  const CRLF = '\r\n';
+  
+  // Build multipart body parts
+  const metadataPart = [
+    `--${boundary}${CRLF}`,
+    `Content-Disposition: form-data; name="metadata"${CRLF}`,
+    `Content-Type: application/json${CRLF}${CRLF}`,
+    metadata,
+    CRLF
+  ].join('');
+  
+  const fileHeader = [
+    `--${boundary}${CRLF}`,
+    `Content-Disposition: form-data; name="file"; filename="${path.split('/').pop()}"${CRLF}`,
+    `Content-Type: image/jpeg${CRLF}${CRLF}`
+  ].join('');
+  
+  const closingBoundary = `${CRLF}--${boundary}--${CRLF}`;
+  
+  // Convert text parts to ArrayBuffer
+  const encoder = new TextEncoder();
+  const metadataBuffer = encoder.encode(metadataPart);
+  const fileHeaderBuffer = encoder.encode(fileHeader);
+  const closingBuffer = encoder.encode(closingBoundary);
+  
+  // Get blob as ArrayBuffer
+  const blobArrayBuffer = await blob.arrayBuffer();
+  
+  // Combine all parts: metadata + file header + blob + closing
+  const totalLength = metadataBuffer.length + fileHeaderBuffer.length + blobArrayBuffer.byteLength + closingBuffer.length;
+  const combined = new Uint8Array(totalLength);
+  
+  let offset = 0;
+  combined.set(metadataBuffer, offset);
+  offset += metadataBuffer.length;
+  combined.set(fileHeaderBuffer, offset);
+  offset += fileHeaderBuffer.length;
+  combined.set(new Uint8Array(blobArrayBuffer), offset);
+  offset += blobArrayBuffer.byteLength;
+  combined.set(closingBuffer, offset);
 
   const uploadUrl = getStorageUploadUrl(path);
   
   try {
-    // Don't set Content-Type header - FormData sets it automatically with boundary
     const headers = {
-      'Authorization': `Bearer ${authToken}`
+      'Authorization': `Bearer ${authToken}`,
+      'Content-Type': `multipart/form-data; boundary=${boundary}`
     };
 
     console.log('[SW] Starting upload:', { path, size: blob.size, authToken: authToken.substring(0, 20) + '...' });
@@ -63,7 +105,7 @@ async function uploadPhotoBlob(blob, path, authToken) {
     const response = await fetch(uploadUrl, {
       method: 'POST',
       headers: headers,
-      body: formData,
+      body: combined.buffer,
       keepalive: true // Important for background uploads
     });
 
