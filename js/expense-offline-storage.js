@@ -1219,6 +1219,190 @@ class ExpenseUploadQueue {
             throw error;
         }
     }
+
+    /**
+     * Clear all stuck/failed uploads - useful for testing and recovery
+     */
+    async clearStuckUploads() {
+        await this.init();
+        if (!this.db) return { cleared: 0 };
+
+        try {
+            const tx = this.db.transaction(['expenseUploadQueue'], 'readwrite');
+            const store = tx.objectStore('expenseUploadQueue');
+            const statusIndex = store.index('status');
+            
+            // Get all stuck tasks (uploading for more than 5 minutes, or failed)
+            const allTasks = await new Promise((resolve, reject) => {
+                const req = store.getAll();
+                req.onsuccess = () => resolve(req.result || []);
+                req.onerror = () => reject(req.error);
+            });
+
+            const now = Date.now();
+            const FIVE_MINUTES = 5 * 60 * 1000;
+            let cleared = 0;
+
+            for (const task of allTasks) {
+                let shouldDelete = false;
+                
+                // Delete failed tasks
+                if (task.status === 'failed') {
+                    shouldDelete = true;
+                }
+                // Delete tasks stuck in "uploading" for more than 5 minutes
+                else if (task.status === 'uploading' && task.updatedAt) {
+                    const timeSinceUpdate = now - task.updatedAt;
+                    if (timeSinceUpdate > FIVE_MINUTES) {
+                        shouldDelete = true;
+                    }
+                }
+                // Delete tasks with too many retries
+                else if (task.retries >= 5) {
+                    shouldDelete = true;
+                }
+
+                if (shouldDelete) {
+                    // Delete task
+                    await new Promise((resolve, reject) => {
+                        const req = store.delete(task.uploadId);
+                        req.onsuccess = () => resolve();
+                        req.onerror = () => reject(req.error);
+                    });
+
+                    // Delete associated photo blobs
+                    if (task.photoBlobIds && Array.isArray(task.photoBlobIds)) {
+                        const blobTx = this.db.transaction(['photoBlobs'], 'readwrite');
+                        const blobStore = blobTx.objectStore('photoBlobs');
+                        for (const photoBlobRef of task.photoBlobIds) {
+                            try {
+                                await new Promise((resolve, reject) => {
+                                    const req = blobStore.delete(photoBlobRef.blobId);
+                                    req.onsuccess = () => resolve();
+                                    req.onerror = () => reject(req.error);
+                                });
+                            } catch (error) {
+                                console.warn('[ExpenseUploadQueue] Failed to delete photo blob:', photoBlobRef.blobId, error);
+                            }
+                        }
+                    }
+
+                    cleared++;
+                }
+            }
+
+            console.log(`[ExpenseUploadQueue] Cleared ${cleared} stuck/failed upload tasks`);
+            
+            // Update banner status
+            await this.updateGlobalUploadStatus();
+            
+            return { cleared };
+        } catch (error) {
+            console.error('[ExpenseUploadQueue] Error clearing stuck uploads:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Reset all "uploading" tasks back to "pending" - useful for recovery
+     */
+    async resetStuckUploads() {
+        await this.init();
+        if (!this.db) return { reset: 0 };
+
+        try {
+            const tx = this.db.transaction(['expenseUploadQueue'], 'readwrite');
+            const store = tx.objectStore('expenseUploadQueue');
+            const statusIndex = store.index('status');
+            
+            // Get all uploading tasks
+            const uploadingTasks = await new Promise((resolve, reject) => {
+                const req = statusIndex.getAll('uploading');
+                req.onsuccess = () => resolve(req.result || []);
+                req.onerror = () => reject(req.error);
+            });
+
+            let reset = 0;
+            for (const task of uploadingTasks) {
+                task.status = 'pending';
+                task.updatedAt = Date.now();
+                await new Promise((resolve, reject) => {
+                    const req = store.put(task);
+                    req.onsuccess = () => resolve();
+                    req.onerror = () => reject(req.error);
+                });
+                reset++;
+            }
+
+            console.log(`[ExpenseUploadQueue] Reset ${reset} stuck uploading tasks to pending`);
+            
+            // Update banner status
+            await this.updateGlobalUploadStatus();
+            
+            return { reset };
+        } catch (error) {
+            console.error('[ExpenseUploadQueue] Error resetting stuck uploads:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Clear ALL uploads (nuclear option - use with caution)
+     */
+    async clearAllUploads() {
+        await this.init();
+        if (!this.db) return { cleared: 0 };
+
+        try {
+            const tx = this.db.transaction(['expenseUploadQueue', 'photoBlobs'], 'readwrite');
+            const taskStore = tx.objectStore('expenseUploadQueue');
+            const blobStore = tx.objectStore('photoBlobs');
+            
+            // Get all tasks
+            const allTasks = await new Promise((resolve, reject) => {
+                const req = taskStore.getAll();
+                req.onsuccess = () => resolve(req.result || []);
+                req.onerror = () => reject(req.error);
+            });
+
+            let cleared = 0;
+            for (const task of allTasks) {
+                // Delete task
+                await new Promise((resolve, reject) => {
+                    const req = taskStore.delete(task.uploadId);
+                    req.onsuccess = () => resolve();
+                    req.onerror = () => reject(req.error);
+                });
+
+                // Delete associated photo blobs
+                if (task.photoBlobIds && Array.isArray(task.photoBlobIds)) {
+                    for (const photoBlobRef of task.photoBlobIds) {
+                        try {
+                            await new Promise((resolve, reject) => {
+                                const req = blobStore.delete(photoBlobRef.blobId);
+                                req.onsuccess = () => resolve();
+                                req.onerror = () => reject(req.error);
+                            });
+                        } catch (error) {
+                            console.warn('[ExpenseUploadQueue] Failed to delete photo blob:', photoBlobRef.blobId, error);
+                        }
+                    }
+                }
+
+                cleared++;
+            }
+
+            console.log(`[ExpenseUploadQueue] Cleared ALL ${cleared} upload tasks`);
+            
+            // Update banner status
+            await this.updateGlobalUploadStatus();
+            
+            return { cleared };
+        } catch (error) {
+            console.error('[ExpenseUploadQueue] Error clearing all uploads:', error);
+            throw error;
+        }
+    }
 }
 
 // Initialize storage systems
@@ -1287,13 +1471,69 @@ window.scheduleAutoSave = function() {
     }, 3000); // Increased delay to 3 seconds to avoid interfering with typing
 };
 
-window.clearUploadQueue = async function() {
-    if (window.uploadQueue) {
+// Helper functions for clearing stuck uploads (accessible from browser console)
+window.clearStuckUploads = async function() {
+    if (window.expenseUploadQueue) {
         try {
-            await window.uploadQueue.clearAll();
-            console.log('[UploadQueue] Cleared all queued uploads');
+            const result = await window.expenseUploadQueue.clearStuckUploads();
+            console.log(`✅ Cleared ${result.cleared} stuck/failed upload tasks`);
+            alert(`Cleared ${result.cleared} stuck upload tasks. The banner should update shortly.`);
+            return result;
         } catch (error) {
-            console.error('[UploadQueue] Failed to clear queue', error);
+            console.error('❌ Failed to clear stuck uploads:', error);
+            alert('Failed to clear stuck uploads: ' + error.message);
+            throw error;
         }
+    } else {
+        console.warn('expenseUploadQueue not available');
+        alert('Upload queue not available. Please refresh the page.');
     }
+};
+
+window.resetStuckUploads = async function() {
+    if (window.expenseUploadQueue) {
+        try {
+            const result = await window.expenseUploadQueue.resetStuckUploads();
+            console.log(`✅ Reset ${result.reset} stuck uploading tasks to pending`);
+            alert(`Reset ${result.reset} stuck uploads. They will retry automatically.`);
+            return result;
+        } catch (error) {
+            console.error('❌ Failed to reset stuck uploads:', error);
+            alert('Failed to reset stuck uploads: ' + error.message);
+            throw error;
+        }
+    } else {
+        console.warn('expenseUploadQueue not available');
+        alert('Upload queue not available. Please refresh the page.');
+    }
+};
+
+window.clearAllUploads = async function() {
+    if (window.expenseUploadQueue) {
+        const confirmed = confirm('⚠️ WARNING: This will delete ALL pending uploads and their photo data. This cannot be undone. Are you sure?');
+        if (!confirmed) {
+            console.log('Clear all uploads cancelled');
+            return;
+        }
+        
+        try {
+            const result = await window.expenseUploadQueue.clearAllUploads();
+            console.log(`✅ Cleared ALL ${result.cleared} upload tasks`);
+            alert(`Cleared ALL ${result.cleared} upload tasks. The banner should disappear.`);
+            return result;
+        } catch (error) {
+            console.error('❌ Failed to clear all uploads:', error);
+            alert('Failed to clear all uploads: ' + error.message);
+            throw error;
+        }
+    } else {
+        console.warn('expenseUploadQueue not available');
+        alert('Upload queue not available. Please refresh the page.');
+    }
+};
+
+// Legacy function for old UploadQueue (now redirects to new system)
+window.clearUploadQueue = async function() {
+    console.warn('clearUploadQueue() is deprecated. Use clearStuckUploads() or clearAllUploads() instead.');
+    return window.clearStuckUploads();
 };
