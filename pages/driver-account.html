@@ -145,6 +145,7 @@
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { getFirestore, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, signOut, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         
         const firebaseConfig = {
             apiKey: "AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA",
@@ -159,10 +160,16 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
+        const functions = getFunctions(app);
         
         window.firebaseApp = app;
         window.db = db;
         window.auth = auth;
+        window.functions = functions;
+        window.firebase = {
+            functions,
+            httpsCallable
+        };
         window.signOut = signOut;
         window.updatePassword = updatePassword;
         window.reauthenticateWithCredential = reauthenticateWithCredential;
@@ -170,6 +177,9 @@
         window.getDoc = getDoc;
         window.doc = doc;
         
+        console.log('Firebase initialized successfully!');
+        
+        // Initialize the app after Firebase is ready
         initializeAccountPage();
     </script>
     <script>
