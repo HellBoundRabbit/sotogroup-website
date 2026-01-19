@@ -39,7 +39,48 @@ async function getAuthToken() {
   });
 }
 
-// Upload photo blob to Firebase Storage using fetch
+// Request main thread to upload photo using Firebase SDK
+// Service Workers can't use Firebase SDK, so we delegate to the main thread
+async function requestMainThreadUpload(blob, path, expenseDocId) {
+  return new Promise((resolve, reject) => {
+    const messageChannel = new MessageChannel();
+    
+    messageChannel.port1.onmessage = (event) => {
+      const { success, downloadURL, error } = event.data;
+      if (success && downloadURL) {
+        resolve(downloadURL);
+      } else {
+        reject(new Error(error || 'Upload failed'));
+      }
+      messageChannel.port1.close();
+    };
+
+    // Send upload request to main thread
+    self.clients.matchAll({ includeUncontrolled: true, type: 'window' }).then(clients => {
+      if (clients.length === 0) {
+        reject(new Error('No client windows available for upload'));
+        return;
+      }
+
+      const uploadRequest = {
+        type: 'upload-photo-request',
+        blob: blob,
+        path: path,
+        expenseDocId: expenseDocId
+      };
+
+      clients[0].postMessage(uploadRequest, [messageChannel.port2]);
+      
+      // Timeout after 60 seconds
+      setTimeout(() => {
+        messageChannel.port1.close();
+        reject(new Error('Upload request timeout'));
+      }, 60000);
+    }).catch(reject);
+  });
+}
+
+// Upload photo blob to Firebase Storage using fetch (DEPRECATED - doesn't work in SW)
 async function uploadPhotoBlob(blob, path, authToken) {
   if (!authToken) {
     throw new Error('Auth token required for upload');
@@ -225,10 +266,18 @@ async function processUploadQueue(authToken) {
                 continue;
               }
 
-              // Upload photo
-              const downloadURL = await uploadPhotoBlob(blobRecord.blob, filename, authToken);
-              uploadedURLs.push(downloadURL);
-              console.log(`[SW] Uploaded photo: ${filename} -> ${downloadURL}`);
+              // Request main thread to upload using Firebase SDK
+              // Service Workers can't use Firebase SDK, so we delegate to main thread
+              try {
+                const downloadURL = await requestMainThreadUpload(blobRecord.blob, filename, task.expenseDocId);
+                if (downloadURL) {
+                  uploadedURLs.push(downloadURL);
+                  console.log(`[SW] Photo uploaded via main thread: ${filename} -> ${downloadURL}`);
+                }
+              } catch (error) {
+                console.error(`[SW] Failed to upload via main thread: ${filename}`, error);
+                throw error; // Re-throw to trigger retry
+              }
             }
 
             // Update task as completed
