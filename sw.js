@@ -10,15 +10,15 @@ const DB_NAME = 'ExpenseDraftsDB';
 const DB_VERSION = 2; // Match the version in expense-offline-storage.js
 
 // Firebase Storage REST API helper
-function getStorageUploadUrl(path) {
-  // Use bucket ID (soto-routes) instead of full domain for REST API
-  const bucketId = 'soto-routes';
+function getStorageUploadUrl(path, uploadType = 'multipart') {
+  // For Firebase Storage REST API v0, use the bucket ID (without .firebasestorage.app)
+  // But try full bucket name if ID doesn't work
+  const bucketId = 'soto-routes'; // Bucket ID, not full domain
   const encodedPath = encodeURIComponent(path);
-  return `https://firebasestorage.googleapis.com/v0/b/${bucketId}/o?name=${encodedPath}&uploadType=multipart`;
+  return `https://firebasestorage.googleapis.com/v0/b/${bucketId}/o?name=${encodedPath}&uploadType=${uploadType}`;
 }
 
 function getStorageDownloadUrl(path) {
-  // Use bucket ID (soto-routes) instead of full domain for REST API
   const bucketId = 'soto-routes';
   const encodedPath = encodeURIComponent(path);
   return `https://firebasestorage.googleapis.com/v0/b/${bucketId}/o/${encodedPath}?alt=media`;
@@ -45,82 +45,92 @@ async function uploadPhotoBlob(blob, path, authToken) {
     throw new Error('Auth token required for upload');
   }
 
-  const metadata = JSON.stringify({
-    contentType: 'image/jpeg'
-  });
-  
-  // Manually construct multipart/form-data body for Service Worker compatibility
-  const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2);
-  const CRLF = '\r\n';
-  
-  // Build multipart body parts
-  const metadataPart = [
-    `--${boundary}${CRLF}`,
-    `Content-Disposition: form-data; name="metadata"${CRLF}`,
-    `Content-Type: application/json${CRLF}${CRLF}`,
-    metadata,
-    CRLF
-  ].join('');
-  
-  const fileHeader = [
-    `--${boundary}${CRLF}`,
-    `Content-Disposition: form-data; name="file"; filename="${path.split('/').pop()}"${CRLF}`,
-    `Content-Type: image/jpeg${CRLF}${CRLF}`
-  ].join('');
-  
-  const closingBoundary = `${CRLF}--${boundary}--${CRLF}`;
-  
-  // Convert text parts to ArrayBuffer
-  const encoder = new TextEncoder();
-  const metadataBuffer = encoder.encode(metadataPart);
-  const fileHeaderBuffer = encoder.encode(fileHeader);
-  const closingBuffer = encoder.encode(closingBoundary);
-  
-  // Get blob as ArrayBuffer
-  const blobArrayBuffer = await blob.arrayBuffer();
-  
-  // Combine all parts: metadata + file header + blob + closing
-  const totalLength = metadataBuffer.length + fileHeaderBuffer.length + blobArrayBuffer.byteLength + closingBuffer.length;
-  const combined = new Uint8Array(totalLength);
-  
-  let offset = 0;
-  combined.set(metadataBuffer, offset);
-  offset += metadataBuffer.length;
-  combined.set(fileHeaderBuffer, offset);
-  offset += fileHeaderBuffer.length;
-  combined.set(new Uint8Array(blobArrayBuffer), offset);
-  offset += blobArrayBuffer.byteLength;
-  combined.set(closingBuffer, offset);
-
-  const uploadUrl = getStorageUploadUrl(path);
-  
+  // Try using FormData first (should work in Service Workers)
   try {
+    const metadata = JSON.stringify({
+      contentType: 'image/jpeg'
+    });
+    
+    const formData = new FormData();
+    formData.append('metadata', new Blob([metadata], { type: 'application/json' }));
+    formData.append('file', blob, path.split('/').pop());
+
+    const uploadUrl = getStorageUploadUrl(path, 'multipart');
+    
     const headers = {
-      'Authorization': `Bearer ${authToken}`,
-      'Content-Type': `multipart/form-data; boundary=${boundary}`
+      'Authorization': `Bearer ${authToken}`
+      // Don't set Content-Type - FormData sets it with boundary automatically
     };
 
-    console.log('[SW] Starting upload:', { path, size: blob.size, authToken: authToken.substring(0, 20) + '...' });
+    console.log('[SW] Starting upload (FormData):', { path, size: blob.size, url: uploadUrl });
 
     const response = await fetch(uploadUrl, {
       method: 'POST',
       headers: headers,
-      body: combined.buffer,
-      keepalive: true // Important for background uploads
+      body: formData,
+      keepalive: true
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[SW] Upload failed:', response.status, errorText);
+      console.error('[SW] Upload failed (FormData):', response.status, response.statusText, errorText);
       throw new Error(`Upload failed: ${response.status} ${errorText}`);
     }
 
     const result = await response.json();
     const downloadURL = getStorageDownloadUrl(result.name);
-    console.log('[SW] Upload successful:', downloadURL);
+    console.log('[SW] Upload successful (FormData):', downloadURL);
     return downloadURL;
   } catch (error) {
-    console.error('[SW] Upload error:', error);
+    // If FormData fails, try simple media upload
+    if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
+      console.warn('[SW] FormData upload failed, trying media upload:', error.message);
+      return await uploadPhotoBlobMedia(blob, path, authToken);
+    }
+    throw error;
+  }
+}
+
+// Fallback: Simple media upload (no metadata, just the file)
+async function uploadPhotoBlobMedia(blob, path, authToken) {
+  const uploadUrl = getStorageUploadUrl(path, 'media');
+  
+  const headers = {
+    'Authorization': `Bearer ${authToken}`,
+    'Content-Type': 'image/jpeg'
+  };
+
+  console.log('[SW] Starting upload (media):', { path, size: blob.size, url: uploadUrl });
+
+  try {
+    const response = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: headers,
+      body: blob,
+      keepalive: true
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[SW] Upload failed (media):', response.status, response.statusText, errorText);
+      throw new Error(`Upload failed: ${response.status} ${errorText}`);
+    }
+
+    const result = await response.json();
+    const downloadURL = getStorageDownloadUrl(result.name);
+    console.log('[SW] Upload successful (media):', downloadURL);
+    return downloadURL;
+  } catch (error) {
+    console.error('[SW] Upload error (media):', error);
+    // Add more detailed error info
+    if (error.message.includes('Failed to fetch')) {
+      console.error('[SW] Network/CORS error detected. Check:', {
+        url: uploadUrl,
+        hasAuthToken: !!authToken,
+        blobSize: blob.size,
+        error: error.message
+      });
+    }
     throw error;
   }
 }
