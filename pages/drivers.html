@@ -543,10 +543,21 @@ allDrivers = drivers.map((driver) => ({
     ...driver,
     id: driver.id || driver.uid
 }));
+// Sort drivers alphabetically by firstName, then lastName
 allDrivers.sort((a, b) => {
-    const nameA = `${a.lastName || ''}${a.firstName || ''}`.toLowerCase();
-    const nameB = `${b.lastName || ''}${b.firstName || ''}`.toLowerCase();
-    return nameA.localeCompare(nameB);
+    const firstNameA = (a.firstName || '').toLowerCase().trim();
+    const firstNameB = (b.firstName || '').toLowerCase().trim();
+    const lastNameA = (a.lastName || '').toLowerCase().trim();
+    const lastNameB = (b.lastName || '').toLowerCase().trim();
+    
+    // First compare by firstName
+    const firstNameCompare = firstNameA.localeCompare(firstNameB);
+    if (firstNameCompare !== 0) {
+        return firstNameCompare;
+    }
+    
+    // If firstNames are equal, compare by lastName
+    return lastNameA.localeCompare(lastNameB);
 });
 
 renderDrivers(allDrivers);
@@ -600,8 +611,14 @@ closeAddDriverModal();
 await fetchAndDisplayDrivers(); // Refresh the list
 } catch (error) {
 console.error('Error adding driver:', error);
-if (error.code === 'already-exists') {
-        notifyError('A driver with this email address already exists.', 'Duplicate Driver');
+// Check various error codes that might indicate duplicate
+if (error.code === 'already-exists' || 
+    error.code === 'auth/email-already-in-use' ||
+    (error.message && error.message.toLowerCase().includes('already exists')) ||
+    (error.message && error.message.toLowerCase().includes('email already in use'))) {
+        notifyError('A driver with this email address already exists. The previous driver may not have been fully deleted from Firebase Authentication. Please check the cloud function deleteDriver to ensure it removes the Firebase Auth user.', 'Duplicate Driver');
+        console.warn('Driver creation failed - email already exists:', email);
+        console.warn('This indicates the Firebase Auth user still exists even though the driver document may be deleted.');
 } else if (error.code === 'invalid-argument') {
         notifyWarning(error.message || 'Invalid driver details provided.', 'Invalid Data');
 } else if (error.code === 'invalid-email') {
@@ -624,15 +641,65 @@ if (!confirmed) {
 return;
 }
 
+// Find and disable the delete button for this driver
+let deleteButton = null;
+let buttonOriginalHTML = '';
+try {
+    deleteButton = document.querySelector(`button[onclick="deleteDriver('${driverId}')"]`);
+    if (deleteButton) {
+        buttonOriginalHTML = deleteButton.innerHTML;
+        deleteButton.disabled = true;
+        deleteButton.innerHTML = '<span class="material-symbols-outlined text-xs animate-spin">hourglass_empty</span>';
+        deleteButton.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+} catch (e) {
+    console.warn('Could not find delete button:', e);
+}
+
+// Show deleting message
+notifyInfo('Deleting driver...', 'Please wait');
+
 try {
 const deleteDriverFn = getCallable('deleteDriver');
-await deleteDriverFn({ driverId });
+const result = await deleteDriverFn({ driverId });
+
+console.log('Driver deletion result:', result);
+
+// Verify deletion was successful
+if (result?.data?.success === false) {
+    throw new Error(result.data.error || 'Deletion may have failed. Please check if driver was fully removed.');
+}
 
 notifySuccess('Driver deleted successfully! All data, login access, and calendar entries have been removed.', 'Driver Deleted');
 await fetchAndDisplayDrivers(); // Refresh the list
+
+// Note: If you still get "already exists" when adding the driver again,
+// it means the Firebase Authentication user wasn't deleted properly.
+// Check the deleteDriver cloud function to ensure it deletes the Auth user.
 } catch (error) {
 console.error('Error deleting driver:', error);
-notifyError('Error deleting driver: ' + error.message);
+console.error('Delete driver error details:', {
+    code: error.code,
+    message: error.message,
+    details: error.details
+});
+
+// More specific error message
+let errorMessage = 'Error deleting driver: ' + error.message;
+if (error.code === 'not-found') {
+    errorMessage = 'Driver not found. They may have already been deleted.';
+} else if (error.message && error.message.includes('permission')) {
+    errorMessage = 'Permission denied. You may not have permission to delete drivers.';
+}
+
+notifyError(errorMessage);
+} finally {
+// Re-enable button if it still exists (in case deletion succeeded and list refreshed)
+if (deleteButton && buttonOriginalHTML) {
+    deleteButton.disabled = false;
+    deleteButton.innerHTML = buttonOriginalHTML;
+    deleteButton.classList.remove('opacity-50', 'cursor-not-allowed');
+}
 }
 }
 

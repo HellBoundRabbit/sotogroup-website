@@ -485,14 +485,15 @@
     </div>
 
     <!-- Upload Banner (shown when uploading) -->
-    <div id="uploadBanner" class="hidden fixed top-0 left-0 right-0 bg-red-600 text-white z-[100] shadow-lg">
-        <div class="flex items-center justify-center gap-3 px-4 py-3">
+    <div id="uploadBanner" class="hidden fixed top-0 left-0 right-0 bg-orange-600 text-white z-[100] shadow-lg">
+        <div class="flex items-center justify-center gap-3 px-4 py-2">
             <span class="material-symbols-outlined animate-pulse">cloud_upload</span>
-            <div class="flex flex-col items-center">
+            <div class="flex flex-col items-center flex-1">
                 <span id="uploadBannerText" class="font-semibold text-sm">Uploading expenses...</span>
-                <div class="flex items-center gap-2 text-xs opacity-90">
-                    <span>DO NOT Leave this page</span>
-                    <span id="uploadBannerSpeed" class="hidden">• <span id="uploadSpeedValue">0</span> Mbps</span>
+                <span id="uploadBannerSubtitle" class="text-xs opacity-90">Uploading photos...</span>
+                <!-- Progress bar -->
+                <div id="uploadProgressBar" class="w-full max-w-xs mt-2 h-1.5 bg-white bg-opacity-20 rounded-full overflow-hidden">
+                    <div id="uploadProgressFill" class="h-full bg-white transition-all duration-300" style="width: 0%"></div>
                 </div>
             </div>
         </div>
@@ -1635,11 +1636,10 @@
                 }
                 // Filter out expenses with incomplete photos (photosUploading flag)
                 const allExpenses = Array.from(expenseMap.values());
-                batchData.expenses = allExpenses.filter(exp => {
-                    // Only show expenses where photosUploading is false or undefined (not actively uploading)
-                    return exp.photosUploading !== true;
-                });
-                console.log(`Loaded ${batchData.expenses.length} expenses for batch ${doc.id} (filtered ${allExpenses.length - batchData.expenses.length} with incomplete photos)`);
+                // Keep all expenses, mark batch as uploading if any expense has photosUploading flag
+                batchData.expenses = allExpenses;
+                batchData.hasPendingUploads = allExpenses.some(exp => exp.photosUploading === true);
+                console.log(`Loaded ${batchData.expenses.length} expenses for batch ${doc.id} (hasPendingUploads: ${batchData.hasPendingUploads})`);
                 } catch (expenseError) {
                 console.error(`Error loading expenses for batch ${doc.id}:`, expenseError);
                 batchData.expenses = [];
@@ -1780,8 +1780,18 @@
                     borderClass = 'animated-border-panel animated-border-returned';
                 }
                 
+                // Check if batch has pending uploads (check upload queue)
+                const hasPendingUploads = batch.hasPendingUploads || (batch.expenses?.some(exp => exp.photosUploading === true));
+                const greyedOut = hasPendingUploads ? 'opacity-50 cursor-not-allowed' : '';
+                const uploadIndicator = hasPendingUploads ? `
+                <div class="mt-2 text-orange-400 text-xs flex items-center gap-1">
+                <span class="material-symbols-outlined text-sm animate-pulse">cloud_upload</span>
+                Uploading photos...
+                </div>
+                ` : '';
+                
                 return `
-                <div onclick="openBatch('${batch.id}')" class="${borderClass} cursor-pointer fade-in">
+                <div onclick="${hasPendingUploads ? '' : `openBatch('${batch.id}')`}" class="${borderClass} cursor-pointer fade-in ${greyedOut}">
                 <div class="flex items-start justify-between mb-2">
                 <div class="license-plate">${batch.registration}</div>
                 <span class="${statusColor} px-3 py-1 rounded-full text-xs font-semibold uppercase">${batch.status}</span>
@@ -1791,6 +1801,7 @@
                 <span class="text-green-500 font-semibold text-lg">£${batch.totalAmount?.toFixed(2) || '0.00'}</span>
                 </div>
                 ${timerHTML}
+                ${uploadIndicator}
                 ${batch.status === 'returned' ? `
                 <div class="mt-2 text-red-400 text-sm">
                 <span class="material-symbols-outlined text-sm">error</span>
@@ -3031,7 +3042,17 @@
  
                 // Delete the batch
                 await window.deleteDoc(window.doc(window.db, 'expenseBatches', currentBatch.id));
- 
+
+                // Clean up upload queue for this batch
+                if (window.expenseUploadQueue && deletedId) {
+                    try {
+                        await window.expenseUploadQueue.cleanupBatchUploads(deletedId);
+                        console.log('[deleteDraft] Cleaned up upload queue for batch:', deletedId);
+                    } catch (error) {
+                        console.warn('[deleteDraft] Failed to cleanup upload queue:', error);
+                    }
+                }
+
                 if (deletedLocalId) {
                 removeSubmissionQueueEntry(deletedLocalId);
                 }
@@ -3054,7 +3075,7 @@
                 });
                 displayBatches();
                 }
- 
+
                 notifySuccess('Batch deleted successfully.', 'Batch Deleted');
                 closeBatchModal();
                 await loadExpenseBatches();
