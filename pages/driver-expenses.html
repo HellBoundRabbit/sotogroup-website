@@ -1399,6 +1399,11 @@
                 // Service Worker handles uploads in background - just update status
                 if (window.expenseUploadQueue) {
                     await window.expenseUploadQueue.updateGlobalUploadStatus();
+                    
+                    // Trigger Service Worker to process any pending uploads
+                    if (navigator.onLine) {
+                        await window.expenseUploadQueue.getAuthTokenAndProcessQueue();
+                    }
                 
                 // Set up periodic status updates while uploading (only when not typing)
                     // Note: Service Worker handles actual uploads, this just updates UI
