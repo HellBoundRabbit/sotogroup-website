@@ -67,6 +67,27 @@
             background-image: linear-gradient(rgb(255, 0, 0) 35%, rgb(255, 100, 100));
             box-shadow: 0px -5px 20px 0px rgb(255, 0, 0), 0px 5px 20px 0px rgb(255, 100, 100);
         }
+        .spinner-orange {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            /* animation: spinning82341 1.7s linear infinite; */
+            filter: blur(1px);
+        }
+        .spinner-orange::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(255, 140, 0) 35%, rgb(255, 180, 60));
+            box-shadow: 0px -5px 20px 0px rgb(255, 140, 0), 0px 5px 20px 0px rgb(255, 180, 60);
+        }
         .spinner1 {
             background-color: rgb(36, 36, 36);
             width: 44px;
@@ -268,16 +289,16 @@
                     <h3 class="text-lg font-semibold text-white">Availability</h3>
                 </div>
 
-                <!-- Logout -->
+                <!-- Account -->
                 <div class="features-grid-single">
-                    <div class="feature-button" onclick="logout()">
+                    <div class="feature-button" onclick="window.location.href='/pages/driver-account.html'">
                         <div class="spinner-wrapper">
-                            <div class="spinner-red"></div>
+                            <div class="spinner-orange"></div>
                             <div class="spinner1">
-                                <span class="material-symbols-outlined spinner-icon">logout</span>
+                                <span class="material-symbols-outlined spinner-icon">account_circle</span>
                             </div>
                         </div>
-                        <h3 class="text-lg font-semibold text-white">Logout</h3>
+                        <h3 class="text-lg font-semibold text-white">Account</h3>
                     </div>
                 </div>
             </div>

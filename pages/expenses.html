@@ -1439,9 +1439,9 @@
                     try {
                         await markBatchProcessed(batch);
                         await generateAndSaveExpensePDF(batch, directoryHandle);
-                        // Mark as transferred after successful generation (auto-delete in 5 days / 120 hours)
+                        // Mark as transferred after successful generation (auto-delete in 7 days / 168 hours)
                         const deleteAt = new Date();
-                        deleteAt.setHours(deleteAt.getHours() + 120); // 120 hours = 5 days
+                        deleteAt.setHours(deleteAt.getHours() + 168); // 168 hours = 7 days
                         
                         await window.updateDoc(window.doc(window.db, 'expenseBatches', batch.id), {
                             status: 'transferred',
@@ -1648,9 +1648,9 @@
                 button.innerHTML = '<span class="material-symbols-outlined animate-spin">hourglass_empty</span> Updating status...';
                 for (const batch of paidBatches) {
                     try {
-                        // Mark as transferred (auto-delete in 5 days / 120 hours)
+                        // Mark as transferred (auto-delete in 7 days / 168 hours)
                         const deleteAt = new Date();
-                        deleteAt.setHours(deleteAt.getHours() + 120); // 120 hours = 5 days
+                        deleteAt.setHours(deleteAt.getHours() + 168); // 168 hours = 7 days
                         
                         await window.updateDoc(window.doc(window.db, 'expenseBatches', batch.id), {
                             status: 'transferred',

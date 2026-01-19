@@ -19,6 +19,7 @@
         import { getFirestore, collection, getDocs, query, where, deleteDoc, doc, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+        import { getStorage, ref, deleteObject } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
         
         const firebaseConfig = {
             apiKey: "AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA",
@@ -34,11 +35,15 @@
         const db = getFirestore(app);
         const auth = getAuth(app);
         const functions = getFunctions(app);
+        const storage = getStorage(app);
         
         window.firebaseApp = app;
         window.db = db;
         window.auth = auth;
         window.functions = functions;
+        window.storage = storage;
+        window.ref = ref;
+        window.deleteObject = deleteObject;
         window.firebase = {
             functions,
             httpsCallable
@@ -499,9 +504,53 @@
                         );
                         const expensesSnapshot = await window.getDocs(expensesQuery);
                         
-                        // Delete expenses
-                        const deletePromises = expensesSnapshot.docs.map(expDoc => window.deleteDoc(window.doc(window.db, 'expenses', expDoc.id)));
-                        await Promise.all(deletePromises);
+                        // Helper function to extract storage path from Firebase Storage download URL
+                        function extractStoragePathFromURL(downloadURL) {
+                            try {
+                                // Firebase Storage URLs format: https://firebasestorage.googleapis.com/v0/b/{bucket}/o/{encodedPath}?alt=media&token={token}
+                                const url = new URL(downloadURL);
+                                const pathMatch = url.pathname.match(/\/o\/(.+)/);
+                                if (pathMatch) {
+                                    // Decode the encoded path (URL encoding)
+                                    return decodeURIComponent(pathMatch[1]);
+                                }
+                                return null;
+                            } catch (error) {
+                                console.warn('Failed to extract storage path from URL:', downloadURL, error);
+                                return null;
+                            }
+                        }
+                        
+                        // Delete photos from Firebase Storage and then delete expense documents
+                        const deleteExpensePromises = expensesSnapshot.docs.map(async (expDoc) => {
+                            const expenseData = expDoc.data();
+                            
+                            // Delete all photos associated with this expense
+                            if (expenseData.photos && Array.isArray(expenseData.photos)) {
+                                const photoDeletePromises = expenseData.photos.map(async (photoURL) => {
+                                    if (typeof photoURL === 'string' && photoURL.startsWith('http')) {
+                                        try {
+                                            const storagePath = extractStoragePathFromURL(photoURL);
+                                            if (storagePath) {
+                                                const photoRef = window.ref(window.storage, storagePath);
+                                                await window.deleteObject(photoRef);
+                                                console.log(`Deleted photo from storage: ${storagePath}`);
+                                            }
+                                        } catch (error) {
+                                            // Photo may already be deleted or not exist - log but don't fail
+                                            console.warn(`Failed to delete photo from storage: ${photoURL}`, error);
+                                        }
+                                    }
+                                });
+                                
+                                await Promise.all(photoDeletePromises);
+                            }
+                            
+                            // Delete the expense document
+                            await window.deleteDoc(window.doc(window.db, 'expenses', expDoc.id));
+                        });
+                        
+                        await Promise.all(deleteExpensePromises);
                         
                         // Delete the batch
                         await window.deleteDoc(window.doc(window.db, 'expenseBatches', batch.id));
