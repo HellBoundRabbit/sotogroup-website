@@ -37,29 +37,28 @@ async function getAuthToken() {
 
 // Upload photo blob to Firebase Storage using fetch
 async function uploadPhotoBlob(blob, path, authToken) {
-  // Create multipart form data
-  const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2);
+  if (!authToken) {
+    throw new Error('Auth token required for upload');
+  }
+
   const metadata = JSON.stringify({
     contentType: 'image/jpeg'
   });
   
+  // Create multipart form data - Firebase Storage REST API format
   const formData = new FormData();
-  formData.append('metadata', new Blob([metadata], { type: 'application/json' }), 'metadata.json');
-  formData.append('file', blob, 'photo.jpg');
+  formData.append('metadata', new Blob([metadata], { type: 'application/json' }));
+  formData.append('file', blob);
 
   const uploadUrl = getStorageUploadUrl(path);
   
   try {
+    // Don't set Content-Type header - FormData sets it automatically with boundary
     const headers = {
-      'X-Firebase-Storage-Version': 'webjs/10.7.1',
-      'X-Goog-Upload-Protocol': 'multipart',
-      'X-Goog-Upload-Command': 'upload, finalize',
-      'X-Goog-Upload-Offset': '0'
+      'Authorization': `Bearer ${authToken}`
     };
 
-    if (authToken) {
-      headers['Authorization'] = `Firebase ${authToken}`;
-    }
+    console.log('[SW] Starting upload:', { path, size: blob.size, authToken: authToken.substring(0, 20) + '...' });
 
     const response = await fetch(uploadUrl, {
       method: 'POST',
@@ -70,11 +69,14 @@ async function uploadPhotoBlob(blob, path, authToken) {
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error('[SW] Upload failed:', response.status, errorText);
       throw new Error(`Upload failed: ${response.status} ${errorText}`);
     }
 
     const result = await response.json();
-    return getStorageDownloadUrl(result.name);
+    const downloadURL = getStorageDownloadUrl(result.name);
+    console.log('[SW] Upload successful:', downloadURL);
+    return downloadURL;
   } catch (error) {
     console.error('[SW] Upload error:', error);
     throw error;
