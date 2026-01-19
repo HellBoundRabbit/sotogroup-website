@@ -92,6 +92,33 @@ async function processUploadQueue(authToken) {
       const db = request.result;
       
       try {
+        // Reset any tasks stuck in "uploading" state for more than 5 minutes
+        const resetTx = db.transaction(['expenseUploadQueue'], 'readwrite');
+        const resetStore = resetTx.objectStore('expenseUploadQueue');
+        const resetStatusIndex = resetStore.index('status');
+        const stuckRequest = resetStatusIndex.getAll('uploading');
+        
+        const stuckTasks = await new Promise((res, rej) => {
+          stuckRequest.onsuccess = () => res(stuckRequest.result || []);
+          stuckRequest.onerror = () => rej(stuckRequest.error);
+        });
+
+        const now = Date.now();
+        const FIVE_MINUTES = 5 * 60 * 1000;
+        for (const stuckTask of stuckTasks) {
+          if (stuckTask.updatedAt && (now - stuckTask.updatedAt) > FIVE_MINUTES) {
+            // Reset stuck task back to pending
+            stuckTask.status = 'pending';
+            stuckTask.updatedAt = now;
+            await new Promise((res, rej) => {
+              const req = resetStore.put(stuckTask);
+              req.onsuccess = () => res();
+              req.onerror = () => rej(req.error);
+            });
+            console.log(`[SW] Reset stuck upload task: ${stuckTask.uploadId}`);
+          }
+        }
+
         // Get all pending upload tasks
         const transaction = db.transaction(['expenseUploadQueue'], 'readonly');
         const store = transaction.objectStore('expenseUploadQueue');
