@@ -19,7 +19,7 @@
         import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, where, updateDoc, doc, deleteDoc, getDoc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
-        import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
+        import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
         
         // Firebase configuration
         const firebaseConfig = {
@@ -74,6 +74,7 @@
         window.ref = ref;
         window.uploadBytes = uploadBytes;
         window.getDownloadURL = getDownloadURL;
+        window.deleteObject = deleteObject;
         
         console.log('Firebase initialized successfully!');
     </script>
@@ -3062,6 +3063,23 @@
             console.log('[saveExpenses] WRITE-FIRST complete. All data saved to IndexedDB and Firestore. Service Worker will handle photo uploads.');
         }
 
+        // Helper function to extract storage path from Firebase Storage download URL
+        function extractStoragePathFromURL(downloadURL) {
+            try {
+                // Firebase Storage URLs format: https://firebasestorage.googleapis.com/v0/b/{bucket}/o/{encodedPath}?alt=media&token={token}
+                const url = new URL(downloadURL);
+                const pathMatch = url.pathname.match(/\/o\/(.+)/);
+                if (pathMatch) {
+                    // Decode the encoded path (URL encoding)
+                    return decodeURIComponent(pathMatch[1]);
+                }
+                return null;
+            } catch (error) {
+                console.warn('[deleteBatch] Failed to extract storage path from URL:', downloadURL, error);
+                return null;
+            }
+        }
+
         // Delete batch
         async function deleteBatch() {
              const confirmed = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
@@ -3080,13 +3098,47 @@
                 const deletedLocalId = currentBatch?.localId || null;
                 const localCopy = currentBatch;
  
-                // Delete all expenses in this batch
+                // Get all expenses in this batch BEFORE deleting them
                 const expensesQuery = window.query(
                 window.collection(window.db, 'expenses'),
                 window.where('batchId', '==', currentBatch.id),
                 window.where('officeId', '==', currentUser.officeId)
                 );
                 const expensesSnapshot = await window.getDocs(expensesQuery);
+
+                // Delete all photos from Firebase Storage for each expense
+                const photoDeletePromises = [];
+                for (const expDoc of expensesSnapshot.docs) {
+                    const expenseData = expDoc.data();
+                    
+                    // Delete all photos associated with this expense
+                    if (expenseData.photos && Array.isArray(expenseData.photos)) {
+                        for (const photoURL of expenseData.photos) {
+                            if (typeof photoURL === 'string' && photoURL.startsWith('http')) {
+                                    try {
+                                        const storagePath = extractStoragePathFromURL(photoURL);
+                                        if (storagePath) {
+                                            const photoRef = window.ref(window.storage, storagePath);
+                                            // Use deleteObject from Firebase Storage SDK
+                                            const deletePhotoPromise = window.deleteObject(photoRef).catch(error => {
+                                                // Photo may already be deleted or not exist - log but don't fail
+                                                console.warn(`[deleteBatch] Failed to delete photo from storage: ${photoURL}`, error);
+                                            });
+                                            photoDeletePromises.push(deletePhotoPromise);
+                                        }
+                                    } catch (error) {
+                                        console.warn(`[deleteBatch] Error processing photo URL: ${photoURL}`, error);
+                                    }
+                            }
+                        }
+                    }
+                }
+
+                // Wait for all photo deletions to complete (or fail gracefully)
+                await Promise.allSettled(photoDeletePromises);
+                console.log(`[deleteBatch] Attempted to delete ${photoDeletePromises.length} photos from Firebase Storage`);
+
+                // Delete all expense documents
                 const deletePromises = expensesSnapshot.docs.map(doc => window.deleteDoc(doc.ref));
                 await Promise.all(deletePromises);
  
@@ -3153,13 +3205,47 @@
                 const deletedLocalId = currentBatch?.localId || null;
                 const localCopy = currentBatch;
  
-                // Delete all expenses in this batch
+                // Get all expenses in this batch BEFORE deleting them
                 const expensesQuery = window.query(
                 window.collection(window.db, 'expenses'),
                 window.where('batchId', '==', currentBatch.id),
                 window.where('officeId', '==', currentUser.officeId)
                 );
                 const expensesSnapshot = await window.getDocs(expensesQuery);
+
+                // Delete all photos from Firebase Storage for each expense
+                const photoDeletePromises = [];
+                for (const expDoc of expensesSnapshot.docs) {
+                    const expenseData = expDoc.data();
+                    
+                    // Delete all photos associated with this expense
+                    if (expenseData.photos && Array.isArray(expenseData.photos)) {
+                        for (const photoURL of expenseData.photos) {
+                            if (typeof photoURL === 'string' && photoURL.startsWith('http')) {
+                                try {
+                                    const storagePath = extractStoragePathFromURL(photoURL);
+                                    if (storagePath) {
+                                        const photoRef = window.ref(window.storage, storagePath);
+                                        // Use deleteObject from Firebase Storage SDK
+                                        const deletePhotoPromise = window.deleteObject(photoRef).catch(error => {
+                                            // Photo may already be deleted or not exist - log but don't fail
+                                            console.warn(`[discardReturnedBatch] Failed to delete photo from storage: ${photoURL}`, error);
+                                        });
+                                        photoDeletePromises.push(deletePhotoPromise);
+                                    }
+                                } catch (error) {
+                                    console.warn(`[discardReturnedBatch] Error processing photo URL: ${photoURL}`, error);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Wait for all photo deletions to complete (or fail gracefully)
+                await Promise.allSettled(photoDeletePromises);
+                console.log(`[discardReturnedBatch] Attempted to delete ${photoDeletePromises.length} photos from Firebase Storage`);
+
+                // Delete all expense documents
                 const deletePromises = expensesSnapshot.docs.map(doc => window.deleteDoc(doc.ref));
                 await Promise.all(deletePromises);
  
