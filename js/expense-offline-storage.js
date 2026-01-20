@@ -1228,42 +1228,70 @@ class ExpenseUploadQueue {
         if (!this.db || !batchId) return;
 
         try {
-            const tx = this.db.transaction(['expenseUploadQueue'], 'readwrite');
-            const store = tx.objectStore('expenseUploadQueue');
-            const batchIndex = store.index('batchId');
+            // First, get all tasks for this batch (read-only transaction)
+            const readTx = this.db.transaction(['expenseUploadQueue'], 'readonly');
+            const readStore = readTx.objectStore('expenseUploadQueue');
+            const batchIndex = readStore.index('batchId');
             
-            // Get all tasks for this batch
             const tasks = await new Promise((resolve, reject) => {
                 const req = batchIndex.getAll(batchId);
                 req.onsuccess = () => resolve(req.result || []);
                 req.onerror = () => reject(req.error);
             });
 
-            // Delete all tasks and their associated blobs
+            if (tasks.length === 0) {
+                return; // No tasks to clean up
+            }
+
+            // Collect all blob IDs to delete
+            const blobIdsToDelete = [];
             for (const task of tasks) {
-                // Delete task
-                await new Promise((resolve, reject) => {
-                    const req = store.delete(task.uploadId);
+                if (task.photoBlobIds && Array.isArray(task.photoBlobIds)) {
+                    for (const photoBlobRef of task.photoBlobIds) {
+                        blobIdsToDelete.push(photoBlobRef.blobId);
+                    }
+                }
+            }
+
+            // Delete all tasks in one transaction
+            const taskTx = this.db.transaction(['expenseUploadQueue'], 'readwrite');
+            const taskStore = taskTx.objectStore('expenseUploadQueue');
+            
+            await Promise.all(tasks.map(task => {
+                return new Promise((resolve, reject) => {
+                    const req = taskStore.delete(task.uploadId);
                     req.onsuccess = () => resolve();
                     req.onerror = () => reject(req.error);
                 });
+            }));
 
-                // Delete associated photo blobs
-                if (task.photoBlobIds && Array.isArray(task.photoBlobIds)) {
-                    const blobTx = this.db.transaction(['photoBlobs'], 'readwrite');
-                    const blobStore = blobTx.objectStore('photoBlobs');
-                    for (const photoBlobRef of task.photoBlobIds) {
-                        try {
-                            await new Promise((resolve, reject) => {
-                                const req = blobStore.delete(photoBlobRef.blobId);
-                                req.onsuccess = () => resolve();
-                                req.onerror = () => reject(req.error);
-                            });
-                        } catch (error) {
-                            console.warn('[ExpenseUploadQueue] Failed to delete photo blob:', photoBlobRef.blobId, error);
-                        }
-                    }
-                }
+            // Wait for transaction to complete
+            await new Promise((resolve, reject) => {
+                taskTx.oncomplete = () => resolve();
+                taskTx.onerror = () => reject(taskTx.error);
+            });
+
+            // Delete all photo blobs in separate transaction(s)
+            if (blobIdsToDelete.length > 0) {
+                const blobTx = this.db.transaction(['photoBlobs'], 'readwrite');
+                const blobStore = blobTx.objectStore('photoBlobs');
+                
+                await Promise.all(blobIdsToDelete.map(blobId => {
+                    return new Promise((resolve, reject) => {
+                        const req = blobStore.delete(blobId);
+                        req.onsuccess = () => resolve();
+                        req.onerror = () => reject(req.error);
+                    }).catch(error => {
+                        console.warn('[ExpenseUploadQueue] Failed to delete photo blob:', blobId, error);
+                        // Don't throw - continue with other deletions
+                    });
+                }));
+
+                // Wait for blob transaction to complete
+                await new Promise((resolve, reject) => {
+                    blobTx.oncomplete = () => resolve();
+                    blobTx.onerror = () => reject(blobTx.error);
+                });
             }
 
             console.log(`[ExpenseUploadQueue] Cleaned up ${tasks.length} upload tasks for batch ${batchId}`);
@@ -1272,7 +1300,7 @@ class ExpenseUploadQueue {
             await this.updateGlobalUploadStatus();
         } catch (error) {
             console.error('[ExpenseUploadQueue] Error cleaning up batch uploads:', error);
-            throw error;
+            // Don't throw - just log the error so batch deletion can continue
         }
     }
 
