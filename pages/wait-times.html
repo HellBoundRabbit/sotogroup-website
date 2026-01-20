@@ -327,6 +327,63 @@
     </div>
 </div>
 
+<!-- Return Modal -->
+<div id="returnModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50">
+    <div class="min-h-screen px-4 py-8 flex items-center justify-center">
+        <div class="bg-[#1a1f24] rounded-lg w-full max-w-lg">
+            <div class="border-b border-gray-800 px-6 py-4">
+                <h2 class="text-xl font-semibold">Return Wait Time</h2>
+            </div>
+            <div class="p-6">
+                <label class="text-sm text-gray-400 block mb-2">Reason for Return</label>
+                <textarea 
+                    id="returnReason" 
+                    rows="4" 
+                    class="w-full bg-[#283039] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-red-500 focus:outline-none"
+                    placeholder="Explain why this wait time is being returned..."
+                ></textarea>
+                <div class="flex gap-3 mt-4">
+                    <button onclick="closeReturnModal()" class="flex-1 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors">
+                        Cancel
+                    </button>
+                    <button onclick="confirmReturn()" class="flex-1 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors">
+                        Return Wait Time
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Office Note Modal (after processing) -->
+<div id="officeNoteModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50">
+    <div class="min-h-screen px-4 py-8 flex items-center justify-center">
+        <div class="bg-[#1a1f24] rounded-lg w-full max-w-lg">
+            <div class="border-b border-gray-800 px-6 py-4">
+                <h2 class="text-xl font-semibold">Add Note to Processed Wait Time</h2>
+            </div>
+            <div class="p-6">
+                <p class="text-sm text-gray-300 mb-4">Would you like to add a note to this confirmed wait time?</p>
+                <label class="text-sm text-gray-400 block mb-2">Note (Optional)</label>
+                <textarea 
+                    id="officeNote" 
+                    rows="4" 
+                    class="w-full bg-[#283039] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none"
+                    placeholder="Add any notes about this processed wait time..."
+                ></textarea>
+                <div class="flex gap-3 mt-4">
+                    <button onclick="skipOfficeNote()" class="flex-1 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors">
+                        Skip
+                    </button>
+                    <button onclick="saveOfficeNote()" class="flex-1 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">
+                        Save Note
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
     const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
     const WAIT_CATEGORIES = {
@@ -341,6 +398,8 @@
     let unsubscribeWaitTimes = null;
     let isManualRefresh = false;
     let waitTimeToProcess = null;
+    let waitTimeToReturn = null;
+    let waitTimeForNote = null;
     let processModalStep = 1;
     let reductionHours = 0;
     let reductionMinutes = 0;
@@ -450,7 +509,11 @@
 
     function renderWaitTimes() {
         const now = Date.now();
-        const pending = allWaitTimes.filter(item => (item.processingStatus || 'pending') !== 'processed');
+        const pending = allWaitTimes.filter(item => {
+            const status = item.processingStatus || 'pending';
+            return status !== 'processed' && status !== 'returned';
+        });
+        const returned = allWaitTimes.filter(item => (item.processingStatus || 'pending') === 'returned');
         const processed = allWaitTimes.filter(item => {
             if ((item.processingStatus || 'pending') !== 'processed') return false;
             const processedAt = toDate(item.processedAt);
@@ -496,6 +559,10 @@
         const actions = options.processed
             ? ''
             : `
+                <button onclick="openReturnModal('${item.id}')" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm flex items-center gap-2">
+                    <span class="material-symbols-outlined text-base">undo</span>
+                    Return
+                </button>
                 <button onclick="openProcessModal('${item.id}')" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm flex items-center gap-2">
                     <span class="material-symbols-outlined text-base">task_alt</span>
                     Process
@@ -537,6 +604,13 @@
                     <p class="text-sm text-gray-200 leading-relaxed">${escapeHtml(item.notes)}</p>
                 </div>
                 ` : ''}
+                
+                ${item.returnNotes ? `
+                <div class="mt-4 bg-red-500/10 border border-red-500/30 rounded-xl p-4">
+                    <p class="text-xs font-semibold text-red-400 mb-1">RETURN NOTES</p>
+                    <p class="text-sm text-red-300 leading-relaxed">${escapeHtml(item.returnNotes)}</p>
+                </div>
+                ` : ''}
 
         ${options.processed && item.originalTotalMinutes && item.originalTotalMinutes !== item.totalMinutes ? `
                 <div class="mt-3 bg-[#1b222b] border border-[#27313c] rounded-xl p-4 text-sm text-gray-200">
@@ -562,6 +636,13 @@
                         <span class="material-symbols-outlined text-base text-amber-400">hourglass_bottom</span>
                         <span>${expiryLabel}</span>
                     </div>
+                </div>
+            ` : ''}
+        
+        ${options.processed && item.officeNotes ? `
+                <div class="mt-3 bg-[#1b222b] border border-[#27313c] rounded-xl p-4">
+                    <p class="text-xs font-semibold text-gray-400 mb-1">OFFICE NOTES</p>
+                    <p class="text-sm text-gray-200 leading-relaxed">${escapeHtml(item.officeNotes)}</p>
                 </div>
             ` : ''}
 
@@ -822,11 +903,96 @@
             }
 
             await window.updateDoc(window.doc(window.db, 'waitTimes', waitTimeId), updatePayload);
+            
+            // Show office note modal after processing
+            waitTimeForNote = waitTimeId;
+            document.getElementById('officeNoteModal').classList.remove('hidden');
+            
             return true;
         } catch (error) {
             console.error('Error processing wait time:', error);
             notifyError('Unable to mark wait time as processed.');
             return false;
+        }
+    }
+
+    // Return wait time functions
+    function openReturnModal(waitTimeId) {
+        waitTimeToReturn = allWaitTimes.find(item => item.id === waitTimeId);
+        if (!waitTimeToReturn) {
+            notifyWarning('Wait time not found.');
+            return;
+        }
+        document.getElementById('returnReason').value = '';
+        document.getElementById('returnModal').classList.remove('hidden');
+    }
+
+    function closeReturnModal() {
+        document.getElementById('returnModal').classList.add('hidden');
+        waitTimeToReturn = null;
+        document.getElementById('returnReason').value = '';
+    }
+
+    async function confirmReturn() {
+        const reason = document.getElementById('returnReason').value.trim();
+        if (!reason) {
+            notifyWarning('Please provide a reason for returning this wait time.', 'Action Required');
+            return;
+        }
+
+        if (!waitTimeToReturn) {
+            notifyWarning('Wait time not found.');
+            return;
+        }
+
+        try {
+            await window.updateDoc(window.doc(window.db, 'waitTimes', waitTimeToReturn.id), {
+                processingStatus: 'returned',
+                returnNotes: reason,
+                returnedAt: window.serverTimestamp(),
+                returnedBy: currentUser.uid,
+                updatedAt: window.serverTimestamp()
+            });
+
+            notifySuccess('Wait time returned to the driver.');
+            closeReturnModal();
+        } catch (error) {
+            console.error('Error returning wait time:', error);
+            notifyError('Error returning wait time. Please try again.');
+        }
+    }
+
+    // Office note functions
+    function skipOfficeNote() {
+        document.getElementById('officeNoteModal').classList.add('hidden');
+        document.getElementById('officeNote').value = '';
+        waitTimeForNote = null;
+    }
+
+    async function saveOfficeNote() {
+        if (!waitTimeForNote) {
+            skipOfficeNote();
+            return;
+        }
+
+        const note = document.getElementById('officeNote').value.trim();
+        
+        try {
+            const updatePayload = {
+                officeNotes: note || '',
+                updatedAt: window.serverTimestamp()
+            };
+
+            await window.updateDoc(window.doc(window.db, 'waitTimes', waitTimeForNote), updatePayload);
+            
+            if (note) {
+                notifySuccess('Note added to processed wait time.');
+            }
+            
+            skipOfficeNote();
+        } catch (error) {
+            console.error('Error saving office note:', error);
+            notifyError('Unable to save note. Please try again.');
         }
     }
 
