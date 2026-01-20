@@ -99,6 +99,27 @@
             justify-content: center;
             z-index: 2;
         }
+        .spinner-green {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            animation: spinning82341 1.7s linear infinite;
+            filter: blur(1px);
+        }
+        .spinner-green::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(0, 255, 0) 35%, rgb(0, 200, 0));
+            box-shadow: 0px -5px 20px 0px rgb(0, 255, 0), 0px 5px 20px 0px rgb(0, 200, 0);
+        }
         .spinner-icon {
             position: absolute;
             top: 50%;
@@ -313,7 +334,14 @@
                 </div>
             </button>
             <h1 class="flex-1 text-center text-xl font-semibold">My Wait Times</h1>
-            <div class="w-6"></div>
+            <button onclick="window.location.href='/pages/driver-processed-wait-times.html'" class="touch-target">
+                <div class="spinner-wrapper">
+                    <div class="spinner-green"></div>
+                    <div class="spinner1">
+                        <span class="material-symbols-outlined spinner-icon">task_alt</span>
+                    </div>
+                </div>
+            </button>
         </div>
     </div>
 
@@ -336,13 +364,6 @@
                 <h2 class="text-sm font-bold text-orange-400 tracking-wide">PENDING</h2>
             </header>
             <div id="pendingList" class="space-y-3"></div>
-        </section>
-
-        <section id="processedSection" class="hidden space-y-3 fade-in">
-            <header class="flex items-center justify-between">
-                <h2 class="text-sm font-bold text-green-400 tracking-wide">PROCESSED (LAST 3 DAYS)</h2>
-            </header>
-            <div id="processedList" class="space-y-3"></div>
         </section>
     </main>
 
@@ -550,6 +571,7 @@
 
     <script>
         const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+        const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
         const WAIT_CATEGORIES = {
             awaiting_release: {
                 label: 'Awaiting Release',
@@ -697,6 +719,16 @@
             for (const entry of queue) {
                 try {
                     const data = entry.data || {};
+                    
+                    // Check for unique registration before syncing
+                    let uniqueReg = data.registration;
+                    try {
+                        uniqueReg = await getUniqueWaitTimeReg(data.registration);
+                    } catch (error) {
+                        console.error('Error checking for duplicate registration in queue sync:', error);
+                        // Continue with original registration if check fails
+                    }
+
                     const firestoreData = {
                         driverId: currentUser.uid,
                         driverEmail: data.driverEmail || currentUser.email || '',
@@ -705,7 +737,7 @@
                             `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() ||
                             'Driver',
                         officeId: data.officeId || officeId,
-                        registration: data.registration,
+                        registration: uniqueReg,
                         category: data.category,
                         categoryLabel: data.categoryLabel,
                         hours: data.hours,
@@ -871,21 +903,13 @@
                 const status = item.processingStatus || 'pending';
                 return status !== 'processed' && status !== 'returned';
             });
-            const processed = waitTimes.filter(item => {
-                if ((item.processingStatus || 'pending') !== 'processed') return false;
-                const processedAt = toDate(item.processedAt);
-                if (!processedAt) return false;
-                return Date.now() - processedAt.getTime() <= THREE_DAYS_MS;
-            });
 
             document.getElementById('returnedSection').classList.toggle('hidden', returned.length === 0);
             document.getElementById('pendingSection').classList.toggle('hidden', pending.length === 0);
-            document.getElementById('processedSection').classList.toggle('hidden', processed.length === 0);
-            document.getElementById('emptyState').classList.toggle('hidden', waitTimes.length > 0);
+            document.getElementById('emptyState').classList.toggle('hidden', (returned.length > 0 || pending.length > 0));
 
             renderWaitTimeList(returned, 'returnedList', { allowDelete: false, showProcessedMeta: false, isReturned: true });
             renderWaitTimeList(pending, 'pendingList', { allowDelete: false, showProcessedMeta: false });
-            renderWaitTimeList(processed, 'processedList', { allowDelete: false, showProcessedMeta: true });
         }
 
         function renderWaitTimeList(items, containerId, options = {}) {
@@ -1037,7 +1061,7 @@
             const notesInput = document.getElementById('notesInput');
             const saveBtn = document.getElementById('saveWaitTimeBtn');
 
-            const registration = normalizeRegistration(regInput.value);
+            let registration = normalizeRegistration(regInput.value);
             const hours = parseInt(hoursSelect.value, 10) || 0;
             const minutes = parseInt(minutesSelect.value, 10) || 0;
             const totalMinutes = (hours * 60) + minutes;
@@ -1063,6 +1087,36 @@
                 notifyWarning('Add details explaining the wait time.');
                 notesInput.focus();
                 return;
+            }
+
+            // Get unique registration (adds ! if duplicate)
+            try {
+                const originalReg = normalizeRegForComparison(registration);
+                registration = await getUniqueWaitTimeReg(registration);
+                // Update the input field to show the modified registration if it changed
+                const newRegNormalized = normalizeRegForComparison(registration);
+                if (originalReg !== newRegNormalized) {
+                    // Format the registration back with spaces for display
+                    // Handle cases like "AB12!", "AB12!2", etc.
+                    const match = newRegNormalized.match(/^([A-Z0-9]{0,6})([!][0-9]*)?$/);
+                    if (match) {
+                        const baseReg = match[1];
+                        const suffix = match[2] || '';
+                        let formatted = baseReg;
+                        if (baseReg.length >= 2) {
+                            formatted = baseReg.slice(0, 2);
+                            if (baseReg.length > 2) {
+                                formatted += ' ' + baseReg.slice(2);
+                            }
+                        }
+                        regInput.value = formatted + suffix;
+                    } else {
+                        regInput.value = newRegNormalized.replace(/(.{1,2})(.{1,2})(.{0,4})/, '$1 $2 $3').trim();
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking for duplicate registration:', error);
+                // Continue with original registration if check fails
             }
 
             const driverName = currentUser?.name ||
@@ -1213,6 +1267,72 @@
                 .replace(/[^A-Z0-9 ]/g, '')
                 .replace(/\s+/g, ' ')
                 .trim();
+        }
+
+        // Helper function to normalize reg for comparison (remove spaces)
+        function normalizeRegForComparison(reg) {
+            return (reg || '').toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9]/g, '');
+        }
+
+        // Helper function to check if a registration exists and add ! suffix if needed
+        async function getUniqueWaitTimeReg(baseReg) {
+            const normalizedReg = normalizeRegForComparison(baseReg);
+            
+            if (!currentUser || !currentUser.officeId) {
+                return normalizedReg;
+            }
+
+            // Check if any wait time with this officeId has this exact reg (pending or processed within 7 days)
+            const waitTimesQuery = window.query(
+                window.collection(window.db, 'waitTimes'),
+                window.where('officeId', '==', currentUser.officeId)
+            );
+            
+            let waitTimesSnapshot;
+            try {
+                waitTimesSnapshot = await window.getDocs(waitTimesQuery);
+            } catch (error) {
+                console.error('Error checking for duplicate wait times:', error);
+                return normalizedReg; // Return as-is if we can't check
+            }
+
+            const now = Date.now();
+            const existingRegs = new Set();
+            
+            waitTimesSnapshot.docs.forEach(doc => {
+                const data = doc.data();
+                if (data.registration) {
+                    const reg = normalizeRegForComparison(data.registration);
+                    
+                    // Check if this wait time is pending or processed within 7 days
+                    const status = data.processingStatus || 'pending';
+                    const isRelevant = status !== 'processed' || (() => {
+                        const processedAt = toDate(data.processedAt);
+                        if (!processedAt) return false;
+                        return now - processedAt.getTime() <= SEVEN_DAYS_MS;
+                    })();
+                    
+                    if (isRelevant) {
+                        existingRegs.add(reg);
+                    }
+                }
+            });
+
+            // If the exact reg doesn't exist, return it
+            if (!existingRegs.has(normalizedReg)) {
+                return normalizedReg;
+            }
+
+            // Otherwise, add ! (and incrementing suffix if needed)
+            let counter = 1;
+            while (true) {
+                const suffix = counter === 1 ? '!' : `!${counter}`;
+                const newReg = `${normalizedReg}${suffix}`;
+                if (!existingRegs.has(newReg)) {
+                    return newReg;
+                }
+                counter++;
+            }
         }
 
         function escapeHtml(text) {

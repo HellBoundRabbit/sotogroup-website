@@ -24,6 +24,27 @@
             position: relative;
             margin: 0 auto;
         }
+        .spinner {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            animation: spinning82341 1.7s linear infinite;
+            filter: blur(1px);
+        }
+        .spinner::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(186, 66, 255) 35%, rgb(0, 225, 255));
+            box-shadow: 0px -5px 20px 0px rgb(186, 66, 255), 0px 5px 20px 0px rgb(0, 225, 255);
+        }
         .spinner-orange {
             width: 56px;
             height: 56px;
@@ -103,13 +124,21 @@
             display: flex;
             justify-content: center;
         }
+        @keyframes spinning82341 {
+            to {
+                transform: rotate(360deg);
+            }
+        }
     </style>
 </head>
 <body class="bg-black text-white min-h-screen">
     <!-- Loading Overlay -->
     <div id="loadingOverlay" class="fixed inset-0 bg-black flex items-center justify-center z-50">
         <div class="text-center">
-            <div class="spinner-border animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+            <div class="spinner-wrapper mx-auto mb-4">
+                <div class="spinner"></div>
+                <div class="spinner1"></div>
+            </div>
             <p class="text-gray-400">Loading...</p>
         </div>
     </div>
@@ -118,7 +147,7 @@
     <div class="min-h-screen flex flex-col px-6 py-8">
         <!-- Header -->
         <div class="mb-8 relative">
-            <button onclick="window.location.href='/pages/driver-portal.html'" class="absolute top-0 right-0 flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <button onclick="window.location.href='/pages/driver-portal.html'" class="absolute top-0 left-0 flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
                 <span class="material-symbols-outlined">arrow_back</span>
                 <span>Back</span>
             </button>

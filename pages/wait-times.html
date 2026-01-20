@@ -27,6 +27,16 @@
         }
     </script>
     <style>
+        .tab-active {
+            border-bottom: 3px solid #3b82f6;
+            color: #3b82f6;
+        }
+        .tab-content {
+            display: block;
+        }
+        .tab-content.hidden {
+            display: none;
+        }
         .license-plate {
             background: #FFD500;
             color: #000;
@@ -215,39 +225,55 @@
 </div>
 
 <main class="flex-1 px-6 py-8 max-w-6xl mx-auto w-full">
-    <section class="bg-[#1a1f24] border border-[#283039] rounded-2xl p-6 mb-8">
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-                <h2 class="text-2xl font-semibold mb-1">Pending Wait Times</h2>
-                <p class="text-sm text-gray-400">Review active wait times and update their status.</p>
+    <!-- Page Header -->
+    <div class="mb-6 text-center">
+        <h1 class="text-3xl font-bold mb-2">Wait Times Management</h1>
+        <p class="text-gray-400 mb-4">Review and manage driver wait time submissions</p>
+        
+        <!-- Search Bar -->
+        <div class="flex justify-center mb-6">
+            <div class="relative w-96">
+                <input type="text" id="waitTimeSearch" placeholder="Search by REG plate..." 
+                    class="w-full bg-[#1a1f24] border border-gray-800 rounded-lg px-4 py-2 pl-10 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors">
+                <span class="material-symbols-outlined absolute left-3 top-2.5 text-gray-500">search</span>
+                <!-- Search Results Dropdown -->
+                <div id="searchResults" class="hidden absolute top-full left-0 right-0 mt-2 bg-[#1a1f24] border border-gray-800 rounded-lg shadow-lg max-h-96 overflow-y-auto z-50">
+                    <!-- Results will be populated here -->
+                </div>
             </div>
-            <button onclick="refreshWaitTimes()" class="inline-flex items-center gap-2 px-4 py-2 bg-[#283039] hover:bg-[#3a444e] rounded-lg transition-colors text-sm">
-                <span class="material-symbols-outlined text-lg">refresh</span>
-                Refresh
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="border-b border-gray-800 mb-6">
+        <div class="flex gap-8 justify-center">
+            <button onclick="switchTab('pending')" id="tab-pending" class="tab-active py-3 px-1 font-semibold transition-colors">
+                Pending <span id="pending-count" class="ml-2 px-2 py-0.5 bg-orange-500 text-white text-xs rounded-full">0</span>
+            </button>
+            <button onclick="switchTab('processed')" id="tab-processed" class="py-3 px-1 text-gray-400 hover:text-white font-semibold transition-colors">
+                Processed <span id="processed-count" class="ml-2 px-2 py-0.5 bg-green-500 text-white text-xs rounded-full">0</span>
             </button>
         </div>
+    </div>
+
+    <!-- Tab Content -->
+    <div id="content-pending" class="tab-content">
         <div id="pendingEmpty" class="hidden text-center py-16 text-gray-500">
             <span class="material-symbols-outlined text-6xl mb-4 text-gray-600">event_available</span>
             <p class="text-lg">No pending wait times</p>
             <p class="text-sm text-gray-500 mt-2">Drivers have no active wait periods requiring action.</p>
         </div>
-        <div id="pendingList" class="mt-6 space-y-4"></div>
-    </section>
+        <div id="pendingList" class="flex flex-col items-center space-y-4"></div>
+    </div>
 
-    <section class="bg-[#1a1f24] border border-[#283039] rounded-2xl p-6">
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-                <h2 class="text-2xl font-semibold mb-1">Processed Wait Times (3 Day View)</h2>
-                <p class="text-sm text-gray-400">Recently processed entries stay visible for 3 days.</p>
-            </div>
-        </div>
+    <div id="content-processed" class="tab-content hidden">
         <div id="processedEmpty" class="hidden text-center py-16 text-gray-500">
             <span class="material-symbols-outlined text-6xl mb-4 text-gray-600">history</span>
             <p class="text-lg">No recently processed wait times</p>
-            <p class="text-sm text-gray-500 mt-2">Once processed, wait times remain visible for 72 hours.</p>
+            <p class="text-sm text-gray-500 mt-2">Once processed, wait times remain visible for 7 days.</p>
         </div>
-        <div id="processedList" class="mt-6 space-y-4"></div>
-    </section>
+        <div id="processedList" class="flex flex-col items-center space-y-4"></div>
+    </div>
 </main>
 
 <div id="processModal" class="hidden fixed inset-0 bg-black bg-opacity-70 z-50 overflow-y-auto">
@@ -314,6 +340,16 @@
                                 <p id="processSummaryNotesText" class="text-sm text-gray-200 leading-relaxed">--</p>
                             </div>
                         </div>
+                        <div class="bg-[#1f2730] border border-[#2f3944] rounded-xl p-4">
+                            <label class="text-xs text-gray-400 uppercase tracking-wide mb-2 block">Office Note (Optional)</label>
+                            <textarea 
+                                id="processOfficeNote" 
+                                rows="4" 
+                                class="w-full bg-[#151b21] text-white px-4 py-3 rounded-lg border border-[#2f3944] focus:border-blue-500 focus:outline-none resize-none"
+                                placeholder="Add any notes about this processed wait time..."
+                            ></textarea>
+                            <p class="text-xs text-gray-500 mt-2">This note will be visible to the driver on their processed wait times.</p>
+                        </div>
                     </div>
                     <div class="flex flex-col sm:flex-row sm:justify-between gap-3 pt-4">
                         <button onclick="handleProcessBack()" class="w-full sm:w-auto px-5 py-3 bg-[#283039] hover:bg-[#3a444e] text-white rounded-lg transition-colors">Back</button>
@@ -328,7 +364,7 @@
 </div>
 
 <!-- Return Modal -->
-<div id="returnModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50">
+<div id="returnModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-[55]">
     <div class="min-h-screen px-4 py-8 flex items-center justify-center">
         <div class="bg-[#1a1f24] rounded-lg w-full max-w-lg">
             <div class="border-b border-gray-800 px-6 py-4">
@@ -356,7 +392,7 @@
 </div>
 
 <!-- Office Note Modal (after processing) -->
-<div id="officeNoteModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50">
+<div id="officeNoteModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-[60]">
     <div class="min-h-screen px-4 py-8 flex items-center justify-center">
         <div class="bg-[#1a1f24] rounded-lg w-full max-w-lg">
             <div class="border-b border-gray-800 px-6 py-4">
@@ -385,7 +421,7 @@
 </div>
 
 <script>
-    const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
     const WAIT_CATEGORIES = {
         awaiting_release: { label: 'Awaiting Release', icon: '🚦', badge: 'bg-blue-500/10 text-blue-300' },
         charging_vehicle: { label: 'Charging Vehicle', icon: '🔌', badge: 'bg-emerald-500/10 text-emerald-300' },
@@ -401,13 +437,27 @@
     let waitTimeToReturn = null;
     let waitTimeForNote = null;
     let processModalStep = 1;
+    // Cache for driver names (uid -> { firstName, lastName })
+    const driverNameCache = new Map();
     let reductionHours = 0;
     let reductionMinutes = 0;
+    let activeTab = 'pending';
+    let searchQuery = '';
 
-    const notifyError = (message, title = 'Error') => uiDialogs.showAlert({ title, message, tone: 'danger' });
-    const notifyWarning = (message, title = 'Heads Up') => uiDialogs.showAlert({ title, message, tone: 'warning' });
-    const notifySuccess = (message, title = 'Success') => uiDialogs.showAlert({ title, message, tone: 'success' });
-    const notifyInfo = (message, title = 'Notice') => uiDialogs.showAlert({ title, message, tone: 'info' });
+    const uiDialogs = window.uiDialogs || {};
+    const notifyError = (message, title = 'Error') => uiDialogs.showAlert ? uiDialogs.showAlert({ title, message, tone: 'danger' }) : alert(`${title}: ${message}`);
+    const notifyWarning = (message, title = 'Heads Up') => uiDialogs.showAlert ? uiDialogs.showAlert({ title, message, tone: 'warning' }) : alert(`${title}: ${message}`);
+    const notifySuccess = (message, title = 'Success') => uiDialogs.showAlert ? uiDialogs.showAlert({ title, message, tone: 'success' }) : alert(`${title}: ${message}`);
+    const notifyInfo = (message, title = 'Notice') => uiDialogs.showAlert ? uiDialogs.showAlert({ title, message, tone: 'info' }) : alert(`${title}: ${message}`);
+    const showConfirmation = (options) => {
+        if (window.uiDialogs && window.uiDialogs.showConfirm) {
+            return window.uiDialogs.showConfirm(options);
+        } else if (window.showConfirmation) {
+            return window.showConfirmation(options);
+        } else {
+            return Promise.resolve(window.confirm(options.message || 'Are you sure?'));
+        }
+    };
     const getCurrentOfficeId = () => currentUser?.officeId || currentSession?.officeId || null;
 
     async function initialize() {
@@ -440,6 +490,7 @@
             await initializeNotifications();
             startWaitTimesListener();
             startExpiredWaitTimesCheck(); // Start checking for expired wait times
+            initializeSearch();
             document.getElementById('loadingOverlay').classList.add('hidden');
             setupProcessModal();
         } catch (error) {
@@ -482,12 +533,14 @@
             }
 
             allWaitTimes = waitTimes;
-            allWaitTimes.sort((a, b) => {
-                const aTime = toDate(a.createdAt)?.getTime() || 0;
-                const bTime = toDate(b.createdAt)?.getTime() || 0;
-                return bTime - aTime;
-            });
+            // Sort pending: oldest first (by createdAt)
+            // Processed: newest first (by processedAt)
+            // We'll sort in renderWaitTimes based on tab
             renderWaitTimes();
+            updateTabCounts();
+            
+            // Preload driver names (async, won't block)
+            preloadDriverNames();
             
             // Check for expired wait times when data updates
             checkAndDeleteExpiredWaitTimes();
@@ -509,20 +562,98 @@
 
     function renderWaitTimes() {
         const now = Date.now();
+        let pending = allWaitTimes.filter(item => {
+            const status = item.processingStatus || 'pending';
+            return status !== 'processed' && status !== 'returned';
+        });
+        let processed = allWaitTimes.filter(item => {
+            if ((item.processingStatus || 'pending') !== 'processed') return false;
+            const processedAt = toDate(item.processedAt);
+            if (!processedAt) return false;
+            return now - processedAt.getTime() <= SEVEN_DAYS_MS;
+        });
+
+        // Sort pending: oldest first (by createdAt)
+        pending.sort((a, b) => {
+            const aTime = toDate(a.createdAt)?.getTime() || 0;
+            const bTime = toDate(b.createdAt)?.getTime() || 0;
+            return aTime - bTime; // Oldest first
+        });
+
+        // Sort processed: newest first (by processedAt)
+        processed.sort((a, b) => {
+            const aTime = toDate(a.processedAt)?.getTime() || 0;
+            const bTime = toDate(b.processedAt)?.getTime() || 0;
+            return bTime - aTime; // Newest first
+        });
+
+        // Apply search filter if active
+        if (searchQuery) {
+            const query = searchQuery.toLowerCase();
+            pending = pending.filter(item => {
+                const reg = (item.registration || '').toLowerCase();
+                const driverName = (item.driverName || '').toLowerCase();
+                return reg.includes(query) || driverName.includes(query);
+            });
+            processed = processed.filter(item => {
+                const reg = (item.registration || '').toLowerCase();
+                const driverName = (item.driverName || '').toLowerCase();
+                return reg.includes(query) || driverName.includes(query);
+            });
+        }
+
+        // Show/hide tab content based on active tab
+        const contentPending = document.getElementById('content-pending');
+        const contentProcessed = document.getElementById('content-processed');
+        
+        if (activeTab === 'pending') {
+            renderWaitTimeList(pending, 'pendingList', 'pendingEmpty');
+            if (contentPending) contentPending.classList.remove('hidden');
+            if (contentProcessed) contentProcessed.classList.add('hidden');
+        } else {
+            renderWaitTimeList(processed, 'processedList', 'processedEmpty', { processed: true });
+            if (contentPending) contentPending.classList.add('hidden');
+            if (contentProcessed) contentProcessed.classList.remove('hidden');
+        }
+
+        updateTabCounts();
+    }
+
+    function switchTab(tab) {
+        activeTab = tab;
+        
+        // Update tab buttons
+        document.querySelectorAll('[id^="tab-"]').forEach(btn => {
+            btn.classList.remove('tab-active', 'text-blue-500');
+            btn.classList.add('text-gray-400');
+        });
+        
+        const activeBtn = document.getElementById(`tab-${tab}`);
+        if (activeBtn) {
+            activeBtn.classList.add('tab-active', 'text-blue-500');
+            activeBtn.classList.remove('text-gray-400');
+        }
+        
+        renderWaitTimes();
+    }
+
+    function updateTabCounts() {
+        const now = Date.now();
         const pending = allWaitTimes.filter(item => {
             const status = item.processingStatus || 'pending';
             return status !== 'processed' && status !== 'returned';
         });
-        const returned = allWaitTimes.filter(item => (item.processingStatus || 'pending') === 'returned');
         const processed = allWaitTimes.filter(item => {
             if ((item.processingStatus || 'pending') !== 'processed') return false;
             const processedAt = toDate(item.processedAt);
             if (!processedAt) return false;
-            return now - processedAt.getTime() <= THREE_DAYS_MS;
+            return now - processedAt.getTime() <= SEVEN_DAYS_MS;
         });
 
-        renderWaitTimeList(pending, 'pendingList', 'pendingEmpty');
-        renderWaitTimeList(processed, 'processedList', 'processedEmpty', { processed: true });
+        const pendingCount = document.getElementById('pending-count');
+        const processedCount = document.getElementById('processed-count');
+        if (pendingCount) pendingCount.textContent = pending.length;
+        if (processedCount) processedCount.textContent = processed.length;
     }
 
     function renderWaitTimeList(items, listId, emptyId, options = {}) {
@@ -537,6 +668,67 @@
 
         emptyEl.classList.add('hidden');
         listEl.innerHTML = items.map(item => renderWaitTimeCard(item, options)).join('');
+    }
+
+    async function fetchDriverName(driverId) {
+        // Check cache first
+        if (driverNameCache.has(driverId)) {
+            return driverNameCache.get(driverId);
+        }
+
+        // Try to fetch from Firestore
+        try {
+            const userDoc = await window.getDoc(window.doc(window.db, 'users', driverId));
+            if (userDoc.exists()) {
+                const userData = userDoc.data();
+                const firstName = userData.firstName || '';
+                const lastName = userData.lastName || '';
+                const name = { firstName, lastName };
+                driverNameCache.set(driverId, name);
+                return name;
+            }
+        } catch (error) {
+            console.warn('[DRIVER_NAME] Error fetching driver name:', error);
+        }
+
+        // Return null if not found
+        return null;
+    }
+
+    function formatDriverName(item) {
+        // Try to get firstName and lastName from wait time data
+        if (item.firstName || item.lastName) {
+            const firstName = item.firstName || '';
+            const lastName = item.lastName || '';
+            return `${firstName} ${lastName}`.trim() || item.driverName || 'Unknown Driver';
+        }
+
+        // Check cache if we have driverId
+        if (item.driverId && driverNameCache.has(item.driverId)) {
+            const cached = driverNameCache.get(item.driverId);
+            const name = `${cached.firstName} ${cached.lastName}`.trim();
+            if (name) return name;
+        }
+
+        // Fall back to driverName
+        return item.driverName || 'Unknown Driver';
+    }
+
+    // Preload driver names for all wait times (async, won't block rendering)
+    async function preloadDriverNames() {
+        const driverIds = new Set();
+        allWaitTimes.forEach(item => {
+            if (item.driverId && !driverNameCache.has(item.driverId)) {
+                driverIds.add(item.driverId);
+            }
+        });
+
+        // Fetch all driver names in parallel
+        const promises = Array.from(driverIds).map(driverId => fetchDriverName(driverId));
+        await Promise.allSettled(promises);
+
+        // Re-render with updated names
+        renderWaitTimes();
     }
 
     function getTotalMinutes(item) {
@@ -559,7 +751,7 @@
         const actions = options.processed
             ? ''
             : `
-                <button onclick="openReturnModal('${item.id}')" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm flex items-center gap-2">
+                <button onclick="openReturnModal('${item.id}'); return false;" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm flex items-center gap-2">
                     <span class="material-symbols-outlined text-base">undo</span>
                     Return
                 </button>
@@ -570,7 +762,7 @@
             `;
 
         return `
-            <article class="rounded-2xl border border-[#283039] bg-[#151b21] p-5 transition-all shadow-sm hover:border-[#3a444e]">
+            <article data-wait-time-id="${item.id}" class="rounded-2xl border border-[#283039] bg-[#151b21] p-5 transition-all shadow-sm hover:border-[#3a444e] w-full max-w-md">
                 <div class="flex flex-wrap items-center justify-between gap-4">
                     <div class="flex flex-wrap items-center gap-3">
                         <span class="license-plate">${escapeHtml(item.registration || 'UNKNOWN')}</span>
@@ -583,18 +775,14 @@
                     </div>
                 </div>
 
-                <div class="mt-4 grid gap-3 md:grid-cols-3 text-sm text-gray-300">
+                <div class="mt-4 flex items-center justify-between text-sm text-gray-300">
+                    <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-base text-gray-400">person</span>
+                        <span>${escapeHtml(formatDriverName(item))}</span>
+                    </div>
                     <div class="flex items-center gap-2">
                         <span class="material-symbols-outlined text-base text-blue-400">schedule</span>
                         <span>${formatDuration(totalMinutes)}</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span class="material-symbols-outlined text-base text-gray-400">person</span>
-                        <span>${escapeHtml(item.driverName || 'Unknown Driver')}</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span class="material-symbols-outlined text-base text-gray-400">mail</span>
-                        <span>${escapeHtml(item.driverEmail || 'not provided')}</span>
                     </div>
                 </div>
 
@@ -646,7 +834,7 @@
                 </div>
             ` : ''}
 
-                ${actions ? `<div class="mt-4 flex flex-wrap gap-3">${actions}</div>` : ''}
+                ${actions ? `<div class="mt-4 flex flex-wrap gap-3 justify-center">${actions}</div>` : ''}
             </article>
         `;
     }
@@ -669,6 +857,12 @@
     }
 
     function openProcessModal(waitTimeId) {
+        // Close return modal if open
+        const returnModal = document.getElementById('returnModal');
+        if (returnModal && !returnModal.classList.contains('hidden')) {
+            closeReturnModal();
+        }
+        
         waitTimeToProcess = allWaitTimes.find(item => item.id === waitTimeId);
         if (!waitTimeToProcess) {
             notifyWarning('Wait time not found.');
@@ -678,7 +872,10 @@
         reductionHours = 0;
         reductionMinutes = 0;
         updateReductionOptions();
-        document.getElementById('processModal').classList.remove('hidden');
+        const processModal = document.getElementById('processModal');
+        if (processModal) {
+            processModal.classList.remove('hidden');
+        }
     }
 
     function updateReductionOptions() {
@@ -821,6 +1018,8 @@
         const minutesSelect = document.getElementById('reductionMinutes');
         if (hoursSelect) hoursSelect.value = '0';
         if (minutesSelect) minutesSelect.value = '0';
+        const officeNoteInput = document.getElementById('processOfficeNote');
+        if (officeNoteInput) officeNoteInput.value = '';
         updateProcessModalUI();
     }
 
@@ -830,18 +1029,27 @@
         const reduction = reductionHours * 60 + reductionMinutes;
         const updatedTotal = Math.max(originalTotal - reduction, 0);
 
+        // Get the office note from the textarea
+        const officeNoteInput = document.getElementById('processOfficeNote');
+        const officeNote = officeNoteInput ? officeNoteInput.value.trim() : '';
+
         const adjustments = {
             originalTotalMinutes: originalTotal,
             originalHours: waitTimeToProcess.hours ?? Math.floor(originalTotal / 60),
             originalMinutes: waitTimeToProcess.minutes ?? (originalTotal % 60),
             updatedTotalMinutes: updatedTotal,
             updatedHours: Math.floor(updatedTotal / 60),
-            updatedMinutes: updatedTotal % 60
+            updatedMinutes: updatedTotal % 60,
+            officeNote: officeNote // Include the note in adjustments
         };
 
         const processed = await markWaitTimeProcessed(waitTimeToProcess.id, adjustments);
         if (processed) {
             closeProcessModal();
+            // Clear the office note input
+            if (officeNoteInput) {
+                officeNoteInput.value = '';
+            }
         }
     }
 
@@ -875,7 +1083,7 @@
                 currentUser?.email ||
                 'Office';
 
-            const expiresAt = window.Timestamp.fromDate(new Date(Date.now() + THREE_DAYS_MS));
+            const expiresAt = window.Timestamp.fromDate(new Date(Date.now() + SEVEN_DAYS_MS));
 
             const updatePayload = {
                 processingStatus: 'processed',
@@ -900,13 +1108,17 @@
                     updatePayload.adjustedByMinutes = changeMinutes;
                     updatePayload.adjustedAt = window.serverTimestamp();
                 }
+
+                // Add office note if provided
+                if (adjustment.officeNote !== undefined) {
+                    updatePayload.officeNotes = adjustment.officeNote || '';
+                }
             }
 
             await window.updateDoc(window.doc(window.db, 'waitTimes', waitTimeId), updatePayload);
             
-            // Show office note modal after processing
+            // Store wait time ID for note modal (will be shown after process modal closes)
             waitTimeForNote = waitTimeId;
-            document.getElementById('officeNoteModal').classList.remove('hidden');
             
             return true;
         } catch (error) {
@@ -917,36 +1129,247 @@
     }
 
     // Return wait time functions
-    function openReturnModal(waitTimeId) {
+    function openReturnModal(waitTimeId, event) {
+        // Prevent default behavior and stop propagation
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        
+        console.log('[RETURN] openReturnModal called with waitTimeId:', waitTimeId);
+        console.log('[RETURN] allWaitTimes:', allWaitTimes);
+        console.log('[RETURN] Event:', event);
+        
+        // Close process modal if open
+        const processModal = document.getElementById('processModal');
+        if (processModal && !processModal.classList.contains('hidden')) {
+            console.log('[RETURN] Closing process modal');
+            closeProcessModal();
+            // Wait a bit for the process modal to close
+            setTimeout(() => {
+                showReturnModal(waitTimeId);
+            }, 100);
+            return;
+        }
+        
+        showReturnModal(waitTimeId);
+    }
+    
+    function showReturnModal(waitTimeId) {
         waitTimeToReturn = allWaitTimes.find(item => item.id === waitTimeId);
+        console.log('[RETURN] Found wait time to return:', waitTimeToReturn);
+        
         if (!waitTimeToReturn) {
+            console.error('[RETURN] Wait time not found in allWaitTimes');
             notifyWarning('Wait time not found.');
             return;
         }
-        document.getElementById('returnReason').value = '';
-        document.getElementById('returnModal').classList.remove('hidden');
+        
+        const returnReasonInput = document.getElementById('returnReason');
+        if (returnReasonInput) {
+            returnReasonInput.value = '';
+        } else {
+            console.error('[RETURN] returnReason element not found');
+        }
+        
+        const returnModal = document.getElementById('returnModal');
+        if (returnModal) {
+            // CRITICAL: Ensure modal is always attached to body, not nested in processModal
+            if (returnModal.parentElement !== document.body) {
+                console.log('[RETURN] Modal is nested incorrectly. Parent:', returnModal.parentElement);
+                console.log('[RETURN] Moving modal to body...');
+                document.body.appendChild(returnModal);
+                console.log('[RETURN] Modal now in body:', returnModal.parentElement === document.body);
+            }
+            
+            console.log('[RETURN] returnModal element found');
+            console.log('[RETURN] Modal classes before:', returnModal.className);
+            console.log('[RETURN] Modal has hidden class?', returnModal.classList.contains('hidden'));
+            console.log('[RETURN] Modal computed display:', window.getComputedStyle(returnModal).display);
+            console.log('[RETURN] Modal computed visibility:', window.getComputedStyle(returnModal).visibility);
+            console.log('[RETURN] Modal computed z-index:', window.getComputedStyle(returnModal).zIndex);
+            console.log('[RETURN] Modal parent:', returnModal.parentElement);
+            console.log('[RETURN] Modal offsetParent:', returnModal.offsetParent);
+            
+            // Remove hidden class
+            returnModal.classList.remove('hidden');
+            
+            // Force display and visibility explicitly via inline styles
+            returnModal.style.display = 'block';
+            returnModal.style.visibility = 'visible';
+            returnModal.style.position = 'fixed';
+            returnModal.style.top = '0';
+            returnModal.style.left = '0';
+            returnModal.style.right = '0';
+            returnModal.style.bottom = '0';
+            returnModal.style.zIndex = '55';
+            
+            console.log('[RETURN] Modal classes after:', returnModal.className);
+            console.log('[RETURN] Modal has hidden class after?', returnModal.classList.contains('hidden'));
+            console.log('[RETURN] Modal computed display after:', window.getComputedStyle(returnModal).display);
+            console.log('[RETURN] Modal inline styles:', returnModal.style.cssText);
+            
+            // Force a reflow to ensure the change is applied
+            void returnModal.offsetHeight;
+            
+            // Check immediate bounding rect
+            const rect = returnModal.getBoundingClientRect();
+            console.log('[RETURN] Modal bounding rect immediately:', rect);
+            
+            // Focus on the textarea
+            if (returnReasonInput) {
+                setTimeout(() => {
+                    returnReasonInput.focus();
+                    console.log('[RETURN] Focused on textarea');
+                }, 150);
+            }
+            
+            // Check if modal is actually visible after a delay
+            setTimeout(() => {
+                const computedStyle = window.getComputedStyle(returnModal);
+                const rect2 = returnModal.getBoundingClientRect();
+                const isVisible = !returnModal.classList.contains('hidden') && 
+                                  computedStyle.display !== 'none' &&
+                                  rect2.width > 0 &&
+                                  rect2.height > 0;
+                
+                console.log('[RETURN] Modal visible check (100ms later):', isVisible);
+                console.log('[RETURN] Modal in viewport:', rect2);
+                console.log('[RETURN] Modal computed style:', {
+                    display: computedStyle.display,
+                    visibility: computedStyle.visibility,
+                    position: computedStyle.position,
+                    zIndex: computedStyle.zIndex,
+                    width: computedStyle.width,
+                    height: computedStyle.height,
+                    top: computedStyle.top,
+                    left: computedStyle.left
+                });
+                
+                if (!isVisible || rect2.width === 0 || rect2.height === 0) {
+                    console.error('[RETURN] Modal still not visible! Checking for blocking elements...');
+                    // Check if there's another modal on top
+                    const processModal = document.getElementById('processModal');
+                    if (processModal && !processModal.classList.contains('hidden')) {
+                        console.error('[RETURN] Process modal is still open!');
+                    }
+                    // Check all fixed elements
+                    const fixedElements = document.querySelectorAll('[class*="fixed"]');
+                    console.log('[RETURN] Fixed elements:', Array.from(fixedElements).map(el => ({
+                        id: el.id,
+                        classes: el.className,
+                        zIndex: window.getComputedStyle(el).zIndex,
+                        display: window.getComputedStyle(el).display,
+                        boundingRect: el.getBoundingClientRect()
+                    })));
+                    
+                    // Try to force it again with !important using setProperty
+                    returnModal.style.setProperty('display', 'block', 'important');
+                    returnModal.style.setProperty('visibility', 'visible', 'important');
+                    returnModal.style.setProperty('position', 'fixed', 'important');
+                    returnModal.style.setProperty('z-index', '55', 'important');
+                    returnModal.style.setProperty('width', '100vw', 'important');
+                    returnModal.style.setProperty('height', '100vh', 'important');
+                    returnModal.style.setProperty('top', '0', 'important');
+                    returnModal.style.setProperty('left', '0', 'important');
+                    returnModal.style.setProperty('right', '0', 'important');
+                    returnModal.style.setProperty('bottom', '0', 'important');
+                    
+                    // Check if modal is in the right place in DOM
+                    if (returnModal.parentElement !== document.body && returnModal.parentElement) {
+                        console.log('[RETURN] Modal parent is not body, parent:', returnModal.parentElement);
+                        console.log('[RETURN] Moving modal to body...');
+                        document.body.appendChild(returnModal);
+                    }
+                    
+                    // Force another reflow
+                    void returnModal.offsetHeight;
+                    const rect3 = returnModal.getBoundingClientRect();
+                    console.log('[RETURN] Modal bounding rect after forcing with !important:', rect3);
+                } else {
+                    console.log('[RETURN] Modal is visible and should be showing!');
+                }
+            }, 100);
+        } else {
+            console.error('[RETURN] returnModal element not found');
+        }
     }
 
     function closeReturnModal() {
-        document.getElementById('returnModal').classList.add('hidden');
+        console.log('[RETURN] closeReturnModal called');
+        const returnModal = document.getElementById('returnModal');
+        if (returnModal) {
+            // Ensure modal is attached to body (not inside processModal)
+            if (returnModal.parentElement !== document.body) {
+                console.log('[RETURN] Modal is not in body, moving to body before closing');
+                document.body.appendChild(returnModal);
+            }
+            returnModal.classList.add('hidden');
+            // Clear inline styles that were added
+            returnModal.style.display = '';
+            returnModal.style.visibility = '';
+            returnModal.style.position = '';
+            returnModal.style.top = '';
+            returnModal.style.left = '';
+            returnModal.style.right = '';
+            returnModal.style.bottom = '';
+            returnModal.style.zIndex = '';
+            returnModal.style.width = '';
+            returnModal.style.height = '';
+        }
         waitTimeToReturn = null;
-        document.getElementById('returnReason').value = '';
+        const returnReasonInput = document.getElementById('returnReason');
+        if (returnReasonInput) {
+            returnReasonInput.value = '';
+        }
     }
 
     async function confirmReturn() {
-        const reason = document.getElementById('returnReason').value.trim();
+        console.log('[RETURN] confirmReturn called');
+        console.log('[RETURN] waitTimeToReturn:', waitTimeToReturn);
+        console.log('[RETURN] currentUser:', currentUser);
+        
+        const returnReasonInput = document.getElementById('returnReason');
+        if (!returnReasonInput) {
+            console.error('[RETURN] returnReason input element not found');
+            notifyError('Return reason input not found.');
+            return;
+        }
+        
+        const reason = returnReasonInput.value.trim();
+        console.log('[RETURN] Return reason:', reason);
+        
         if (!reason) {
             notifyWarning('Please provide a reason for returning this wait time.', 'Action Required');
             return;
         }
 
         if (!waitTimeToReturn) {
+            console.error('[RETURN] waitTimeToReturn is null/undefined');
             notifyWarning('Wait time not found.');
             return;
         }
 
+        if (!currentUser || !currentUser.uid) {
+            console.error('[RETURN] currentUser or currentUser.uid is missing');
+            notifyError('User authentication error.');
+            return;
+        }
+
+        console.log('[RETURN] Updating wait time document:', waitTimeToReturn.id);
+        console.log('[RETURN] Update payload:', {
+            processingStatus: 'returned',
+            returnNotes: reason,
+            returnedAt: 'serverTimestamp()',
+            returnedBy: currentUser.uid,
+            updatedAt: 'serverTimestamp()'
+        });
+
         try {
-            await window.updateDoc(window.doc(window.db, 'waitTimes', waitTimeToReturn.id), {
+            const waitTimeRef = window.doc(window.db, 'waitTimes', waitTimeToReturn.id);
+            console.log('[RETURN] Wait time reference:', waitTimeRef);
+            
+            await window.updateDoc(waitTimeRef, {
                 processingStatus: 'returned',
                 returnNotes: reason,
                 returnedAt: window.serverTimestamp(),
@@ -954,28 +1377,74 @@
                 updatedAt: window.serverTimestamp()
             });
 
+            console.log('[RETURN] Wait time successfully returned');
             notifySuccess('Wait time returned to the driver.');
-            closeReturnModal();
+            
+            // Close modal and ensure it stays closed
+            const returnModal = document.getElementById('returnModal');
+            if (returnModal) {
+                // Ensure it's in body (not nested)
+                if (returnModal.parentElement !== document.body) {
+                    document.body.appendChild(returnModal);
+                }
+                // Hide it
+                returnModal.classList.add('hidden');
+                // Clear all inline styles
+                returnModal.style.cssText = '';
+            }
+            waitTimeToReturn = null;
+            const returnReasonInput = document.getElementById('returnReason');
+            if (returnReasonInput) {
+                returnReasonInput.value = '';
+            }
         } catch (error) {
-            console.error('Error returning wait time:', error);
+            console.error('[RETURN] Error returning wait time:', error);
+            console.error('[RETURN] Error details:', {
+                message: error.message,
+                stack: error.stack,
+                code: error.code
+            });
             notifyError('Error returning wait time. Please try again.');
         }
     }
 
     // Office note functions
     function skipOfficeNote() {
-        document.getElementById('officeNoteModal').classList.add('hidden');
-        document.getElementById('officeNote').value = '';
+        console.log('[OFFICE_NOTE] skipOfficeNote called');
+        const officeNoteModal = document.getElementById('officeNoteModal');
+        if (officeNoteModal) {
+            // Ensure modal is in body before closing
+            if (officeNoteModal.parentElement !== document.body) {
+                document.body.appendChild(officeNoteModal);
+            }
+            officeNoteModal.classList.add('hidden');
+        }
+        const officeNoteInput = document.getElementById('officeNote');
+        if (officeNoteInput) {
+            officeNoteInput.value = '';
+        }
         waitTimeForNote = null;
     }
 
     async function saveOfficeNote() {
+        console.log('[OFFICE_NOTE] saveOfficeNote called');
+        console.log('[OFFICE_NOTE] waitTimeForNote:', waitTimeForNote);
+        
         if (!waitTimeForNote) {
+            console.error('[OFFICE_NOTE] waitTimeForNote is null, skipping');
             skipOfficeNote();
             return;
         }
 
-        const note = document.getElementById('officeNote').value.trim();
+        const officeNoteInput = document.getElementById('officeNote');
+        if (!officeNoteInput) {
+            console.error('[OFFICE_NOTE] officeNote input element not found');
+            notifyError('Office note input not found.');
+            return;
+        }
+        
+        const note = officeNoteInput.value.trim();
+        console.log('[OFFICE_NOTE] Note text:', note);
         
         try {
             const updatePayload = {
@@ -983,15 +1452,27 @@
                 updatedAt: window.serverTimestamp()
             };
 
+            console.log('[OFFICE_NOTE] Updating wait time:', waitTimeForNote);
+            console.log('[OFFICE_NOTE] Update payload:', updatePayload);
+            
             await window.updateDoc(window.doc(window.db, 'waitTimes', waitTimeForNote), updatePayload);
+            
+            console.log('[OFFICE_NOTE] Note saved successfully');
             
             if (note) {
                 notifySuccess('Note added to processed wait time.');
+            } else {
+                notifySuccess('Wait time processed.');
             }
             
             skipOfficeNote();
         } catch (error) {
-            console.error('Error saving office note:', error);
+            console.error('[OFFICE_NOTE] Error saving office note:', error);
+            console.error('[OFFICE_NOTE] Error details:', {
+                message: error.message,
+                stack: error.stack,
+                code: error.code
+            });
             notifyError('Unable to save note. Please try again.');
         }
     }
@@ -1035,10 +1516,10 @@
 
                 const expiryDate = waitTime.expiresAt ? toDate(waitTime.expiresAt) : null;
                 if (!expiryDate) {
-                    // Fallback: check processedAt + 3 days
+                    // Fallback: check processedAt + 7 days
                     const processedAt = toDate(waitTime.processedAt);
                     if (processedAt) {
-                        const fallbackExpiry = new Date(processedAt.getTime() + THREE_DAYS_MS);
+                        const fallbackExpiry = new Date(processedAt.getTime() + SEVEN_DAYS_MS);
                         if (now >= fallbackExpiry) {
                             expiredWaitTimes.push(waitTime);
                         }
@@ -1101,7 +1582,7 @@
     function getExpiryLabel(waitTime) {
         const processedAt = toDate(waitTime.processedAt);
         if (!processedAt) return 'Processing time unknown';
-        const expiryDate = waitTime.expiresAt ? toDate(waitTime.expiresAt) : new Date(processedAt.getTime() + THREE_DAYS_MS);
+        const expiryDate = waitTime.expiresAt ? toDate(waitTime.expiresAt) : new Date(processedAt.getTime() + SEVEN_DAYS_MS);
         if (!expiryDate) return 'Processing time unknown';
         const diffMs = expiryDate.getTime() - Date.now();
         if (diffMs <= 0) return 'Expired';
@@ -1196,6 +1677,130 @@
 
     function showChangePassword() {
         notifyInfo('Change password feature coming soon.', 'Coming Soon');
+    }
+
+    // Search functionality
+    function initializeSearch() {
+        const searchInput = document.getElementById('waitTimeSearch');
+        const searchResults = document.getElementById('searchResults');
+        let searchTimeout;
+        
+        if (!searchInput) return;
+        
+        searchInput.addEventListener('input', (e) => {
+            const query = e.target.value.trim().toLowerCase();
+            searchQuery = query;
+            
+            clearTimeout(searchTimeout);
+            
+            if (query.length < 1) {
+                searchResults.classList.add('hidden');
+                searchQuery = '';
+                renderWaitTimes();
+                return;
+            }
+            
+            searchTimeout = setTimeout(() => {
+                performSearch(query);
+            }, 300); // Debounce search
+        });
+        
+        // Close search results when clicking outside
+        document.addEventListener('click', (e) => {
+            const searchContainer = document.getElementById('waitTimeSearch')?.parentElement;
+            if (!searchContainer || !searchContainer.contains(e.target)) {
+                searchResults.classList.add('hidden');
+            }
+        });
+    }
+    
+    function performSearch(query) {
+        const searchResults = document.getElementById('searchResults');
+        if (!searchResults) return;
+        
+        const results = [];
+        
+        // Search through all wait times
+        allWaitTimes.forEach(item => {
+            const driverName = (item.driverName || '').toLowerCase();
+            const registration = (item.registration || '').toLowerCase();
+            
+            if (driverName.includes(query) || 
+                registration.includes(query)) {
+                results.push(item);
+            }
+        });
+        
+        if (results.length === 0) {
+            searchResults.innerHTML = `
+                <div class="px-4 py-3 text-gray-400 text-sm text-center">
+                    No wait times found
+                </div>
+            `;
+        } else {
+            searchResults.innerHTML = results.slice(0, 10).map(item => {
+                const createdAt = toDate(item.createdAt);
+                const status = item.processingStatus || 'pending';
+                const statusColors = {
+                    pending: 'bg-orange-500',
+                    processed: 'bg-green-500',
+                    returned: 'bg-red-500'
+                };
+                const statusColor = statusColors[status] || 'bg-gray-500';
+                
+                return `
+                    <div onclick="selectSearchResult('${item.id}')" 
+                        class="px-4 py-3 border-b border-gray-800 hover:bg-[#283039] cursor-pointer transition-colors">
+                        <div class="flex items-center justify-between">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="px-2 py-0.5 ${statusColor} text-white text-xs rounded-full font-semibold">${status}</span>
+                                    <span class="font-semibold text-white">${escapeHtml(formatDriverName(item))}</span>
+                                </div>
+                                <div class="text-xs text-gray-500 mt-1">${escapeHtml(item.registration || 'No Reg')} • ${createdAt ? createdAt.toLocaleDateString() : ''}</div>
+                            </div>
+                            <div class="text-right ml-4">
+                                <div class="text-blue-400 font-semibold">${formatDuration(getTotalMinutes(item))}</div>
+                                <div class="text-xs text-gray-500">${item.categoryLabel || 'Wait Time'}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        searchResults.classList.remove('hidden');
+    }
+    
+    function selectSearchResult(waitTimeId) {
+        const waitTime = allWaitTimes.find(w => w.id === waitTimeId);
+        if (!waitTime) return;
+        
+        // Switch to the appropriate tab
+        const status = waitTime.processingStatus || 'pending';
+        if (status === 'processed') {
+            switchTab('processed');
+        } else {
+            switchTab('pending');
+        }
+        
+        // Clear search
+        const searchInput = document.getElementById('waitTimeSearch');
+        const searchResults = document.getElementById('searchResults');
+        if (searchInput) searchInput.value = '';
+        if (searchResults) searchResults.classList.add('hidden');
+        searchQuery = '';
+        renderWaitTimes();
+        
+        // Scroll to the item (simple scroll, could be improved)
+        setTimeout(() => {
+            const element = document.querySelector(`[data-wait-time-id="${waitTimeId}"]`);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                element.classList.add('ring-2', 'ring-blue-500');
+                setTimeout(() => element.classList.remove('ring-2', 'ring-blue-500'), 2000);
+            }
+        }, 100);
     }
 
     // Settings functions

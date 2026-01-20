@@ -31,7 +31,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, addDoc, getDocs, getDoc, doc, query, orderBy, limit, where, setDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, addDoc, getDocs, getDoc, doc, query, orderBy, limit, where, setDoc, updateDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         
@@ -64,6 +64,7 @@
         window.firebaseDoc = doc;
         window.firebaseSetDoc = setDoc;
         window.firebaseUpdateDoc = updateDoc;
+        window.firebaseDeleteDoc = deleteDoc;
         window.firebaseQuery = query;
         window.firebaseOrderBy = orderBy;
         window.firebaseLimit = limit;
@@ -231,6 +232,10 @@
                     <div class="flex items-center gap-3">
                         <button onclick="loadLastAssignedDrivers()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold">
                             Load Last Assigned Drivers
+                        </button>
+                        <button onclick="deleteAllRoutes()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold flex items-center gap-2">
+                            <span class="material-symbols-outlined text-sm">delete</span>
+                            Delete All Routes
                         </button>
                         <div class="flex items-center gap-2">
                             <button onclick="showOptimiseSettings()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold">
@@ -4530,6 +4535,91 @@
                 if (loadButton) {
                     loadButton.innerHTML = originalText;
                     loadButton.disabled = false;
+                }
+            }
+        }
+
+        // Delete all routes
+        async function deleteAllRoutes() {
+            // Confirm deletion
+            if (!confirm('Are you sure you want to delete ALL routes? This action cannot be undone.')) {
+                return;
+            }
+            
+            // Double confirmation
+            if (!confirm('This will permanently delete all routes from Firebase. Are you absolutely sure?')) {
+                return;
+            }
+
+            const deleteButton = document.querySelector('button[onclick="deleteAllRoutes()"]');
+            const originalText = deleteButton ? deleteButton.innerHTML : '';
+            
+            if (deleteButton) {
+                deleteButton.innerHTML = '<span class="animate-spin">⟳</span> Deleting...';
+                deleteButton.disabled = true;
+            }
+
+            try {
+                const officeId = getCurrentOfficeId();
+                if (!officeId) {
+                    alert('Cannot delete routes without office context.');
+                    return;
+                }
+
+                // Check if Firebase is available
+                if (!window.firestore || !window.firebaseCollection) {
+                    // If Firebase not available, just clear local state
+                    savedRoutes = [];
+                    localStorage.removeItem('savedRoutes');
+                    alert('Firebase not available. Cleared local routes only.');
+                    // Refresh UI
+                    await displayRoutesFromFirebase();
+                    return;
+                }
+
+                console.log('Deleting all routes from Firebase...');
+                
+                const routesCollection = window.firebaseCollection(window.firestore, 'routes');
+                
+                // Get all routes for this office
+                const officeRoutesQuery = window.firebaseQuery(
+                    routesCollection, 
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                
+                const routesSnapshot = await window.firebaseGetDocs(officeRoutesQuery);
+                
+                if (routesSnapshot.empty) {
+                    alert('No routes found to delete.');
+                    return;
+                }
+
+                // Delete each route document
+                const deletePromises = [];
+                routesSnapshot.forEach((doc) => {
+                    deletePromises.push(window.firebaseDeleteDoc(doc.ref));
+                });
+
+                await Promise.all(deletePromises);
+                
+                console.log(`Deleted ${routesSnapshot.size} routes from Firebase`);
+                
+                // Clear local state
+                savedRoutes = [];
+                localStorage.removeItem('savedRoutes');
+                
+                // Refresh UI
+                await displayRoutesFromFirebase();
+                
+                alert(`Successfully deleted ${routesSnapshot.size} route${routesSnapshot.size === 1 ? '' : 's'}.`);
+                
+            } catch (error) {
+                console.error('Error deleting routes:', error);
+                alert('Error deleting routes: ' + error.message);
+            } finally {
+                if (deleteButton) {
+                    deleteButton.innerHTML = originalText;
+                    deleteButton.disabled = false;
                 }
             }
         }

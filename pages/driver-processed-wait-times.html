@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Processed Wait Times - SOTO Routes</title>
+    <script src="/assets/js/tailwind-runtime.js"></script>
+    <script src="/js/session-manager.js"></script>
+    <script src="../js/ui-dialogs.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
+    <style>
+        .touch-target { min-height: 44px; min-width: 44px; }
+        .license-plate {
+            background: #FFD500;
+            color: #000;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            letter-spacing: 2px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: 2px solid #000;
+            text-transform: uppercase;
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 20, 25, 0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* Loading spinner */
+        .spinner-wrapper {
+            width: 64px;
+            height: 64px;
+            position: relative;
+        }
+        .spinner {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            animation: spinning82341 1.7s linear infinite;
+            filter: blur(1px);
+        }
+        .spinner::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(186, 66, 255) 35%, rgb(0, 225, 255));
+            box-shadow: 0px -5px 20px 0px rgb(186, 66, 255), 0px 5px 20px 0px rgb(0, 225, 255);
+        }
+        .spinner1 {
+            background-color: rgb(36, 36, 36);
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2;
+        }
+        .spinner-icon {
+            position: relative;
+            z-index: 3;
+            color: white;
+            font-size: 1.5rem;
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+            filter: none !important;
+        }
+        @keyframes spinning82341 {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        
+        /* Animated border panels for wait time cards */
+        .animated-border-panel {
+            position: relative;
+            background: #1a1f24;
+            border-radius: 1rem;
+            padding: 1rem;
+            isolation: isolate;
+        }
+        .animated-border-panel::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 1rem;
+            background: #1a1f24;
+            z-index: -1;
+        }
+        
+        /* Processed: green and black */
+        .animated-border-processed::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 1rem;
+            background: linear-gradient(45deg, rgb(0, 0, 0), rgb(0, 255, 0), rgb(0, 0, 0));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
+        
+        @keyframes borderGradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+    </style>
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, getDocs, query, where, orderBy, Timestamp, onSnapshot, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getAuth } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA",
+            authDomain: "soto-routes.firebaseapp.com",
+            projectId: "soto-routes",
+            storageBucket: "soto-routes.firebasestorage.app",
+            messagingSenderId: "440989695549",
+            appId: "1:440989695549:web:0bce8b92a46f7f79953454",
+            measurementId: "G-4E3G40QQ9L"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const functions = getFunctions(app);
+
+        window.firebaseApp = app;
+        window.db = db;
+        window.auth = auth;
+        window.functions = functions;
+        window.firebase = {
+            functions,
+            httpsCallable
+        };
+        window.collection = collection;
+        window.getDocs = getDocs;
+        window.query = query;
+        window.where = where;
+        window.orderBy = orderBy;
+        window.Timestamp = Timestamp;
+        window.onSnapshot = onSnapshot;
+        window.doc = doc;
+        window.getDoc = getDoc;
+
+        console.log('Firebase initialized for processed wait times.');
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeProcessedWaitTimesApp);
+        } else {
+            initializeProcessedWaitTimesApp();
+        }
+    </script>
+</head>
+<body class="bg-black text-white min-h-screen">
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="text-center">
+            <div class="spinner-wrapper mx-auto mb-4">
+                <div class="spinner"></div>
+                <div class="spinner1"></div>
+            </div>
+            <p class="text-gray-400">Loading processed wait times...</p>
+        </div>
+    </div>
+
+    <div class="bg-black border-b border-gray-800 sticky top-0 z-50">
+        <div class="flex items-center px-4 py-3">
+            <button onclick="window.location.href='/pages/driver-wait-times.html'" class="touch-target">
+                <div class="spinner-wrapper" style="width: 40px; height: 40px;">
+                    <div class="spinner" style="width: 40px; height: 40px;"></div>
+                    <div class="spinner1" style="width: 32px; height: 32px;">
+                        <span class="material-symbols-outlined spinner-icon" style="font-size: 1.25rem;">arrow_back</span>
+                    </div>
+                </div>
+            </button>
+            <h1 class="flex-1 text-center text-xl font-semibold">Processed Wait Times</h1>
+            <div class="w-10"></div>
+        </div>
+    </div>
+
+    <main class="container max-w-2xl mx-auto px-4 py-6 pb-24">
+        <div id="emptyState" class="hidden text-center py-16 fade-in">
+            <span class="material-symbols-outlined text-6xl text-gray-600 mb-4">check_circle</span>
+            <p class="text-gray-400 text-lg mb-6">No processed wait times yet</p>
+            <p class="text-gray-500 text-sm">Your processed wait times will appear here (last 7 days)</p>
+        </div>
+
+        <div id="processedList" class="space-y-3"></div>
+    </main>
+
+    <script>
+        const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+        const WAIT_CATEGORIES = {
+            awaiting_release: {
+                label: 'Awaiting Release',
+                icon: '🚦',
+                badge: 'badge-awaiting',
+            },
+            charging_vehicle: {
+                label: 'Charging Vehicle',
+                icon: '🔌',
+                badge: 'badge-charging',
+            },
+            car_wash: {
+                label: 'Car Wash',
+                icon: '🧼',
+                badge: 'badge-wash',
+            }
+        };
+
+        let currentSession = null;
+        let currentUser = null;
+        let unsubscribeWaitTimes = null;
+        let processedWaitTimes = [];
+
+        const notifyError = (message, title = 'Error') => uiDialogs.showAlert({ title, message, tone: 'danger' });
+        const notifyWarning = (message, title = 'Heads Up') => uiDialogs.showAlert({ title, message, tone: 'warning' });
+        const notifySuccess = (message, title = 'Success') => uiDialogs.showAlert({ title, message, tone: 'success' });
+        const notifyInfo = (message, title = 'Notice') => uiDialogs.showAlert({ title, message, tone: 'info' });
+        const getCurrentOfficeId = () => currentSession?.officeId || currentUser?.officeId || '';
+
+        async function initializeProcessedWaitTimesApp() {
+            console.log('Initializing processed wait times page...');
+
+            try {
+                const session = await window.sotoSession.bootstrap(['driver']);
+                if (!session) {
+                    window.location.href = '/pages/soto-routes-login.html';
+                    return;
+                }
+
+                currentSession = session;
+
+                const userDoc = await window.getDoc(window.doc(window.db, 'users', session.uid));
+                if (!userDoc.exists()) {
+                    window.location.href = '/pages/soto-routes-login.html';
+                    return;
+                }
+
+                currentUser = { uid: session.uid, ...session, ...userDoc.data() };
+                if (currentUser.role !== 'driver') {
+                    notifyWarning('This page is for drivers only.', 'Access Denied');
+                    window.location.href = '/pages/soto-lp.html';
+                    return;
+                }
+
+                document.getElementById('loadingOverlay').style.display = 'none';
+                startWaitTimesListener();
+            } catch (error) {
+                console.error('Error loading driver profile:', error);
+                notifyError('Unable to load your profile. Please try again.');
+                document.getElementById('loadingOverlay').style.display = 'none';
+            }
+        }
+
+        function startWaitTimesListener() {
+            if (unsubscribeWaitTimes) {
+                unsubscribeWaitTimes();
+            }
+
+            const officeId = getCurrentOfficeId();
+            if (!officeId) {
+                console.warn('No office context for wait time listener.');
+                return;
+            }
+
+            const waitTimesQuery = window.query(
+                window.collection(window.db, 'waitTimes'),
+                window.where('driverId', '==', currentUser.uid),
+                window.where('officeId', '==', officeId)
+            );
+
+            unsubscribeWaitTimes = window.onSnapshot(waitTimesQuery, (snapshot) => {
+                const allWaitTimes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                // Filter for processed wait times within last 7 days
+                const now = Date.now();
+                processedWaitTimes = allWaitTimes.filter(item => {
+                    if ((item.processingStatus || 'pending') !== 'processed') return false;
+                    const processedAt = toDate(item.processedAt);
+                    if (!processedAt) return false;
+                    return now - processedAt.getTime() <= SEVEN_DAYS_MS;
+                });
+
+                // Sort by processed date (newest first)
+                processedWaitTimes.sort((a, b) => {
+                    const aTime = toDate(a.processedAt)?.getTime() || 0;
+                    const bTime = toDate(b.processedAt)?.getTime() || 0;
+                    return bTime - aTime;
+                });
+
+                renderWaitTimes();
+            }, (error) => {
+                console.error('Error listening for wait times:', error);
+                if (navigator.onLine) {
+                    notifyError('Could not load wait times.');
+                }
+            });
+        }
+
+        function renderWaitTimes() {
+            const container = document.getElementById('processedList');
+            const emptyState = document.getElementById('emptyState');
+
+            if (processedWaitTimes.length === 0) {
+                emptyState.classList.remove('hidden');
+                container.innerHTML = '';
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            container.innerHTML = processedWaitTimes.map(item => renderWaitTimeCard(item)).join('');
+        }
+
+        function renderWaitTimeCard(item) {
+            const category = WAIT_CATEGORIES[item.category] || {
+                label: 'Other',
+                icon: '⏱️',
+                badge: 'badge-awaiting'
+            };
+            const totalMinutes = typeof item.totalMinutes === 'number'
+                ? item.totalMinutes
+                : ((item.hours || 0) * 60) + (item.minutes || 0);
+            const createdAt = toDate(item.createdAt);
+            const processedAt = toDate(item.processedAt);
+            const submittedText = createdAt ? `Submitted ${formatRelativeTime(createdAt)}` : 'Submission time unavailable';
+            const processedText = processedAt ? `Processed ${formatRelativeTime(processedAt)}` : '';
+            const expiryLabel = getExpiryLabel(item);
+
+            return `
+                <article class="animated-border-panel animated-border-processed fade-in">
+                    <div class="flex items-start justify-between gap-4">
+                        <div class="flex flex-wrap items-center gap-3">
+                            <span class="license-plate">${escapeHtml(item.registration || 'UNKNOWN')}</span>
+                            <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${category.badge}">
+                                <span>${category.icon}</span>
+                                ${category.label}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="mt-4 flex flex-wrap items-center gap-4 text-sm text-gray-300">
+                        <div class="flex items-center gap-1">
+                            <span class="material-symbols-outlined text-base text-blue-400">schedule</span>
+                            <span>${formatDuration(totalMinutes)}</span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <span class="material-symbols-outlined text-base text-gray-400">today</span>
+                            <span>${submittedText}</span>
+                        </div>
+                    </div>
+                    ${item.notes ? `
+                    <div class="mt-4 bg-[#1f2730] border border-[#2f3944] rounded-xl p-3 text-sm text-gray-200">
+                        <p class="text-xs text-gray-400 mb-1">NOTES</p>
+                        <p class="leading-relaxed">${escapeHtml(item.notes)}</p>
+                    </div>
+                    ` : ''}
+                    ${item.originalTotalMinutes && item.originalTotalMinutes !== totalMinutes ? `
+                    <div class="mt-3 bg-[#1f2730] border border-[#2f3944] rounded-xl p-3 text-sm text-gray-200">
+                        <p class="text-xs text-gray-400 uppercase tracking-wide mb-1">Adjustment Summary</p>
+                        <div class="flex flex-wrap gap-4">
+                            <span>Original: <span class="font-semibold">${formatDuration(item.originalTotalMinutes)}</span></span>
+                            <span>Updated: <span class="font-semibold">${formatDuration(totalMinutes)}</span></span>
+                        </div>
+                    </div>
+                    ` : ''}
+                    ${item.officeNotes ? `
+                    <div class="mt-3 bg-green-500/10 border border-green-500/30 rounded-xl p-3 text-sm text-gray-200">
+                        <p class="text-xs font-semibold text-green-400 mb-1">OFFICE NOTES</p>
+                        <p class="leading-relaxed">${escapeHtml(item.officeNotes)}</p>
+                    </div>
+                    ` : ''}
+                    ${processedText ? `
+                    <div class="mt-3 flex flex-wrap items-center gap-4 text-sm text-gray-300">
+                        <div class="flex items-center gap-2 text-green-400">
+                            <span class="material-symbols-outlined text-base">task_alt</span>
+                            <span>${processedText}</span>
+                        </div>
+                        ${expiryLabel ? `
+                        <div class="flex items-center gap-2 text-amber-400">
+                            <span class="material-symbols-outlined text-base">hourglass_bottom</span>
+                            <span>${expiryLabel}</span>
+                        </div>
+                        ` : ''}
+                    </div>
+                    ` : ''}
+                </article>
+            `;
+        }
+
+        function formatDuration(totalMinutes) {
+            const minutes = Math.max(totalMinutes || 0, 0);
+            const hrs = Math.floor(minutes / 60);
+            const mins = minutes % 60;
+            const parts = [];
+            if (hrs > 0) {
+                parts.push(`${hrs}h`);
+            }
+            if (mins > 0) {
+                parts.push(`${mins}m`);
+            }
+            return parts.length ? parts.join(' ') : '0m';
+        }
+
+        function formatRelativeTime(date) {
+            const now = new Date();
+            const diffMs = now.getTime() - date.getTime();
+            const diffMinutes = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+
+            if (diffMinutes < 1) return 'Just now';
+            if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes === 1 ? '' : 's'} ago`;
+            if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+            if (diffDays < 7) return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+            return date.toLocaleString();
+        }
+
+        function getExpiryLabel(waitTime) {
+            const processedAt = toDate(waitTime.processedAt);
+            if (!processedAt) return 'Processing time unknown';
+            const expiryDate = waitTime.expiresAt ? toDate(waitTime.expiresAt) : new Date(processedAt.getTime() + SEVEN_DAYS_MS);
+            if (!expiryDate) return 'Processing time unknown';
+            const diffMs = expiryDate.getTime() - Date.now();
+            if (diffMs <= 0) return 'Expired';
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffMinutes = Math.round((diffMs % 3600000) / 60000);
+            if (diffHours >= 24) {
+                const days = Math.floor(diffHours / 24);
+                return `${days} day${days === 1 ? '' : 's'} remaining`;
+            }
+            if (diffHours > 0) {
+                return `${diffHours} hour${diffHours === 1 ? '' : 's'} ${diffMinutes} min remaining`;
+            }
+            return `${diffMinutes} minute${diffMinutes === 1 ? '' : 's'} remaining`;
+        }
+
+        function toDate(value) {
+            if (!value) return null;
+            if (value instanceof Date) return value;
+            if (value.toDate) return value.toDate();
+            if (typeof value === 'number') return new Date(value);
+            if (typeof value === 'string') return new Date(value);
+            return null;
+        }
+
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
+            return text
+                .toString()
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+    </script>
+</body>
+</html>
+
