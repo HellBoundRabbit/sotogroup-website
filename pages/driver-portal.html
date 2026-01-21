@@ -274,7 +274,7 @@
                 </div>
 
                 <!-- Messages -->
-                <div class="feature-button" onclick="window.location.href='/pages/driver-messages.html'">
+                <div id="messagesCard" class="feature-button" onclick="window.location.href='/pages/driver-messages.html'">
                     <div class="spinner-wrapper">
                         <div class="spinner"></div>
                         <div class="spinner1">
@@ -285,7 +285,7 @@
                 </div>
 
                 <!-- Availability -->
-                <div id="availabilityCard" class="feature-button" onclick="handleFeatureClick('/pages/driver-availability.html')">
+                <div id="availabilityCard" class="feature-button" onclick="showAvailabilityComingSoon()">
                     <div class="spinner-wrapper">
                         <div class="spinner"></div>
                         <div class="spinner1">
@@ -391,6 +391,9 @@
                     return;
                 }
 
+                // Check if running as PWA and show installation prompt if needed
+                checkPWAInstallation();
+
                 // Check for pending uploads and show banner if needed
                 checkPendingUploads();
 
@@ -459,6 +462,52 @@
                     return;
                 }
 
+                // Check office active features
+                let activeFeatures = {
+                    expenses: true,
+                    waitTimes: true,
+                    messages: true,
+                    availability: true
+                };
+
+                try {
+                    const officeDocRef = window.doc(window.db, 'offices', officeId);
+                    const officeDoc = await window.getDoc(officeDocRef);
+                    if (officeDoc.exists()) {
+                        const officeData = officeDoc.data();
+                        if (officeData.activeFeatures) {
+                            activeFeatures = officeData.activeFeatures;
+                        }
+                    }
+                } catch (officeError) {
+                    console.warn('Could not fetch office features:', officeError);
+                }
+
+                // Disable features based on office settings
+                const expensesCard = document.getElementById('expensesCard');
+                const waitTimesCard = document.getElementById('waitTimesCard');
+                const messagesCard = document.getElementById('messagesCard');
+                const availabilityCard = document.getElementById('availabilityCard');
+
+                if (!activeFeatures.expenses && expensesCard) {
+                    expensesCard.classList.add('disabled');
+                    expensesCard.onclick = () => notifyInfo('Expenses feature is currently disabled for your office.', 'Feature Disabled');
+                }
+
+                if (!activeFeatures.waitTimes && waitTimesCard) {
+                    waitTimesCard.classList.add('disabled');
+                    waitTimesCard.onclick = () => notifyInfo('Wait Times feature is currently disabled for your office.', 'Feature Disabled');
+                }
+
+                if (!activeFeatures.messages && messagesCard) {
+                    messagesCard.classList.add('disabled');
+                    messagesCard.onclick = () => notifyInfo('Messages feature is currently disabled for your office.', 'Feature Disabled');
+                }
+
+                // Note: Availability always shows coming soon message, regardless of activeFeatures setting
+                // The coming soon modal will handle the message display
+
+                // Check for unread messages
                 const messagesQuery = window.query(
                     window.collection(window.db, 'messages'),
                     window.where('officeId', '==', officeId),
@@ -488,11 +537,16 @@
                 
                 const unreadMessages = messages.filter(msg => !readMessages.includes(msg.id));
                 
-                if (unreadMessages.length > 0) {
-                    // Grey out feature cards
-                    document.getElementById('expensesCard').classList.add('disabled');
-                    document.getElementById('availabilityCard').classList.add('disabled');
-                    document.getElementById('waitTimesCard').classList.add('disabled');
+                // Grey out features if there are unread messages (only if messages feature is enabled)
+                // Note: Availability always shows coming soon, so don't disable it based on messages
+                if (unreadMessages.length > 0 && activeFeatures.messages) {
+                    if (expensesCard && activeFeatures.expenses) {
+                        expensesCard.classList.add('disabled');
+                    }
+                    // Availability shows coming soon, don't disable it
+                    if (waitTimesCard && activeFeatures.waitTimes) {
+                        waitTimesCard.classList.add('disabled');
+                    }
                 }
             } catch (error) {
                 console.error('Error checking messages:', error);
@@ -571,6 +625,185 @@
                 console.warn('[Driver Portal] Error checking pending uploads:', error);
             }
         }
+
+        // Check if app is running as PWA and prompt installation if not
+        function checkPWAInstallation() {
+            // Only show for mobile and tablets, not desktops
+            const userAgent = window.navigator.userAgent || window.navigator.vendor || window.opera;
+            const isMobileOrTablet = /iPhone|iPod|iPad|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+            
+            if (!isMobileOrTablet) {
+                // Desktop - don't show prompt
+                return;
+            }
+
+            // Detect if running as PWA
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+            const isIOSStandalone = window.navigator.standalone === true;
+            const isPWAMode = isStandalone || isIOSStandalone;
+
+            if (isPWAMode) {
+                // Already running as PWA, no need to prompt
+                return;
+            }
+
+            // Detect OS
+            let os = 'desktop';
+            let installInstructions = '';
+
+            if (/iPad|iPhone|iPod/.test(userAgent) && !window.MSStream) {
+                os = 'ios';
+                installInstructions = `
+                    <div class="space-y-4">
+                        <p class="text-gray-300">To install SOTO Routes on your iPhone:</p>
+                        <ol class="list-decimal list-inside space-y-2 text-gray-300 text-sm">
+                            <li>Tap the <strong class="text-white">Share button</strong> <span class="material-symbols-outlined inline text-base">ios_share</span> at the bottom of your screen</li>
+                            <li>Scroll down and tap <strong class="text-white">"Add to Home Screen"</strong></li>
+                            <li>Tap <strong class="text-white">"Add"</strong> in the top right</li>
+                        </ol>
+                        <p class="text-gray-400 text-xs mt-4">Once installed, open SOTO Routes from your home screen for the best experience.</p>
+                    </div>
+                `;
+            } else if (/android/i.test(userAgent)) {
+                os = 'android';
+                installInstructions = `
+                    <div class="space-y-4">
+                        <p class="text-gray-300">To install SOTO Routes on your Android device:</p>
+                        <ol class="list-decimal list-inside space-y-2 text-gray-300 text-sm">
+                            <li>Tap the <strong class="text-white">menu button</strong> <span class="material-symbols-outlined inline text-base">more_vert</span> in your browser</li>
+                            <li>Tap <strong class="text-white">"Install app"</strong> or <strong class="text-white">"Add to Home screen"</strong></li>
+                            <li>Tap <strong class="text-white">"Install"</strong> to confirm</li>
+                        </ol>
+                        <p class="text-gray-400 text-xs mt-4">Once installed, open SOTO Routes from your home screen for the best experience.</p>
+                    </div>
+                `;
+            } else {
+                os = 'desktop';
+                installInstructions = `
+                    <div class="space-y-4">
+                        <p class="text-gray-300">To install SOTO Routes on your device:</p>
+                        <ul class="list-disc list-inside space-y-2 text-gray-300 text-sm">
+                            <li><strong class="text-white">Chrome/Edge:</strong> Click the install icon in the address bar, or use the menu → "Install SOTO Routes"</li>
+                            <li><strong class="text-white">Safari:</strong> Use File → "Add to Dock" (Mac) or Share → "Add to Home Screen" (iOS)</li>
+                        </ul>
+                        <p class="text-gray-400 text-xs mt-4">Installing the app ensures you have all features and works offline.</p>
+                    </div>
+                `;
+            }
+
+            // Show installation prompt modal
+            showPWAInstallPrompt(installInstructions);
+        }
+
+        // Show PWA installation prompt
+        function showPWAInstallPrompt(instructions) {
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black bg-opacity-75 z-[9999] flex items-center justify-center p-4';
+            overlay.id = 'pwa-install-overlay';
+            
+            overlay.innerHTML = `
+                <div class="bg-[#1a1f24] rounded-2xl w-full max-w-md border border-[#283039] shadow-2xl">
+                    <div class="p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-12 h-12 bg-orange-500 rounded-full flex items-center justify-center">
+                                <span class="material-symbols-outlined text-white text-2xl">warning</span>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-bold text-white">Install SOTO Routes</h3>
+                                <p class="text-sm text-gray-400">For full features and offline access</p>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-6">
+                            <p class="text-orange-400 font-semibold mb-3">⚠️ You're not running SOTO Routes correctly. You may have limited features.</p>
+                            ${instructions}
+                        </div>
+                        
+                        <div class="flex justify-end">
+                            <button onclick="closePWAInstallPrompt()" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-semibold">
+                                I'll Install Later
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(overlay);
+            
+            // Close on overlay click (outside modal)
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    closePWAInstallPrompt();
+                }
+            });
+        }
+
+        // Close PWA install prompt
+        function closePWAInstallPrompt() {
+            const overlay = document.getElementById('pwa-install-overlay');
+            if (overlay) {
+                overlay.remove();
+            }
+            // Always show again next time - prompt will appear every time driver portal opens
+        }
+
+        // Expose function to window for inline onclick handlers
+        window.closePWAInstallPrompt = closePWAInstallPrompt;
+
+        // Show Availability Coming Soon modal
+        function showAvailabilityComingSoon() {
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black bg-opacity-75 z-[9999] flex items-center justify-center p-4';
+            overlay.id = 'availability-coming-soon-overlay';
+            
+            overlay.innerHTML = `
+                <div class="bg-[#1a1f24] rounded-2xl w-full max-w-md border-2 border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.5)]">
+                    <div class="p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-12 h-12 bg-red-500 rounded-full flex items-center justify-center">
+                                <span class="material-symbols-outlined text-white text-2xl">info</span>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-bold text-white">Feature Coming Soon</h3>
+                                <p class="text-sm text-gray-400">Availability Management</p>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-6">
+                            <p class="text-gray-300 text-base leading-relaxed">
+                                This feature is still in development and will be rolled out soon.
+                            </p>
+                        </div>
+                        
+                        <div class="flex justify-end">
+                            <button onclick="closeAvailabilityComingSoon()" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors font-semibold">
+                                Got It
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(overlay);
+            
+            // Close on overlay click (outside modal)
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    closeAvailabilityComingSoon();
+                }
+            });
+        }
+
+        // Close Availability Coming Soon modal
+        function closeAvailabilityComingSoon() {
+            const overlay = document.getElementById('availability-coming-soon-overlay');
+            if (overlay) {
+                overlay.remove();
+            }
+        }
+
+        // Expose function to window for inline onclick handlers
+        window.closeAvailabilityComingSoon = closeAvailabilityComingSoon;
 
         // Logout function
         async function logout() {

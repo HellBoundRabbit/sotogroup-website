@@ -255,6 +255,49 @@
                     </div>
                 </div>
 
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-3">Active Features</label>
+                    <div class="space-y-2">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                id="featureExpenses" 
+                                checked
+                                class="w-4 h-4 rounded border-gray-600 bg-[#283039] text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 focus:ring-offset-[#1a1f24]"
+                            >
+                            <span class="text-sm text-gray-300">Expenses</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                id="featureWaitTimes" 
+                                checked
+                                class="w-4 h-4 rounded border-gray-600 bg-[#283039] text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 focus:ring-offset-[#1a1f24]"
+                            >
+                            <span class="text-sm text-gray-300">Wait Times</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                id="featureMessages" 
+                                checked
+                                class="w-4 h-4 rounded border-gray-600 bg-[#283039] text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 focus:ring-offset-[#1a1f24]"
+                            >
+                            <span class="text-sm text-gray-300">Messages</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                id="featureAvailability" 
+                                checked
+                                class="w-4 h-4 rounded border-gray-600 bg-[#283039] text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 focus:ring-offset-[#1a1f24]"
+                            >
+                            <span class="text-sm text-gray-300">Availability</span>
+                        </label>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-2">Unticking these will disable the relevant buttons for all driver portals associated with this office.</p>
+                </div>
+
                 <div class="flex gap-3 pt-4">
                     <button type="button" onclick="hideAddOfficeModal()" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
                         Cancel
@@ -305,6 +348,45 @@
                         <img id="editLogoPreviewImg" src="" alt="Logo preview" class="w-24 h-24 object-cover rounded-lg border border-gray-600">
                     </div>
                     <div id="editCurrentLogo" class="mt-2"></div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-3">Active Features</label>
+                    <div class="space-y-2">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                id="editFeatureExpenses" 
+                                class="w-4 h-4 rounded border-gray-600 bg-[#283039] text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 focus:ring-offset-[#1a1f24]"
+                            >
+                            <span class="text-sm text-gray-300">Expenses</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                id="editFeatureWaitTimes" 
+                                class="w-4 h-4 rounded border-gray-600 bg-[#283039] text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 focus:ring-offset-[#1a1f24]"
+                            >
+                            <span class="text-sm text-gray-300">Wait Times</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                id="editFeatureMessages" 
+                                class="w-4 h-4 rounded border-gray-600 bg-[#283039] text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 focus:ring-offset-[#1a1f24]"
+                            >
+                            <span class="text-sm text-gray-300">Messages</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                id="editFeatureAvailability" 
+                                class="w-4 h-4 rounded border-gray-600 bg-[#283039] text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 focus:ring-offset-[#1a1f24]"
+                            >
+                            <span class="text-sm text-gray-300">Availability</span>
+                        </label>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-2">Unticking these will disable the relevant buttons for all driver portals associated with this office.</p>
                 </div>
 
                 <div class="flex gap-3 pt-4">
@@ -452,6 +534,14 @@
             const adminName = document.getElementById('adminName').value;
             const logoFile = document.getElementById('officeLogo').files[0];
             
+            // Get active features
+            const activeFeatures = {
+                expenses: document.getElementById('featureExpenses').checked,
+                waitTimes: document.getElementById('featureWaitTimes').checked,
+                messages: document.getElementById('featureMessages').checked,
+                availability: document.getElementById('featureAvailability').checked
+            };
+            
             const submitBtn = e.target.querySelector('button[type="submit"]');
             const originalText = submitBtn.textContent;
             
@@ -473,6 +563,12 @@
                     throw new Error('Office ID missing from response.');
                 }
 
+                // Update office with active features and logo if provided
+                const updatePayload = {
+                    officeId,
+                    activeFeatures: activeFeatures
+                };
+
                 if (logoFile) {
                     try {
                         const timestamp = Date.now();
@@ -480,15 +576,17 @@
                         const logoRef = window.ref(window.storage, storagePath);
                         await window.uploadBytes(logoRef, logoFile);
                         const logoUrl = await window.getDownloadURL(logoRef);
-                        const updateOfficeFn = getCallable('updateOffice');
-                        await updateOfficeFn({
-                            officeId,
-                            logoUrl
-                        });
+                        updatePayload.logoUrl = logoUrl;
                     } catch (uploadError) {
                         console.error('Logo upload failed:', uploadError);
                         showMessage('Office created but logo upload failed.', 'error');
                     }
+                }
+
+                // Update office with active features (and logo if provided)
+                if (updatePayload.logoUrl || activeFeatures) {
+                    const updateOfficeFn = getCallable('updateOffice');
+                    await updateOfficeFn(updatePayload);
                 }
                 
                 showMessage(`Office "${officeName}" created successfully!`, 'success');
@@ -537,6 +635,16 @@
                     const officeName = document.getElementById('editOfficeName').value;
                     const logoFile = document.getElementById('editOfficeLogo').files[0];
                     
+                    // Get active features
+                    const activeFeatures = {
+                        expenses: document.getElementById('editFeatureExpenses').checked,
+                        waitTimes: document.getElementById('editFeatureWaitTimes').checked,
+                        messages: document.getElementById('editFeatureMessages').checked,
+                        availability: document.getElementById('editFeatureAvailability').checked
+                    };
+                    
+                    console.log('Updating office with activeFeatures:', officeId, activeFeatures);
+                    
                     const submitBtn = e.target.querySelector('button[type="submit"]');
                     const originalText = submitBtn.textContent;
                     
@@ -546,7 +654,8 @@
                     try {
                 const updatePayload = {
                     officeId,
-                            name: officeName
+                            name: officeName,
+                            activeFeatures: activeFeatures
                         };
                         
                         if (logoFile) {
@@ -558,11 +667,15 @@
                     updatePayload.logoUrl = logoUrl;
                 }
 
+                console.log('Sending update payload:', updatePayload);
                 const updateOfficeFn = getCallable('updateOffice');
-                await updateOfficeFn(updatePayload);
+                const result = await updateOfficeFn(updatePayload);
+                console.log('Update result:', result);
                         
                         showMessage(`Office "${officeName}" updated successfully!`, 'success');
                         hideEditOfficeModal();
+                        // Wait a moment for the update to propagate, then reload
+                        await new Promise(resolve => setTimeout(resolve, 500));
                         await loadOffices();
                     } catch (error) {
                         console.error('Error updating office:', error);
@@ -576,6 +689,17 @@
         function showEditOfficeModal(office) {
             document.getElementById('editOfficeId').value = office.id;
             document.getElementById('editOfficeName').value = office.name || '';
+            
+            // Set active features (default to true if not set for backward compatibility)
+            // Check if activeFeatures exists, otherwise default all to true
+            const features = office.activeFeatures || {};
+            console.log('Loading office features for edit:', office.id, features);
+            
+            // Explicitly check for false values - if not false and not undefined, default to true
+            document.getElementById('editFeatureExpenses').checked = features.expenses === undefined ? true : features.expenses === true;
+            document.getElementById('editFeatureWaitTimes').checked = features.waitTimes === undefined ? true : features.waitTimes === true;
+            document.getElementById('editFeatureMessages').checked = features.messages === undefined ? true : features.messages === true;
+            document.getElementById('editFeatureAvailability').checked = features.availability === undefined ? true : features.availability === true;
             
             const currentLogoDiv = document.getElementById('editCurrentLogo');
             if (office.logoUrl) {

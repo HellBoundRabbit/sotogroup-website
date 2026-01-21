@@ -16,6 +16,8 @@
     <!-- PDF Generation Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <!-- ZIP Creation Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
     <!-- Offline Storage & Upload Queue System -->
     <script src="/js/expense-offline-storage.js"></script>
@@ -2180,8 +2182,8 @@
         function clearExpenseModalBorders() {
             const expenseModalContent = document.getElementById('expenseModalContent');
             if (expenseModalContent) {
-                // Remove ALL possible border animation classes
-                expenseModalContent.classList.remove(
+                // Remove ALL possible border animation classes (more aggressive clearing)
+                const borderClasses = [
                     'animated-border-modal',
                     'animated-border-modal-draft',
                     'animated-border-modal-pending',
@@ -2189,7 +2191,15 @@
                     'animated-border-modal-paid',
                     'animated-border-modal-returned',
                     'animated-border-expense-modal'
-                );
+                ];
+                
+                // Remove each class individually and check if it exists
+                borderClasses.forEach(className => {
+                    if (expenseModalContent.classList.contains(className)) {
+                        expenseModalContent.classList.remove(className);
+                        console.log(`[clearExpenseModalBorders] Removed ${className} from expense modal`);
+                    }
+                });
             }
         }
 
@@ -2211,7 +2221,8 @@
             document.getElementById('photoPreview').innerHTML = '';
             document.querySelectorAll('.category-btn').forEach(btn => btn.classList.remove('ring-2', 'ring-blue-500'));
             
-            // Clear any border classes before showing modal
+            // CRITICAL: Clear any border classes BEFORE showing modal
+            // This ensures no border color from batch modal carries over
             clearExpenseModalBorders();
             
             // Get modal and show it
@@ -2222,8 +2233,13 @@
             expenseModal.scrollTop = 0;
             }
             
-            // Clear borders again after showing (in case something else added them)
-            setTimeout(clearExpenseModalBorders, 10);
+            // Clear borders immediately after showing modal
+            clearExpenseModalBorders();
+            
+            // Clear borders again after a short delay to catch any async class additions
+            setTimeout(() => {
+                clearExpenseModalBorders();
+            }, 50);
         }
 
         // Select category
@@ -2413,7 +2429,8 @@
                 saveBtn.onclick = savePhotosToExpense;
             }
             
-            // Clear any border classes before showing modal
+            // CRITICAL: Clear any border classes before showing modal
+            // This ensures no border color from batch modal carries over
             clearExpenseModalBorders();
             
             // Get modal and show it
@@ -2422,8 +2439,13 @@
                 expenseModal.classList.remove('hidden');
             }
             
-            // Clear borders again after showing (in case something else added them)
-            setTimeout(clearExpenseModalBorders, 10);
+            // Clear borders immediately after showing modal
+            clearExpenseModalBorders();
+            
+            // Clear borders again after a short delay to catch any async class additions
+            setTimeout(() => {
+                clearExpenseModalBorders();
+            }, 50);
         }
         
         // Save photos to existing expense
@@ -2460,6 +2482,20 @@
                 return;
             }
             
+            // CRITICAL: Ensure batch ID exists before uploading photos
+            // If batch doesn't have an ID yet, save as draft first to create it
+            if (!currentBatch.id) {
+                console.log('[savePhotosToExpense] Batch ID missing, saving as draft first...');
+                try {
+                    await syncDraftToFirestore(currentBatch, 'draft');
+                    console.log('[savePhotosToExpense] Batch saved as draft, batch ID:', currentBatch.id);
+                } catch (error) {
+                    console.error('[savePhotosToExpense] Failed to save batch as draft:', error);
+                    notifyError('Cannot add photos: batch needs to be saved first. Please save as draft, then try again.', 'Batch Not Saved');
+                    return;
+                }
+            }
+            
             // Upload new photos and get URLs
             if (newPhotos.length > 0) {
                 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -2470,6 +2506,12 @@
                 }
                 
                 const batchId = currentBatch.id;
+                if (!batchId) {
+                    console.error('[savePhotosToExpense] Batch ID is still missing after draft save attempt');
+                    notifyError('Cannot add photos: batch ID is missing. Please save as draft first, then try again.', 'Missing Batch ID');
+                    return;
+                }
+                
                 const expenseId = expense.id || window.editingExpenseIndex;
                 
                 const uploadPromises = newPhotos.map(async (photoFile, index) => {
@@ -2710,15 +2752,22 @@
                 return normalizedReg;
             }
             
-            // Otherwise, add ! (and incrementing suffix if needed)
-            let counter = 1;
+            // Otherwise, add ! (and incrementing exclamation marks if needed)
+            // Format: REG, REG!, REG!!, REG!!!, etc.
+            let exclamationCount = 1;
             while (true) {
-                const suffix = counter === 1 ? '!' : `!${counter}`;
+                const suffix = '!'.repeat(exclamationCount);
                 const newReg = `${normalizedReg}${suffix}`;
                 if (!existingRegs.has(newReg)) {
                 return newReg;
                 }
-                counter++;
+                exclamationCount++;
+                
+                // Safety limit to prevent infinite loop
+                if (exclamationCount > 100) {
+                    console.error('Too many duplicate registrations, using timestamp suffix');
+                    return `${normalizedReg}!${Date.now()}`;
+                }
             }
         }
 
@@ -2908,10 +2957,29 @@
             }
 
             try {
-                // Ensure currentBatch.id is set before syncing (should already be set from saveDraft, but double-check)
+                // Ensure currentBatch.id is set before syncing
+                // If missing, save as draft first to create the batch ID
+                // This is especially important when expenses have photos that need uploading
+                if (!currentBatch.id) {
+                    console.log('[submitBatch] Batch ID missing, saving as draft first to create batch ID...');
+                    try {
+                        await syncDraftToFirestore(currentBatch, 'draft');
+                        console.log('[submitBatch] Batch saved as draft, batch ID:', currentBatch.id);
+                    } catch (error) {
+                        console.error('[submitBatch] Failed to save batch as draft:', error);
+                        notifyError('Cannot submit: failed to create batch. Please try saving as draft first, then submit.', 'Batch Creation Failed');
+                        currentBatch = null;
+                        window.currentBatch = null;
+                        window.isUploadingExpense = false;
+                        if (saveBtn) saveBtn.disabled = false;
+                        if (submitBtn) submitBtn.disabled = false;
+                        return;
+                    }
+                }
+                
                 const batchId = currentBatch.id;
                 if (!batchId) {
-                    console.error('[submitBatch] currentBatch.id is missing - batch may not have been saved as draft first');
+                    console.error('[submitBatch] Batch ID is still missing after draft save attempt');
                     notifyError('Cannot submit: batch ID is missing. Please save as draft first, then try submitting again.', 'Missing Batch ID');
                     currentBatch = null;
                     window.currentBatch = null;
@@ -2920,6 +2988,7 @@
                     if (submitBtn) submitBtn.disabled = false;
                     return;
                 }
+                
                 await syncDraftToFirestore(currentBatch, 'pending');
 
                 if (queuedLocalId) {
@@ -3792,6 +3861,116 @@
                 console.error('Error generating PDF:', error);
                 notifyError('Failed to generate PDF. Please try again.');
             }
+        }
+
+        // Download PDF and Photos as ZIP
+        async function downloadPaidExpensePDF(batchId) {
+            const batch = allBatches.find(b => b.id === batchId && b.status === 'paid');
+            if (!batch) {
+                notifyError('Batch not found.', 'Missing Batch');
+                return;
+            }
+
+            try {
+                const zip = new JSZip();
+                
+                // Get current date for folder structure
+                const today = new Date();
+                const year = today.getFullYear();
+                const month = String(today.getMonth() + 1).padStart(2, '0');
+                const day = String(today.getDate()).padStart(2, '0');
+                const dateFolderName = `${day}_${month}_${year}`;
+                
+                // Clean registration
+                const cleanedReg = batch.registration.replace(/[\/\\:]/g, '-').replace(/\s+/g, '_');
+                
+                // Folder path: dateFolderName/cleanedReg/
+                const folderPath = `${dateFolderName}/${cleanedReg}/`;
+                
+                // Generate and add PDF
+                const doc = generatePaidExpensePDF(batch);
+                const pdfBlob = doc.output('blob');
+                const driverNameForFile = (batch.driverName || 'Unknown_Driver').replace(/_/g, ' ');
+                const pdfFileName = `${cleanedReg}_${driverNameForFile}.pdf`;
+                zip.file(folderPath + pdfFileName, pdfBlob);
+                
+                // Download and add photos
+                let photoIndex = 1;
+                for (const expense of batch.expenses || []) {
+                    if (expense.photos && expense.photos.length > 0) {
+                        for (const photoURL of expense.photos) {
+                            try {
+                                const response = await fetch(photoURL);
+                                const photoBlob = await response.blob();
+                                zip.file(folderPath + `photo_${photoIndex}.jpg`, photoBlob);
+                                photoIndex++;
+                            } catch (error) {
+                                console.error('Error downloading photo:', photoURL, error);
+                            }
+                        }
+                    }
+                }
+                
+                // Generate and download ZIP
+                const zipBlob = await zip.generateAsync({ type: 'blob' });
+                const url = URL.createObjectURL(zipBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${cleanedReg}_${dateFolderName}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 100);
+                
+                notifySuccess('Successfully downloaded PDF and photos as ZIP file!', 'Download Complete');
+            } catch (error) {
+                console.error('Error downloading PDF and photos:', error);
+                notifyError('Failed to download files. Please try again.');
+            }
+        }
+
+        // View all photos for a paid expense batch
+        function viewPaidExpensePhotos(batchId) {
+            const batch = allBatches.find(b => b.id === batchId && b.status === 'paid');
+            if (!batch || !batch.expenses) {
+                notifyError('Batch not found.', 'Missing Batch');
+                return;
+            }
+
+            // Collect all photos from all expenses
+            const allPhotos = [];
+            batch.expenses.forEach(expense => {
+                if (expense.photos && expense.photos.length > 0) {
+                    expense.photos.forEach(photoURL => {
+                        allPhotos.push(photoURL);
+                    });
+                }
+            });
+
+            if (allPhotos.length === 0) {
+                notifyInfo('No photos available for this expense batch.', 'No Photos');
+                return;
+            }
+
+            const grid = document.getElementById('photoViewerGrid');
+            grid.innerHTML = allPhotos.map((url, index) => `
+                <div class="w-full max-w-4xl mx-auto mb-6">
+                    <div class="bg-[#1a1f24] rounded-xl p-4 shadow-2xl border border-[#283039]">
+                        <img 
+                            src="${url}" 
+                            alt="Expense photo ${index + 1}" 
+                            class="w-full h-auto rounded-lg shadow-lg object-contain max-h-[70vh] mx-auto"
+                            loading="lazy"
+                            style="display: block;"
+                        >
+                        <div class="text-center mt-3 text-sm text-gray-400">
+                            Photo ${index + 1} of ${allPhotos.length}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            document.getElementById('photoViewerModal').classList.remove('hidden');
         }
     </script>
 </body>
