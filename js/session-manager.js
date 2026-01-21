@@ -81,7 +81,36 @@
           window.firebase.functions,
           "bootstrapSession",
       );
-      const response = await bootstrapFn({});
+      
+      // Retry logic for transient Firebase Function errors
+      let response;
+      let lastError;
+      const maxRetries = 3;
+      
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          response = await bootstrapFn({});
+          break; // Success, exit retry loop
+        } catch (retryError) {
+          lastError = retryError;
+          // Only retry on internal/network errors, not auth errors
+          if (retryError.code === 'internal' || retryError.code === 'unavailable' || retryError.code === 'deadline-exceeded') {
+            if (attempt < maxRetries - 1) {
+              // Wait before retry (exponential backoff: 200ms, 400ms, 800ms)
+              const delay = 200 * Math.pow(2, attempt);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              continue;
+            }
+          }
+          // Non-retryable error or max retries reached
+          throw retryError;
+        }
+      }
+      
+      if (!response) {
+        throw lastError || new Error("Failed to get response from bootstrapSession");
+      }
+      
       const data = response?.data;
       const userData = data?.user;
 
