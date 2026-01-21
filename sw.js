@@ -7,7 +7,7 @@
 const CACHE_NAME = 'expense-upload-v1';
 const STORAGE_BUCKET = 'soto-routes.firebasestorage.app';
 const DB_NAME = 'ExpenseDraftsDB';
-const DB_VERSION = 2; // Match the version in expense-offline-storage.js
+const DB_VERSION = 3; // Match the version in expense-offline-storage.js (includes waitTimeUploadQueue)
 
 // Firebase Storage REST API helper
 function getStorageUploadUrl(path, uploadType = 'multipart') {
@@ -350,6 +350,11 @@ async function processUploadQueue(authToken) {
         expenseUploadStore.createIndex('status', 'status', { unique: false });
         expenseUploadStore.createIndex('expenseDocId', 'expenseDocId', { unique: false });
       }
+      if (!db.objectStoreNames.contains('waitTimeUploadQueue')) {
+        const waitTimeUploadStore = db.createObjectStore('waitTimeUploadQueue', { keyPath: 'uploadId' });
+        waitTimeUploadStore.createIndex('status', 'status', { unique: false });
+        waitTimeUploadStore.createIndex('waitTimeDocId', 'waitTimeDocId', { unique: false });
+      }
       resolve({ processed: 0, failed: 0 });
     };
   });
@@ -419,6 +424,14 @@ self.addEventListener('message', async (event) => {
     const authToken = data?.authToken || null;
     try {
       const result = await processUploadQueue(authToken || await requestAuthToken());
+      event.ports[0]?.postMessage({ success: true, result });
+    } catch (error) {
+      event.ports[0]?.postMessage({ success: false, error: error.message });
+    }
+  } else if (type === 'process-wait-time-queue') {
+    const authToken = data?.authToken || null;
+    try {
+      const result = await processWaitTimeQueue(authToken || await requestAuthToken());
       event.ports[0]?.postMessage({ success: true, result });
     } catch (error) {
       event.ports[0]?.postMessage({ success: false, error: error.message });
