@@ -2852,14 +2852,17 @@
                 }
                 }
 
-                // No success message - red banner is enough
+                // Refresh batches list immediately to show draft expense (greyed out if uploading)
+                if (typeof window.loadExpenseBatches === 'function') {
+                    await window.loadExpenseBatches();
+                }
+
+                // No success message - banner is enough
                 currentBatch = null;
                 window.currentBatch = null;
                 window.isUploadingExpense = false;
                 if (saveBtn) saveBtn.disabled = false;
                 if (submitBtn) submitBtn.disabled = false;
-                
-                // Refresh batches list after upload completes (handled by upload queue)
             } catch (error) {
                 console.error('Error syncing draft:', error);
                 // Upload banner will show the queue status, no need for dialog
@@ -2985,21 +2988,33 @@
 
                 if (queuedLocalId) {
                 removeSubmissionQueueEntry(queuedLocalId);
-                // Update upload status using new ExpenseUploadQueue
-                if (window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
-                await window.expenseUploadQueue.updateGlobalUploadStatus();
-                }
                 }
 
-                // No success message - red banner is enough
+                // Update upload status to ensure banner shows
+                if (window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
+                    await window.expenseUploadQueue.updateGlobalUploadStatus();
+                }
+
+                // Small delay to ensure photos are queued in IndexedDB before refreshing
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                // Refresh batches list immediately to show pending expense (greyed out if uploading)
+                if (typeof window.loadExpenseBatches === 'function') {
+                    await window.loadExpenseBatches();
+                }
+                
+                // Update upload status again after refresh
+                if (window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
+                    await window.expenseUploadQueue.updateGlobalUploadStatus();
+                }
+
+                // No success message - banner is enough
                 // Note: isUploadingExpense will be set to false after all uploads complete
                 // (handled by upload queue when banner is hidden)
                 currentBatch = null;
                 window.currentBatch = null;
                 if (saveBtn) saveBtn.disabled = false;
                 if (submitBtn) submitBtn.disabled = false;
-                
-                // Refresh batches list after upload completes (handled by upload queue)
             } catch (error) {
                 console.error('Error submitting batch:', error);
                 // Upload banner will show the queue status, no need for dialog

@@ -13,6 +13,8 @@
     <script src="/assets/js/tailwind-runtime.js"></script>
     <script src="../js/ui-dialogs.js"></script>
     <script src="/js/session-manager.js"></script>
+    <!-- Offline Storage & Upload Queue System -->
+    <script src="/js/expense-offline-storage.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
     <style>
         .touch-target { min-height: 44px; min-width: 44px; }
@@ -319,6 +321,21 @@
     </script>
 </head>
 <body class="bg-black text-white min-h-screen">
+    <!-- Upload Banner (shown when uploading) -->
+    <div id="uploadBanner" class="hidden fixed top-0 left-0 right-0 bg-orange-600 text-white z-[100] shadow-lg">
+        <div class="flex items-center justify-center gap-3 px-4 py-2">
+            <span class="material-symbols-outlined animate-pulse">cloud_upload</span>
+            <div class="flex flex-col items-center flex-1">
+                <span id="uploadBannerText" class="font-semibold text-sm">Uploading wait times...</span>
+                <span id="uploadBannerSubtitle" class="text-xs opacity-90">Saving to server...</span>
+                <!-- Progress bar -->
+                <div id="uploadProgressBar" class="w-full max-w-xs mt-2 h-1.5 bg-white bg-opacity-20 rounded-full overflow-hidden">
+                    <div id="uploadProgressFill" class="h-full bg-white transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="loadingOverlay" class="loading-overlay">
         <div class="text-center">
             <div class="spinner-wrapper mx-auto mb-4">
@@ -329,7 +346,7 @@
         </div>
     </div>
 
-    <div class="bg-black border-b border-gray-800 sticky top-0 z-50">
+    <div id="topNav" class="bg-black border-b border-gray-800 sticky top-0 z-50">
         <div class="flex items-center px-4 py-3">
             <button onclick="goToPortal()" class="touch-target">
                 <div class="spinner-wrapper">
@@ -835,11 +852,63 @@
                     document.getElementById('loadingOverlay').style.display = 'none';
                     attachFormInteractions();
                     startWaitTimesListener();
+                    
+                    // Initialize upload queue monitoring
+                    if (window.waitTimeUploadQueue) {
+                        await window.waitTimeUploadQueue.updateGlobalUploadStatus();
+                        
+                        // Trigger Service Worker to process any pending uploads
+                        if (navigator.onLine) {
+                            try {
+                                await window.waitTimeUploadQueue.getAuthTokenAndProcessQueue();
+                            } catch (error) {
+                                console.warn('[Wait Times] Failed to trigger upload processing:', error);
+                            }
+                        }
+                        
+                        // Set up periodic status updates while uploading
+                        if (window.uploadStatusCheckInterval) {
+                            clearInterval(window.uploadStatusCheckInterval);
+                        }
+                        window.uploadStatusCheckInterval = setInterval(async () => {
+                            if (window.waitTimeUploadQueue && typeof window.waitTimeUploadQueue.updateGlobalUploadStatus === 'function') {
+                                await window.waitTimeUploadQueue.updateGlobalUploadStatus();
+                            }
+                            // Refresh wait times to update greyed out status
+                            if (typeof renderWaitTimes === 'function') {
+                                renderWaitTimes();
+                            }
+                        }, 3000); // Check every 3 seconds
+                    }
+                    
+                    // Listen for Service Worker messages
+                    if ('serviceWorker' in navigator && navigator.serviceWorker) {
+                        navigator.serviceWorker.addEventListener('message', async (event) => {
+                            const { type } = event.data || {};
+                            if (type === 'upload-status-changed') {
+                                // Service Worker updated upload status, check again
+                                if (window.waitTimeUploadQueue && typeof window.waitTimeUploadQueue.updateGlobalUploadStatus === 'function') {
+                                    await window.waitTimeUploadQueue.updateGlobalUploadStatus();
+                                }
+                                // Refresh wait times to update greyed out status
+                                if (typeof renderWaitTimes === 'function') {
+                                    renderWaitTimes();
+                                }
+                            }
+                        });
+                    }
                 } catch (error) {
                     console.error('Error loading driver profile:', error);
                     notifyError('Unable to load your profile. Please try again.');
                 }
         }
+        
+        // Clean up interval when page unloads
+        window.addEventListener('beforeunload', () => {
+            if (window.uploadStatusCheckInterval) {
+                clearInterval(window.uploadStatusCheckInterval);
+            }
+        });
 
         function attachFormInteractions() {
             const form = document.getElementById('waitTimeForm');
@@ -954,6 +1023,19 @@
             const isPending = (item.processingStatus || 'pending') !== 'processed' && !isReturned;
             const isProcessed = (item.processingStatus || 'pending') === 'processed';
             
+            // Check if wait time is currently uploading
+            // For now, we'll use isLocal as indicator (local wait times are being uploaded)
+            // In the future, we could check the waitTimeUploadQueue to see if this specific ID is uploading
+            const isUploading = item.isLocal && isPending;
+            
+            const greyedOut = isUploading ? 'opacity-50 cursor-not-allowed' : '';
+            const uploadIndicator = isUploading ? `
+                <div class="mt-2 text-orange-400 text-xs flex items-center gap-1">
+                    <span class="material-symbols-outlined text-sm animate-pulse">cloud_upload</span>
+                    Uploading...
+                </div>
+            ` : '';
+            
             let borderClass = 'animated-border-panel animated-border-pending';
             if (isReturned) {
                 borderClass = 'animated-border-panel';
@@ -973,7 +1055,7 @@
             ` : '';
             
             return `
-                <article class="${borderClass}" ${isReturned ? 'style="border: 2px solid rgba(239, 68, 68, 0.5); background: rgba(239, 68, 68, 0.05);"' : ''}>
+                <article class="${borderClass} ${greyedOut}" ${isReturned ? 'style="border: 2px solid rgba(239, 68, 68, 0.5); background: rgba(239, 68, 68, 0.05);"' : ''}>
                     <div class="flex items-start justify-between gap-4">
                         <div class="flex flex-wrap items-center gap-3">
                             <span class="license-plate">${escapeHtml(item.registration || 'UNKNOWN')}</span>
@@ -1027,6 +1109,7 @@
                     </div>
                     ` : ''}
                     ${processedMeta ? `<div class="mt-3">${processedMeta}</div>` : ''}
+                    ${uploadIndicator}
                     ${returnedActions}
                 </article>
             `;
@@ -1167,20 +1250,51 @@
             }
 
             try {
-                if (!navigator.onLine) {
-                    queueWaitTimeForSync(baseData);
-                    closeWaitTimeModal();
-                    return;
+                // WRITE-FIRST APPROACH: Save to IndexedDB immediately, then to Firestore
+                // Service Worker will handle upload if offline
+                
+                // Step 1: Create wait time document in Firestore immediately (if online)
+                let waitTimeDocId = null;
+                if (navigator.onLine) {
+                    try {
+                        const waitTimeDocRef = await window.addDoc(window.collection(window.db, 'waitTimes'), waitTimeData);
+                        waitTimeDocId = waitTimeDocRef.id;
+                        console.log('[saveWaitTime] Created wait time doc:', waitTimeDocId);
+                    } catch (firestoreError) {
+                        console.error('[saveWaitTime] Firestore error, will queue:', firestoreError);
+                        // Continue to queue if Firestore fails
+                    }
                 }
 
-                await window.addDoc(window.collection(window.db, 'waitTimes'), waitTimeData);
-                notifySuccess('Wait time saved.');
+                // Step 2: Queue for upload (Service Worker will handle if offline or if Firestore failed)
+                if (window.waitTimeUploadQueue) {
+                    try {
+                        await window.waitTimeUploadQueue.enqueueWaitTimeUpload(waitTimeData, waitTimeDocId);
+                        console.log('[saveWaitTime] Queued wait time for upload');
+                    } catch (queueError) {
+                        console.error('[saveWaitTime] Failed to queue upload:', queueError);
+                    }
+                }
+
+                // Step 3: Update upload status
+                if (window.waitTimeUploadQueue && typeof window.waitTimeUploadQueue.updateGlobalUploadStatus === 'function') {
+                    await window.waitTimeUploadQueue.updateGlobalUploadStatus();
+                }
+
+                // Step 4: Refresh wait times list to show new entry (greyed out if uploading)
+                if (typeof renderWaitTimes === 'function') {
+                    renderWaitTimes();
+                }
+
+                if (waitTimeDocId) {
+                    notifySuccess('Wait time saved.');
+                } else {
+                    notifyInfo('Wait time saved offline. Will sync when online.', 'Saved Offline');
+                }
                 closeWaitTimeModal();
             } catch (error) {
                 console.error('Error saving wait time:', error);
-                queueWaitTimeForSync(baseData, { silent: true });
-                notifyWarning('No connection detected. Saved locally and will sync when online.', 'Saved Offline');
-                closeWaitTimeModal();
+                notifyWarning('Error saving wait time. Please try again.', 'Error');
             } finally {
                 isSaving = false;
                 saveBtn.disabled = false;
@@ -1275,17 +1389,27 @@
                 .trim();
         }
 
-        // Helper function to normalize reg for comparison (remove spaces)
+        // Helper function to normalize reg (remove spaces only, keep ! and numbers for suffix matching)
+        // This matches the expenses logic - only removes spaces, preserves ! and numbers
         function normalizeRegForComparison(reg) {
-            return (reg || '').toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9]/g, '');
+            return (reg || '').toUpperCase().replace(/\s+/g, '');
+        }
+
+        // Helper function to extract base reg (remove ! suffix for comparison)
+        function getBaseReg(reg) {
+            // Remove trailing exclamation marks (e.g., "REG!!!" -> "REG", "REG!" -> "REG")
+            const normalized = normalizeRegForComparison(reg);
+            return normalized.replace(/!+$/, '');
         }
 
         // Helper function to check if a registration exists and add ! suffix if needed
         async function getUniqueWaitTimeReg(baseReg) {
-            const normalizedReg = normalizeRegForComparison(baseReg);
+            // Normalize base reg (remove spaces only)
+            const normalizedBaseReg = normalizeRegForComparison(baseReg);
+            const baseRegOnly = getBaseReg(baseReg);
             
             if (!currentUser || !currentUser.officeId) {
-                return normalizedReg;
+                return normalizedBaseReg;
             }
 
             // Check if any wait time with this officeId has this exact reg (pending or processed within 7 days)
@@ -1299,15 +1423,17 @@
                 waitTimesSnapshot = await window.getDocs(waitTimesQuery);
             } catch (error) {
                 console.error('Error checking for duplicate wait times:', error);
-                return normalizedReg; // Return as-is if we can't check
+                return normalizedBaseReg; // Return as-is if we can't check
             }
 
             const now = Date.now();
+            // Store full registrations (with ! suffix if present) for exact matching
             const existingRegs = new Set();
             
             waitTimesSnapshot.docs.forEach(doc => {
                 const data = doc.data();
                 if (data.registration) {
+                    // Normalize the stored registration (keep full reg with ! suffix for comparison)
                     const reg = normalizeRegForComparison(data.registration);
                     
                     // Check if this wait time is pending or processed within 7 days
@@ -1319,25 +1445,39 @@
                     })();
                     
                     if (isRelevant) {
+                        // Store the full normalized reg (including ! suffix if present)
                         existingRegs.add(reg);
                     }
                 }
             });
 
-            // If the exact reg doesn't exist, return it
-            if (!existingRegs.has(normalizedReg)) {
-                return normalizedReg;
+            // Check if the base reg (without suffix) exists
+            const baseRegExists = Array.from(existingRegs).some(reg => getBaseReg(reg) === baseRegOnly);
+            
+            // If the exact base reg doesn't exist, return it
+            if (!baseRegExists) {
+                return normalizedBaseReg;
             }
 
-            // Otherwise, add ! (and incrementing suffix if needed)
-            let counter = 1;
+            // Otherwise, add ! (and incrementing exclamation marks if needed)
+            // Format: REG, REG!, REG!!, REG!!!, etc.
+            let exclamationCount = 1;
             while (true) {
-                const suffix = counter === 1 ? '!' : `!${counter}`;
-                const newReg = `${normalizedReg}${suffix}`;
-                if (!existingRegs.has(newReg)) {
+                const suffix = '!'.repeat(exclamationCount);
+                const newReg = `${baseRegOnly}${suffix}`;
+                const normalizedNewReg = normalizeRegForComparison(newReg);
+                
+                // Check if this exact reg (with suffix) already exists
+                if (!existingRegs.has(normalizedNewReg)) {
                     return newReg;
                 }
-                counter++;
+                exclamationCount++;
+                
+                // Safety limit to prevent infinite loop
+                if (exclamationCount > 100) {
+                    console.error('Too many duplicate registrations, using timestamp suffix');
+                    return `${baseRegOnly}!${Date.now()}`;
+                }
             }
         }
 

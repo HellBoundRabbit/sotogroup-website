@@ -206,13 +206,15 @@
 </head>
 <body class="bg-black text-white" style='font-family: Inter, "Noto Sans", sans-serif;'>
     <!-- Upload Banner (shown when uploading) -->
-    <div id="uploadBanner" class="hidden fixed top-0 left-0 right-0 bg-red-600 text-white z-[100] shadow-lg">
-        <div class="flex items-center justify-center gap-3 px-4 py-3">
+    <div id="uploadBanner" class="hidden fixed top-0 left-0 right-0 bg-orange-600 text-white z-[100] shadow-lg">
+        <div class="flex items-center justify-center gap-3 px-4 py-2">
             <span class="material-symbols-outlined animate-pulse">cloud_upload</span>
-            <div class="flex flex-col items-center">
+            <div class="flex flex-col items-center flex-1">
                 <span id="uploadBannerText" class="font-semibold text-sm">Uploading expenses...</span>
-                <div class="flex items-center gap-2 text-xs opacity-90">
-                    <span>Uploads continuing in background</span>
+                <span id="uploadBannerSubtitle" class="text-xs opacity-90">Uploading photos...</span>
+                <!-- Progress bar -->
+                <div id="uploadProgressBar" class="w-full max-w-xs mt-2 h-1.5 bg-white bg-opacity-20 rounded-full overflow-hidden">
+                    <div id="uploadProgressFill" class="h-full bg-white transition-all duration-300" style="width: 0%"></div>
                 </div>
             </div>
         </div>
@@ -410,7 +412,26 @@
                 checkPWAInstallation();
 
                 // Check for pending uploads and show banner if needed
-                checkPendingUploads();
+                await checkPendingUploads();
+                
+                // Trigger Service Worker to process any pending uploads
+                if (navigator.onLine && window.expenseUploadQueue) {
+                    try {
+                        await window.expenseUploadQueue.getAuthTokenAndProcessQueue();
+                    } catch (error) {
+                        console.warn('[Driver Portal] Failed to trigger upload processing:', error);
+                    }
+                }
+                
+                // Set up periodic status updates while uploading
+                if (window.uploadStatusCheckInterval) {
+                    clearInterval(window.uploadStatusCheckInterval);
+                }
+                window.uploadStatusCheckInterval = setInterval(async () => {
+                    if (window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
+                        await window.expenseUploadQueue.updateGlobalUploadStatus();
+                    }
+                }, 3000); // Check every 3 seconds
 
                 // Listen for Service Worker messages (auth token requests)
                 if ('serviceWorker' in navigator && navigator.serviceWorker) {
@@ -640,6 +661,13 @@
                 console.warn('[Driver Portal] Error checking pending uploads:', error);
             }
         }
+        
+        // Clean up interval when page unloads
+        window.addEventListener('beforeunload', () => {
+            if (window.uploadStatusCheckInterval) {
+                clearInterval(window.uploadStatusCheckInterval);
+            }
+        });
 
         // Check if app is running as PWA and prompt installation if not
         function checkPWAInstallation() {
