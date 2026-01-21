@@ -360,6 +360,204 @@ async function processUploadQueue(authToken) {
   });
 }
 
+// Process wait time upload queue
+async function processWaitTimeQueue(authToken) {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    
+    request.onsuccess = async () => {
+      const db = request.result;
+      
+      try {
+        // Reset any tasks stuck in "uploading" state for more than 5 minutes
+        const resetTx = db.transaction(['waitTimeUploadQueue'], 'readwrite');
+        const resetStore = resetTx.objectStore('waitTimeUploadQueue');
+        const resetStatusIndex = resetStore.index('status');
+        const stuckRequest = resetStatusIndex.getAll('uploading');
+        
+        const stuckTasks = await new Promise((res, rej) => {
+          stuckRequest.onsuccess = () => res(stuckRequest.result || []);
+          stuckRequest.onerror = () => rej(stuckRequest.error);
+        });
+
+        const now = Date.now();
+        const FIVE_MINUTES = 5 * 60 * 1000;
+        for (const stuckTask of stuckTasks) {
+          if (stuckTask.updatedAt && (now - stuckTask.updatedAt) > FIVE_MINUTES) {
+            // Reset stuck task back to pending
+            stuckTask.status = 'pending';
+            stuckTask.updatedAt = now;
+            await new Promise((res, rej) => {
+              const req = resetStore.put(stuckTask);
+              req.onsuccess = () => res();
+              req.onerror = () => rej(req.error);
+            });
+            console.log(`[SW] Reset stuck wait time upload task: ${stuckTask.uploadId}`);
+          }
+        }
+
+        // Get all pending upload tasks
+        const transaction = db.transaction(['waitTimeUploadQueue'], 'readonly');
+        const store = transaction.objectStore('waitTimeUploadQueue');
+        const statusIndex = store.index('status');
+        const pendingRequest = statusIndex.getAll('pending');
+        
+        const tasks = await new Promise((res, rej) => {
+          pendingRequest.onsuccess = () => res(pendingRequest.result || []);
+          pendingRequest.onerror = () => rej(pendingRequest.error);
+        });
+
+        if (tasks.length === 0) {
+          resolve({ processed: 0, failed: 0 });
+          return;
+        }
+
+        let processed = 0;
+        let failed = 0;
+
+        // Process tasks one at a time
+        for (const task of tasks) {
+          try {
+            // Mark as uploading
+            const updateTx = db.transaction(['waitTimeUploadQueue'], 'readwrite');
+            const updateStore = updateTx.objectStore('waitTimeUploadQueue');
+            task.status = 'uploading';
+            task.updatedAt = Date.now();
+            await new Promise((res, rej) => {
+              const req = updateStore.put(task);
+              req.onsuccess = () => res();
+              req.onerror = () => rej(req.error);
+            });
+
+            // Use Firebase REST API to create/update wait time document
+            const waitTimeData = task.waitTimeData;
+            const firestoreUrl = task.waitTimeDocId
+              ? `https://firestore.googleapis.com/v1/projects/soto-routes/databases/(default)/documents/waitTimes/${task.waitTimeDocId}`
+              : `https://firestore.googleapis.com/v1/projects/soto-routes/databases/(default)/documents/waitTimes`;
+
+            // Handle createdAt - could be number (timestamp), Date object, or Firestore timestamp
+            let createdAtValue;
+            if (waitTimeData.createdAt) {
+              if (typeof waitTimeData.createdAt === 'number') {
+                createdAtValue = new Date(waitTimeData.createdAt).toISOString();
+              } else if (waitTimeData.createdAt.toDate && typeof waitTimeData.createdAt.toDate === 'function') {
+                // Firestore timestamp object
+                createdAtValue = waitTimeData.createdAt.toDate().toISOString();
+              } else if (waitTimeData.createdAt instanceof Date) {
+                createdAtValue = waitTimeData.createdAt.toISOString();
+              } else if (typeof waitTimeData.createdAt === 'string') {
+                createdAtValue = new Date(waitTimeData.createdAt).toISOString();
+              } else {
+                createdAtValue = new Date().toISOString();
+              }
+            } else {
+              createdAtValue = new Date().toISOString();
+            }
+
+            const firestoreFields = {
+              driverId: { stringValue: waitTimeData.driverId || '' },
+              driverEmail: { stringValue: waitTimeData.driverEmail || '' },
+              driverName: { stringValue: waitTimeData.driverName || '' },
+              officeId: { stringValue: waitTimeData.officeId || '' },
+              registration: { stringValue: waitTimeData.registration || '' },
+              category: { stringValue: waitTimeData.category || '' },
+              categoryLabel: { stringValue: waitTimeData.categoryLabel || '' },
+              hours: { integerValue: String(waitTimeData.hours || 0) },
+              minutes: { integerValue: String(waitTimeData.minutes || 0) },
+              totalMinutes: { integerValue: String(waitTimeData.totalMinutes || 0) },
+              notes: { stringValue: waitTimeData.notes || '' },
+              processingStatus: { stringValue: waitTimeData.processingStatus || 'pending' },
+              createdAt: { timestampValue: createdAtValue },
+              updatedAt: { timestampValue: new Date().toISOString() }
+            };
+
+            // Add optional fields if they exist
+            if (waitTimeData.firstName) {
+              firestoreFields.firstName = { stringValue: waitTimeData.firstName };
+            }
+            if (waitTimeData.lastName) {
+              firestoreFields.lastName = { stringValue: waitTimeData.lastName };
+            }
+
+            const response = await fetch(firestoreUrl, {
+              method: task.waitTimeDocId ? 'PATCH' : 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+              },
+              body: JSON.stringify({
+                fields: firestoreFields
+              })
+            });
+
+            if (!response.ok) {
+              throw new Error(`Firestore API error: ${response.status} ${response.statusText}`);
+            }
+
+            const firestoreDoc = await response.json();
+            const waitTimeDocId = task.waitTimeDocId || firestoreDoc.name.split('/').pop();
+
+            // Mark as completed
+            const completeTx = db.transaction(['waitTimeUploadQueue'], 'readwrite');
+            const completeStore = completeTx.objectStore('waitTimeUploadQueue');
+            task.status = 'completed';
+            task.waitTimeDocId = waitTimeDocId;
+            task.completedAt = Date.now();
+            task.updatedAt = Date.now();
+            
+            await new Promise((res, rej) => {
+              const req = completeStore.put(task);
+              req.onsuccess = () => res();
+              req.onerror = () => rej(req.error);
+            });
+
+            processed++;
+          } catch (error) {
+            console.error('[SW] Wait time upload task failed:', error);
+            
+            // Update task with error
+            const errorTx = db.transaction(['waitTimeUploadQueue'], 'readwrite');
+            const errorStore = errorTx.objectStore('waitTimeUploadQueue');
+            task.status = 'pending'; // Retry next time
+            task.retries = (task.retries || 0) + 1;
+            task.error = error.message;
+            task.updatedAt = Date.now();
+            
+            // Max retries - mark as failed after 5 attempts
+            if (task.retries >= 5) {
+              task.status = 'failed';
+            }
+            
+            await new Promise((res, rej) => {
+              const req = errorStore.put(task);
+              req.onsuccess = () => res();
+              req.onerror = () => rej(req.error);
+            });
+
+            failed++;
+          }
+        }
+
+        resolve({ processed, failed, total: tasks.length });
+      } catch (error) {
+        reject(error);
+      }
+    };
+
+    request.onerror = () => reject(request.error);
+    request.onupgradeneeded = () => {
+      // Database upgrade handled by main thread
+      const db = request.result;
+      if (!db.objectStoreNames.contains('waitTimeUploadQueue')) {
+        const waitTimeUploadStore = db.createObjectStore('waitTimeUploadQueue', { keyPath: 'uploadId' });
+        waitTimeUploadStore.createIndex('status', 'status', { unique: false });
+        waitTimeUploadStore.createIndex('waitTimeDocId', 'waitTimeDocId', { unique: false });
+      }
+      resolve({ processed: 0, failed: 0 });
+    };
+  });
+}
+
 // Request auth token from any active client
 async function requestAuthToken() {
   try {
@@ -399,17 +597,28 @@ async function checkAndProcessQueue() {
     // Request auth token from active client
     const authToken = await requestAuthToken();
     if (!authToken) {
-      console.log('[SW] No auth token available, skipping upload processing');
+      // Silently skip if no auth token - this is normal when page hasn't authenticated yet
       return;
     }
     
-    const result = await processUploadQueue(authToken);
-    console.log('[SW] Queue processed:', result);
+    // Process expense upload queue
+    const expenseResult = await processUploadQueue(authToken);
+    console.log('[SW] Expense queue processed:', expenseResult);
+    
+    // Process wait time upload queue
+    const waitTimeResult = await processWaitTimeQueue(authToken);
+    console.log('[SW] Wait time queue processed:', waitTimeResult);
     
     // Notify all clients about upload status change
     const clients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
     clients.forEach(client => {
-      client.postMessage({ type: 'upload-status-changed', result });
+      client.postMessage({ 
+        type: 'upload-status-changed', 
+        result: {
+          expenses: expenseResult,
+          waitTimes: waitTimeResult
+        }
+      });
     });
   } catch (error) {
     console.error('[SW] Error processing queue:', error);
