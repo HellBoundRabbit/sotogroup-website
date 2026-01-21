@@ -7,7 +7,7 @@
 class ExpenseDraftDB {
     constructor() {
         this.dbName = 'ExpenseDraftsDB';
-        this.version = 2; // Updated to support new expenseUploadQueue store
+        this.version = 3; // Updated to support waitTimeUploadQueue store
         this.db = null;
     }
 
@@ -84,6 +84,12 @@ class ExpenseDraftDB {
                     expenseUploadStore.createIndex('batchId', 'batchId', { unique: false });
                     expenseUploadStore.createIndex('status', 'status', { unique: false });
                     expenseUploadStore.createIndex('expenseDocId', 'expenseDocId', { unique: false });
+                }
+                // Wait time upload queue store
+                if (!db.objectStoreNames.contains('waitTimeUploadQueue')) {
+                    const waitTimeUploadStore = db.createObjectStore('waitTimeUploadQueue', { keyPath: 'uploadId' });
+                    waitTimeUploadStore.createIndex('status', 'status', { unique: false });
+                    waitTimeUploadStore.createIndex('waitTimeDocId', 'waitTimeDocId', { unique: false });
                 }
             };
         });
@@ -1489,10 +1495,270 @@ class ExpenseUploadQueue {
     }
 }
 
+// Wait Time Upload Queue (similar to ExpenseUploadQueue but simpler - no photos)
+class WaitTimeUploadQueue {
+    constructor() {
+        this.db = null;
+    }
+
+    async init() {
+        if (!window.expenseDraftDB) {
+            window.expenseDraftDB = new ExpenseDraftDB();
+        }
+        await window.expenseDraftDB.init();
+        
+        // Wait for database to be available
+        let retries = 0;
+        while (!window.expenseDraftDB.db && retries < 20) {
+            await new Promise(resolve => setTimeout(resolve, 50));
+            retries++;
+        }
+        
+        if (!window.expenseDraftDB.db) {
+            throw new Error('Failed to initialize IndexedDB');
+        }
+        
+        this.db = window.expenseDraftDB.db;
+    }
+
+    /**
+     * Write-first: Save wait time data to IndexedDB immediately
+     * Service Worker will upload to Firestore when online
+     */
+    async enqueueWaitTimeUpload(waitTimeData, waitTimeDocId = null) {
+        await this.init();
+        if (!this.db) {
+            throw new Error('Database not initialized');
+        }
+
+        const uploadId = `waittime_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const timestamp = Date.now();
+        const uid = window.currentUser?.uid || null;
+
+        // Create upload task record
+        const uploadTask = {
+            uploadId: uploadId,
+            waitTimeDocId: waitTimeDocId, // Firestore wait time document ID (if already created)
+            waitTimeData: waitTimeData, // All wait time values
+            uid: uid,
+            timestamp: timestamp,
+            status: 'pending', // Will be 'pending' -> 'uploading' -> 'completed'
+            retries: 0,
+            error: null,
+            createdAt: timestamp,
+            updatedAt: timestamp
+        };
+
+        // Save upload task to waitTimeUploadQueue
+        const taskTx = this.db.transaction(['waitTimeUploadQueue'], 'readwrite');
+        await new Promise((resolve, reject) => {
+            const req = taskTx.objectStore('waitTimeUploadQueue').put(uploadTask);
+            req.onsuccess = () => resolve();
+            req.onerror = () => reject(req.error);
+        });
+
+        console.log('[WaitTimeUploadQueue] Enqueued wait time upload', { uploadId, waitTimeDocId });
+        
+        // Update banner immediately
+        await this.updateGlobalUploadStatus();
+        
+        // Trigger service worker to process queue if online
+        if (navigator.onLine && 'serviceWorker' in navigator) {
+            try {
+                const registration = await navigator.serviceWorker.ready;
+                if (registration.active) {
+                    // Get Firebase Auth token to pass to Service Worker
+                    let authToken = null;
+                    try {
+                        if (window.auth && window.auth.currentUser) {
+                            authToken = await window.auth.currentUser.getIdToken();
+                        }
+                    } catch (tokenError) {
+                        console.warn('[WaitTimeUploadQueue] Failed to get auth token:', tokenError);
+                    }
+                    
+                    registration.active.postMessage({ 
+                        type: 'process-wait-time-queue',
+                        data: { authToken: authToken }
+                    });
+                }
+            } catch (error) {
+                console.warn('[WaitTimeUploadQueue] Failed to notify service worker:', error);
+            }
+        }
+
+        return uploadId;
+    }
+
+    /**
+     * Get pending upload count for banner
+     */
+    async getPendingCount() {
+        await this.init();
+        if (!this.db) return { waitTimeCount: 0 };
+
+        const tx = this.db.transaction(['waitTimeUploadQueue'], 'readonly');
+        const store = tx.objectStore('waitTimeUploadQueue');
+        const statusIndex = store.index('status');
+        
+        const pending = await new Promise((resolve) => {
+            const req = statusIndex.count(IDBKeyRange.only('pending'));
+            req.onsuccess = () => resolve(req.result || 0);
+            req.onerror = () => resolve(0);
+        });
+
+        const uploading = await new Promise((resolve) => {
+            const req = statusIndex.count(IDBKeyRange.only('uploading'));
+            req.onsuccess = () => resolve(req.result || 0);
+            req.onerror = () => resolve(0);
+        });
+
+        return {
+            waitTimeCount: pending + uploading
+        };
+    }
+
+    /**
+     * Update global upload status banner
+     */
+    async updateGlobalUploadStatus() {
+        await this.init();
+        if (!this.db) {
+            this.hideUploadBanner();
+            return;
+        }
+
+        // Skip if user is typing
+        const activeElement = document.activeElement;
+        const isTyping = (typeof window.isUserTyping !== 'undefined' && window.isUserTyping) ||
+            (activeElement && (
+                activeElement.tagName === 'INPUT' || 
+                activeElement.tagName === 'TEXTAREA'
+            ));
+        
+        if (isTyping) {
+            return;
+        }
+
+        const pendingCounts = await this.getPendingCount();
+        const { waitTimeCount } = pendingCounts;
+        
+        const isUploading = waitTimeCount > 0;
+
+        const banner = document.getElementById('uploadBanner');
+        const bannerText = document.getElementById('uploadBannerText');
+        const bannerSubtitle = document.getElementById('uploadBannerSubtitle');
+        const progressFill = document.getElementById('uploadProgressFill');
+        const topNav = document.getElementById('topNav');
+        const mainContent = document.getElementById('mainContent');
+
+        const wasUploading = banner && !banner.classList.contains('hidden');
+
+        if (isUploading) {
+            if (banner) {
+                banner.classList.remove('hidden');
+            }
+            if (topNav) {
+                topNav.style.marginTop = '56px';
+            }
+            if (mainContent) {
+                mainContent.style.marginTop = '0';
+            }
+            
+            // Update banner text
+            if (bannerText) {
+                if (waitTimeCount > 0) {
+                    bannerText.textContent = `Uploading ${waitTimeCount} Wait Time${waitTimeCount === 1 ? '' : 's'}`;
+                } else {
+                    bannerText.textContent = 'Uploading wait times...';
+                }
+            }
+            
+            // Update subtitle
+            if (bannerSubtitle) {
+                bannerSubtitle.textContent = 'Saving to server...';
+            }
+            
+            // Update progress bar
+            if (progressFill) {
+                progressFill.style.width = '50%'; // Indeterminate progress
+            }
+        } else {
+            this.hideUploadBanner();
+        }
+    }
+
+    hideUploadBanner() {
+        const banner = document.getElementById('uploadBanner');
+        const progressFill = document.getElementById('uploadProgressFill');
+        const topNav = document.getElementById('topNav');
+        const mainContent = document.getElementById('mainContent');
+        
+        if (banner) {
+            banner.classList.add('hidden');
+        }
+        if (progressFill) {
+            progressFill.style.width = '0%';
+        }
+        if (topNav) {
+            topNav.style.marginTop = '0';
+        }
+        if (mainContent) {
+            mainContent.style.marginTop = '0';
+        }
+    }
+
+    /**
+     * Get auth token and trigger Service Worker to process queue
+     */
+    async getAuthTokenAndProcessQueue() {
+        if (!navigator.onLine || !('serviceWorker' in navigator)) {
+            return;
+        }
+
+        try {
+            const registration = await navigator.serviceWorker.ready;
+            if (!registration.active) {
+                console.warn('[WaitTimeUploadQueue] Service Worker not active');
+                return;
+            }
+
+            // Get Firebase Auth token
+            let authToken = null;
+            try {
+                if (window.auth && window.auth.currentUser) {
+                    authToken = await window.auth.currentUser.getIdToken();
+                    console.log('[WaitTimeUploadQueue] Got auth token, triggering Service Worker to process queue');
+                } else {
+                    console.warn('[WaitTimeUploadQueue] No authenticated user');
+                    return;
+                }
+            } catch (tokenError) {
+                console.warn('[WaitTimeUploadQueue] Failed to get auth token:', tokenError);
+                return;
+            }
+
+            // Send message to Service Worker to process queue
+            registration.active.postMessage(
+                { 
+                    type: 'process-wait-time-queue',
+                    data: { authToken: authToken }
+                }
+            );
+
+            // Also update UI status
+            await this.updateGlobalUploadStatus();
+        } catch (error) {
+            console.error('[WaitTimeUploadQueue] Failed to trigger Service Worker:', error);
+        }
+    }
+}
+
 // Initialize storage systems
 window.expenseDraftDB = new ExpenseDraftDB();
 // Old UploadQueue removed - replaced by ExpenseUploadQueue with Service Worker
 window.expenseUploadQueue = new ExpenseUploadQueue(); // New write-first system with Service Worker
+window.waitTimeUploadQueue = new WaitTimeUploadQueue(); // Wait time upload queue
 
 // Network state monitoring
 window.addEventListener('online', async () => {
