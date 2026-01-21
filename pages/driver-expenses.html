@@ -2839,7 +2839,7 @@
                 const savedBatch = await syncDraftToFirestore(currentBatch, 'draft');
                 
                 // Ensure currentBatch.id is updated from syncDraftToFirestore
-                if (savedBatch && savedBatch.id && !currentBatch.id) {
+                if (savedBatch && savedBatch.id) {
                     currentBatch.id = savedBatch.id;
                     window.currentBatch = currentBatch;
                 }
@@ -2852,10 +2852,22 @@
                 }
                 }
 
+                // Small delay to ensure Firestore has indexed the new batch (especially important when no expenses)
+                // This gives Firestore time to make the document available in queries
+                await new Promise(resolve => setTimeout(resolve, 500));
+
                 // Refresh batches list immediately to show draft expense (greyed out if uploading)
                 if (typeof window.loadExpenseBatches === 'function') {
                     await window.loadExpenseBatches();
                 }
+                
+                // If batch still doesn't show up, try one more time after a longer delay
+                // This handles Firestore eventual consistency edge cases
+                setTimeout(async () => {
+                    if (typeof window.loadExpenseBatches === 'function') {
+                        await window.loadExpenseBatches();
+                    }
+                }, 2000);
 
                 // No success message - banner is enough
                 currentBatch = null;
