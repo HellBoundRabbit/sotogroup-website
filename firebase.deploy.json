@@ -8,6 +8,22 @@
   "storage": {
     "rules": "miscellaneous-development-files/storage.rules"
   },
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "firebase.deploy.json",
+      "**/.*",
+      "**/node_modules/**",
+      "miscellaneous-development-files/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/login",
+        "destination": "/pages/soto-routes-login.html"
+      }
+    ]
+  },
   "functions": [
     {
       "source": "functions",
