@@ -292,6 +292,12 @@
                             <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Original Wait Time</p>
                             <p id="processOriginalDuration" class="text-2xl font-semibold text-white">--</p>
                         </div>
+                        <div id="processDriverNotesSection" class="hidden">
+                            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Driver Notes</p>
+                            <div class="bg-[#1f2730] border border-[#2f3944] rounded-xl px-4 py-3">
+                                <p id="processDriverNotes" class="text-sm text-gray-200 leading-relaxed">--</p>
+                            </div>
+                        </div>
                         <div class="grid gap-4 md:grid-cols-2">
                             <div>
                                 <label class="block text-sm text-gray-300 mb-2">Reduce by Hours</label>
@@ -366,12 +372,22 @@
 <!-- Return Modal -->
 <div id="returnModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-[55]">
     <div class="min-h-screen px-4 py-8 flex items-center justify-center">
-        <div class="bg-[#1a1f24] rounded-lg w-full max-w-lg">
+        <div class="bg-[#1a1f24] rounded-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div class="border-b border-gray-800 px-6 py-4">
                 <h2 class="text-xl font-semibold">Return Wait Time</h2>
             </div>
             <div class="p-6">
-                <label class="text-sm text-gray-400 block mb-2">Reason for Return</label>
+                <!-- Conversation History -->
+                <div id="returnConversationHistory" class="mb-6 space-y-3">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+                
+                <label class="text-sm text-gray-400 block mb-2">
+                    ${(() => {
+                        // This will be updated dynamically, but default text
+                        return 'Reason for Return';
+                    })()}
+                </label>
                 <textarea 
                     id="returnReason" 
                     rows="4" 
@@ -788,15 +804,48 @@
 
                 ${item.notes ? `
                 <div class="mt-4 bg-[#1b222b] border border-[#27313c] rounded-xl p-4">
-                    <p class="text-xs font-semibold text-gray-400 mb-1">NOTES</p>
+                    <p class="text-xs font-semibold text-gray-400 mb-1">ORIGINAL NOTES</p>
                     <p class="text-sm text-gray-200 leading-relaxed">${escapeHtml(item.notes)}</p>
                 </div>
                 ` : ''}
                 
-                ${item.returnNotes ? `
+                ${item.returnNotes1 ? `
                 <div class="mt-4 bg-red-500/10 border border-red-500/30 rounded-xl p-4">
-                    <p class="text-xs font-semibold text-red-400 mb-1">RETURN NOTES</p>
+                    <p class="text-xs font-semibold text-red-400 mb-1">OFFICE RETURN MESSAGE 1</p>
+                    <p class="text-sm text-red-300 leading-relaxed">${escapeHtml(item.returnNotes1)}</p>
+                </div>
+                ` : item.returnNotes ? `
+                <div class="mt-4 bg-red-500/10 border border-red-500/30 rounded-xl p-4">
+                    <p class="text-xs font-semibold text-red-400 mb-1">OFFICE RETURN MESSAGE 1</p>
                     <p class="text-sm text-red-300 leading-relaxed">${escapeHtml(item.returnNotes)}</p>
+                </div>
+                ` : ''}
+                
+                ${item.appealNotes1 ? `
+                <div class="mt-4 bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
+                    <p class="text-xs font-semibold text-blue-400 mb-1">DRIVER APPEAL MESSAGE 1</p>
+                    <p class="text-sm text-blue-300 leading-relaxed">${escapeHtml(item.appealNotes1)}</p>
+                </div>
+                ` : ''}
+                
+                ${item.returnNotes2 ? `
+                <div class="mt-4 bg-red-500/10 border border-red-500/30 rounded-xl p-4">
+                    <p class="text-xs font-semibold text-red-400 mb-1">OFFICE RETURN MESSAGE 2</p>
+                    <p class="text-sm text-red-300 leading-relaxed">${escapeHtml(item.returnNotes2)}</p>
+                </div>
+                ` : ''}
+                
+                ${item.appealNotes2 ? `
+                <div class="mt-4 bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
+                    <p class="text-xs font-semibold text-blue-400 mb-1">DRIVER APPEAL MESSAGE 2</p>
+                    <p class="text-sm text-blue-300 leading-relaxed">${escapeHtml(item.appealNotes2)}</p>
+                </div>
+                ` : ''}
+                
+                ${item.returnNotes3 ? `
+                <div class="mt-4 bg-red-500/10 border border-red-500/30 rounded-xl p-4">
+                    <p class="text-xs font-semibold text-red-400 mb-1">OFFICE RETURN MESSAGE 3</p>
+                    <p class="text-sm text-red-300 leading-relaxed">${escapeHtml(item.returnNotes3)}</p>
                 </div>
                 ` : ''}
 
@@ -935,6 +984,19 @@
 
         const originalLabel = document.getElementById('processOriginalDuration');
         if (originalLabel) originalLabel.textContent = formatDuration(originalMinutes);
+
+        // Update driver notes display
+        const driverNotesSection = document.getElementById('processDriverNotesSection');
+        const driverNotesText = document.getElementById('processDriverNotes');
+        if (driverNotesSection && driverNotesText && waitTimeToProcess) {
+            const notes = waitTimeToProcess.notes || '';
+            if (notes.trim()) {
+                driverNotesText.textContent = notes;
+                driverNotesSection.classList.remove('hidden');
+            } else {
+                driverNotesSection.classList.add('hidden');
+            }
+        }
 
         const resultLabel = document.getElementById('processResultDuration');
         if (resultLabel) resultLabel.textContent = formatDuration(updatedMinutes);
@@ -1165,6 +1227,89 @@
             return;
         }
         
+        // Populate conversation history
+        const historyContainer = document.getElementById('returnConversationHistory');
+        if (historyContainer) {
+            let historyHTML = '';
+            
+            // Original notes
+            if (waitTimeToReturn.notes) {
+                historyHTML += `
+                    <div class="bg-[#1b222b] border border-[#27313c] rounded-xl p-3">
+                        <p class="text-xs font-semibold text-gray-400 mb-1">ORIGINAL NOTES</p>
+                        <p class="text-sm text-gray-200 leading-relaxed">${escapeHtml(waitTimeToReturn.notes)}</p>
+                    </div>
+                `;
+            }
+            
+            // Return message 1
+            if (waitTimeToReturn.returnNotes1 || waitTimeToReturn.returnNotes) {
+                const returnMsg1 = waitTimeToReturn.returnNotes1 || waitTimeToReturn.returnNotes;
+                historyHTML += `
+                    <div class="bg-red-500/10 border border-red-500/30 rounded-xl p-3">
+                        <p class="text-xs font-semibold text-red-400 mb-1">OFFICE RETURN MESSAGE 1</p>
+                        <p class="text-sm text-red-300 leading-relaxed">${escapeHtml(returnMsg1)}</p>
+                    </div>
+                `;
+            }
+            
+            // Appeal message 1
+            if (waitTimeToReturn.appealNotes1) {
+                historyHTML += `
+                    <div class="bg-blue-500/10 border border-blue-500/30 rounded-xl p-3">
+                        <p class="text-xs font-semibold text-blue-400 mb-1">DRIVER APPEAL MESSAGE 1</p>
+                        <p class="text-sm text-blue-300 leading-relaxed">${escapeHtml(waitTimeToReturn.appealNotes1)}</p>
+                    </div>
+                `;
+            }
+            
+            // Return message 2
+            if (waitTimeToReturn.returnNotes2) {
+                historyHTML += `
+                    <div class="bg-red-500/10 border border-red-500/30 rounded-xl p-3">
+                        <p class="text-xs font-semibold text-red-400 mb-1">OFFICE RETURN MESSAGE 2</p>
+                        <p class="text-sm text-red-300 leading-relaxed">${escapeHtml(waitTimeToReturn.returnNotes2)}</p>
+                    </div>
+                `;
+            }
+            
+            // Appeal message 2
+            if (waitTimeToReturn.appealNotes2) {
+                historyHTML += `
+                    <div class="bg-blue-500/10 border border-blue-500/30 rounded-xl p-3">
+                        <p class="text-xs font-semibold text-blue-400 mb-1">DRIVER APPEAL MESSAGE 2</p>
+                        <p class="text-sm text-blue-300 leading-relaxed">${escapeHtml(waitTimeToReturn.appealNotes2)}</p>
+                    </div>
+                `;
+            }
+            
+            // Return message 3
+            if (waitTimeToReturn.returnNotes3) {
+                historyHTML += `
+                    <div class="bg-red-500/10 border border-red-500/30 rounded-xl p-3">
+                        <p class="text-xs font-semibold text-red-400 mb-1">OFFICE RETURN MESSAGE 3</p>
+                        <p class="text-sm text-red-300 leading-relaxed">${escapeHtml(waitTimeToReturn.returnNotes3)}</p>
+                    </div>
+                `;
+            }
+            
+            historyContainer.innerHTML = historyHTML || '<p class="text-sm text-gray-400">No previous messages</p>';
+        }
+        
+        // Update label to show if this is first, second, or third return
+        const returnLabel = document.querySelector('#returnModal label');
+        if (returnLabel && waitTimeToReturn) {
+            const hasFirstReturn = !!(waitTimeToReturn.returnNotes1 || waitTimeToReturn.returnNotes);
+            const hasSecondReturn = !!waitTimeToReturn.returnNotes2;
+            if (hasFirstReturn && hasSecondReturn) {
+                returnLabel.textContent = 'Return Message 3';
+            } else if (hasFirstReturn) {
+                returnLabel.textContent = 'Return Message 2';
+            } else {
+                returnLabel.textContent = 'Return Message 1';
+            }
+        }
+        
         const returnReasonInput = document.getElementById('returnReason');
         if (returnReasonInput) {
             returnReasonInput.value = '';
@@ -1369,13 +1514,45 @@
             const waitTimeRef = window.doc(window.db, 'waitTimes', waitTimeToReturn.id);
             console.log('[RETURN] Wait time reference:', waitTimeRef);
             
-            await window.updateDoc(waitTimeRef, {
+            // Check if this is the first, second, or third return
+            const hasFirstReturn = !!(waitTimeToReturn.returnNotes1 || waitTimeToReturn.returnNotes);
+            const hasSecondReturn = !!waitTimeToReturn.returnNotes2;
+            const hasThirdReturn = !!waitTimeToReturn.returnNotes3;
+            const isSecondReturn = hasFirstReturn && !hasSecondReturn;
+            const isThirdReturn = hasFirstReturn && hasSecondReturn && !hasThirdReturn;
+            
+            const updateData = {
                 processingStatus: 'returned',
-                returnNotes: reason,
                 returnedAt: window.serverTimestamp(),
                 returnedBy: currentUser.uid,
                 updatedAt: window.serverTimestamp()
-            });
+            };
+            
+            if (isThirdReturn) {
+                // Third return - use returnNotes3
+                updateData.returnNotes3 = reason;
+            } else if (isSecondReturn) {
+                // Second return - use returnNotes2
+                updateData.returnNotes2 = reason;
+            } else if (!hasFirstReturn) {
+                // First return - use returnNotes1
+                // Migrate old returnNotes to returnNotes1 if it exists, otherwise use new reason
+                if (waitTimeToReturn.returnNotes && !waitTimeToReturn.returnNotes1) {
+                    // Migrate old returnNotes to returnNotes1
+                    updateData.returnNotes1 = waitTimeToReturn.returnNotes;
+                    updateData.returnNotes = null; // Clear old field for backward compatibility
+                } else {
+                    // New first return
+                    updateData.returnNotes1 = reason;
+                }
+            } else {
+                // Already has all three returns - this shouldn't happen, but handle gracefully
+                console.warn('[RETURN] Wait time already has all return messages');
+                notifyWarning('This wait time has already been returned three times. Cannot return again.');
+                return;
+            }
+            
+            await window.updateDoc(waitTimeRef, updateData);
 
             console.log('[RETURN] Wait time successfully returned');
             notifySuccess('Wait time returned to the driver.');

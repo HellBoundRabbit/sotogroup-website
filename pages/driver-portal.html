@@ -179,6 +179,25 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
+        .home-button .feature-button {
+            box-shadow: 0 0 0 2px rgb(0, 225, 255), 0 0 0 4px rgb(186, 66, 255);
+            border-radius: 12px;
+        }
+        .account-view .portal-buttons {
+            display: none;
+        }
+        .account-view .account-buttons {
+            display: flex;
+        }
+        .portal-view .account-buttons {
+            display: none;
+        }
+        .portal-view .home-button {
+            display: none;
+        }
+        .account-view .account-button {
+            display: none;
+        }
         .features-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -232,7 +251,7 @@
     </div>
 
     <!-- Main Content -->
-    <div class="min-h-screen flex flex-col px-6 py-8">
+    <div class="min-h-screen flex flex-col px-6 py-8 portal-view">
         <!-- Header -->
         <div class="text-center mb-8">
             <div class="mb-4">
@@ -252,7 +271,7 @@
 
         <!-- Main Options -->
         <div class="w-full max-w-md mx-auto flex-1 py-8">
-            <div class="features-grid">
+            <div class="features-grid portal-buttons">
                 <!-- Expenses -->
                 <div id="expensesCard" class="feature-button" onclick="handleFeatureClick('/pages/driver-expenses.html')">
                     <div class="spinner-wrapper">
@@ -296,10 +315,42 @@
                     </div>
                     <h3 class="text-lg font-semibold text-white">Availability</h3>
                 </div>
+            </div>
 
-                <!-- Account -->
+            <!-- Account Buttons (hidden by default) -->
+            <div class="account-buttons space-y-8" style="display: none;">
+                <!-- Change Password -->
                 <div class="features-grid-single">
-                    <div class="feature-button" onclick="window.location.href='/pages/driver-account.html'">
+                    <div class="feature-button" onclick="showChangePassword()">
+                        <div class="spinner-wrapper">
+                            <div class="spinner-orange"></div>
+                            <div class="spinner1">
+                                <span class="material-symbols-outlined spinner-icon">lock</span>
+                            </div>
+                        </div>
+                        <h3 class="text-lg font-semibold text-white">Change Password</h3>
+                    </div>
+                </div>
+
+                <!-- Logout -->
+                <div class="features-grid-single">
+                    <div class="feature-button" onclick="logout()">
+                        <div class="spinner-wrapper">
+                            <div class="spinner-red"></div>
+                            <div class="spinner1">
+                                <span class="material-symbols-outlined spinner-icon">logout</span>
+                            </div>
+                        </div>
+                        <h3 class="text-lg font-semibold text-white">Logout</h3>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Account/Home Button -->
+            <div class="features-grid-single mt-8">
+                <!-- Account Button -->
+                <div class="account-button">
+                    <div class="feature-button" onclick="toggleAccountView()">
                         <div class="spinner-wrapper">
                             <div class="spinner-orange"></div>
                             <div class="spinner1">
@@ -307,6 +358,19 @@
                             </div>
                         </div>
                         <h3 class="text-lg font-semibold text-white">Account</h3>
+                    </div>
+                </div>
+
+                <!-- Home Button (hidden by default) -->
+                <div class="home-button" style="display: none;">
+                    <div class="feature-button" onclick="toggleAccountView()">
+                        <div class="spinner-wrapper">
+                            <div class="spinner"></div>
+                            <div class="spinner1">
+                                <span class="material-symbols-outlined spinner-icon">home</span>
+                            </div>
+                        </div>
+                        <h3 class="text-lg font-semibold text-white">Home</h3>
                     </div>
                 </div>
             </div>
@@ -318,10 +382,78 @@
         </div>
     </div>
 
+    <!-- Change Password Modal -->
+    <div id="changePasswordModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="glass-card rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-bold text-white">Change Password</h2>
+                <button onclick="hideChangePassword()" class="text-gray-400 hover:text-white transition-colors">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+
+            <form id="changePasswordForm" onsubmit="handleChangePassword(event)">
+                <div class="space-y-4">
+                    <div>
+                        <label for="currentPassword" class="block text-sm font-medium text-gray-300 mb-2">Current Password</label>
+                        <input 
+                            type="password" 
+                            id="currentPassword" 
+                            required
+                            class="w-full px-4 py-3 bg-[#1a1f24] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 transition-colors"
+                            placeholder="Enter current password"
+                        />
+                    </div>
+
+                    <div>
+                        <label for="newPassword" class="block text-sm font-medium text-gray-300 mb-2">New Password</label>
+                        <input 
+                            type="password" 
+                            id="newPassword" 
+                            required
+                            minlength="6"
+                            class="w-full px-4 py-3 bg-[#1a1f24] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 transition-colors"
+                            placeholder="Enter new password (min. 6 characters)"
+                        />
+                    </div>
+
+                    <div>
+                        <label for="confirmPassword" class="block text-sm font-medium text-gray-300 mb-2">Confirm New Password</label>
+                        <input 
+                            type="password" 
+                            id="confirmPassword" 
+                            required
+                            minlength="6"
+                            class="w-full px-4 py-3 bg-[#1a1f24] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 transition-colors"
+                            placeholder="Confirm new password"
+                        />
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mt-6">
+                    <button 
+                        type="button"
+                        onclick="hideChangePassword()"
+                        class="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors font-medium"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        type="submit"
+                        id="changePasswordBtn"
+                        class="flex-1 px-4 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors font-medium"
+                    >
+                        Change Password
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { getFirestore, collection, getDocs, query, where, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
-        import { getAuth, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getAuth, signOut, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         
         // Firebase configuration
@@ -353,6 +485,9 @@
         window.getDoc = getDoc;
         window.doc = doc;
         window.signOut = signOut;
+        window.updatePassword = updatePassword;
+        window.reauthenticateWithCredential = reauthenticateWithCredential;
+        window.EmailAuthProvider = EmailAuthProvider;
         window.collection = collection;
         window.getDocs = getDocs;
         window.query = query;
@@ -847,6 +982,117 @@
 
         // Expose function to window for inline onclick handlers
         window.closeAvailabilityComingSoon = closeAvailabilityComingSoon;
+
+        // Toggle between portal and account view
+        function toggleAccountView() {
+            const mainContainer = document.querySelector('.min-h-screen');
+            const portalButtons = document.querySelector('.portal-buttons');
+            const accountButtons = document.querySelector('.account-buttons');
+            const accountButton = document.querySelector('.account-button');
+            const homeButton = document.querySelector('.home-button');
+
+            if (mainContainer.classList.contains('account-view')) {
+                // Switch to portal view
+                mainContainer.classList.remove('account-view');
+                mainContainer.classList.add('portal-view');
+                if (portalButtons) portalButtons.style.display = 'grid';
+                if (accountButtons) accountButtons.style.display = 'none';
+                if (accountButton) accountButton.style.display = 'block';
+                if (homeButton) homeButton.style.display = 'none';
+            } else {
+                // Switch to account view
+                mainContainer.classList.remove('portal-view');
+                mainContainer.classList.add('account-view');
+                if (portalButtons) portalButtons.style.display = 'none';
+                if (accountButtons) accountButtons.style.display = 'block';
+                if (accountButton) accountButton.style.display = 'none';
+                if (homeButton) homeButton.style.display = 'block';
+            }
+        }
+
+        // Expose toggle function
+        window.toggleAccountView = toggleAccountView;
+
+        // Change Password functions
+        function showChangePassword() {
+            const modal = document.getElementById('changePasswordModal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                const currentPasswordInput = document.getElementById('currentPassword');
+                if (currentPasswordInput) {
+                    setTimeout(() => currentPasswordInput.focus(), 100);
+                }
+            }
+        }
+
+        function hideChangePassword() {
+            const modal = document.getElementById('changePasswordModal');
+            const form = document.getElementById('changePasswordForm');
+            if (modal) modal.classList.add('hidden');
+            if (form) form.reset();
+        }
+
+        async function handleChangePassword(event) {
+            event.preventDefault();
+            
+            const currentPassword = document.getElementById('currentPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            
+            if (newPassword !== confirmPassword) {
+                notifyWarning('New passwords do not match.', 'Password Mismatch');
+                return;
+            }
+            
+            if (newPassword.length < 6) {
+                notifyWarning('New password must be at least 6 characters long.', 'Weak Password');
+                return;
+            }
+            
+            const btn = document.getElementById('changePasswordBtn');
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Changing...';
+            
+            try {
+                const user = window.auth.currentUser;
+                if (!user || !user.email) {
+                    notifyError('No user is currently signed in.', 'Authentication Required');
+                    return;
+                }
+                
+                // Re-authenticate user with current password
+                const credential = window.EmailAuthProvider.credential(user.email, currentPassword);
+                await window.reauthenticateWithCredential(user, credential);
+                
+                // Update password
+                await window.updatePassword(user, newPassword);
+                
+                notifySuccess('Password changed successfully!', 'Password Updated');
+                hideChangePassword();
+                
+            } catch (error) {
+                console.error('Error changing password:', error);
+                
+                if (error.code === 'auth/wrong-password') {
+                    notifyError('Current password is incorrect.', 'Incorrect Password');
+                } else if (error.code === 'auth/weak-password') {
+                    notifyWarning('New password is too weak. Please choose a stronger password.', 'Weak Password');
+                } else if (error.code === 'auth/requires-recent-login') {
+                    notifyWarning('Please log out and log back in, then try changing your password again.', 'Re-authentication Required');
+                } else {
+                    notifyError('Failed to change password. Please try again.', 'Error');
+                }
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+
+        // Expose functions to window
+        window.showChangePassword = showChangePassword;
+        window.hideChangePassword = hideChangePassword;
+        window.handleChangePassword = handleChangePassword;
 
         // Logout function
         async function logout() {
