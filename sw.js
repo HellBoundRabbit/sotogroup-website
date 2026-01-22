@@ -466,6 +466,8 @@ async function processWaitTimeQueue(authToken) {
               hours: { integerValue: String(waitTimeData.hours || 0) },
               minutes: { integerValue: String(waitTimeData.minutes || 0) },
               totalMinutes: { integerValue: String(waitTimeData.totalMinutes || 0) },
+              delayStartTime: { stringValue: waitTimeData.delayStartTime || '' },
+              delayEndTime: { stringValue: waitTimeData.delayEndTime || '' },
               notes: { stringValue: waitTimeData.notes || '' },
               processingStatus: { stringValue: waitTimeData.processingStatus || 'pending' },
               createdAt: { timestampValue: createdAtValue },
