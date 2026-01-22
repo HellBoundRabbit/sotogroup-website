@@ -245,11 +245,11 @@ async function processUploadQueue(authToken) {
               req.onerror = () => rej(req.error);
             });
 
-            // Process all photos for this expense task
+            // Process all photos for this expense task IN PARALLEL
             const photoBlobIds = task.photoBlobIds || [];
-            const uploadedURLs = [];
             
-            for (const photoBlobRef of photoBlobIds) {
+            // Upload all photos in parallel instead of sequentially
+            const uploadPromises = photoBlobIds.map(async (photoBlobRef) => {
               const { blobId, filename } = photoBlobRef;
               
               // Get photo blob from photoBlobs store
@@ -263,22 +263,23 @@ async function processUploadQueue(authToken) {
 
               if (!blobRecord || !blobRecord.blob) {
                 console.warn(`[SW] Photo blob not found: ${blobId}`);
-                continue;
+                return null;
               }
 
               // Request main thread to upload using Firebase SDK
               // Service Workers can't use Firebase SDK, so we delegate to main thread
               try {
                 const downloadURL = await requestMainThreadUpload(blobRecord.blob, filename, task.expenseDocId);
-                if (downloadURL) {
-                  uploadedURLs.push(downloadURL);
-                  console.log(`[SW] Photo uploaded via main thread: ${filename} -> ${downloadURL}`);
-                }
+                console.log(`[SW] Photo uploaded via main thread: ${filename} -> ${downloadURL}`);
+                return downloadURL;
               } catch (error) {
                 console.error(`[SW] Failed to upload via main thread: ${filename}`, error);
                 throw error; // Re-throw to trigger retry
               }
-            }
+            });
+            
+            // Wait for all photos to upload in parallel
+            const uploadedURLs = (await Promise.all(uploadPromises)).filter(url => url !== null);
 
             // Update task as completed
             const completeTx = db.transaction(['expenseUploadQueue'], 'readwrite');
