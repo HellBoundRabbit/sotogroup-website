@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SOTO Routes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#000000">
+    <link rel="manifest" href="/manifest.json">
+    <title>Select Route - SOTO Routes</title>
+    <script src="/assets/js/tailwind-runtime.js"></script>
+    <script src="/js/session-manager.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
+    <!-- Google Maps API with Routes and Places libraries -->
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDTbiSXo9tg1Tx8SlZCZKsR_R0zIQ4N1VA&libraries=places,geometry&loading=async&callback=initGoogleMaps"></script>
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, where, updateDoc, doc, deleteDoc, getDoc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+        
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA",
+            authDomain: "soto-routes.firebaseapp.com",
+            projectId: "soto-routes",
+            storageBucket: "soto-routes.firebasestorage.app",
+            messagingSenderId: "440989695549",
+            appId: "1:440989695549:web:0bce8b92a46f7f79953454",
+            measurementId: "G-4E3G40QQ9L"
+        };
+        
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const functions = getFunctions(app);
+        
+        // Make Firebase available globally
+        window.firebaseApp = app;
+        window.db = db;
+        window.auth = auth;
+        window.firebase = { functions, httpsCallable };
+        
+        console.log('Firebase initialized successfully!');
+    </script>
+    <style>
+        body {
+            background: #0f1419;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+        
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        
+        .header {
+            background: #1a1f24;
+            border-bottom: 1px solid #283039;
+            padding: 16px;
+            position: relative;
+        }
+        
+        .request-button {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 8px;
+            color: #ffffff;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .request-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+        
+        .request-button.visible {
+            display: flex;
+        }
+        
+        .back-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: #283039;
+            border: 1px solid #3a444e;
+            border-radius: 8px;
+            color: #ffffff;
+            text-decoration: none;
+            font-size: 14px;
+            transition: background-color 0.2s;
+            margin-bottom: 12px;
+        }
+        
+        .back-button:hover {
+            background: #3a444e;
+        }
+        
+        .route-info {
+            font-size: 14px;
+            color: #9ca3af;
+            margin-top: 8px;
+        }
+        
+        .content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        .routes-list {
+            width: 100%;
+            max-width: 600px;
+            background: #1a1f24;
+            border-right: 1px solid #283039;
+            overflow-y: auto;
+            overflow-x: visible;
+            padding: 16px;
+        }
+        
+        .map-container {
+            flex: 1;
+            min-width: 400px;
+            position: relative;
+        }
+        
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .route-card {
+            background: #111418;
+            border: 1px solid #283039;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .route-card:hover {
+            border-color: #3b82f6;
+            background: #1a1f24;
+        }
+        
+        .route-card.selected {
+            border-color: #3b82f6;
+            background: #1e3a5f;
+        }
+        
+        .route-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .route-title {
+            font-weight: 600;
+            font-size: 16px;
+        }
+        
+        .route-duration {
+            color: #3b82f6;
+            font-weight: 500;
+        }
+        
+        .route-details {
+            font-size: 14px;
+            color: #9ca3af;
+            line-height: 1.6;
+        }
+        
+        .route-timeline {
+            position: relative;
+            padding-left: 80px;
+        }
+        
+        .timeline-line {
+            position: absolute;
+            left: 50px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #e5e7eb;
+        }
+        
+        .timeline-item {
+            position: relative;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            min-height: 60px;
+        }
+        
+        .timeline-dot {
+            position: absolute;
+            left: -20px;
+            top: 4px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ffffff;
+            border: 2px solid #374151;
+            z-index: 2;
+        }
+        
+        .timeline-segment-line {
+            position: absolute;
+            left: -20px;
+            width: 2px;
+            z-index: 1;
+        }
+        
+        .timeline-segment-line.walking {
+            background: repeating-linear-gradient(
+                to bottom,
+                #4285F4 0px,
+                #4285F4 4px,
+                transparent 4px,
+                transparent 8px
+            );
+        }
+        
+        .timeline-segment-line.bus {
+            background: #9C27B0;
+        }
+        
+        .timeline-segment-line.train {
+            background: #EA4335;
+        }
+        
+        .timeline-segment-line.subway {
+            background: #34A853;
+        }
+        
+        .timeline-segment-line.wait {
+            background: #F59E0B;
+        }
+        
+        .timeline-time {
+            position: absolute;
+            left: -60px;
+            top: 0;
+            font-size: 13px;
+            font-weight: 600;
+            color: #9ca3af;
+            white-space: nowrap;
+            width: 50px;
+            text-align: right;
+        }
+        
+        .timeline-content {
+            background: #1a1f24;
+            border-radius: 8px;
+            padding: 12px;
+            border: 1px solid transparent;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        
+        .timeline-content:hover {
+            border-color: #374151;
+        }
+        
+        .timeline-content.selected {
+            background: #7f1d1d;
+            border-color: #ef4444;
+        }
+        
+        .timeline-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+        
+        .timeline-icon {
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .timeline-title {
+            font-weight: 600;
+            color: #ffffff;
+            font-size: 14px;
+        }
+        
+        .timeline-location {
+            font-size: 13px;
+            color: #9ca3af;
+            margin-top: 4px;
+        }
+        
+        .timeline-duration {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+        
+        .timeline-transit-details {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px solid #374151;
+        }
+        
+        .route-step {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            margin: 8px 0;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .route-step:last-child {
+            border-bottom: none;
+        }
+        
+        .route-step-icon {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        
+        .route-step > div:last-child {
+            flex: 1;
+            line-height: 1.5;
+        }
+        
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #9ca3af;
+        }
+        
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #283039;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 16px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .error-message {
+            background: #7f1d1d;
+            border: 1px solid #991b1b;
+            border-radius: 8px;
+            padding: 16px;
+            color: #fca5a5;
+            margin: 16px;
+        }
+        
+        @media (max-width: 768px) {
+            .content {
+                flex-direction: column;
+            }
+            
+            .routes-list {
+                max-width: 100%;
+                max-height: 40vh;
+                border-right: none;
+                border-bottom: 1px solid #283039;
+            }
+            
+            .map-container {
+                height: 60vh;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="/pages/driver-authorization.html" class="back-button">
+                <span class="material-symbols-outlined" style="font-size: 18px;">arrow_back</span>
+                Back
+            </a>
+            <h1 class="text-xl font-bold">Select Public Transport Route</h1>
+            <div class="route-info" id="routeInfo"></div>
+            <button class="request-button" id="requestButton" onclick="handleRequest()">
+                <span class="material-symbols-outlined" style="font-size: 18px;">send</span>
+                Request Taxi
+            </button>
+        </div>
+        
+        <div class="content">
+            <div class="routes-list" id="routesList">
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <p>Loading routes...</p>
+                </div>
+            </div>
+            
+            <div class="map-container">
+                <div id="map"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let map;
+        let directionsService;
+        let directionsRenderer;
+        let routes = [];
+        let selectedRouteIndex = null;
+        let requestData = null;
+        let googleMapsLoaded = false;
+        let routePolylines = [];
+        let routeMarkers = [];
+        
+        // Initialize Google Maps
+        window.initGoogleMaps = function() {
+            if (window.google && window.google.maps) {
+                googleMapsLoaded = true;
+                initializeMap();
+                loadRoutes();
+            }
+        };
+        
+        // Wait for Google Maps to load
+        function waitForGoogleMaps() {
+            return new Promise((resolve) => {
+                if (googleMapsLoaded) {
+                    resolve();
+                    return;
+                }
+                const checkInterval = setInterval(() => {
+                    if (googleMapsLoaded) {
+                        clearInterval(checkInterval);
+                        resolve();
+                    }
+                }, 100);
+            });
+        }
+        
+        // Initialize map
+        async function initializeMap() {
+            await waitForGoogleMaps();
+            
+            // Get request data from sessionStorage
+            const storedData = sessionStorage.getItem('authorizationRequest');
+            if (!storedData) {
+                showError('No route data found. Please go back and create a new request.');
+                return;
+            }
+            
+            requestData = JSON.parse(storedData);
+            
+            // Initialize map with default styling
+            map = new google.maps.Map(document.getElementById('map'), {
+                zoom: 10,
+                center: { lat: requestData.from.lat, lng: requestData.from.lng },
+                mapTypeId: google.maps.MapTypeId.ROADMAP
+            });
+            
+            directionsService = new google.maps.DirectionsService();
+            // We'll render routes manually with different colors per segment
+            
+            // Update route info
+            document.getElementById('routeInfo').innerHTML = `
+                <div><strong>From:</strong> ${requestData.from.address}</div>
+                <div><strong>To:</strong> ${requestData.to.address}</div>
+            `;
+        }
+        
+        // Load routes using Google Maps Directions API with transit mode
+        async function loadRoutes() {
+            await waitForGoogleMaps();
+            
+            if (!requestData) {
+                const storedData = sessionStorage.getItem('authorizationRequest');
+                if (!storedData) {
+                    showError('No route data found. Please go back and create a new request.');
+                    return;
+                }
+                requestData = JSON.parse(storedData);
+            }
+            
+            const routesList = document.getElementById('routesList');
+            routesList.innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>Loading routes...</p></div>';
+            
+            try {
+                // Calculate departure time
+                const departureTime = new Date(requestData.departureTime);
+                const now = new Date();
+                
+                // Use Directions API with transit mode
+                // Note: The Directions API doesn't support multiple route alternatives for transit
+                // We'll request one route and display it
+                const request = {
+                    origin: { lat: requestData.from.lat, lng: requestData.from.lng },
+                    destination: { lat: requestData.to.lat, lng: requestData.to.lng },
+                    travelMode: google.maps.TravelMode.TRANSIT,
+                    transitOptions: {
+                        modes: [google.maps.TransitMode.BUS, google.maps.TransitMode.TRAIN, google.maps.TransitMode.SUBWAY],
+                        routingPreference: google.maps.TransitRoutePreference.FEWER_TRANSFERS
+                    }
+                };
+                
+                // Add departure time to transitOptions (not as top-level property)
+                // Google Maps expects a Date object
+                if (departureTime instanceof Date && !isNaN(departureTime.getTime())) {
+                    request.transitOptions.departureTime = departureTime;
+                } else {
+                    // Fallback to current time if invalid
+                    request.transitOptions.departureTime = now;
+                }
+                
+                directionsService.route(request, (response, status) => {
+                    if (status === 'OK') {
+                        routes = [response];
+                        displayRoutes();
+                        // Display first route on map by default
+                        if (routes.length > 0) {
+                            selectRoute(0);
+                        }
+                    } else if (status === 'ZERO_RESULTS') {
+                        showError('No public transport routes found for this journey. Please try different locations or times.');
+                    } else {
+                        showError(`Error loading routes: ${status}. Please try again.`);
+                        console.error('Directions API error:', status);
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading routes:', error);
+                showError('An error occurred while loading routes. Please try again.');
+            }
+        }
+        
+        // Format time for display
+        function formatTime(date) {
+            if (!date) return '';
+            const hours = date.getHours();
+            const minutes = date.getMinutes();
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            const displayHours = hours % 12 || 12;
+            const displayMinutes = minutes.toString().padStart(2, '0');
+            return `${displayHours}:${displayMinutes} ${ampm}`;
+        }
+        
+        // Get timeline icon for step
+        function getTimelineIcon(step) {
+            if (step.travel_mode === 'WALKING') {
+                return '<span class="material-symbols-outlined" style="font-size: 20px; color: #4285F4;">directions_walk</span>';
+            } else if (step.travel_mode === 'TRANSIT' && step.transit) {
+                const transitType = step.transit.line?.vehicle?.type;
+                if (transitType === 'BUS') {
+                    return '<span class="material-symbols-outlined" style="font-size: 20px; color: #9C27B0;">directions_bus</span>';
+                } else if (transitType === 'TRAIN') {
+                    return '<span class="material-symbols-outlined" style="font-size: 20px; color: #EA4335;">train</span>';
+                } else if (transitType === 'SUBWAY') {
+                    return '<span class="material-symbols-outlined" style="font-size: 20px; color: #34A853;">subway</span>';
+                }
+            }
+            return '<span class="material-symbols-outlined" style="font-size: 20px;">arrow_forward</span>';
+        }
+        
+        // Get line class for timeline
+        function getLineClass(step) {
+            if (step.travel_mode === 'WALKING') {
+                return 'walking';
+            } else if (step.travel_mode === 'TRANSIT' && step.transit) {
+                const transitType = step.transit.line?.vehicle?.type;
+                if (transitType === 'BUS') return 'bus';
+                if (transitType === 'TRAIN') return 'train';
+                if (transitType === 'SUBWAY') return 'subway';
+            }
+            return '';
+        }
+        
+        // Display routes in the list with timeline style
+        function displayRoutes() {
+            const routesList = document.getElementById('routesList');
+            
+            if (routes.length === 0) {
+                routesList.innerHTML = '<div class="error-message">No routes found.</div>';
+                return;
+            }
+            
+            routesList.innerHTML = '';
+            
+            routes.forEach((route, routeIndex) => {
+                const routeCard = document.createElement('div');
+                routeCard.className = 'route-card';
+                routeCard.onclick = () => selectRoute(routeIndex);
+                
+                const leg = route.routes[0].legs[0];
+                const duration = leg.duration.text;
+                const distance = leg.distance.text;
+                
+                // Build timeline-style route breakdown
+                let timelineHtml = '<div class="route-timeline">';
+                let segmentIndex = 0;
+                let currentTime = new Date(requestData.departureTime);
+                
+                // Start point
+                timelineHtml += `
+                    <div class="timeline-item">
+                        <div class="timeline-dot"></div>
+                        <div class="timeline-time">${formatTime(currentTime)}</div>
+                        <div class="timeline-content">
+                            <div class="timeline-header">
+                                <span class="material-symbols-outlined" style="font-size: 20px; color: #ffffff;">place</span>
+                                <div class="timeline-title">Start</div>
+                            </div>
+                            <div class="timeline-location">${requestData.from.address}</div>
+                        </div>
+                    </div>
+                `;
+                
+                route.routes[0].legs.forEach((leg, legIndex) => {
+                    leg.steps.forEach((step, stepIndex) => {
+                        const segmentId = `route-${routeIndex}-segment-${segmentIndex}`;
+                        const isSelected = selectedSegments.has(segmentId);
+                        const lineClass = getLineClass(step);
+                        
+                        if (step.travel_mode === 'WALKING') {
+                            // Calculate arrival time
+                            const arrivalTime = new Date(currentTime.getTime() + (step.duration.value * 1000));
+                            
+                            timelineHtml += `
+                                <div class="timeline-item">
+                                    <div class="timeline-dot"></div>
+                                    <div class="timeline-segment-line ${lineClass}" style="top: 0; height: ${step.duration.value * 0.5}px;"></div>
+                                    <div class="timeline-time">${formatTime(arrivalTime)}</div>
+                                    <div class="timeline-content ${isSelected ? 'selected' : ''}" id="${segmentId}" onclick="event.stopPropagation(); toggleSegment('${segmentId}')">
+                                        <div class="timeline-header">
+                                            <div class="timeline-icon">${getTimelineIcon(step)}</div>
+                                            <div class="timeline-title">Walk</div>
+                                        </div>
+                                        <div class="timeline-duration">About ${step.duration.text}${step.distance ? ' · ' + step.distance.text : ''}</div>
+                                    </div>
+                                </div>
+                            `;
+                            
+                            currentTime = arrivalTime;
+                            segmentIndex++;
+                        } else if (step.travel_mode === 'TRANSIT' && step.transit) {
+                            const transit = step.transit;
+                            const transitType = transit.line?.vehicle?.type;
+                            let transitName = 'Transit';
+                            
+                            if (transitType === 'BUS') {
+                                transitName = transit.line.short_name ? `Bus ${transit.line.short_name}` : 'Bus';
+                            } else if (transitType === 'TRAIN') {
+                                // For trains, show the departure station name instead of destination
+                                if (transit.departure_stop && transit.departure_stop.name) {
+                                    transitName = transit.departure_stop.name;
+                                } else if (transit.line.name) {
+                                    transitName = transit.line.name;
+                                } else {
+                                    transitName = 'Train';
+                                }
+                            } else if (transitType === 'SUBWAY') {
+                                // For subway, show the departure station name
+                                if (transit.departure_stop && transit.departure_stop.name) {
+                                    transitName = transit.departure_stop.name;
+                                } else if (transit.line.name) {
+                                    transitName = transit.line.name;
+                                } else {
+                                    transitName = 'Subway';
+                                }
+                            }
+                            
+                            // Check for wait time before transit
+                            if (transit.departure_time && transit.departure_time.value) {
+                                const departureTime = new Date(transit.departure_time.value * 1000);
+                                const waitTimeMs = departureTime.getTime() - currentTime.getTime();
+                                const waitTimeMinutes = Math.max(0, Math.floor(waitTimeMs / 60000));
+                                
+                                // Show wait if reasonable
+                                if (waitTimeMinutes > 0 && waitTimeMinutes < 1440) {
+                                    const waitSegmentId = `route-${routeIndex}-wait-${segmentIndex}`;
+                                    const isWaitSelected = selectedSegments.has(waitSegmentId);
+                                    
+                                    timelineHtml += `
+                                        <div class="timeline-item">
+                                            <div class="timeline-dot"></div>
+                                            <div class="timeline-segment-line wait" style="top: 0; height: ${Math.min(waitTimeMinutes * 2, 100)}px;"></div>
+                                            <div class="timeline-time">${formatTime(departureTime)}</div>
+                                            <div class="timeline-content ${isWaitSelected ? 'selected' : ''}" id="${waitSegmentId}" onclick="event.stopPropagation(); toggleSegment('${waitSegmentId}')">
+                                                <div class="timeline-header">
+                                                    <span class="material-symbols-outlined" style="font-size: 20px; color: #F59E0B;">schedule</span>
+                                                    <div class="timeline-title">Wait</div>
+                                                </div>
+                                                <div class="timeline-duration">${formatWaitTime(waitTimeMinutes)}</div>
+                                                ${transit.departure_stop ? `<div class="timeline-location">${transit.departure_stop.name}</div>` : ''}
+                                            </div>
+                                        </div>
+                                    `;
+                                }
+                                
+                                currentTime = departureTime;
+                            }
+                            
+                            // Transit ride
+                            const arrivalTime = transit.arrival_time && transit.arrival_time.value 
+                                ? new Date(transit.arrival_time.value * 1000)
+                                : new Date(currentTime.getTime() + (step.duration.value * 1000));
+                            
+                            timelineHtml += `
+                                <div class="timeline-item">
+                                    <div class="timeline-dot"></div>
+                                    <div class="timeline-segment-line ${lineClass}" style="top: 0; height: ${step.duration.value * 0.3}px;"></div>
+                                    <div class="timeline-time">${formatTime(arrivalTime)}</div>
+                                    <div class="timeline-content ${isSelected ? 'selected' : ''}" id="${segmentId}" onclick="event.stopPropagation(); toggleSegment('${segmentId}')">
+                                        <div class="timeline-header">
+                                            <div class="timeline-icon">${getTimelineIcon(step)}</div>
+                                            <div class="timeline-title">${transitType === 'TRAIN' || transitType === 'SUBWAY' ? transitName : transitName}</div>
+                                        </div>
+                                        <div class="timeline-duration">${step.duration.text}${transit.num_stops ? ' (' + transit.num_stops + ' stops)' : ''}</div>
+                                        ${transit.departure_stop ? `<div class="timeline-location">${transit.departure_stop.name}</div>` : ''}
+                                        ${transit.arrival_stop ? `<div class="timeline-location">→ ${transit.arrival_stop.name}</div>` : ''}
+                                    </div>
+                                </div>
+                            `;
+                            
+                            currentTime = arrivalTime;
+                            segmentIndex++;
+                        }
+                    });
+                });
+                
+                // End point
+                timelineHtml += `
+                    <div class="timeline-item">
+                        <div class="timeline-dot"></div>
+                        <div class="timeline-time">${formatTime(currentTime)}</div>
+                        <div class="timeline-content">
+                            <div class="timeline-header">
+                                <span class="material-symbols-outlined" style="font-size: 20px; color: #ffffff;">place</span>
+                                <div class="timeline-title">Arrive</div>
+                            </div>
+                            <div class="timeline-location">${requestData.to.address}</div>
+                        </div>
+                    </div>
+                </div>
+                `;
+                
+                routeCard.innerHTML = `
+                    <div class="route-header">
+                        <div class="route-title">Route ${routeIndex + 1}</div>
+                        <div class="route-duration">${duration}</div>
+                    </div>
+                    <div class="route-details">
+                        ${timelineHtml}
+                    </div>
+                `;
+                
+                routesList.appendChild(routeCard);
+            });
+        }
+        
+        // Format wait time
+        function formatWaitTime(minutes) {
+            if (minutes < 60) {
+                return `${minutes} min`;
+            }
+            const hours = Math.floor(minutes / 60);
+            const mins = minutes % 60;
+            return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
+        }
+        
+        // Toggle segment selection
+        function toggleSegment(segmentId) {
+            if (selectedSegments.has(segmentId)) {
+                selectedSegments.delete(segmentId);
+            } else {
+                selectedSegments.add(segmentId);
+            }
+            
+            // Update request button visibility
+            updateRequestButton();
+            
+            // Re-render the selected route with updated segments
+            if (selectedRouteIndex !== null) {
+                renderRoute(routes[selectedRouteIndex]);
+                displayRoutes(); // Update UI
+            }
+        }
+        
+        // Update request button visibility
+        function updateRequestButton() {
+            const requestButton = document.getElementById('requestButton');
+            if (requestButton) {
+                if (selectedSegments.size > 0) {
+                    requestButton.classList.add('visible');
+                } else {
+                    requestButton.classList.remove('visible');
+                }
+            }
+        }
+        
+        // Handle request button click
+        function handleRequest() {
+            if (selectedSegments.size === 0) {
+                return;
+            }
+            
+            // TODO: Implement request submission
+            console.log('Requesting taxi for segments:', Array.from(selectedSegments));
+            alert('Taxi request submitted for selected segments!');
+        }
+        
+        // Make functions available globally
+        window.toggleSegment = toggleSegment;
+        window.handleRequest = handleRequest;
+        
+        // Get icon for route step
+        function getStepIcon(step) {
+            if (step.travel_mode === 'WALKING') {
+                return '<span class="material-symbols-outlined" style="font-size: 18px;">directions_walk</span>';
+            } else if (step.travel_mode === 'TRANSIT') {
+                const transitType = step.transit?.line?.vehicle?.type;
+                if (transitType === 'BUS') {
+                    return '<span class="material-symbols-outlined" style="font-size: 18px;">directions_bus</span>';
+                } else if (transitType === 'SUBWAY' || transitType === 'TRAIN') {
+                    return '<span class="material-symbols-outlined" style="font-size: 18px;">train</span>';
+                } else {
+                    return '<span class="material-symbols-outlined" style="font-size: 18px;">directions_transit</span>';
+                }
+            }
+            return '<span class="material-symbols-outlined" style="font-size: 18px;">arrow_forward</span>';
+        }
+        
+        // Get color and style for travel mode
+        function getColorForTravelMode(travelMode, transitType) {
+            if (travelMode === 'WALKING') {
+                return { color: '#4285F4', strokePattern: [10, 5] }; // Dashed blue for walking
+            } else if (travelMode === 'TRANSIT') {
+                if (transitType === 'BUS') {
+                    return { color: '#9C27B0', strokePattern: null }; // Purple for bus
+                } else if (transitType === 'TRAIN') {
+                    return { color: '#EA4335', strokePattern: null }; // Red for train
+                } else if (transitType === 'SUBWAY') {
+                    return { color: '#34A853', strokePattern: null }; // Green for subway
+                } else {
+                    return { color: '#FBBC04', strokePattern: null }; // Yellow for other transit
+                }
+            }
+            return { color: '#3b82f6', strokePattern: null }; // Default blue
+        }
+        
+        // Store segment data for selection
+        let routeSegments = [];
+        let selectedSegments = new Set();
+        let taxiPolylines = [];
+        let segmentPolylines = [];
+        
+        // Clear existing route from map
+        function clearRoute() {
+            routePolylines.forEach(polyline => polyline.setMap(null));
+            routeMarkers.forEach(marker => marker.setMap(null));
+            taxiPolylines.forEach(polyline => polyline.setMap(null));
+            segmentPolylines.forEach(item => {
+                if (item.polyline && typeof item.polyline.setMap === 'function') {
+                    item.polyline.setMap(null);
+                }
+            });
+            routePolylines = [];
+            routeMarkers = [];
+            taxiPolylines = [];
+            segmentPolylines = [];
+            routeSegments = [];
+            // Don't clear selectedSegments here - it should persist
+        }
+        
+        // Render route on map with different colors per segment
+        function renderRoute(route) {
+            clearRoute();
+            
+            const bounds = new google.maps.LatLngBounds();
+            const routeData = route.routes[0];
+            let segmentIndex = 0;
+            let totalSegments = 0;
+            
+            // Count total segments first
+            routeData.legs.forEach(leg => {
+                leg.steps.forEach(step => {
+                    if (step.travel_mode === 'WALKING' || step.travel_mode === 'TRANSIT') {
+                        totalSegments++;
+                    }
+                });
+            });
+            
+            // Check if all segments are selected
+            let allSelected = true;
+            for (let i = 0; i < totalSegments; i++) {
+                const segmentId = `route-${selectedRouteIndex}-segment-${i}`;
+                if (!selectedSegments.has(segmentId)) {
+                    allSelected = false;
+                    break;
+                }
+            }
+            
+            routeData.legs.forEach(leg => {
+                bounds.extend(leg.start_location);
+                bounds.extend(leg.end_location);
+                
+                // Add start marker
+                const startMarker = new google.maps.Marker({
+                    position: leg.start_location,
+                    map: map,
+                    label: 'A',
+                    icon: {
+                        url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
+                    }
+                });
+                routeMarkers.push(startMarker);
+                
+                // If all segments are selected, show single straight line from start to end
+                if (allSelected && totalSegments > 0) {
+                    let startLoc = leg.start_location;
+                    let endLoc = leg.end_location;
+                    
+                    // Convert to LatLng if needed
+                    if (startLoc && !(startLoc instanceof google.maps.LatLng)) {
+                        startLoc = new google.maps.LatLng(startLoc.lat(), startLoc.lng());
+                    }
+                    if (endLoc && !(endLoc instanceof google.maps.LatLng)) {
+                        endLoc = new google.maps.LatLng(endLoc.lat(), endLoc.lng());
+                    }
+                    
+                    if (startLoc && endLoc) {
+                        const taxiPolyline = new google.maps.Polyline({
+                            path: [startLoc, endLoc],
+                            geodesic: false, // Straight line
+                            strokeColor: '#EF4444',
+                            strokeOpacity: 1.0,
+                            strokeWeight: 8,
+                            map: map
+                        });
+                        taxiPolylines.push(taxiPolyline);
+                        bounds.extend(startLoc);
+                        bounds.extend(endLoc);
+                    }
+                    
+                    // Add end marker
+                    const endMarker = new google.maps.Marker({
+                        position: leg.end_location,
+                        map: map,
+                        label: 'B',
+                        icon: {
+                            url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
+                        }
+                    });
+                    routeMarkers.push(endMarker);
+                    
+                    // Fit map to route bounds
+                    if (!bounds.isEmpty()) {
+                        map.fitBounds(bounds);
+                    }
+                    return; // Skip individual segment rendering
+                }
+                
+                // Render each step with appropriate color
+                leg.steps.forEach(step => {
+                    // Only render walking and transit steps (skip wait segments as they're not actual map segments)
+                    if (step.travel_mode === 'WALKING' || step.travel_mode === 'TRANSIT') {
+                        const segmentId = `route-${selectedRouteIndex}-segment-${segmentIndex}`;
+                        const isSelected = selectedSegments.has(segmentId);
+                        
+                        if (isSelected) {
+                            // Render as thick red straight line (as the bird flies)
+                            let startLoc = step.start_location;
+                            let endLoc = step.end_location;
+                            
+                            // Convert to LatLng if needed
+                            if (startLoc && !(startLoc instanceof google.maps.LatLng)) {
+                                startLoc = new google.maps.LatLng(startLoc.lat(), startLoc.lng());
+                            }
+                            if (endLoc && !(endLoc instanceof google.maps.LatLng)) {
+                                endLoc = new google.maps.LatLng(endLoc.lat(), endLoc.lng());
+                            }
+                            
+                            if (startLoc && endLoc) {
+                                const taxiPolyline = new google.maps.Polyline({
+                                    path: [startLoc, endLoc],
+                                    geodesic: false, // Straight line
+                                    strokeColor: '#EF4444',
+                                    strokeOpacity: 1.0,
+                                    strokeWeight: 8,
+                                    map: map
+                                });
+                                taxiPolylines.push(taxiPolyline);
+                                bounds.extend(startLoc);
+                                bounds.extend(endLoc);
+                            }
+                        } else {
+                            // Render normal route segment
+                            let path = [];
+                            
+                            // Steps have a polyline property with encoded points
+                            if (step.polyline && step.polyline.points) {
+                                // Decode encoded polyline using geometry library
+                                try {
+                                    path = google.maps.geometry.encoding.decodePath(step.polyline.points);
+                                } catch (e) {
+                                    console.error('Error decoding polyline:', e);
+                                    // Fallback if decoding fails
+                                    if (step.start_location && step.end_location) {
+                                        let startLoc = step.start_location;
+                                        let endLoc = step.end_location;
+                                        if (!(startLoc instanceof google.maps.LatLng)) {
+                                            startLoc = new google.maps.LatLng(startLoc.lat(), startLoc.lng());
+                                        }
+                                        if (!(endLoc instanceof google.maps.LatLng)) {
+                                            endLoc = new google.maps.LatLng(endLoc.lat(), endLoc.lng());
+                                        }
+                                        path = [startLoc, endLoc];
+                                    }
+                                }
+                            } else if (step.start_location && step.end_location) {
+                                // Fallback: simple line between start and end
+                                let startLoc = step.start_location;
+                                let endLoc = step.end_location;
+                                if (!(startLoc instanceof google.maps.LatLng)) {
+                                    startLoc = new google.maps.LatLng(startLoc.lat(), startLoc.lng());
+                                }
+                                if (!(endLoc instanceof google.maps.LatLng)) {
+                                    endLoc = new google.maps.LatLng(endLoc.lat(), endLoc.lng());
+                                }
+                                path = [startLoc, endLoc];
+                            }
+                            
+                            if (path.length > 0) {
+                                const transitType = step.transit?.line?.vehicle?.type;
+                                const style = getColorForTravelMode(step.travel_mode, transitType);
+                                
+                                const polylineOptions = {
+                                    path: path,
+                                    geodesic: true,
+                                    strokeColor: style.color,
+                                    strokeOpacity: 0.8,
+                                    strokeWeight: 5,
+                                    map: map
+                                };
+                                
+                                // Add dashed pattern for walking using icons
+                                if (step.travel_mode === 'WALKING') {
+                                    // Create dashed effect using symbols
+                                    polylineOptions.icons = [{
+                                        icon: {
+                                            path: 'M 0,-1 0,1',
+                                            strokeOpacity: 1,
+                                            strokeWeight: 5,
+                                            scale: 1
+                                        },
+                                        offset: '0%',
+                                        repeat: '20px'
+                                    }];
+                                }
+                                
+                                const polyline = new google.maps.Polyline(polylineOptions);
+                                routePolylines.push(polyline);
+                                segmentPolylines.push({ polyline, segmentId });
+                                
+                                // Extend bounds with path points
+                                path.forEach(point => bounds.extend(point));
+                            }
+                        }
+                        
+                        segmentIndex++;
+                    }
+                });
+                
+                // Add end marker
+                const endMarker = new google.maps.Marker({
+                    position: leg.end_location,
+                    map: map,
+                    label: 'B',
+                    icon: {
+                        url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
+                    }
+                });
+                routeMarkers.push(endMarker);
+            });
+            
+            // Fit map to route bounds
+            if (!bounds.isEmpty()) {
+                map.fitBounds(bounds);
+            }
+        }
+        
+        // Select a route
+        function selectRoute(index) {
+            selectedRouteIndex = index;
+            
+            // Clear selected segments when switching routes
+            selectedSegments.clear();
+            updateRequestButton();
+            
+            // Update UI
+            const routeCards = document.querySelectorAll('.route-card');
+            routeCards.forEach((card, i) => {
+                if (i === index) {
+                    card.classList.add('selected');
+                } else {
+                    card.classList.remove('selected');
+                }
+            });
+            
+            // Rebuild segments for selected route
+            routeSegments = [];
+            let segmentIndex = 0;
+            routes[index].routes[0].legs.forEach(leg => {
+                leg.steps.forEach(step => {
+                    if (step.travel_mode === 'WALKING' || step.travel_mode === 'TRANSIT') {
+                        const segmentId = `route-${index}-segment-${segmentIndex}`;
+                        routeSegments.push({
+                            id: segmentId,
+                            routeIndex: index,
+                            step: step,
+                            startLocation: step.start_location,
+                            endLocation: step.end_location,
+                            polylineIndex: segmentIndex
+                        });
+                        segmentIndex++;
+                    }
+                });
+            });
+            
+            // Display route on map with colored segments
+            if (routes[index]) {
+                renderRoute(routes[index]);
+            }
+            
+            // Refresh display to show updated selections
+            displayRoutes();
+        }
+        
+        // Show error message
+        function showError(message) {
+            const routesList = document.getElementById('routesList');
+            routesList.innerHTML = `<div class="error-message">${message}</div>`;
+        }
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            // Check if Google Maps is already loaded
+            if (window.google && window.google.maps) {
+                googleMapsLoaded = true;
+                initializeMap();
+                loadRoutes();
+            }
+        });
+    </script>
+</body>
+</html>
+

@@ -311,6 +311,28 @@
                     </div>
                     <h3 class="text-lg font-semibold text-white">Availability</h3>
                 </div>
+
+                <!-- Authorization -->
+                <div id="authorizationCard" class="feature-button" onclick="handleFeatureClick('/pages/driver-authorization.html')">
+                    <div class="spinner-wrapper">
+                        <div class="spinner"></div>
+                        <div class="spinner1">
+                            <span class="material-symbols-outlined spinner-icon">verified_user</span>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold text-white">Authorization</h3>
+                </div>
+
+                <!-- Help -->
+                <div id="helpCard" class="feature-button" onclick="showHelpComingSoon()">
+                    <div class="spinner-wrapper">
+                        <div class="spinner"></div>
+                        <div class="spinner1">
+                            <span class="material-symbols-outlined spinner-icon">help</span>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold text-white">Help</h3>
+                </div>
             </div>
 
             <!-- Account Buttons (hidden by default) -->
@@ -978,6 +1000,61 @@
 
         // Expose function to window for inline onclick handlers
         window.closeAvailabilityComingSoon = closeAvailabilityComingSoon;
+
+        // Show Help Coming Soon modal
+        function showHelpComingSoon() {
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black bg-opacity-75 z-[9999] flex items-center justify-center p-4';
+            overlay.id = 'help-coming-soon-overlay';
+            
+            overlay.innerHTML = `
+                <div class="bg-[#1a1f24] rounded-2xl w-full max-w-md border-2 border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.5)]">
+                    <div class="p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-12 h-12 bg-red-500 rounded-full flex items-center justify-center">
+                                <span class="material-symbols-outlined text-white text-2xl">info</span>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-bold text-white">Feature Coming Soon</h3>
+                                <p class="text-sm text-gray-400">Help & Support</p>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-6">
+                            <p class="text-gray-300 text-base leading-relaxed">
+                                This feature is still in development and will be rolled out soon.
+                            </p>
+                        </div>
+                        
+                        <div class="flex justify-end">
+                            <button onclick="closeHelpComingSoon()" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors font-semibold">
+                                Got It
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(overlay);
+            
+            // Close on overlay click (outside modal)
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    closeHelpComingSoon();
+                }
+            });
+        }
+
+        // Close Help Coming Soon modal
+        function closeHelpComingSoon() {
+            const overlay = document.getElementById('help-coming-soon-overlay');
+            if (overlay) {
+                overlay.remove();
+            }
+        }
+
+        // Expose function to window for inline onclick handlers
+        window.closeHelpComingSoon = closeHelpComingSoon;
 
         // Toggle between portal and account view
         function toggleAccountView() {

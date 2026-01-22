@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SOTO Routes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#000000">
+    <link rel="manifest" href="/manifest.json">
+    <title>Authorization Request - SOTO Routes</title>
+    <script src="/assets/js/tailwind-runtime.js"></script>
+    <script src="/js/session-manager.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
+    <!-- Google Maps API with Places library -->
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDTbiSXo9tg1Tx8SlZCZKsR_R0zIQ4N1VA&libraries=places,geometry&loading=async&callback=initGoogleMaps"></script>
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, where, updateDoc, doc, deleteDoc, getDoc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+        
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA",
+            authDomain: "soto-routes.firebaseapp.com",
+            projectId: "soto-routes",
+            storageBucket: "soto-routes.firebasestorage.app",
+            messagingSenderId: "440989695549",
+            appId: "1:440989695549:web:0bce8b92a46f7f79953454",
+            measurementId: "G-4E3G40QQ9L"
+        };
+        
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const functions = getFunctions(app);
+        
+        // Make Firebase available globally
+        window.firebaseApp = app;
+        window.db = db;
+        window.auth = auth;
+        window.firebase = { functions, httpsCallable };
+        
+        console.log('Firebase initialized successfully!');
+    </script>
+    <style>
+        body {
+            background: #000000;
+            color: #ffffff;
+            font-family: Inter, "Noto Sans", sans-serif;
+        }
+        
+        .touch-target {
+            min-height: 44px;
+            min-width: 44px;
+        }
+        
+        /* Spinner for back button */
+        .spinner-wrapper {
+            width: 56px;
+            height: 56px;
+            position: relative;
+        }
+        .spinner {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            animation: spinning82341 1.7s linear infinite;
+            filter: blur(1px);
+        }
+        .spinner::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(186, 66, 255) 35%, rgb(0, 225, 255));
+            box-shadow: 0px -5px 20px 0px rgb(186, 66, 255), 0px 5px 20px 0px rgb(0, 225, 255);
+        }
+        .spinner1 {
+            background-color: rgb(36, 36, 36);
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2;
+        }
+        .spinner-icon {
+            position: relative;
+            z-index: 3;
+            color: white;
+            font-size: 1.875rem;
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+            filter: none !important;
+        }
+        @keyframes spinning82341 {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        
+        .spinner-green {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            animation: spinning82341 1.7s linear infinite;
+            filter: blur(1px);
+        }
+        .spinner-green::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(0, 255, 0) 35%, rgb(0, 200, 0));
+            box-shadow: 0px -5px 20px 0px rgb(0, 255, 0), 0px 5px 20px 0px rgb(0, 200, 0);
+        }
+        
+        /* Animated border modal */
+        .animated-border-modal {
+            position: relative;
+            background: #1a1f24;
+            isolation: isolate;
+        }
+        .animated-border-modal::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 1.5rem;
+            background: #1a1f24;
+            z-index: -1;
+        }
+        .animated-border-modal::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 1.5rem;
+            background: linear-gradient(45deg, rgb(186, 66, 255), rgb(0, 225, 255), rgb(186, 66, 255));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
+        
+        /* Animated button for proceed */
+        .animated-button {
+            position: relative;
+            background: rgb(36, 36, 36);
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            isolation: isolate;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 48px;
+        }
+        .animated-button::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 0.5rem;
+            background: rgb(36, 36, 36);
+            z-index: -1;
+        }
+        .animated-button-add::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 0.5rem;
+            background: linear-gradient(45deg, rgb(186, 66, 255), rgb(0, 225, 255), rgb(186, 66, 255));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
+        @keyframes borderGradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        .form-container {
+            background: transparent;
+            border-radius: 0;
+            padding: 0;
+            max-width: none;
+            margin: 0;
+        }
+        
+        .input-group {
+            margin-bottom: 24px;
+        }
+        
+        .input-label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #d1d5db;
+        }
+        
+        .input-field {
+            width: 100%;
+            padding: 12px 16px;
+            background: #283039 !important;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            color: #ffffff !important;
+            font-size: 16px;
+            transition: border-color 0.2s;
+        }
+        
+        .input-field::placeholder {
+            color: #9ca3af !important;
+        }
+        
+        .input-field:-webkit-autofill,
+        .input-field:-webkit-autofill:hover,
+        .input-field:-webkit-autofill:focus {
+            -webkit-text-fill-color: #ffffff !important;
+            -webkit-box-shadow: 0 0 0px 1000px #283039 inset !important;
+            box-shadow: 0 0 0px 1000px #283039 inset !important;
+        }
+        
+        .input-field:focus {
+            outline: none;
+            border-color: #3b82f6;
+            background: #283039 !important;
+            color: #ffffff !important;
+        }
+        
+        .input-field input {
+            color: #ffffff !important;
+        }
+        
+        .location-button {
+            width: 100%;
+            padding: 12px 16px;
+            background: #1a1f24;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        
+        .location-button:hover {
+            background: #283039;
+            border-color: #4b5563;
+        }
+        
+        .location-button:active {
+            background: #111418;
+        }
+        
+        .location-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .time-picker-group {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .time-radio {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            color: #d1d5db;
+        }
+        
+        .time-radio input[type="radio"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #3b82f6;
+        }
+        
+        .datetime-input {
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .datetime-input::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            cursor: pointer;
+        }
+        
+        .proceed-button {
+            width: 100%;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 8px;
+            color: #ffffff;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            margin-top: 24px;
+        }
+        
+        .proceed-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .pac-container {
+            background: #1a1f24 !important;
+            border: 1px solid #374151 !important;
+            border-radius: 8px;
+            z-index: 10000;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+        }
+        
+        .pac-container * {
+            color: #ffffff !important;
+        }
+        
+        .pac-item {
+            padding: 12px;
+            border-bottom: 1px solid #374151;
+            color: #ffffff !important;
+            cursor: pointer;
+        }
+        
+        .pac-item * {
+            color: #ffffff !important;
+        }
+        
+        .pac-item:hover {
+            background: #283039;
+        }
+        
+        .pac-item:hover * {
+            color: #ffffff !important;
+        }
+        
+        .pac-item-selected {
+            background: #283039;
+        }
+        
+        .pac-item-selected * {
+            color: #ffffff !important;
+        }
+        
+        .pac-matched {
+            color: #3b82f6 !important;
+            font-weight: 600;
+        }
+        
+        .pac-icon {
+            background-color: transparent !important;
+        }
+        
+        .pac-item-query {
+            color: #ffffff !important;
+        }
+        
+        .pac-item-query * {
+            color: #ffffff !important;
+        }
+    </style>
+</head>
+<body class="bg-black text-white min-h-screen">
+    <!-- Top Navigation -->
+    <div class="bg-black border-b border-gray-800 sticky top-0 z-50">
+        <div class="flex items-center justify-between px-4 py-3">
+            <button onclick="window.location.href='/pages/driver-portal.html'" class="touch-target">
+                <div class="spinner-wrapper">
+                    <div class="spinner"></div>
+                    <div class="spinner1">
+                        <span class="material-symbols-outlined spinner-icon">arrow_back</span>
+                    </div>
+                </div>
+            </button>
+            <div class="flex items-center gap-3">
+                <h1 class="text-xl font-semibold">Authorization</h1>
+            </div>
+            <button onclick="window.location.href='/pages/driver-authorization-approved.html'" class="touch-target">
+                <div class="spinner-wrapper">
+                    <div class="spinner-green"></div>
+                    <div class="spinner1">
+                        <span class="material-symbols-outlined spinner-icon">task_alt</span>
+                    </div>
+                </div>
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div id="mainContent" class="container max-w-2xl mx-auto px-4 py-6 pb-24">
+        <!-- Empty State -->
+        <div id="emptyState" class="text-center py-16">
+            <span class="material-symbols-outlined text-6xl text-gray-600 mb-4">verified_user</span>
+            <p class="text-gray-400 text-lg mb-6">No authorization requests</p>
+            <p class="text-gray-500 text-sm mb-8">Create your first authorization request to get started</p>
+        </div>
+
+        <!-- Authorization Requests List (hidden by default) -->
+        <div id="requestsSection" class="hidden space-y-3">
+            <!-- Requests will be rendered here -->
+        </div>
+    </div>
+
+    <!-- Floating Add Button -->
+    <button onclick="openAuthorizationModal()" class="fixed bottom-6 right-6 z-40">
+        <div class="spinner-wrapper">
+            <div class="spinner"></div>
+            <div class="spinner1">
+                <span class="material-symbols-outlined spinner-icon">add</span>
+            </div>
+        </div>
+    </button>
+
+    <!-- Authorization Request Modal -->
+    <div id="authorizationModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 overflow-y-auto">
+        <div class="min-h-screen px-4 flex items-end sm:items-center justify-center">
+            <div class="bg-[#1a1f24] rounded-t-3xl sm:rounded-3xl w-full max-w-2xl transform transition-all animated-border-modal">
+                <div class="sticky top-0 bg-[#1a1f24] border-b border-gray-800 rounded-t-3xl z-10">
+                    <div class="flex items-center justify-between px-6 py-4">
+                        <h2 class="text-lg font-semibold">New Authorization Request</h2>
+                        <button onclick="closeAuthorizationModal()" class="touch-target text-gray-400 hover:text-white transition-colors">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="p-6 pb-8">
+                    <!-- Form Container -->
+                    <div class="form-container">
+                <form id="authorizationForm">
+                    <!-- From Address -->
+                    <div class="input-group">
+                        <label class="input-label" for="fromAddress">From</label>
+                        <input 
+                            type="text" 
+                            id="fromAddress" 
+                            class="input-field w-full bg-[#283039] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none" 
+                            placeholder="Enter departure address or postcode"
+                            autocomplete="off"
+                            style="background-color: #283039 !important; color: #ffffff !important; border-color: #374151;"
+                        />
+                        <button 
+                            type="button" 
+                            class="location-button" 
+                            id="useCurrentLocationFrom"
+                            onclick="useCurrentLocation('from')"
+                        >
+                            <span class="material-symbols-outlined" style="font-size: 18px;">my_location</span>
+                            Use Current Location
+                        </button>
+                    </div>
+                    
+                    <!-- To Address -->
+                    <div class="input-group">
+                        <label class="input-label" for="toAddress">To</label>
+                        <input 
+                            type="text" 
+                            id="toAddress" 
+                            class="input-field w-full bg-[#283039] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none" 
+                            placeholder="Enter arrival address or postcode"
+                            autocomplete="off"
+                            style="background-color: #283039 !important; color: #ffffff !important; border-color: #374151;"
+                        />
+                        <button 
+                            type="button" 
+                            class="location-button" 
+                            id="useCurrentLocationTo"
+                            onclick="useCurrentLocation('to')"
+                        >
+                            <span class="material-symbols-outlined" style="font-size: 18px;">my_location</span>
+                            Use Current Location
+                        </button>
+                    </div>
+                    
+                    <!-- Leave At -->
+                    <div class="input-group">
+                        <label class="input-label">Leave At</label>
+                        <div class="time-picker-group">
+                            <label class="time-radio">
+                                <input 
+                                    type="radio" 
+                                    name="leaveAt" 
+                                    value="now" 
+                                    checked 
+                                    onchange="handleLeaveAtChange()"
+                                />
+                                <span>Now</span>
+                            </label>
+                            <label class="time-radio">
+                                <input 
+                                    type="radio" 
+                                    name="leaveAt" 
+                                    value="custom" 
+                                    onchange="handleLeaveAtChange()"
+                                />
+                                <span>Custom Time</span>
+                            </label>
+                        </div>
+                        <input 
+                            type="datetime-local" 
+                            id="customDateTime" 
+                            class="input-field datetime-input" 
+                            style="display: none; margin-top: 12px;"
+                            onchange="validateForm()"
+                        />
+                    </div>
+                    
+                    <!-- Proceed Button -->
+                    <button 
+                        type="button" 
+                        id="proceedButton" 
+                        class="proceed-button animated-button animated-button-add" 
+                        disabled
+                        onclick="proceedToRoutes()"
+                    >
+                        <span class="text-white font-semibold">Proceed</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let fromAutocomplete, toAutocomplete;
+        let fromPlace = null;
+        let toPlace = null;
+        let googleMapsLoaded = false;
+        
+        // Initialize Google Maps
+        window.initGoogleMaps = function() {
+            if (window.google && window.google.maps && window.google.maps.places) {
+                googleMapsLoaded = true;
+                initializeAutocomplete();
+            }
+        };
+        
+        // Wait for Google Maps to load
+        function waitForGoogleMaps() {
+            return new Promise((resolve) => {
+                if (googleMapsLoaded) {
+                    resolve();
+                    return;
+                }
+                const checkInterval = setInterval(() => {
+                    if (googleMapsLoaded) {
+                        clearInterval(checkInterval);
+                        resolve();
+                    }
+                }, 100);
+            });
+        }
+        
+        // Initialize autocomplete for address inputs
+        async function initializeAutocomplete() {
+            await waitForGoogleMaps();
+            
+            // From address autocomplete
+            const fromInput = document.getElementById('fromAddress');
+            fromAutocomplete = new google.maps.places.Autocomplete(fromInput, {
+                componentRestrictions: { country: 'gb' } // Restrict to UK
+            });
+            
+            fromAutocomplete.addListener('place_changed', () => {
+                fromPlace = fromAutocomplete.getPlace();
+                validateForm();
+            });
+            
+            // To address autocomplete
+            const toInput = document.getElementById('toAddress');
+            toAutocomplete = new google.maps.places.Autocomplete(toInput, {
+                componentRestrictions: { country: 'gb' } // Restrict to UK
+            });
+            
+            toAutocomplete.addListener('place_changed', () => {
+                toPlace = toAutocomplete.getPlace();
+                validateForm();
+            });
+            
+            // Also validate on manual input
+            fromInput.addEventListener('input', validateForm);
+            toInput.addEventListener('input', validateForm);
+        }
+        
+        // Use current location
+        function useCurrentLocation(type) {
+            const button = document.getElementById(`useCurrentLocation${type.charAt(0).toUpperCase() + type.slice(1)}`);
+            const input = document.getElementById(`${type}Address`);
+            
+            button.disabled = true;
+            button.innerHTML = '<span class="material-symbols-outlined" style="font-size: 18px;">sync</span> Getting location...';
+            
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    async (position) => {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        
+                        try {
+                            await waitForGoogleMaps();
+                            const geocoder = new google.maps.Geocoder();
+                            geocoder.geocode(
+                                { location: { lat, lng } },
+                                (results, status) => {
+                                    if (status === 'OK' && results[0]) {
+                                        input.value = results[0].formatted_address;
+                                        if (type === 'from') {
+                                            fromPlace = results[0];
+                                        } else {
+                                            toPlace = results[0];
+                                        }
+                                        validateForm();
+                                    } else {
+                                        alert('Could not get address for your location. Please enter manually.');
+                                    }
+                                    button.disabled = false;
+                                    button.innerHTML = `<span class="material-symbols-outlined" style="font-size: 18px;">my_location</span> Use Current Location`;
+                                }
+                            );
+                        } catch (error) {
+                            console.error('Error geocoding location:', error);
+                            alert('Error getting address. Please enter manually.');
+                            button.disabled = false;
+                            button.innerHTML = `<span class="material-symbols-outlined" style="font-size: 18px;">my_location</span> Use Current Location`;
+                        }
+                    },
+                    (error) => {
+                        console.error('Error getting location:', error);
+                        alert('Could not get your location. Please enable location services or enter manually.');
+                        button.disabled = false;
+                        button.innerHTML = `<span class="material-symbols-outlined" style="font-size: 18px;">my_location</span> Use Current Location`;
+                    }
+                );
+            } else {
+                alert('Geolocation is not supported by your browser.');
+                button.disabled = false;
+                button.innerHTML = `<span class="material-symbols-outlined" style="font-size: 18px;">my_location</span> Use Current Location`;
+            }
+        }
+        
+        // Handle leave at change
+        function handleLeaveAtChange() {
+            const customDateTime = document.getElementById('customDateTime');
+            const customRadio = document.querySelector('input[name="leaveAt"][value="custom"]');
+            
+            if (customRadio.checked) {
+                customDateTime.style.display = 'block';
+                // Set minimum to now
+                const now = new Date();
+                now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+                customDateTime.min = now.toISOString().slice(0, 16);
+            } else {
+                customDateTime.style.display = 'none';
+            }
+            validateForm();
+        }
+        
+        // Validate form
+        function validateForm() {
+            const fromInput = document.getElementById('fromAddress');
+            const toInput = document.getElementById('toAddress');
+            const proceedButton = document.getElementById('proceedButton');
+            const customRadio = document.querySelector('input[name="leaveAt"][value="custom"]');
+            const customDateTime = document.getElementById('customDateTime');
+            
+            const hasFrom = fromInput.value.trim().length > 0 && fromPlace;
+            const hasTo = toInput.value.trim().length > 0 && toPlace;
+            const hasValidTime = !customRadio.checked || (customDateTime.value && customDateTime.value.length > 0);
+            
+            proceedButton.disabled = !(hasFrom && hasTo && hasValidTime);
+        }
+        
+        // Proceed to routes
+        function proceedToRoutes() {
+            const fromInput = document.getElementById('fromAddress');
+            const toInput = document.getElementById('toAddress');
+            const leaveAtRadio = document.querySelector('input[name="leaveAt"]:checked');
+            const customDateTime = document.getElementById('customDateTime');
+            
+            if (!fromPlace || !toPlace) {
+                alert('Please select valid addresses for both From and To locations.');
+                return;
+            }
+            
+            // Get departure time
+            let departureTime = null;
+            if (leaveAtRadio.value === 'custom' && customDateTime.value) {
+                departureTime = new Date(customDateTime.value).toISOString();
+            } else {
+                departureTime = new Date().toISOString();
+            }
+            
+            // Store data in sessionStorage for the routes page
+            sessionStorage.setItem('authorizationRequest', JSON.stringify({
+                from: {
+                    address: fromInput.value,
+                    place: fromPlace,
+                    lat: fromPlace.geometry.location.lat(),
+                    lng: fromPlace.geometry.location.lng()
+                },
+                to: {
+                    address: toInput.value,
+                    place: toPlace,
+                    lat: toPlace.geometry.location.lat(),
+                    lng: toPlace.geometry.location.lng()
+                },
+                departureTime: departureTime
+            }));
+            
+            // Navigate to routes page
+            window.location.href = '/pages/driver-authorization-routes.html';
+        }
+        
+        // Open authorization modal
+        function openAuthorizationModal() {
+            document.getElementById('authorizationModal').classList.remove('hidden');
+            // Initialize autocomplete when modal opens
+            setTimeout(() => {
+                if (window.google && window.google.maps && window.google.maps.places) {
+                    googleMapsLoaded = true;
+                    initializeAutocomplete();
+                }
+                validateForm();
+            }, 100);
+        }
+        
+        // Close authorization modal
+        function closeAuthorizationModal() {
+            document.getElementById('authorizationModal').classList.add('hidden');
+            // Reset form
+            document.getElementById('authorizationForm').reset();
+            fromPlace = null;
+            toPlace = null;
+            document.getElementById('fromAddress').value = '';
+            document.getElementById('toAddress').value = '';
+            const nowRadio = document.querySelector('input[name="leaveAt"][value="now"]');
+            if (nowRadio) nowRadio.checked = true;
+            const customDateTime = document.getElementById('customDateTime');
+            if (customDateTime) customDateTime.style.display = 'none';
+            validateForm();
+        }
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            // Check if Google Maps is already loaded (for when modal opens)
+            if (window.google && window.google.maps && window.google.maps.places) {
+                googleMapsLoaded = true;
+            }
+            
+            // Show main content
+            const mainContent = document.getElementById('mainContent');
+            if (mainContent) {
+                mainContent.classList.remove('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
+
