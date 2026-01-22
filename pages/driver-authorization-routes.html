@@ -386,6 +386,55 @@
             margin: 16px;
         }
         
+        .cost-input {
+            margin-top: 8px;
+            padding: 6px 10px;
+            background: #283039 !important;
+            border: 1px solid #3a444e !important;
+            border-radius: 6px;
+            color: #ffffff !important;
+            font-size: 14px;
+            width: 100%;
+            max-width: 120px;
+        }
+        
+        .cost-input::placeholder {
+            color: #9ca3af !important;
+            opacity: 1;
+        }
+        
+        .cost-input:-webkit-autofill,
+        .cost-input:-webkit-autofill:hover,
+        .cost-input:-webkit-autofill:focus {
+            -webkit-text-fill-color: #ffffff !important;
+            -webkit-box-shadow: 0 0 0px 1000px #283039 inset !important;
+            box-shadow: 0 0 0px 1000px #283039 inset !important;
+        }
+        
+        .cost-input:focus {
+            outline: none;
+            border-color: #667eea !important;
+            background: #283039 !important;
+            color: #ffffff !important;
+        }
+        
+        .segment-cost-label {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-top: 4px;
+        }
+        
+        .timeline-content.transit-cost {
+            background: #1e3a5f;
+            border-color: #3b82f6;
+        }
+        
+        .timeline-content.taxi-request {
+            background: #7f1d1d !important;
+            border-color: #ef4444 !important;
+            border-width: 2px;
+        }
+        
         @media (max-width: 768px) {
             .content {
                 flex-direction: column;
@@ -393,13 +442,24 @@
             
             .routes-list {
                 max-width: 100%;
-                max-height: 40vh;
+                max-height: 70vh;
                 border-right: none;
                 border-bottom: 1px solid #283039;
+                order: 1;
             }
             
             .map-container {
-                height: 60vh;
+                height: 30vh;
+                min-height: 200px;
+                order: 2;
+            }
+            
+            .header h1 {
+                font-size: 16px;
+            }
+            
+            .route-info {
+                font-size: 12px;
             }
         }
     </style>
@@ -411,7 +471,7 @@
                 <span class="material-symbols-outlined" style="font-size: 18px;">arrow_back</span>
                 Back
             </a>
-            <h1 class="text-xl font-bold">Select Public Transport Route</h1>
+            <h1 class="text-xl font-bold">Click a step once to request a transit cost. Click twice to request a taxi.</h1>
             <div class="route-info" id="routeInfo"></div>
             <button class="request-button" id="requestButton" onclick="handleRequest()">
                 <span class="material-symbols-outlined" style="font-size: 18px;">send</span>
@@ -493,10 +553,7 @@
             // We'll render routes manually with different colors per segment
             
             // Update route info
-            document.getElementById('routeInfo').innerHTML = `
-                <div><strong>From:</strong> ${requestData.from.address}</div>
-                <div><strong>To:</strong> ${requestData.to.address}</div>
-            `;
+            // Route info removed - instructions are now in the header
         }
         
         // Load routes using Google Maps Directions API with transit mode
@@ -647,8 +704,16 @@
                 route.routes[0].legs.forEach((leg, legIndex) => {
                     leg.steps.forEach((step, stepIndex) => {
                         const segmentId = `route-${routeIndex}-segment-${segmentIndex}`;
-                        const isSelected = selectedSegments.has(segmentId);
+                        const isTransitCost = transitCostSegments.has(segmentId);
+                        const isTaxiRequest = taxiRequestSegments.has(segmentId);
+                        const costValue = transitCostSegments.get(segmentId) || '';
                         const lineClass = getLineClass(step);
+                        let contentClass = '';
+                        if (isTaxiRequest) {
+                            contentClass = 'taxi-request';
+                        } else if (isTransitCost) {
+                            contentClass = 'transit-cost';
+                        }
                         
                         if (step.travel_mode === 'WALKING') {
                             // Calculate arrival time
@@ -659,12 +724,19 @@
                                     <div class="timeline-dot"></div>
                                     <div class="timeline-segment-line ${lineClass}" style="top: 0; height: ${step.duration.value * 0.5}px;"></div>
                                     <div class="timeline-time">${formatTime(arrivalTime)}</div>
-                                    <div class="timeline-content ${isSelected ? 'selected' : ''}" id="${segmentId}" onclick="event.stopPropagation(); toggleSegment('${segmentId}')">
+                                    <div class="timeline-content ${contentClass}" id="${segmentId}" onclick="handleSegmentClick('${segmentId}', event)">
                                         <div class="timeline-header">
                                             <div class="timeline-icon">${getTimelineIcon(step)}</div>
                                             <div class="timeline-title">Walk</div>
                                         </div>
                                         <div class="timeline-duration">About ${step.duration.text}${step.distance ? ' · ' + step.distance.text : ''}</div>
+                                        ${(isTransitCost || isTaxiRequest) ? `
+                                            <div class="segment-cost-label">${isTaxiRequest ? 'Taxi Cost:' : 'Transit Cost:'}</div>
+                                            <input type="number" step="0.01" min="0" placeholder="£0.00" value="${costValue}" 
+                                                class="cost-input" 
+                                                onchange="updateSegmentCost('${segmentId}', this.value)"
+                                                onclick="event.stopPropagation();">
+                                        ` : ''}
                                     </div>
                                 </div>
                             `;
@@ -707,20 +779,35 @@
                                 // Show wait if reasonable
                                 if (waitTimeMinutes > 0 && waitTimeMinutes < 1440) {
                                     const waitSegmentId = `route-${routeIndex}-wait-${segmentIndex}`;
-                                    const isWaitSelected = selectedSegments.has(waitSegmentId);
+                                    const isWaitTransitCost = transitCostSegments.has(waitSegmentId);
+                                    const isWaitTaxiRequest = taxiRequestSegments.has(waitSegmentId);
+                                    const waitCostValue = transitCostSegments.get(waitSegmentId) || '';
+                                    let waitContentClass = '';
+                                    if (isWaitTaxiRequest) {
+                                        waitContentClass = 'taxi-request';
+                                    } else if (isWaitTransitCost) {
+                                        waitContentClass = 'transit-cost';
+                                    }
                                     
                                     timelineHtml += `
                                         <div class="timeline-item">
                                             <div class="timeline-dot"></div>
                                             <div class="timeline-segment-line wait" style="top: 0; height: ${Math.min(waitTimeMinutes * 2, 100)}px;"></div>
                                             <div class="timeline-time">${formatTime(departureTime)}</div>
-                                            <div class="timeline-content ${isWaitSelected ? 'selected' : ''}" id="${waitSegmentId}" onclick="event.stopPropagation(); toggleSegment('${waitSegmentId}')">
+                                            <div class="timeline-content ${waitContentClass}" id="${waitSegmentId}" onclick="handleSegmentClick('${waitSegmentId}', event)">
                                                 <div class="timeline-header">
                                                     <span class="material-symbols-outlined" style="font-size: 20px; color: #F59E0B;">schedule</span>
                                                     <div class="timeline-title">Wait</div>
                                                 </div>
                                                 <div class="timeline-duration">${formatWaitTime(waitTimeMinutes)}</div>
                                                 ${transit.departure_stop ? `<div class="timeline-location">${transit.departure_stop.name}</div>` : ''}
+                                                ${(isWaitTransitCost || isWaitTaxiRequest) ? `
+                                                    <div class="segment-cost-label">${isWaitTaxiRequest ? 'Taxi Cost:' : 'Transit Cost:'}</div>
+                                                    <input type="number" step="0.01" min="0" placeholder="£0.00" value="${waitCostValue}" 
+                                                        class="cost-input" 
+                                                        onchange="updateSegmentCost('${waitSegmentId}', this.value)"
+                                                        onclick="event.stopPropagation();">
+                                                ` : ''}
                                             </div>
                                         </div>
                                     `;
@@ -734,12 +821,23 @@
                                 ? new Date(transit.arrival_time.value * 1000)
                                 : new Date(currentTime.getTime() + (step.duration.value * 1000));
                             
+                            const transitSegmentId = `route-${routeIndex}-segment-${segmentIndex}`;
+                            const isTransitCostSegment = transitCostSegments.has(transitSegmentId);
+                            const isTaxiRequestSegment = taxiRequestSegments.has(transitSegmentId);
+                            const transitCostValue = transitCostSegments.get(transitSegmentId) || '';
+                            let transitContentClass = '';
+                            if (isTaxiRequestSegment) {
+                                transitContentClass = 'taxi-request';
+                            } else if (isTransitCostSegment) {
+                                transitContentClass = 'transit-cost';
+                            }
+                            
                             timelineHtml += `
                                 <div class="timeline-item">
                                     <div class="timeline-dot"></div>
                                     <div class="timeline-segment-line ${lineClass}" style="top: 0; height: ${step.duration.value * 0.3}px;"></div>
                                     <div class="timeline-time">${formatTime(arrivalTime)}</div>
-                                    <div class="timeline-content ${isSelected ? 'selected' : ''}" id="${segmentId}" onclick="event.stopPropagation(); toggleSegment('${segmentId}')">
+                                    <div class="timeline-content ${transitContentClass}" id="${transitSegmentId}" onclick="handleSegmentClick('${transitSegmentId}', event)">
                                         <div class="timeline-header">
                                             <div class="timeline-icon">${getTimelineIcon(step)}</div>
                                             <div class="timeline-title">${transitType === 'TRAIN' || transitType === 'SUBWAY' ? transitName : transitName}</div>
@@ -747,6 +845,13 @@
                                         <div class="timeline-duration">${step.duration.text}${transit.num_stops ? ' (' + transit.num_stops + ' stops)' : ''}</div>
                                         ${transit.departure_stop ? `<div class="timeline-location">${transit.departure_stop.name}</div>` : ''}
                                         ${transit.arrival_stop ? `<div class="timeline-location">→ ${transit.arrival_stop.name}</div>` : ''}
+                                        ${(isTransitCostSegment || isTaxiRequestSegment) ? `
+                                            <div class="segment-cost-label">${isTaxiRequestSegment ? 'Taxi Cost:' : 'Transit Cost:'}</div>
+                                            <input type="number" step="0.01" min="0" placeholder="£0.00" value="${transitCostValue}" 
+                                                class="cost-input" 
+                                                onchange="updateSegmentCost('${transitSegmentId}', this.value)"
+                                                onclick="event.stopPropagation();">
+                                        ` : ''}
                                     </div>
                                 </div>
                             `;
@@ -797,21 +902,78 @@
             return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
         }
         
-        // Toggle segment selection
-        function toggleSegment(segmentId) {
-            if (selectedSegments.has(segmentId)) {
-                selectedSegments.delete(segmentId);
+        // Handle segment click (single or double)
+        function handleSegmentClick(segmentId, event) {
+            event.stopPropagation();
+            
+            // Check current state
+            const hasTransitCost = transitCostSegments.has(segmentId);
+            const hasTaxiRequest = taxiRequestSegments.has(segmentId);
+            
+            // Check if there's a pending single-click timer
+            if (clickTimers.has(segmentId)) {
+                // This is a double click (within 300ms)
+                clearTimeout(clickTimers.get(segmentId));
+                clickTimers.delete(segmentId);
+                
+                // Double click = taxi request
+                if (hasTaxiRequest) {
+                    // Remove taxi request
+                    taxiRequestSegments.delete(segmentId);
+                    transitCostSegments.delete(segmentId);
+                } else {
+                    // Add taxi request (preserve cost if transit cost exists)
+                    const existingCost = transitCostSegments.get(segmentId) || '';
+                    taxiRequestSegments.add(segmentId);
+                    if (existingCost) {
+                        transitCostSegments.set(segmentId, existingCost);
+                    }
+                }
             } else {
-                selectedSegments.add(segmentId);
+                // Single click - check if we should convert transit cost to taxi request
+                if (hasTransitCost && !hasTaxiRequest) {
+                    // Convert transit cost to taxi request
+                    const existingCost = transitCostSegments.get(segmentId) || '';
+                    taxiRequestSegments.add(segmentId);
+                    if (existingCost) {
+                        transitCostSegments.set(segmentId, existingCost);
+                    }
+                } else if (hasTaxiRequest) {
+                    // Remove taxi request
+                    taxiRequestSegments.delete(segmentId);
+                    transitCostSegments.delete(segmentId);
+                } else {
+                    // No state - set timer to detect double click
+                    const timer = setTimeout(() => {
+                        // Single click confirmed (no double click detected)
+                        transitCostSegments.set(segmentId, '');
+                        taxiRequestSegments.delete(segmentId);
+                        
+                        clickTimers.delete(segmentId);
+                        updateRequestButton();
+                        displayRoutes(); // Update UI
+                        if (selectedRouteIndex !== null) {
+                            renderRoute(routes[selectedRouteIndex]);
+                        }
+                    }, 300); // 300ms delay to detect double click
+                    
+                    clickTimers.set(segmentId, timer);
+                }
             }
             
-            // Update request button visibility
             updateRequestButton();
-            
-            // Re-render the selected route with updated segments
+            displayRoutes(); // Update UI
             if (selectedRouteIndex !== null) {
                 renderRoute(routes[selectedRouteIndex]);
-                displayRoutes(); // Update UI
+            }
+        }
+        
+        // Update cost value for a segment
+        function updateSegmentCost(segmentId, value) {
+            if (transitCostSegments.has(segmentId)) {
+                transitCostSegments.set(segmentId, value);
+            } else if (taxiRequestSegments.has(segmentId)) {
+                transitCostSegments.set(segmentId, value); // Store cost for taxi requests too
             }
         }
         
@@ -819,7 +981,7 @@
         function updateRequestButton() {
             const requestButton = document.getElementById('requestButton');
             if (requestButton) {
-                if (selectedSegments.size > 0) {
+                if (transitCostSegments.size > 0 || taxiRequestSegments.size > 0) {
                     requestButton.classList.add('visible');
                 } else {
                     requestButton.classList.remove('visible');
@@ -829,17 +991,32 @@
         
         // Handle request button click
         function handleRequest() {
-            if (selectedSegments.size === 0) {
+            if (transitCostSegments.size === 0 && taxiRequestSegments.size === 0) {
                 return;
             }
             
+            // Collect transit costs (not taxi requests)
+            const transitCosts = [];
+            transitCostSegments.forEach((cost, segmentId) => {
+                if (!taxiRequestSegments.has(segmentId)) {
+                    transitCosts.push({ segmentId, cost });
+                }
+            });
+            
+            // Collect taxi requests with costs
+            const taxiRequests = Array.from(taxiRequestSegments).map(segmentId => ({
+                segmentId,
+                cost: transitCostSegments.get(segmentId) || ''
+            }));
+            
             // TODO: Implement request submission
-            console.log('Requesting taxi for segments:', Array.from(selectedSegments));
-            alert('Taxi request submitted for selected segments!');
+            console.log('Requesting authorization:', { transitCosts, taxiRequests });
+            alert('Authorization request submitted!');
         }
         
         // Make functions available globally
-        window.toggleSegment = toggleSegment;
+        window.handleSegmentClick = handleSegmentClick;
+        window.updateSegmentCost = updateSegmentCost;
         window.handleRequest = handleRequest;
         
         // Get icon for route step
@@ -880,8 +1057,11 @@
         // Store segment data for selection
         let routeSegments = [];
         let selectedSegments = new Set();
+        let transitCostSegments = new Map(); // segmentId -> cost value
+        let taxiRequestSegments = new Set(); // segmentId
         let taxiPolylines = [];
         let segmentPolylines = [];
+        let clickTimers = new Map(); // segmentId -> timer
         
         // Clear existing route from map
         function clearRoute() {
@@ -919,12 +1099,12 @@
                 });
             });
             
-            // Check if all segments are selected
-            let allSelected = true;
+            // Check if all segments are taxi requests
+            let allTaxiRequests = true;
             for (let i = 0; i < totalSegments; i++) {
                 const segmentId = `route-${selectedRouteIndex}-segment-${i}`;
-                if (!selectedSegments.has(segmentId)) {
-                    allSelected = false;
+                if (!taxiRequestSegments.has(segmentId)) {
+                    allTaxiRequests = false;
                     break;
                 }
             }
@@ -944,8 +1124,8 @@
                 });
                 routeMarkers.push(startMarker);
                 
-                // If all segments are selected, show single straight line from start to end
-                if (allSelected && totalSegments > 0) {
+                // If all segments are taxi requests, show single straight line from start to end
+                if (allTaxiRequests && totalSegments > 0) {
                     let startLoc = leg.start_location;
                     let endLoc = leg.end_location;
                     
@@ -994,9 +1174,9 @@
                     // Only render walking and transit steps (skip wait segments as they're not actual map segments)
                     if (step.travel_mode === 'WALKING' || step.travel_mode === 'TRANSIT') {
                         const segmentId = `route-${selectedRouteIndex}-segment-${segmentIndex}`;
-                        const isSelected = selectedSegments.has(segmentId);
+                        const isTaxiRequest = taxiRequestSegments.has(segmentId);
                         
-                        if (isSelected) {
+                        if (isTaxiRequest) {
                             // Render as thick red straight line (as the bird flies)
                             let startLoc = step.start_location;
                             let endLoc = step.end_location;
@@ -1124,6 +1304,10 @@
             
             // Clear selected segments when switching routes
             selectedSegments.clear();
+            transitCostSegments.clear();
+            taxiRequestSegments.clear();
+            clickTimers.forEach(timer => clearTimeout(timer));
+            clickTimers.clear();
             updateRequestButton();
             
             // Update UI
