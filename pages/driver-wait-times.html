@@ -29,6 +29,48 @@
             border: 2px solid #000;
             text-transform: uppercase;
         }
+        /* Dark theme time picker styling */
+        input[type="time"] {
+            color-scheme: dark;
+            color: white;
+            background-color: #283039;
+            position: relative;
+            padding-right: 40px !important;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpolyline points='12 6 12 12 16 14'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 20px 20px;
+        }
+        input[type="time"]:hover {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpolyline points='12 6 12 12 16 14'/%3E%3C/svg%3E");
+        }
+        /* Hide the default calendar picker indicator */
+        input[type="time"]::-webkit-calendar-picker-indicator {
+            opacity: 0;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            position: absolute;
+            right: 12px;
+            z-index: 1;
+        }
+        input[type="time"]::-webkit-datetime-edit-text {
+            color: white;
+        }
+        input[type="time"]::-webkit-datetime-edit-hour-field,
+        input[type="time"]::-webkit-datetime-edit-minute-field {
+            color: white;
+        }
+        input[type="time"]::-webkit-datetime-edit-ampm-field {
+            color: white;
+        }
+        input[type="time"]::-webkit-datetime-edit-fields-wrapper {
+            color: white;
+        }
+        /* Ensure the picker popup uses dark theme */
+        input[type="time"]:focus {
+            color-scheme: dark;
+        }
         .category-btn {
             transition: all 0.2s ease;
         }
@@ -445,40 +487,29 @@
                     </div>
 
                     <div id="timeSelection" class="hidden">
-                        <label class="text-sm text-gray-400 mb-3 block">WAIT DURATION</label>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <div class="flex items-center justify-between mb-1">
-                                    <span class="text-xs text-gray-400">Hours</span>
-                                    <span class="text-xs text-gray-500">0 - 12</span>
+                        <label class="text-sm text-gray-400 mb-3 block">WAIT TIME</label>
+                        <div class="space-y-4">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="text-xs text-gray-400 mb-2 block">Delay Start Time</label>
+                                    <input 
+                                        type="time" 
+                                        id="delayStartTime" 
+                                        class="w-full bg-[#283039] border border-gray-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 text-lg"
+                                    />
                                 </div>
-                                <select id="hoursSelect" class="w-full bg-[#283039] border border-gray-700 text-white rounded-lg px-3 py-3 focus:outline-none focus:border-blue-500">
-                                    <option value="0">0 hours</option>
-                                    <option value="1">1 hour</option>
-                                    <option value="2">2 hours</option>
-                                    <option value="3">3 hours</option>
-                                    <option value="4">4 hours</option>
-                                    <option value="5">5 hours</option>
-                                    <option value="6">6 hours</option>
-                                    <option value="7">7 hours</option>
-                                    <option value="8">8 hours</option>
-                                    <option value="9">9 hours</option>
-                                    <option value="10">10 hours</option>
-                                    <option value="11">11 hours</option>
-                                    <option value="12">12 hours</option>
-                                </select>
+                                <div>
+                                    <label class="text-xs text-gray-400 mb-2 block">Delay End Time</label>
+                                    <input 
+                                        type="time" 
+                                        id="delayEndTime" 
+                                        class="w-full bg-[#283039] border border-gray-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 text-lg"
+                                    />
+                                </div>
                             </div>
-                            <div>
-                                <div class="flex items-center justify-between mb-1">
-                                    <span class="text-xs text-gray-400">Minutes</span>
-                                    <span class="text-xs text-gray-500">15 min increments</span>
-                                </div>
-                                <select id="minutesSelect" class="w-full bg-[#283039] border border-gray-700 text-white rounded-lg px-3 py-3 focus:outline-none focus:border-blue-500">
-                                    <option value="0">0 minutes</option>
-                                    <option value="15">15 minutes</option>
-                                    <option value="30">30 minutes</option>
-                                    <option value="45">45 minutes</option>
-                                </select>
+                            <div id="durationDisplay" class="bg-[#1f2730] border border-[#2f3944] rounded-xl px-4 py-3">
+                                <p class="text-xs uppercase tracking-wide text-gray-400 mb-1">Total Wait Duration</p>
+                                <p id="calculatedDuration" class="text-lg font-semibold text-white">--</p>
                             </div>
                         </div>
                     </div>
@@ -766,6 +797,8 @@
                         hours: data.hours,
                         minutes: data.minutes,
                         totalMinutes: data.totalMinutes,
+                        delayStartTime: data.delayStartTime || '',
+                        delayEndTime: data.delayEndTime || '',
                         notes: data.notes || '',
                         processingStatus: 'pending',
                         createdAt: entry.createdAt ?
@@ -938,8 +971,14 @@
                 validateWaitTimeForm();
             });
 
-            document.getElementById('hoursSelect').addEventListener('change', validateWaitTimeForm);
-            document.getElementById('minutesSelect').addEventListener('change', validateWaitTimeForm);
+            document.getElementById('delayStartTime').addEventListener('change', () => {
+                calculateDuration();
+                validateWaitTimeForm();
+            });
+            document.getElementById('delayEndTime').addEventListener('change', () => {
+                calculateDuration();
+                validateWaitTimeForm();
+            });
             document.getElementById('notesInput').addEventListener('input', validateWaitTimeForm);
         }
 
@@ -1203,15 +1242,24 @@
             }
 
             const regInput = document.getElementById('regInput');
-            const hoursSelect = document.getElementById('hoursSelect');
-            const minutesSelect = document.getElementById('minutesSelect');
+            const delayStartTime = document.getElementById('delayStartTime').value;
+            const delayEndTime = document.getElementById('delayEndTime').value;
             const notesInput = document.getElementById('notesInput');
             const saveBtn = document.getElementById('saveWaitTimeBtn');
 
             let registration = normalizeRegistration(regInput.value);
-            const hours = parseInt(hoursSelect.value, 10) || 0;
-            const minutes = parseInt(minutesSelect.value, 10) || 0;
-            const totalMinutes = (hours * 60) + minutes;
+            
+            // Validate times
+            if (!delayStartTime || !delayEndTime) {
+                notifyWarning('Please select both delay start and end times.');
+                return;
+            }
+            
+            // Calculate duration from times
+            const duration = calculateDuration();
+            const hours = duration.hours;
+            const minutes = duration.minutes;
+            const totalMinutes = duration.totalMinutes;
             const notes = (notesInput.value || '').trim();
 
             if (!registration) {
@@ -1278,6 +1326,8 @@
                 hours,
                 minutes,
                 totalMinutes,
+                delayStartTime,
+                delayEndTime,
                 notes
             };
 
@@ -1295,6 +1345,8 @@
                 hours,
                 minutes,
                 totalMinutes,
+                delayStartTime,
+                delayEndTime,
                 notes,
                 processingStatus: 'pending',
                 createdAt: createdAtTimestamp, // Use actual timestamp for IndexedDB
@@ -1391,6 +1443,9 @@
             document.getElementById('timeSelection').classList.add('hidden');
             document.getElementById('notesSection').classList.add('hidden');
             document.getElementById('notesInput').value = '';
+            document.getElementById('delayStartTime').value = '';
+            document.getElementById('delayEndTime').value = '';
+            document.getElementById('calculatedDuration').textContent = '--';
             document.querySelectorAll('.category-btn').forEach(btn => btn.classList.remove('active'));
             isSaving = false;
             validateWaitTimeForm();
@@ -1398,14 +1453,54 @@
 
         function validateWaitTimeForm() {
             const reg = normalizeRegistration(document.getElementById('regInput').value);
-            const hours = parseInt(document.getElementById('hoursSelect').value, 10) || 0;
-            const minutes = parseInt(document.getElementById('minutesSelect').value, 10) || 0;
-            const totalMinutes = (hours * 60) + minutes;
+            const delayStartTime = document.getElementById('delayStartTime').value;
+            const delayEndTime = document.getElementById('delayEndTime').value;
             const notes = (document.getElementById('notesInput').value || '').trim();
             const saveBtn = document.getElementById('saveWaitTimeBtn');
+            
+            // Calculate duration if both times are set
+            let totalMinutes = 0;
+            if (delayStartTime && delayEndTime) {
+                const duration = calculateDuration();
+                totalMinutes = duration.totalMinutes;
+            }
 
-            const isValid = Boolean(reg) && Boolean(selectedWaitCategory) && totalMinutes > 0 && Boolean(notes) && !isSaving;
+            const isValid = Boolean(reg) && Boolean(selectedWaitCategory) && Boolean(delayStartTime) && Boolean(delayEndTime) && totalMinutes >= 15 && Boolean(notes) && !isSaving;
             saveBtn.disabled = !isValid;
+        }
+
+        function calculateDuration() {
+            const startTime = document.getElementById('delayStartTime').value;
+            const endTime = document.getElementById('delayEndTime').value;
+            const durationDisplay = document.getElementById('calculatedDuration');
+            
+            if (!startTime || !endTime) {
+                durationDisplay.textContent = '--';
+                return { hours: 0, minutes: 0, totalMinutes: 0 };
+            }
+            
+            // Parse times
+            const [startHours, startMinutes] = startTime.split(':').map(Number);
+            const [endHours, endMinutes] = endTime.split(':').map(Number);
+            
+            // Convert to minutes since midnight
+            const startTotalMinutes = startHours * 60 + startMinutes;
+            const endTotalMinutes = endHours * 60 + endMinutes;
+            
+            // Calculate difference (handle case where end time is next day)
+            let diffMinutes = endTotalMinutes - startTotalMinutes;
+            if (diffMinutes < 0) {
+                // End time is next day (e.g., start 23:00, end 01:00)
+                diffMinutes = (24 * 60) - startTotalMinutes + endTotalMinutes;
+            }
+            
+            const hours = Math.floor(diffMinutes / 60);
+            const minutes = diffMinutes % 60;
+            
+            // Update display
+            durationDisplay.textContent = formatDuration(diffMinutes);
+            
+            return { hours, minutes, totalMinutes: diffMinutes };
         }
 
         function formatDuration(totalMinutes) {

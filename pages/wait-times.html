@@ -168,7 +168,7 @@
                 <a class="bg-[#283039] text-white text-xs font-medium rounded-md px-3 py-2" href="#">Wait Times</a>
 <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/messages.html">Messages</a>
 <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="#">Authorization</a>
-            </nav>
+</nav>
 <div class="flex items-center gap-4">
                 <button type="button" class="mobile-nav-toggle" data-soto-nav-toggle aria-label="Toggle navigation" aria-expanded="false">
                     <span class="material-symbols-outlined text-xl">menu</span>
@@ -802,6 +802,22 @@
                         <span>${formatDuration(totalMinutes)}</span>
                     </div>
                 </div>
+                
+                ${item.delayStartTime && item.delayEndTime ? `
+                <div class="mt-3 bg-[#1b222b] border border-[#27313c] rounded-xl p-4">
+                    <p class="text-xs font-semibold text-gray-400 mb-2">WAIT TIME DETAILS</p>
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <p class="text-xs text-gray-500 mb-1">Start Time</p>
+                            <p class="text-gray-200 font-medium">${escapeHtml(item.delayStartTime)}</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-500 mb-1">End Time</p>
+                            <p class="text-gray-200 font-medium">${escapeHtml(item.delayEndTime)}</p>
+                        </div>
+                    </div>
+                </div>
+                ` : ''}
 
                 ${item.notes ? `
                 <div class="mt-4 bg-[#1b222b] border border-[#27313c] rounded-xl p-4">
