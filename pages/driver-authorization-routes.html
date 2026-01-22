@@ -13,6 +13,19 @@
     <script src="/assets/js/tailwind-runtime.js"></script>
     <script src="/js/session-manager.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
+    <!-- Define initGoogleMaps callback before loading Google Maps -->
+    <script>
+        window.initGoogleMaps = function() {
+            // This will be called when Google Maps loads
+            // The actual implementation is in the body script
+            if (window.google && window.google.maps && typeof window.initializeMap === 'function') {
+                window.initializeMap();
+            }
+            if (window.google && window.google.maps && typeof window.loadRoutes === 'function') {
+                window.loadRoutes();
+            }
+        };
+    </script>
     <!-- Google Maps API with Routes and Places libraries -->
     <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDTbiSXo9tg1Tx8SlZCZKsR_R0zIQ4N1VA&libraries=places,geometry&loading=async&callback=initGoogleMaps"></script>
     <!-- Firebase SDK -->
@@ -140,11 +153,34 @@
             flex: 1;
             min-width: 400px;
             position: relative;
+            display: none;
+        }
+        
+        .map-container.fullscreen {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 1000;
+            background: #000000;
+        }
+        
+        .map-container.fullscreen #map {
+            width: 100%;
+            height: 100%;
         }
         
         #map {
             width: 100%;
             height: 100%;
+        }
+        
+        .routes-list.full-width {
+            max-width: 100%;
+            width: 100%;
+            border-right: none;
         }
         
         .route-card {
@@ -473,9 +509,9 @@
             </a>
             <h1 class="text-xl font-bold">Click a step once to request a transit cost. Click twice to request a taxi.</h1>
             <div class="route-info" id="routeInfo"></div>
-            <button class="request-button" id="requestButton" onclick="handleRequest()">
-                <span class="material-symbols-outlined" style="font-size: 18px;">send</span>
-                Request Taxi
+            <button class="request-button" id="requestButton" onclick="handleNext()">
+                <span class="material-symbols-outlined" style="font-size: 18px;">arrow_forward</span>
+                Next
             </button>
         </div>
         
@@ -504,14 +540,34 @@
         let routePolylines = [];
         let routeMarkers = [];
         
-        // Initialize Google Maps
-        window.initGoogleMaps = function() {
-            if (window.google && window.google.maps) {
-                googleMapsLoaded = true;
-                initializeMap();
-                loadRoutes();
-            }
-        };
+        // Initialize Google Maps (callback from head script)
+        // This will be called when Google Maps API loads
+        if (typeof window.initGoogleMaps === 'function') {
+            // Override with body implementation
+            const headInit = window.initGoogleMaps;
+            window.initGoogleMaps = function() {
+                if (window.google && window.google.maps) {
+                    googleMapsLoaded = true;
+                    // Call the async functions
+                    initializeMap().then(() => {
+                        loadRoutes();
+                    });
+                }
+            };
+        } else {
+            window.initGoogleMaps = function() {
+                if (window.google && window.google.maps) {
+                    googleMapsLoaded = true;
+                    initializeMap().then(() => {
+                        loadRoutes();
+                    });
+                }
+            };
+        }
+        
+        // Make initializeMap available globally
+        window.initializeMap = initializeMap;
+        window.loadRoutes = loadRoutes;
         
         // Wait for Google Maps to load
         function waitForGoogleMaps() {
@@ -675,7 +731,15 @@
             routes.forEach((route, routeIndex) => {
                 const routeCard = document.createElement('div');
                 routeCard.className = 'route-card';
-                routeCard.onclick = () => selectRoute(routeIndex);
+                routeCard.onclick = (e) => {
+                    // Only select route if clicking on the card itself, not on any timeline content
+                    if (e.target.closest('.timeline-content')) {
+                        // Clicked on any segment (including walk steps) - don't select route
+                        // Let the segment's own click handler deal with it
+                        return;
+                    }
+                    selectRoute(routeIndex);
+                };
                 
                 const leg = route.routes[0].legs[0];
                 const duration = leg.duration.text;
@@ -701,6 +765,9 @@
                     </div>
                 `;
                 
+                // Track previous segment info for combining
+                let prevSegmentInfo = null;
+                
                 route.routes[0].legs.forEach((leg, legIndex) => {
                     leg.steps.forEach((step, stepIndex) => {
                         const segmentId = `route-${routeIndex}-segment-${segmentIndex}`;
@@ -709,39 +776,48 @@
                         const costValue = transitCostSegments.get(segmentId) || '';
                         const lineClass = getLineClass(step);
                         let contentClass = '';
-                        if (isTaxiRequest) {
-                            contentClass = 'taxi-request';
-                        } else if (isTransitCost) {
-                            contentClass = 'transit-cost';
+                        
+                        // Check if this transit segment should be combined with previous one
+                        if (step.travel_mode === 'TRANSIT' && isTaxiRequest && prevSegmentInfo) {
+                            // If previous was a walk and before that was a transit taxi request, combine
+                            if (prevSegmentInfo.type === 'WALKING' && prevSegmentInfo.prevTransitTaxi) {
+                                contentClass = 'taxi-request';
+                            } else if (prevSegmentInfo.type === 'TRANSIT' && prevSegmentInfo.isTaxiRequest) {
+                                // Adjacent transit segments both taxi requests - combine
+                                contentClass = 'taxi-request';
+                            } else {
+                                contentClass = isTaxiRequest ? 'taxi-request' : (isTransitCost ? 'transit-cost' : '');
+                            }
+                        } else {
+                            contentClass = isTaxiRequest ? 'taxi-request' : (isTransitCost ? 'transit-cost' : '');
                         }
                         
                         if (step.travel_mode === 'WALKING') {
                             // Calculate arrival time
                             const arrivalTime = new Date(currentTime.getTime() + (step.duration.value * 1000));
                             
+                            // Walking steps are not clickable - no onclick handler
                             timelineHtml += `
                                 <div class="timeline-item">
                                     <div class="timeline-dot"></div>
                                     <div class="timeline-segment-line ${lineClass}" style="top: 0; height: ${step.duration.value * 0.5}px;"></div>
                                     <div class="timeline-time">${formatTime(arrivalTime)}</div>
-                                    <div class="timeline-content ${contentClass}" id="${segmentId}" onclick="handleSegmentClick('${segmentId}', event)">
+                                    <div class="timeline-content" id="${segmentId}" style="cursor: default; opacity: 0.8; pointer-events: none; user-select: none;" onclick="return false;" onmousedown="return false;">
                                         <div class="timeline-header">
                                             <div class="timeline-icon">${getTimelineIcon(step)}</div>
                                             <div class="timeline-title">Walk</div>
                                         </div>
                                         <div class="timeline-duration">About ${step.duration.text}${step.distance ? ' · ' + step.distance.text : ''}</div>
-                                        ${(isTransitCost || isTaxiRequest) ? `
-                                            <div class="segment-cost-label">${isTaxiRequest ? 'Taxi Cost:' : 'Transit Cost:'}</div>
-                                            <input type="number" step="0.01" min="0" placeholder="£0.00" value="${costValue}" 
-                                                class="cost-input" 
-                                                onchange="updateSegmentCost('${segmentId}', this.value)"
-                                                onclick="event.stopPropagation();">
-                                        ` : ''}
                                     </div>
                                 </div>
                             `;
                             
                             currentTime = arrivalTime;
+                            // Update previous segment info
+                            prevSegmentInfo = {
+                                type: 'WALKING',
+                                prevTransitTaxi: prevSegmentInfo && prevSegmentInfo.type === 'TRANSIT' && prevSegmentInfo.isTaxiRequest
+                            };
                             segmentIndex++;
                         } else if (step.travel_mode === 'TRANSIT' && step.transit) {
                             const transit = step.transit;
@@ -857,6 +933,12 @@
                             `;
                             
                             currentTime = arrivalTime;
+                            // Update previous segment info
+                            prevSegmentInfo = {
+                                type: 'TRANSIT',
+                                isTaxiRequest: isTaxiRequestSegment,
+                                prevTransitTaxi: prevSegmentInfo && prevSegmentInfo.type === 'TRANSIT' && prevSegmentInfo.isTaxiRequest
+                            };
                             segmentIndex++;
                         }
                     });
@@ -989,35 +1071,92 @@
             }
         }
         
-        // Handle request button click
-        function handleRequest() {
-            if (transitCostSegments.size === 0 && taxiRequestSegments.size === 0) {
-                return;
-            }
+        // Handle Next button click - show map fullscreen
+        function handleNext() {
+            const mapContainer = document.querySelector('.map-container');
+            const routesList = document.querySelector('.routes-list');
             
-            // Collect transit costs (not taxi requests)
-            const transitCosts = [];
-            transitCostSegments.forEach((cost, segmentId) => {
-                if (!taxiRequestSegments.has(segmentId)) {
-                    transitCosts.push({ segmentId, cost });
+            if (mapContainer && routesList) {
+                // Hide route list and show map fullscreen
+                routesList.style.display = 'none';
+                mapContainer.classList.add('fullscreen');
+                
+                // Render route on map if not already rendered
+                if (selectedRouteIndex !== null && routes[selectedRouteIndex]) {
+                    renderRoute(routes[selectedRouteIndex]);
                 }
+            }
+        }
+        
+        // Combine adjacent transit segments that are both taxi requests (only separated by walk)
+        function getCombinedTaxiSegments(routeIndex) {
+            const combined = [];
+            const route = routes[routeIndex];
+            if (!route || !route.routes || !route.routes[0]) return combined;
+            
+            const segments = [];
+            let segmentIndex = 0;
+            
+            // Collect all segments with their types
+            route.routes[0].legs.forEach(leg => {
+                leg.steps.forEach(step => {
+                    if (step.travel_mode === 'WALKING' || step.travel_mode === 'TRANSIT') {
+                        const segmentId = `route-${routeIndex}-segment-${segmentIndex}`;
+                        segments.push({
+                            id: segmentId,
+                            type: step.travel_mode,
+                            step: step,
+                            isTaxiRequest: taxiRequestSegments.has(segmentId)
+                        });
+                        segmentIndex++;
+                    }
+                });
             });
             
-            // Collect taxi requests with costs
-            const taxiRequests = Array.from(taxiRequestSegments).map(segmentId => ({
-                segmentId,
-                cost: transitCostSegments.get(segmentId) || ''
-            }));
+            // Find groups of adjacent transit segments that are taxi requests
+            let currentGroup = null;
+            for (let i = 0; i < segments.length; i++) {
+                const seg = segments[i];
+                
+                if (seg.type === 'TRANSIT' && seg.isTaxiRequest) {
+                    if (!currentGroup) {
+                        currentGroup = { start: i, end: i, segments: [seg] };
+                    } else {
+                        // Check if previous segment was a walk
+                        const prevSeg = segments[i - 1];
+                        if (prevSeg && prevSeg.type === 'WALKING') {
+                            // Only separated by walk - combine
+                            currentGroup.end = i;
+                            currentGroup.segments.push(seg);
+                        } else {
+                            // Not adjacent - save current group and start new
+                            if (currentGroup.segments.length > 1) {
+                                combined.push(currentGroup);
+                            }
+                            currentGroup = { start: i, end: i, segments: [seg] };
+                        }
+                    }
+                } else {
+                    // Not a transit taxi request - save current group if exists
+                    if (currentGroup && currentGroup.segments.length > 1) {
+                        combined.push(currentGroup);
+                    }
+                    currentGroup = null;
+                }
+            }
             
-            // TODO: Implement request submission
-            console.log('Requesting authorization:', { transitCosts, taxiRequests });
-            alert('Authorization request submitted!');
+            // Save last group if exists
+            if (currentGroup && currentGroup.segments.length > 1) {
+                combined.push(currentGroup);
+            }
+            
+            return combined;
         }
         
         // Make functions available globally
         window.handleSegmentClick = handleSegmentClick;
         window.updateSegmentCost = updateSegmentCost;
-        window.handleRequest = handleRequest;
+        window.handleNext = handleNext;
         
         // Get icon for route step
         function getStepIcon(step) {
@@ -1169,42 +1308,85 @@
                     return; // Skip individual segment rendering
                 }
                 
-                // Render each step with appropriate color
+                // Collect all steps with their taxi request status for combining
+                const stepsWithStatus = [];
+                let tempSegmentIndex = 0;
                 leg.steps.forEach(step => {
-                    // Only render walking and transit steps (skip wait segments as they're not actual map segments)
                     if (step.travel_mode === 'WALKING' || step.travel_mode === 'TRANSIT') {
-                        const segmentId = `route-${selectedRouteIndex}-segment-${segmentIndex}`;
-                        const isTaxiRequest = taxiRequestSegments.has(segmentId);
+                        const segmentId = `route-${selectedRouteIndex}-segment-${tempSegmentIndex}`;
+                        stepsWithStatus.push({
+                            step: step,
+                            segmentId: segmentId,
+                            isTaxiRequest: taxiRequestSegments.has(segmentId),
+                            index: tempSegmentIndex
+                        });
+                        tempSegmentIndex++;
+                    }
+                });
+                
+                // Render steps, combining adjacent transit taxi requests
+                let i = 0;
+                while (i < stepsWithStatus.length) {
+                    const current = stepsWithStatus[i];
+                    
+                    if (current.step.travel_mode === 'TRANSIT' && current.isTaxiRequest) {
+                        // Check if next segments are walk + transit taxi request (to combine)
+                        let combinedEnd = i;
+                        let combinedStartLoc = current.step.start_location;
+                        let combinedEndLoc = current.step.end_location;
                         
-                        if (isTaxiRequest) {
-                            // Render as thick red straight line (as the bird flies)
-                            let startLoc = step.start_location;
-                            let endLoc = step.end_location;
+                        // Look ahead to find adjacent transit taxi requests separated only by walks
+                        for (let j = i + 1; j < stepsWithStatus.length; j++) {
+                            const next = stepsWithStatus[j];
                             
-                            // Convert to LatLng if needed
-                            if (startLoc && !(startLoc instanceof google.maps.LatLng)) {
+                            if (next.step.travel_mode === 'WALKING') {
+                                // Walk segment - continue checking (skip walks between transit segments)
+                                continue;
+                            } else if (next.step.travel_mode === 'TRANSIT' && next.isTaxiRequest) {
+                                // Adjacent transit taxi request - combine
+                                // Update end location to the end of this transit segment
+                                combinedEnd = j;
+                                combinedEndLoc = next.step.end_location;
+                                // Continue looking for more adjacent transit segments
+                            } else {
+                                // Not a transit taxi request - stop combining
+                                break;
+                            }
+                        }
+                        
+                        // Render combined taxi route
+                        if (combinedStartLoc && combinedEndLoc) {
+                            let startLoc = combinedStartLoc;
+                            let endLoc = combinedEndLoc;
+                            
+                            if (!(startLoc instanceof google.maps.LatLng)) {
                                 startLoc = new google.maps.LatLng(startLoc.lat(), startLoc.lng());
                             }
-                            if (endLoc && !(endLoc instanceof google.maps.LatLng)) {
+                            if (!(endLoc instanceof google.maps.LatLng)) {
                                 endLoc = new google.maps.LatLng(endLoc.lat(), endLoc.lng());
                             }
                             
-                            if (startLoc && endLoc) {
-                                const taxiPolyline = new google.maps.Polyline({
-                                    path: [startLoc, endLoc],
-                                    geodesic: false, // Straight line
-                                    strokeColor: '#EF4444',
-                                    strokeOpacity: 1.0,
-                                    strokeWeight: 8,
-                                    map: map
-                                });
-                                taxiPolylines.push(taxiPolyline);
-                                bounds.extend(startLoc);
-                                bounds.extend(endLoc);
-                            }
-                        } else {
-                            // Render normal route segment
-                            let path = [];
+                            const taxiPolyline = new google.maps.Polyline({
+                                path: [startLoc, endLoc],
+                                geodesic: false, // Straight line
+                                strokeColor: '#EF4444',
+                                strokeOpacity: 1.0,
+                                strokeWeight: 8,
+                                map: map
+                            });
+                            taxiPolylines.push(taxiPolyline);
+                            bounds.extend(startLoc);
+                            bounds.extend(endLoc);
+                        }
+                        
+                        // Skip to after the combined segments
+                        i = combinedEnd + 1;
+                    } else {
+                        // Not a taxi request - render normally
+                        const step = current.step;
+                        
+                        // Render normal route segment
+                        let path = [];
                             
                             // Steps have a polyline property with encoded points
                             if (step.polyline && step.polyline.points) {
@@ -1269,16 +1451,15 @@
                                 
                                 const polyline = new google.maps.Polyline(polylineOptions);
                                 routePolylines.push(polyline);
-                                segmentPolylines.push({ polyline, segmentId });
+                                segmentPolylines.push({ polyline, segmentId: current.segmentId });
                                 
                                 // Extend bounds with path points
                                 path.forEach(point => bounds.extend(point));
                             }
+                            
+                            i++;
                         }
-                        
-                        segmentIndex++;
                     }
-                });
                 
                 // Add end marker
                 const endMarker = new google.maps.Marker({
