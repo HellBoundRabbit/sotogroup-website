@@ -703,6 +703,8 @@
                 const waitTimesCard = document.getElementById('waitTimesCard');
                 const messagesCard = document.getElementById('messagesCard');
                 const availabilityCard = document.getElementById('availabilityCard');
+                const authorizationCard = document.getElementById('authorizationCard');
+                const helpCard = document.getElementById('helpCard');
 
                 if (!activeFeatures.expenses && expensesCard) {
                     expensesCard.classList.add('disabled');
@@ -752,16 +754,31 @@
                 
                 const unreadMessages = messages.filter(msg => !readMessages.includes(msg.id));
                 
-                // Grey out features if there are unread messages (only if messages feature is enabled)
-                // Note: Availability always shows coming soon, so don't disable it based on messages
+                // Grey out ALL features if there are unread messages (only if messages feature is enabled)
+                // EXCEPT: Messages button and Account button only
                 if (unreadMessages.length > 0 && activeFeatures.messages) {
+                    // Grey out Expenses
                     if (expensesCard && activeFeatures.expenses) {
                         expensesCard.classList.add('disabled');
                     }
-                    // Availability shows coming soon, don't disable it
+                    // Grey out Wait Times
                     if (waitTimesCard && activeFeatures.waitTimes) {
                         waitTimesCard.classList.add('disabled');
                     }
+                    // Grey out Availability
+                    if (availabilityCard) {
+                        availabilityCard.classList.add('disabled');
+                    }
+                    // Grey out Authorization
+                    if (authorizationCard) {
+                        authorizationCard.classList.add('disabled');
+                    }
+                    // Grey out Help
+                    if (helpCard) {
+                        helpCard.classList.add('disabled');
+                    }
+                    // DO NOT grey out Messages (messagesCard) - user needs to access it to read messages
+                    // DO NOT grey out Account button - user needs to access account settings
                 }
             } catch (error) {
                 console.error('Error checking messages:', error);
