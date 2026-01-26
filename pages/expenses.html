@@ -485,10 +485,20 @@
                     <span class="material-symbols-outlined text-2xl">close</span>
                 </button>
                 <h3 class="text-white font-semibold text-lg">View Photos</h3>
-                <div class="w-10"></div>
+                <div class="flex items-center gap-2">
+                    <button onclick="resetPhotoZoom()" class="text-white hover:text-gray-300 transition-colors p-2 hover:bg-[#283039] rounded-lg" title="Reset Zoom">
+                        <span class="material-symbols-outlined text-xl">fit_screen</span>
+                    </button>
+                    <button onclick="zoomPhotoOut()" class="text-white hover:text-gray-300 transition-colors p-2 hover:bg-[#283039] rounded-lg" title="Zoom Out">
+                        <span class="material-symbols-outlined text-xl">zoom_out</span>
+                    </button>
+                    <button onclick="zoomPhotoIn()" class="text-white hover:text-gray-300 transition-colors p-2 hover:bg-[#283039] rounded-lg" title="Zoom In">
+                        <span class="material-symbols-outlined text-xl">zoom_in</span>
+                    </button>
+                </div>
             </div>
             <!-- Photo container -->
-            <div class="flex-1 bg-black flex items-center justify-center" id="photoViewerContent">
+            <div class="flex-1 bg-black flex items-center justify-center overflow-hidden" id="photoViewerContent">
                 <!-- Photos will be injected here -->
             </div>
         </div>
@@ -1101,12 +1111,28 @@
 
             // Display expenses
             const categoryEmojis = {
-                fuel: '⛽',
-                parking: '🅿️',
-                toll: '🛣️',
-                food: '🍔',
-                maintenance: '🔧',
-                other: '📝'
+                // Capitalized (as used in driver expenses)
+                'Fuel': '⛽',
+                'Charge': '🔌',
+                'Train': '🚂',
+                'Bus': '🚌',
+                'Taxi': '🚕',
+                'Car Wash': '🧼',
+                'Tolls': '🛣️',
+                'Parking': '🅿️',
+                'Other': '📝',
+                // Lowercase fallbacks
+                'fuel': '⛽',
+                'charge': '🔌',
+                'train': '🚂',
+                'bus': '🚌',
+                'taxi': '🚕',
+                'car wash': '🧼',
+                'tolls': '🛣️',
+                'parking': '🅿️',
+                'food': '🍔',
+                'maintenance': '🔧',
+                'other': '📝'
             };
 
             document.getElementById('modal-expenses').innerHTML = currentBatch.expenses.map(exp => `
@@ -1242,6 +1268,33 @@
             }
         }
 
+        // Photo zoom state - stored per photo
+        const photoZoomStates = new Map();
+        let currentActivePhoto = null;
+        let isDraggingPhoto = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        
+        // Prevent page zoom handler
+        function preventPageZoom(e) {
+            if ((e.ctrlKey || e.metaKey) && e.target.closest('#photoViewer')) {
+                e.preventDefault();
+                return false;
+            }
+        }
+
+        // Get or create zoom state for a photo
+        function getPhotoZoomState(photo) {
+            if (!photoZoomStates.has(photo)) {
+                photoZoomStates.set(photo, {
+                    zoom: 1,
+                    offsetX: 0,
+                    offsetY: 0
+                });
+            }
+            return photoZoomStates.get(photo);
+        }
+
         // View photos for an expense
         async function viewExpensePhotos(expenseIndex) {
             const expense = currentBatch.expenses[expenseIndex];
@@ -1256,25 +1309,212 @@
                 return;
             }
             
-            // Photos are URLs (from Firebase Storage) - display with beautiful styling
-            content.innerHTML = expense.photos.map((url, index) => `
-                <div class="w-full max-w-4xl mx-auto">
+            // Clear previous zoom states
+            photoZoomStates.clear();
+            currentActivePhoto = null;
+            
+            // Photos are URLs (from Firebase Storage) - display with zoomable styling
+            content.innerHTML = expense.photos.map((url, index) => {
+                const state = { zoom: 1, offsetX: 0, offsetY: 0 };
+                return `
+                <div class="w-full max-w-4xl mx-auto photo-container" data-photo-index="${index}">
                     <div class="bg-[#1a1f24] rounded-xl p-4 shadow-2xl border border-[#283039]">
-                        <img 
-                            src="${url}" 
-                            alt="Expense photo ${index + 1}" 
-                            class="w-full h-auto rounded-lg shadow-lg object-contain max-h-[70vh] mx-auto"
-                            loading="lazy"
-                            style="display: block;"
-                        >
-                        <div class="text-center mt-3 text-sm text-gray-400">
+                        <div class="relative overflow-hidden rounded-lg photo-wrapper" style="min-height: 400px; display: flex; align-items: center; justify-content: center;">
+                            <img 
+                                src="${url}" 
+                                alt="Expense photo ${index + 1}" 
+                                class="zoomable-photo w-full h-auto rounded-lg shadow-lg object-contain max-h-[70vh] mx-auto select-none"
+                                loading="lazy"
+                                style="display: block; transform: scale(${state.zoom}) translate(${state.offsetX}px, ${state.offsetY}px); transform-origin: center center; transition: transform 0.1s ease-out; max-width: 100%;"
+                                draggable="false"
+                                data-photo-url="${url}"
+                            >
+                        </div>
+                        <div class="text-center mt-3 text-sm text-gray-400 photo-zoom-indicator" data-base-text="Photo ${index + 1} of ${expense.photos.length}">
                             Photo ${index + 1} of ${expense.photos.length}
                         </div>
                     </div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
+
+            // Set up zoom and pan for all photos
+            const photos = content.querySelectorAll('.zoomable-photo');
+            photos.forEach((photo, index) => {
+                setupPhotoZoom(photo);
+                // Store initial state
+                photoZoomStates.set(photo, { zoom: 1, offsetX: 0, offsetY: 0 });
+            });
+
+            // Set current active photo to first one
+            if (photos.length > 0) {
+                currentActivePhoto = photos[0];
+            }
 
             viewer.classList.remove('hidden');
+            
+            // Prevent page zoom when photo viewer is open and Ctrl+scroll is used
+            document.addEventListener('wheel', preventPageZoom, { passive: false, capture: true });
+        }
+
+        // Setup zoom and pan for a photo
+        function setupPhotoZoom(photo) {
+            const container = photo.closest('.photo-container');
+            const wrapper = photo.closest('.photo-wrapper');
+            
+            // Mouse wheel zoom (Ctrl + scroll) - only on this photo
+            container.addEventListener('wheel', (e) => {
+                if (e.ctrlKey || e.metaKey) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    const state = getPhotoZoomState(photo);
+                    const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+                    const newZoom = Math.max(0.5, Math.min(5, state.zoom * zoomFactor));
+                    
+                    if (Math.abs(newZoom - state.zoom) > 0.01) {
+                        state.zoom = newZoom;
+                        currentActivePhoto = photo;
+                        updatePhotoTransform(photo);
+                    }
+                    return false;
+                }
+            }, { passive: false });
+
+            // Mouse drag to pan when zoomed
+            let isMouseDown = false;
+            let startX = 0;
+            let startY = 0;
+            let startOffsetX = 0;
+            let startOffsetY = 0;
+
+            wrapper.addEventListener('mousedown', (e) => {
+                const state = getPhotoZoomState(photo);
+                if (state.zoom > 1 && e.button === 0) {
+                    isMouseDown = true;
+                    isDraggingPhoto = true;
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    startOffsetX = state.offsetX;
+                    startOffsetY = state.offsetY;
+                    photo.style.cursor = 'grabbing';
+                    currentActivePhoto = photo;
+                    e.preventDefault();
+                }
+            });
+
+            const handleMouseMove = (e) => {
+                if (isMouseDown && currentActivePhoto === photo) {
+                    const state = getPhotoZoomState(photo);
+                    const deltaX = (e.clientX - startX) / state.zoom;
+                    const deltaY = (e.clientY - startY) / state.zoom;
+                    state.offsetX = startOffsetX + deltaX;
+                    state.offsetY = startOffsetY + deltaY;
+                    updatePhotoTransform(photo);
+                }
+            };
+
+            const handleMouseUp = () => {
+                if (isMouseDown && currentActivePhoto === photo) {
+                    isMouseDown = false;
+                    isDraggingPhoto = false;
+                    const state = getPhotoZoomState(photo);
+                    photo.style.cursor = state.zoom > 1 ? 'grab' : 'default';
+                }
+            };
+
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+
+            // Double click to reset zoom
+            wrapper.addEventListener('dblclick', () => {
+                const state = getPhotoZoomState(photo);
+                state.zoom = 1;
+                state.offsetX = 0;
+                state.offsetY = 0;
+                currentActivePhoto = photo;
+                updatePhotoTransform(photo);
+            });
+
+            // Click to focus this photo for zoom controls
+            wrapper.addEventListener('click', (e) => {
+                if (!isMouseDown) {
+                    currentActivePhoto = photo;
+                }
+            });
+        }
+
+        // Update photo transform
+        function updatePhotoTransform(photo) {
+            if (!photo) return;
+            
+            const state = getPhotoZoomState(photo);
+            photo.style.transform = `scale(${state.zoom}) translate(${state.offsetX}px, ${state.offsetY}px)`;
+            photo.style.cursor = state.zoom > 1 ? (isDraggingPhoto ? 'grabbing' : 'grab') : 'default';
+            
+            // Update zoom indicator
+            const container = photo.closest('.photo-container');
+            const indicator = container?.querySelector('.photo-zoom-indicator');
+            if (indicator) {
+                const baseText = indicator.getAttribute('data-base-text') || 'Photo';
+                
+                if (state.zoom > 1) {
+                    indicator.innerHTML = `${baseText} <span class="ml-2 text-blue-400">${Math.round(state.zoom * 100)}%</span>`;
+                } else {
+                    indicator.textContent = baseText;
+                }
+            }
+        }
+
+        // Zoom in
+        function zoomPhotoIn() {
+            if (!currentActivePhoto) {
+                const photos = document.querySelectorAll('.zoomable-photo');
+                if (photos.length > 0) {
+                    currentActivePhoto = photos[0];
+                } else {
+                    return;
+                }
+            }
+            
+            const state = getPhotoZoomState(currentActivePhoto);
+            state.zoom = Math.min(5, state.zoom + 0.25);
+            updatePhotoTransform(currentActivePhoto);
+        }
+
+        // Zoom out
+        function zoomPhotoOut() {
+            if (!currentActivePhoto) {
+                const photos = document.querySelectorAll('.zoomable-photo');
+                if (photos.length > 0) {
+                    currentActivePhoto = photos[0];
+                } else {
+                    return;
+                }
+            }
+            
+            const state = getPhotoZoomState(currentActivePhoto);
+            state.zoom = Math.max(0.5, state.zoom - 0.25);
+            updatePhotoTransform(currentActivePhoto);
+        }
+
+        // Reset zoom
+        function resetPhotoZoom() {
+            if (!currentActivePhoto) {
+                const photos = document.querySelectorAll('.zoomable-photo');
+                if (photos.length > 0) {
+                    currentActivePhoto = photos[0];
+                } else {
+                    return;
+                }
+            }
+            
+            const state = getPhotoZoomState(currentActivePhoto);
+            state.zoom = 1;
+            state.offsetX = 0;
+            state.offsetY = 0;
+            isDraggingPhoto = false;
+            updatePhotoTransform(currentActivePhoto);
         }
 
         // Close photo viewer
@@ -1287,6 +1527,13 @@
             if (content) {
                 content.innerHTML = '';
             }
+            // Reset zoom state
+            photoZoomStates.clear();
+            currentActivePhoto = null;
+            isDraggingPhoto = false;
+            
+            // Remove page zoom prevention
+            document.removeEventListener('wheel', preventPageZoom, { capture: true });
         }
 
         // Close photo viewer on Escape key
