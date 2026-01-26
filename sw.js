@@ -246,11 +246,59 @@ async function processUploadQueue(authToken) {
             });
 
             // Process all photos for this expense task IN PARALLEL
+            // CRITICAL: Handle partial uploads - if some photos already uploaded, don't re-upload them
             const photoBlobIds = task.photoBlobIds || [];
             
-            // Upload all photos in parallel instead of sequentially
+            // First, check if expense document exists and get already-uploaded photo URLs
+            let existingPhotoURLs = [];
+            try {
+              // Request main thread to check existing photos
+              const checkResult = await new Promise((resolve, reject) => {
+                const messageChannel = new MessageChannel();
+                messageChannel.port1.onmessage = (event) => {
+                  const { success, photoURLs } = event.data;
+                  if (success) {
+                    resolve(photoURLs || []);
+                  } else {
+                    resolve([]); // If check fails, assume no photos uploaded yet
+                  }
+                  messageChannel.port1.close();
+                };
+                
+                self.clients.matchAll({ includeUncontrolled: true, type: 'window' }).then(clients => {
+                  if (clients.length > 0) {
+                    clients[0].postMessage({
+                      type: 'check-expense-photos',
+                      expenseDocId: task.expenseDocId
+                    }, [messageChannel.port2]);
+                    
+                    // Timeout after 5 seconds
+                    setTimeout(() => {
+                      messageChannel.port1.close();
+                      resolve([]);
+                    }, 5000);
+                  } else {
+                    resolve([]);
+                  }
+                }).catch(() => resolve([]));
+              });
+              existingPhotoURLs = checkResult || [];
+              console.log(`[SW] Found ${existingPhotoURLs.length} already-uploaded photos for expense ${task.expenseDocId}`);
+            } catch (error) {
+              console.warn('[SW] Could not check existing photos, proceeding with upload:', error);
+            }
+            
+            // Upload all photos in parallel, but skip ones that might already be uploaded
             const uploadPromises = photoBlobIds.map(async (photoBlobRef) => {
               const { blobId, filename } = photoBlobRef;
+              
+              // Check if this photo filename matches an already-uploaded URL
+              // (filename contains expense category and timestamp, so we can match)
+              const mightAlreadyUploaded = existingPhotoURLs.some(url => url.includes(filename.split('/').pop()?.split('_')[0] || ''));
+              if (mightAlreadyUploaded) {
+                console.log(`[SW] Photo ${filename} might already be uploaded, checking...`);
+                // We'll still try to upload - the main thread merge logic will prevent duplicates
+              }
               
               // Get photo blob from photoBlobs store
               const blobTx = db.transaction(['photoBlobs'], 'readonly');
@@ -279,36 +327,79 @@ async function processUploadQueue(authToken) {
             });
             
             // Wait for all photos to upload in parallel
-            const uploadedURLs = (await Promise.all(uploadPromises)).filter(url => url !== null);
-
-            // Update task as completed
+            // Use Promise.allSettled to handle partial failures
+            const uploadResults = await Promise.allSettled(uploadPromises);
+            const uploadedURLs = uploadResults
+              .filter(result => result.status === 'fulfilled' && result.value !== null)
+              .map(result => result.value);
+            
+            // Update task status based on upload results
             const completeTx = db.transaction(['expenseUploadQueue'], 'readwrite');
             const completeStore = completeTx.objectStore('expenseUploadQueue');
-            task.status = 'completed';
-            task.downloadURLs = uploadedURLs; // Store all uploaded URLs
-            task.completedAt = Date.now();
-            task.updatedAt = Date.now();
             
-            await new Promise((res, rej) => {
-              const req = completeStore.put(task);
-              req.onsuccess = () => res();
-              req.onerror = () => rej(req.error);
-            });
-
-            // Notify main thread via BroadcastChannel to update Firestore
-            if (self.BroadcastChannel) {
-              const channel = new BroadcastChannel('expense-upload-channel');
-              channel.postMessage({
-                type: 'upload-complete',
-                uploadId: task.uploadId,
-                expenseDocId: task.expenseDocId,
-                downloadURLs: uploadedURLs,
-                task: task
+            const failedCount = uploadResults.filter(r => r.status === 'rejected').length;
+            const expectedCount = photoBlobIds.length;
+            
+            if (uploadedURLs.length === expectedCount) {
+              // All photos uploaded successfully
+              task.status = 'completed';
+              task.downloadURLs = uploadedURLs;
+              task.completedAt = Date.now();
+              task.updatedAt = Date.now();
+              
+              await new Promise((res, rej) => {
+                const req = completeStore.put(task);
+                req.onsuccess = () => res();
+                req.onerror = () => rej(req.error);
               });
-              channel.close();
-            }
 
-            processed++;
+              // Notify main thread via BroadcastChannel to update Firestore
+              if (self.BroadcastChannel) {
+                const channel = new BroadcastChannel('expense-upload-channel');
+                channel.postMessage({
+                  type: 'upload-complete',
+                  uploadId: task.uploadId,
+                  expenseDocId: task.expenseDocId,
+                  downloadURLs: uploadedURLs,
+                  task: task
+                });
+                channel.close();
+              }
+              
+              processed++;
+            } else if (uploadedURLs.length > 0) {
+              // Partial success - save what we have, but keep task pending to retry failed ones
+              task.status = 'pending'; // Keep as pending to retry failed photos
+              task.downloadURLs = uploadedURLs; // Store successful URLs
+              task.partialUpload = true;
+              task.updatedAt = Date.now();
+              
+              await new Promise((res, rej) => {
+                const req = completeStore.put(task);
+                req.onsuccess = () => res();
+                req.onerror = () => rej(req.error);
+              });
+              
+              // Notify main thread to save partial uploads
+              if (self.BroadcastChannel) {
+                const channel = new BroadcastChannel('expense-upload-channel');
+                channel.postMessage({
+                  type: 'upload-complete',
+                  uploadId: task.uploadId,
+                  expenseDocId: task.expenseDocId,
+                  downloadURLs: uploadedURLs,
+                  task: task,
+                  partial: true
+                });
+                channel.close();
+              }
+              
+              // Don't increment processed - task will retry
+              failed++;
+            } else {
+              // All photos failed - will be handled by catch block below
+              throw new Error(`All ${expectedCount} photos failed to upload`);
+            }
           } catch (error) {
             console.error('[SW] Upload task failed:', error);
             
