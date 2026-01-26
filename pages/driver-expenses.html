@@ -136,6 +136,23 @@
                                 console.error('[Main Thread] Upload failed:', error);
                                 ports[0].postMessage({ success: false, error: error.message });
                             }
+                        } else if (type === 'check-expense-photos' && ports.length > 0 && expenseDocId) {
+                            // Service Worker requesting to check existing photos in expense document
+                            try {
+                                const expenseRef = window.doc(window.db, 'expenses', expenseDocId);
+                                const expenseSnap = await window.getDoc(expenseRef);
+                                
+                                if (expenseSnap.exists()) {
+                                    const data = expenseSnap.data();
+                                    const photoURLs = Array.isArray(data.photos) ? data.photos.filter(p => typeof p === 'string') : [];
+                                    ports[0].postMessage({ success: true, photoURLs });
+                                } else {
+                                    ports[0].postMessage({ success: true, photoURLs: [] });
+                                }
+                            } catch (error) {
+                                console.error('[Main Thread] Error checking expense photos:', error);
+                                ports[0].postMessage({ success: false, photoURLs: [] });
+                            }
                         }
                     });
                     
@@ -1044,6 +1061,8 @@
             console.log('[syncDraftToFirestore] Starting sync', {
                 targetStatus,
                 hasDraft: !!draft,
+                draftId: draft?.id,
+                localId: draft?.localId,
                 draftExpenseCount: draft?.expenses ? draft.expenses.length : 0,
                 draftExpenses: draft?.expenses ? draft.expenses.map((exp, idx) => ({
                     idx,
@@ -1067,9 +1086,38 @@
                 throw new Error('Registration is required to sync.');
             }
 
-            // Only check for unique registration when creating NEW batches (no ID)
+            // CRITICAL FIX: Check if batch with this localId already exists to prevent duplicates
+            // Store localId in batch document to track duplicates of the SAME draft
+            let batchId = draft.id;
+            let existingBatch = null;
+            
+            if (!batchId && draft.localId) {
+                // Check if a batch with this localId already exists (prevent duplicate creation)
+                // We'll store localId in the batch document, so check for it
+                const batchesQuery = window.query(
+                    window.collection(window.db, 'expenseBatches'),
+                    window.where('officeId', '==', officeId),
+                    window.where('driverId', '==', driverId)
+                );
+                const batchesSnapshot = await window.getDocs(batchesQuery);
+                
+                // Look for batch with matching localId (stored in batch document)
+                for (const doc of batchesSnapshot.docs) {
+                    const data = doc.data();
+                    // Check if this batch was created from the same localId (same draft)
+                    if (data.localId === draft.localId) {
+                        console.log('[syncDraftToFirestore] Found existing batch with same localId:', doc.id);
+                        existingBatch = { id: doc.id, ...data };
+                        batchId = doc.id;
+                        draft.id = batchId;
+                        break;
+                    }
+                }
+            }
+
+            // Only check for unique registration when creating NEW batches (no ID and no existing batch found)
             // For existing batches (has ID), just normalize the registration
-            if (!draft.id) {
+            if (!batchId) {
                 registration = await getUniqueReg(registration);
             } else {
                 // Existing batch - just normalize, don't change to add "!"
@@ -1105,6 +1153,11 @@
                 notes: draft.notes || '',
                 updatedAt: window.serverTimestamp()
             };
+            
+            // Store localId in batch document to track duplicates of the same draft
+            if (draft.localId) {
+                batchData.localId = draft.localId;
+            }
 
             if (targetStatus === 'pending') {
                 if (!draft.submittedAt) {
@@ -1113,27 +1166,79 @@
                 }
             }
 
-            let batchId = draft.id;
-            if (batchId) {
-                await window.updateDoc(window.doc(window.db, 'expenseBatches', batchId), batchData);
-            } else {
-                batchData.createdAt = window.serverTimestamp();
-                if (targetStatus === 'pending' && !batchData.submittedAt) {
-                batchData.submittedAt = window.serverTimestamp();
-                draft.submittedAt = Date.now();
+            // CRITICAL FIX: Create expenses FIRST, then batch (or update batch atomically)
+            // This ensures if expenses fail, we can rollback or at least know the batch is incomplete
+            let expensesCreated = false;
+            let createdExpenseIds = [];
+            
+            try {
+                // If we have a batchId, we can create expenses first
+                // If not, we need to create batch first but mark it as incomplete
+                if (batchId) {
+                    // Existing batch - create expenses first
+                    console.log('[syncDraftToFirestore] Creating expenses for existing batch', batchId);
+                    await saveExpenses(batchId, draft);
+                    expensesCreated = true;
+                    console.log('[syncDraftToFirestore] Expenses created successfully');
+                } else {
+                    // New batch - create batch with incomplete flag, then expenses, then update
+                    batchData.createdAt = window.serverTimestamp();
+                    if (targetStatus === 'pending' && !batchData.submittedAt) {
+                    batchData.submittedAt = window.serverTimestamp();
+                    draft.submittedAt = Date.now();
+                    }
+                    // Mark as incomplete until expenses are created
+                    batchData.expensesIncomplete = true;
+                    
+                    const batchRef = await window.addDoc(window.collection(window.db, 'expenseBatches'), batchData);
+                    batchId = batchRef.id;
+                    draft.id = batchId;
+                    console.log('[syncDraftToFirestore] Created batch with incomplete flag:', batchId);
+                    
+                    // Now create expenses
+                    try {
+                        await saveExpenses(batchId, draft);
+                        expensesCreated = true;
+                        console.log('[syncDraftToFirestore] Expenses created successfully');
+                        
+                        // Remove incomplete flag (use null to clear, Firestore will ignore null in updates)
+                        const updateData = { updatedAt: window.serverTimestamp() };
+                        // Only add expensesIncomplete: null if deleteField is available, otherwise just update timestamp
+                        if (window.deleteField) {
+                            updateData.expensesIncomplete = window.deleteField();
+                        }
+                        await window.updateDoc(window.doc(window.db, 'expenseBatches', batchId), updateData);
+                    } catch (expenseError) {
+                        console.error('[syncDraftToFirestore] Failed to create expenses, marking batch as failed:', expenseError);
+                        // Mark batch as failed and delete it
+                        await window.updateDoc(window.doc(window.db, 'expenseBatches', batchId), {
+                            expensesIncomplete: true,
+                            expensesError: expenseError.message || 'Failed to create expenses',
+                            updatedAt: window.serverTimestamp()
+                        });
+                        // Delete the incomplete batch
+                        await window.deleteDoc(window.doc(window.db, 'expenseBatches', batchId));
+                        throw new Error(`Failed to create expenses: ${expenseError.message || 'Unknown error'}`);
+                    }
                 }
-                const batchRef = await window.addDoc(window.collection(window.db, 'expenseBatches'), batchData);
-                batchId = batchRef.id;
-                draft.id = batchId;
+                
+                // Update batch if it already existed
+                if (existingBatch && batchId) {
+                    await window.updateDoc(window.doc(window.db, 'expenseBatches', batchId), batchData);
+                }
+            } catch (error) {
+                console.error('[syncDraftToFirestore] Error in sync process:', error);
+                // If we created a batch but expenses failed, try to clean up
+                if (batchId && !expensesCreated && !existingBatch) {
+                    try {
+                        console.log('[syncDraftToFirestore] Attempting to clean up incomplete batch:', batchId);
+                        await window.deleteDoc(window.doc(window.db, 'expenseBatches', batchId));
+                    } catch (cleanupError) {
+                        console.error('[syncDraftToFirestore] Failed to cleanup incomplete batch:', cleanupError);
+                    }
+                }
+                throw error; // Re-throw to be handled by caller
             }
-
-            console.log('[syncDraftToFirestore] About to call saveExpenses with', {
-                batchId,
-                expenseCount: draft.expenses ? draft.expenses.length : 0,
-                expenses: draft.expenses ? draft.expenses.map(exp => ({ category: exp.category, amount: exp.amount })) : []
-            });
-            await saveExpenses(batchId, draft);
-            console.log('[syncDraftToFirestore] saveExpenses completed');
 
             draft.status = targetStatus;
             draft.driverId = driverId;
@@ -1177,6 +1282,18 @@
 
                 for (const entry of queue) {
                 try {
+                // CRITICAL FIX: Check if this entry is already being processed or was already processed
+                // Prevent duplicate processing of the same localId
+                const processingKey = `processing_${entry.localId}`;
+                if (sessionStorage.getItem(processingKey)) {
+                    console.log('[processSubmissionQueue] Entry already being processed, skipping:', entry.localId);
+                    remaining.push(entry); // Keep in queue but skip for now
+                    continue;
+                }
+                
+                // Mark as processing
+                sessionStorage.setItem(processingKey, Date.now().toString());
+                
                 let draft = null;
                 try {
                 draft = await window.expenseDraftDB.getDraft(entry.localId);
@@ -1200,6 +1317,7 @@
 
                 if (!draft) {
                 console.warn('[processSubmissionQueue] Draft not found for queued submission:', entry.localId);
+                sessionStorage.removeItem(processingKey); // Clear processing flag
                 continue;
                 }
 
@@ -1262,11 +1380,64 @@
                 fullExpenses: draft.expenses
                 });
 
+                // CRITICAL: Check if batch already exists and is incomplete before syncing
+                if (draft.id) {
+                    try {
+                        const batchRef = window.doc(window.db, 'expenseBatches', draft.id);
+                        const batchSnap = await window.getDoc(batchRef);
+                        
+                        if (batchSnap.exists()) {
+                            const batchData = batchSnap.data();
+                            
+                            // Check if batch is incomplete (missing expenses or expense count mismatch)
+                            const hasIncompleteFlag = batchData.expensesIncomplete === true;
+                            
+                            // Check expense count
+                            const expensesQuery = window.query(
+                                window.collection(window.db, 'expenses'),
+                                window.where('batchId', '==', draft.id)
+                            );
+                            const expensesSnapshot = await window.getDocs(expensesQuery);
+                            const existingExpenseCount = expensesSnapshot.docs.length;
+                            const expectedExpenseCount = draft.expenses ? draft.expenses.length : 0;
+                            
+                            const isIncomplete = hasIncompleteFlag || 
+                                                (expectedExpenseCount > 0 && existingExpenseCount !== expectedExpenseCount);
+                            
+                            if (isIncomplete) {
+                                console.log('[processSubmissionQueue] Batch is incomplete, cleaning up and retrying:', {
+                                    batchId: draft.id,
+                                    hasIncompleteFlag,
+                                    existingExpenseCount,
+                                    expectedExpenseCount
+                                });
+                                
+                                // Delete all expenses for this batch
+                                const deletePromises = expensesSnapshot.docs.map(doc => window.deleteDoc(doc.ref));
+                                await Promise.all(deletePromises);
+                                
+                                // Delete the incomplete batch
+                                await window.deleteDoc(batchRef);
+                                
+                                // Clear the batch ID so it gets recreated
+                                draft.id = null;
+                                console.log('[processSubmissionQueue] Cleaned up incomplete batch, will recreate');
+                            }
+                        }
+                    } catch (checkError) {
+                        console.warn('[processSubmissionQueue] Error checking batch completeness, proceeding anyway:', checkError);
+                    }
+                }
+
                 await syncDraftToFirestore(draft, entry.status);
                 console.log('[processSubmissionQueue] Successfully synced draft', entry.localId);
                 processed++;
+                // Clear processing flag on success
+                sessionStorage.removeItem(processingKey);
                 } catch (error) {
                 console.error('Error syncing queued expense submission:', entry, error);
+                // Clear processing flag on error so it can be retried
+                sessionStorage.removeItem(processingKey);
                 const needsRegistration = error && typeof error.message === 'string' && error.message.includes('Registration is required');
                 if (needsRegistration && (!entry.registration || entry.registration.trim() === '')) {
                 console.warn('Discarding queued submission with no registration. User must re-open and save the draft.', entry);
@@ -1833,7 +2004,17 @@
                 
                 // Check if batch has pending uploads (check upload queue)
                 const hasPendingUploads = batch.hasPendingUploads || (batch.expenses?.some(exp => exp.photosUploading === true));
-                const greyedOut = hasPendingUploads ? 'opacity-50 cursor-not-allowed' : '';
+                // Also check if batch is in submission queue (offline or processing)
+                let isInQueue = false;
+                if (batch.localId && typeof loadSubmissionQueue === 'function') {
+                    try {
+                        const queue = loadSubmissionQueue();
+                        isInQueue = queue.some(entry => entry.localId === batch.localId);
+                    } catch (e) {
+                        // Ignore errors
+                    }
+                }
+                const greyedOut = (hasPendingUploads || isInQueue) ? 'opacity-50 cursor-not-allowed' : '';
                 const uploadIndicator = hasPendingUploads ? `
                 <div class="mt-2 text-orange-400 text-xs flex items-center gap-1">
                 <span class="material-symbols-outlined text-sm animate-pulse">cloud_upload</span>
@@ -2825,6 +3006,37 @@
                 await window.expenseUploadQueue.updateGlobalUploadStatus();
             }
 
+            // CRITICAL: Add batch to local list immediately so it shows greyed out
+            // This ensures user sees the expense appear right away
+            if (currentBatch && currentBatch.localId) {
+                // Create a local batch object for immediate display
+                const localBatch = {
+                    id: currentBatch.id || `temp_${currentBatch.localId}`,
+                    localId: currentBatch.localId,
+                    registration: currentBatch.registration,
+                    status: 'draft',
+                    totalAmount: currentBatch.expenses ? currentBatch.expenses.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0) : 0,
+                    expenses: currentBatch.expenses || [],
+                    hasPendingUploads: true, // Mark as uploading
+                    driverId: currentBatch.driverId,
+                    officeId: currentBatch.officeId,
+                    notes: currentBatch.notes,
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                };
+                
+                // Add to allBatches if not already there
+                const existingIndex = allBatches.findIndex(b => b.localId === currentBatch.localId);
+                if (existingIndex >= 0) {
+                    allBatches[existingIndex] = { ...allBatches[existingIndex], ...localBatch };
+                } else {
+                    allBatches.unshift(localBatch); // Add to beginning
+                }
+                
+                // Refresh display immediately
+                displayBatches();
+            }
+
             if (!navigator.onLine) {
                 // Upload banner will show the queue status, no need for dialog
                 currentBatch = null;
@@ -2842,6 +3054,12 @@
                 if (savedBatch && savedBatch.id) {
                     currentBatch.id = savedBatch.id;
                     window.currentBatch = currentBatch;
+                    
+                    // Update local batch with real ID
+                    const localIndex = allBatches.findIndex(b => b.localId === currentBatch.localId);
+                    if (localIndex >= 0) {
+                        allBatches[localIndex].id = savedBatch.id;
+                    }
                 }
 
                 if (queuedLocalId) {
@@ -2851,10 +3069,6 @@
                 await window.expenseUploadQueue.updateGlobalUploadStatus();
                 }
                 }
-
-                // Small delay to ensure Firestore has indexed the new batch (especially important when no expenses)
-                // This gives Firestore time to make the document available in queries
-                await new Promise(resolve => setTimeout(resolve, 500));
 
                 // Refresh batches list immediately to show draft expense (greyed out if uploading)
                 if (typeof window.loadExpenseBatches === 'function') {
@@ -2953,8 +3167,49 @@
                 await window.expenseUploadQueue.updateGlobalUploadStatus();
             }
 
+            // CRITICAL: Add/update batch in local list immediately so it shows greyed out
+            // This ensures user sees the expense appear right away (works for both new submissions and appeals)
+            const isAppeal = currentBatch.status === 'returned';
+            const targetStatus = isAppeal ? 'pending' : 'pending';
+            
+            if (currentBatch && (currentBatch.id || currentBatch.localId)) {
+                // Create/update local batch object for immediate display
+                const localBatch = {
+                    id: currentBatch.id || `temp_${currentBatch.localId}`,
+                    localId: currentBatch.localId,
+                    registration: currentBatch.registration,
+                    status: targetStatus, // Will be pending (for both new and appeals)
+                    totalAmount: currentBatch.expenses ? currentBatch.expenses.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0) : 0,
+                    expenses: currentBatch.expenses || [],
+                    hasPendingUploads: true, // Mark as uploading
+                    driverId: currentBatch.driverId,
+                    officeId: currentBatch.officeId,
+                    notes: currentBatch.notes,
+                    submittedAt: isAppeal ? currentBatch.submittedAt : new Date(),
+                    updatedAt: new Date()
+                };
+                
+                // Update or add to allBatches
+                const existingIndex = currentBatch.id 
+                    ? allBatches.findIndex(b => b.id === currentBatch.id)
+                    : allBatches.findIndex(b => b.localId === currentBatch.localId);
+                    
+                if (existingIndex >= 0) {
+                    // Update existing batch (for appeals, move from returned to pending)
+                    allBatches[existingIndex] = { ...allBatches[existingIndex], ...localBatch };
+                } else {
+                    // Add new batch
+                    allBatches.unshift(localBatch);
+                }
+                
+                // Refresh display immediately
+                displayBatches();
+            }
+
             if (!navigator.onLine) {
                 // Upload banner will show the queue status, no need for dialog
+                // Close modal and return to list
+                document.getElementById('batchModal').classList.add('hidden');
                 currentBatch = null;
                 window.currentBatch = null;
                 window.isUploadingExpense = false;
@@ -2972,6 +3227,12 @@
                     try {
                         await syncDraftToFirestore(currentBatch, 'draft');
                         console.log('[submitBatch] Batch saved as draft, batch ID:', currentBatch.id);
+                        
+                        // Update local batch with real ID
+                        const localIndex = allBatches.findIndex(b => b.localId === currentBatch.localId);
+                        if (localIndex >= 0) {
+                            allBatches[localIndex].id = currentBatch.id;
+                        }
                     } catch (error) {
                         console.error('[submitBatch] Failed to save batch as draft:', error);
                         notifyError('Cannot submit: failed to create batch. Please try saving as draft first, then submit.', 'Batch Creation Failed');
@@ -3007,10 +3268,20 @@
                     await window.expenseUploadQueue.updateGlobalUploadStatus();
                 }
 
-                // Small delay to ensure photos are queued in IndexedDB before refreshing
+                // Update local batch with real data from Firestore
+                const localIndex = allBatches.findIndex(b => b.id === batchId || b.localId === currentBatch.localId);
+                if (localIndex >= 0) {
+                    allBatches[localIndex].id = batchId;
+                    allBatches[localIndex].status = 'pending';
+                }
+                
+                // Refresh display immediately (already showing, but update with real data)
+                displayBatches();
+
+                // Small delay to ensure photos are queued in IndexedDB before refreshing from Firestore
                 await new Promise(resolve => setTimeout(resolve, 100));
 
-                // Refresh batches list immediately to show pending expense (greyed out if uploading)
+                // Refresh batches list from Firestore to get latest data (greyed out if uploading)
                 if (typeof window.loadExpenseBatches === 'function') {
                     await window.loadExpenseBatches();
                 }
@@ -3023,6 +3294,8 @@
                 // No success message - banner is enough
                 // Note: isUploadingExpense will be set to false after all uploads complete
                 // (handled by upload queue when banner is hidden)
+                // Close modal and return to list
+                document.getElementById('batchModal').classList.add('hidden');
                 currentBatch = null;
                 window.currentBatch = null;
                 if (saveBtn) saveBtn.disabled = false;
@@ -3041,11 +3314,22 @@
         // Save expenses to Firebase - WRITE-FIRST APPROACH
         // All data written to IndexedDB immediately, uploads happen via Service Worker
         async function saveExpenses(batchId, sourceBatch = currentBatch) {
+            if (!batchId) {
+                throw new Error('Batch ID is required to save expenses');
+            }
+            
             const batchRef = sourceBatch || currentBatch;
             const expensesToSave = (batchRef && Array.isArray(batchRef.expenses)) ? batchRef.expenses : [];
             const officeId = batchRef.officeId || currentUser.officeId;
 
             console.log(`[saveExpenses] WRITE-FIRST: Saving ${expensesToSave.length} expenses for batch ${batchId}, officeId: ${officeId}`);
+            
+            // CRITICAL: Validate expenses exist before proceeding
+            if (expensesToSave.length === 0) {
+                console.warn(`[saveExpenses] No expenses to save for batch ${batchId}. Expenses array is empty.`);
+                // Don't throw error - allow empty batches (user might add expenses later)
+                return;
+            }
 
             // Delete existing expenses for this batch
             const existingExpensesQuery = window.query(
@@ -3069,11 +3353,6 @@
             });
             await Promise.all(deletePromises);
             console.log(`[saveExpenses] Deleted ${existingSnapshot.docs.length} existing expenses for batch ${batchId}`);
-
-            if (expensesToSave.length === 0) {
-                console.warn(`[saveExpenses] No expenses to save for batch ${batchId}. Expenses array is empty.`);
-                return;
-            }
 
             const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
             
@@ -3115,7 +3394,14 @@
             });
 
             const expenseResults = await Promise.all(addPromises);
-            console.log('[saveExpenses] All expense documents created in Firestore.');
+            console.log('[saveExpenses] All expense documents created in Firestore:', expenseResults.length);
+            
+            // CRITICAL: Validate that all expenses were created successfully
+            if (expenseResults.length !== expensesToSave.length) {
+                const errorMsg = `Failed to create all expenses. Expected ${expensesToSave.length}, created ${expenseResults.length}`;
+                console.error(`[saveExpenses] ${errorMsg}`);
+                throw new Error(errorMsg);
+            }
 
             // STEP 2: WRITE-FIRST - Save all expense data + photo blobs to IndexedDB immediately
             // No upload happens here - Service Worker handles it
