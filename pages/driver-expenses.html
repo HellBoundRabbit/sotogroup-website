@@ -3042,16 +3042,10 @@
                 displayBatches();
             }
 
-            if (!navigator.onLine) {
-                // Upload banner will show the queue status, no need for dialog
-                currentBatch = null;
-                window.currentBatch = null;
-                window.isUploadingExpense = false;
-                if (saveBtn) saveBtn.disabled = false;
-                if (submitBtn) submitBtn.disabled = false;
-                return;
-            }
-
+            // CRITICAL FIX: In PWA mode (especially iOS), navigator.onLine can be unreliable
+            // Always try to sync first, and only queue if sync actually fails
+            // This ensures PWA mode works correctly even when navigator.onLine reports false
+            
             try {
                 const savedBatch = await syncDraftToFirestore(currentBatch, 'draft');
                 
@@ -3096,6 +3090,29 @@
                 if (submitBtn) submitBtn.disabled = false;
             } catch (error) {
                 console.error('Error syncing draft:', error);
+                
+                // If sync failed, the batch is already queued (queuedLocalId was set above)
+                // Check if it's a network error - if so, queue is already set up
+                const isNetworkError = error.message && (
+                    error.message.includes('network') || 
+                    error.message.includes('Failed to fetch') ||
+                    error.message.includes('offline') ||
+                    !navigator.onLine
+                );
+                
+                if (isNetworkError && queuedLocalId) {
+                    // Network error and already queued - this is expected offline behavior
+                    console.log('[saveDraft] Network error, batch queued for later sync:', queuedLocalId);
+                } else if (!queuedLocalId) {
+                    // Not queued yet and sync failed - try to queue now
+                    console.warn('[saveDraft] Sync failed and not queued, attempting to queue now');
+                    try {
+                        await queueExpenseAction('draft');
+                    } catch (queueError) {
+                        console.error('[saveDraft] Failed to queue after sync error:', queueError);
+                    }
+                }
+                
                 // Upload banner will show the queue status, no need for dialog
                 currentBatch = null;
                 window.currentBatch = null;
@@ -3211,18 +3228,10 @@
                 displayBatches();
             }
 
-            if (!navigator.onLine) {
-                // Upload banner will show the queue status, no need for dialog
-                // Close modal and return to list
-                document.getElementById('batchModal').classList.add('hidden');
-                currentBatch = null;
-                window.currentBatch = null;
-                window.isUploadingExpense = false;
-                if (saveBtn) saveBtn.disabled = false;
-                if (submitBtn) submitBtn.disabled = false;
-                return;
-            }
-
+            // CRITICAL FIX: In PWA mode (especially iOS), navigator.onLine can be unreliable
+            // Always try to sync first, and only queue if sync actually fails
+            // This ensures PWA mode works correctly even when navigator.onLine reports false
+            
             try {
                 // Ensure currentBatch.id is set before syncing
                 // If missing, save as draft first to create the batch ID
@@ -3307,7 +3316,32 @@
                 if (submitBtn) submitBtn.disabled = false;
             } catch (error) {
                 console.error('Error submitting batch:', error);
+                
+                // If sync failed, the batch is already queued (queuedLocalId was set above)
+                // Check if it's a network error - if so, queue is already set up
+                const isNetworkError = error.message && (
+                    error.message.includes('network') || 
+                    error.message.includes('Failed to fetch') ||
+                    error.message.includes('offline') ||
+                    !navigator.onLine
+                );
+                
+                if (isNetworkError && queuedLocalId) {
+                    // Network error and already queued - this is expected offline behavior
+                    console.log('[submitBatch] Network error, batch queued for later sync:', queuedLocalId);
+                } else if (!queuedLocalId) {
+                    // Not queued yet and sync failed - try to queue now
+                    console.warn('[submitBatch] Sync failed and not queued, attempting to queue now');
+                    try {
+                        await queueExpenseAction('pending');
+                    } catch (queueError) {
+                        console.error('[submitBatch] Failed to queue after sync error:', queueError);
+                    }
+                }
+                
                 // Upload banner will show the queue status, no need for dialog
+                // Close modal and return to list
+                document.getElementById('batchModal').classList.add('hidden');
                 currentBatch = null;
                 window.currentBatch = null;
                 window.isUploadingExpense = false;
