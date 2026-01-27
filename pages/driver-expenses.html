@@ -1201,8 +1201,11 @@
                         expensesCreated = true;
                         console.log('[syncDraftToFirestore] Expenses created successfully');
                         
-                        // Remove incomplete flag (use null to clear, Firestore will ignore null in updates)
-                        const updateData = { updatedAt: window.serverTimestamp() };
+                        // Remove incomplete flag and ensure status is correct
+                        const updateData = { 
+                            updatedAt: window.serverTimestamp(),
+                            status: targetStatus // Ensure status is set correctly
+                        };
                         // Only add expensesIncomplete: null if deleteField is available, otherwise just update timestamp
                         if (window.deleteField) {
                             updateData.expensesIncomplete = window.deleteField();
@@ -1222,9 +1225,11 @@
                     }
                 }
                 
-                // Update batch if it already existed
-                if (existingBatch && batchId) {
+                // CRITICAL: Always update batch status and data after expenses are created
+                // This ensures the batch has the correct status (draft or pending)
+                if (batchId) {
                     await window.updateDoc(window.doc(window.db, 'expenseBatches', batchId), batchData);
+                    console.log('[syncDraftToFirestore] Updated batch status to:', targetStatus, 'for batch:', batchId);
                 }
             } catch (error) {
                 console.error('[syncDraftToFirestore] Error in sync process:', error);
