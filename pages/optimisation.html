@@ -1245,49 +1245,68 @@
         // All Asana API calls in this codebase are READ-ONLY (GET requests only)
         async function fetchAsanaTasks(accessToken, date, projectId) {
             try {
-                // Use Search API directly client-side for speed (filters by date on Asana's servers)
-                console.log(`Fetching tasks for date ${date} using Search API (client-side for speed)...`);
+                // Fetch tasks directly from client-side for speed
+                console.log(`Fetching tasks for date ${date} (client-side for speed)...`);
                 const startTime = Date.now();
                 
-                if (!selectedWorkspaceId) {
-                    throw new Error('Workspace ID not available. Please reload projects.');
-                }
-                
-                // Use Search API to filter tasks by project and due date efficiently
-                // Search API format: POST to /workspaces/{workspace_gid}/tasks/search
-                const searchUrl = `https://app.asana.com/api/1.0/workspaces/${selectedWorkspaceId}/tasks/search`;
-                
-                // Build search query - filter by project and due_on date
-                const searchBody = {
-                    "opt_fields": ["name", "due_on"],
-                    "projects.any": projectId,
-                    "due_on": date,
-                };
+                // Fetch all tasks from project (only name and due_on fields for speed)
+                let allTasks = [];
+                let nextPageUrl = `https://app.asana.com/api/1.0/projects/${projectId}/tasks?opt_fields=name,due_on&limit=100`;
+                let pageCount = 0;
+                const maxPages = 50; // Safety limit
 
-                const searchResponse = await fetch(searchUrl, {
-                    method: "POST",
-                    headers: {
-                        "Authorization": `Bearer ${accessToken}`,
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify(searchBody),
-                });
+                while (nextPageUrl && pageCount < maxPages) {
+                    const response = await fetch(nextPageUrl, {
+                        headers: {
+                            "Authorization": `Bearer ${accessToken}`,
+                        },
+                    });
 
-                if (!searchResponse.ok) {
-                    if (searchResponse.status === 401) {
-                        // Token expired or invalid
-                        if (currentSession && currentSession.officeId) {
-                            localStorage.removeItem(`asana_token_${currentSession.officeId}`);
+                    if (!response.ok) {
+                        if (response.status === 401) {
+                            // Token expired or invalid
+                            if (currentSession && currentSession.officeId) {
+                                localStorage.removeItem(`asana_token_${currentSession.officeId}`);
+                            }
+                            throw new Error('Asana connection expired. Please reconnect.');
                         }
-                        throw new Error('Asana connection expired. Please reconnect.');
+                        const errorText = await response.text();
+                        console.error('Asana API error:', errorText);
+                        throw new Error(`Asana API error: ${response.status}`);
                     }
-                    const errorText = await searchResponse.text();
-                    console.error('Asana Search API error:', errorText);
-                    throw new Error(`Asana Search API error: ${searchResponse.status}`);
+
+                    const data = await response.json();
+                    const pageTasks = data.data || [];
+                    allTasks = allTasks.concat(pageTasks);
+
+                    // Check for next page
+                    const nextPage = data.next_page;
+                    if (nextPage) {
+                        if (typeof nextPage === "string") {
+                            nextPageUrl = nextPage;
+                        } else if (nextPage.uri) {
+                            nextPageUrl = nextPage.uri;
+                        } else {
+                            nextPageUrl = null;
+                        }
+                        if (nextPageUrl) {
+                            pageCount++;
+                        }
+                    } else {
+                        nextPageUrl = null;
+                    }
                 }
 
-                const searchData = await searchResponse.json();
-                const tasks = searchData.data || [];
+                // Filter by date client-side
+                let tasks = allTasks;
+                if (date) {
+                    const originalCount = tasks.length;
+                    tasks = tasks.filter((task) => {
+                        if (!task.due_on) return false;
+                        return task.due_on === date;
+                    });
+                    console.log(`Filtered ${originalCount} tasks to ${tasks.length} tasks for date ${date}`);
+                }
                 
                 // Sort tasks alphabetically by name
                 tasks.sort((a, b) => {
@@ -1302,32 +1321,7 @@
                 
             } catch (error) {
                 console.error('Error fetching Asana tasks:', error);
-                // Fallback to Firebase function if direct API fails
-                if (window.firebase && window.firebase.httpsCallable && window.firebase.functions) {
-                    console.log('Falling back to Firebase function...');
-                    const fetchTasksFunction = window.firebase.httpsCallable(window.firebase.functions, 'fetchAsanaTasks');
-                    const result = await fetchTasksFunction({
-                        access_token: accessToken,
-                        date: date,
-                        project_id: projectId,
-                        workspace_id: selectedWorkspaceId
-                    });
-
-                    if (result.data && result.data.success) {
-                        const tasks = result.data.tasks || [];
-                        // Sort alphabetically
-                        tasks.sort((a, b) => {
-                            const nameA = (a.name || '').toLowerCase();
-                            const nameB = (b.name || '').toLowerCase();
-                            return nameA.localeCompare(nameB);
-                        });
-                        return tasks;
-                    } else {
-                        throw new Error(result.data?.error || 'Failed to fetch tasks');
-                    }
-                } else {
-                    throw error;
-                }
+                throw error;
             }
         }
 
