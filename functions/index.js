@@ -1928,43 +1928,103 @@ exports.fetchAsanaTasks = onCall(CALLABLE_OPTIONS, async (request) => {
       }
     }
 
-    // Use Search API to filter tasks by project and due date efficiently
-    // Search API format: POST to /workspaces/{workspace_gid}/tasks/search
-    // According to Asana docs, filters go in the request body
-    const searchUrl = `https://app.asana.com/api/1.0/workspaces/${workspaceGid}/tasks/search`;
+    // Try Search API first - if it fails, fall back to fetching all and filtering
+    // Search API format may vary - trying different approaches
+    let allTasks = [];
+    let useSearchAPI = false;
     
-    // Build search query - filter by project and due_on date
-    // Search API uses POST with filters in the body
-    const searchBody = {
-      "opt_fields": ["name", "due_on"],
-      "projects.any": projectId,
-      "due_on": date,
-    };
+    try {
+      // Try Search API with data wrapper format
+      const searchUrl = `https://app.asana.com/api/1.0/workspaces/${workspaceGid}/tasks/search`;
+      const searchBody = {
+        "data": {
+          "resource_subtype": "default_task",
+          "opt_fields": ["name", "due_on"],
+          "projects.any": projectId,
+          "due_on": date,
+        }
+      };
 
-    const searchResponse = await fetch(searchUrl, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(searchBody),
-    });
+      const searchResponse = await fetch(searchUrl, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(searchBody),
+      });
 
-    if (!searchResponse.ok) {
-      if (searchResponse.status === 401) {
-        throw new HttpsError("unauthenticated",
-            "Asana access token is invalid or expired");
+      if (searchResponse.ok) {
+        const searchData = await searchResponse.json();
+        allTasks = searchData.data || [];
+        useSearchAPI = true;
+        logger.info(`Used Search API: Found ${allTasks.length} tasks for date ${date}`);
+      } else {
+        logger.warn(`Search API returned ${searchResponse.status}, falling back to project tasks API`);
       }
-      const errorText = await searchResponse.text();
-      logger.error("Asana Search API error:", errorText);
-      throw new HttpsError("internal",
-          `Asana Search API error: ${searchResponse.status}`);
+    } catch (searchError) {
+      logger.warn("Search API failed, using fallback:", searchError.message);
+    }
+    
+    // Fallback: Fetch all tasks from project and filter by date (if Search API didn't work)
+    if (!useSearchAPI) {
+      logger.info("Using fallback: Fetching all tasks from project and filtering by date");
+      let nextPageUrl = `https://app.asana.com/api/1.0/projects/${projectId}/tasks?opt_fields=name,due_on&limit=100`;
+      let pageCount = 0;
+      const maxPages = 50;
+
+      while (nextPageUrl && pageCount < maxPages) {
+        const projectTasksResponse = await fetch(nextPageUrl, {
+          headers: {
+            "Authorization": `Bearer ${accessToken}`,
+          },
+        });
+
+        if (!projectTasksResponse.ok) {
+          if (projectTasksResponse.status === 401) {
+            throw new HttpsError("unauthenticated",
+                "Asana access token is invalid or expired");
+          }
+          const errorText = await projectTasksResponse.text();
+          logger.error("Asana tasks API error:", errorText);
+          throw new HttpsError("internal",
+              `Asana API error: ${projectTasksResponse.status}`);
+        }
+
+        const projectTasksData = await projectTasksResponse.json();
+        const pageTasks = projectTasksData.data || [];
+        allTasks = allTasks.concat(pageTasks);
+
+        const nextPage = projectTasksData.next_page;
+        if (nextPage) {
+          if (typeof nextPage === "string") {
+            nextPageUrl = nextPage;
+          } else if (nextPage.uri) {
+            nextPageUrl = nextPage.uri;
+          } else {
+            nextPageUrl = null;
+          }
+          if (nextPageUrl) {
+            pageCount++;
+          }
+        } else {
+          nextPageUrl = null;
+        }
+      }
+
+      // Filter by date
+      if (date) {
+        const originalCount = allTasks.length;
+        allTasks = allTasks.filter((task) => {
+          if (!task.due_on) return false;
+          return task.due_on === date;
+        });
+        logger.info(`Filtered ${originalCount} tasks to ${allTasks.length} tasks for date ${date}`);
+      }
     }
 
-    const searchData = await searchResponse.json();
-    const tasks = searchData.data || [];
-
-    logger.info(`Fetched ${tasks.length} tasks for date ${date} in project ${projectId} using Search API`);
+    const tasks = allTasks;
+    logger.info(`Fetched ${tasks.length} tasks for date ${date} in project ${projectId}${useSearchAPI ? ' using Search API' : ' using project tasks API with date filtering'}`);
 
     return {
       success: true,
