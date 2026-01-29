@@ -1637,7 +1637,33 @@
         // ASANA SAFETY: This function ONLY reads full task details from Asana - no writes, updates, or deletes
         async function fetchFullTaskDetails(taskGid, accessToken) {
             try {
+                // Use direct API call for faster loading (same approach as fetchAsanaTasks)
+                // This avoids CORS issues and is much faster than Firebase Functions
+                const response = await fetch(`https://app.asana.com/api/1.0/tasks/${taskGid}?opt_fields=name,notes`, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        // Token expired or invalid
+                        if (currentSession && currentSession.officeId) {
+                            localStorage.removeItem(`asana_token_${currentSession.officeId}`);
+                        }
+                        throw new Error('Asana connection expired. Please reconnect.');
+                    }
+                    throw new Error(`Failed to fetch task: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                return data.data;
+                
+            } catch (error) {
+                console.error('Error fetching full task details:', error);
+                // Fallback to Firebase function only if direct API fails
                 if (window.firebase && window.firebase.httpsCallable && window.firebase.functions) {
+                    console.log('Falling back to Firebase function for task details...');
                     const fetchTaskFunction = window.firebase.httpsCallable(window.firebase.functions, 'fetchAsanaTaskDetails');
                     const result = await fetchTaskFunction({
                         access_token: accessToken,
@@ -1650,23 +1676,8 @@
                         throw new Error(result.data?.error || 'Failed to fetch task details');
                     }
                 } else {
-                    // Fallback: Direct API call (READ-ONLY GET request)
-                    const response = await fetch(`https://app.asana.com/api/1.0/tasks/${taskGid}?opt_fields=name,notes`, {
-                        headers: {
-                            'Authorization': `Bearer ${accessToken}`
-                        }
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error(`Failed to fetch task: ${response.status}`);
-                    }
-                    
-                    const data = await response.json();
-                    return data.data;
+                    throw error;
                 }
-            } catch (error) {
-                console.error('Error fetching full task details:', error);
-                throw error;
             }
         }
 
@@ -4827,40 +4838,90 @@
             // Store assignments globally for authorization function
             window.currentAssignments = allAssignments;
             
-            // Step 7: Running optimization - separate for carryover and regular
+            // Step 7: Running optimization on Firebase (algorithm hidden from competitors)
             updateOptimizationProgress(5, 85, 'Running optimization algorithm...');
-            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Prepare assignments data for Firebase (minimize data sent - only what's needed for optimization)
+            const assignmentsForFirebase = allAssignments.map((calc, idx) => ({
+                index: idx, // Keep original index for mapping back
+                routeIndex: calc.routeIndex,
+                driverIndex: calc.driverIndex,
+                totalTime: calc.totalTime,
+                priorityScore: calc.priorityScore,
+                bothTaxi: calc.bothTaxi,
+                oneTaxi: calc.oneTaxi,
+                useMixedModeToWork: calc.useMixedModeToWork,
+                useMixedModeFromWork: calc.useMixedModeFromWork,
+                hasCarryover: calc.hasCarryover,
+                isCarryoverRoute: calc.isCarryoverRoute
+            }));
             
             // Separate assignments by type
-            const carryoverAssignments = allAssignments.filter(a => a.isCarryoverRoute);
-            const regularAssignments = allAssignments.filter(a => !a.isCarryoverRoute);
+            const carryoverAssignments = assignmentsForFirebase.filter(a => a.isCarryoverRoute);
+            const regularAssignments = assignmentsForFirebase.filter(a => !a.isCarryoverRoute);
             
-            // Optimize carryover drivers with their assigned routes
-            let carryoverOptimal = [];
-            if (carryoverAssignments.length > 0 && carryoverDrivers.length > 0) {
-                carryoverOptimal = findOptimalAssignmentByPriority(
-                    carryoverAssignments, 
-                    carryoverRoutes.length, 
-                    carryoverDrivers.length
-                );
-                console.log(`✅ Carryover optimization: ${carryoverOptimal.length} assignments`);
+            // Call Firebase Function for optimization (algorithm hidden on server)
+            let optimalAssignment = [];
+            try {
+                if (window.firebase && window.firebase.httpsCallable && window.firebase.functions) {
+                    const optimizeFunction = window.firebase.httpsCallable(window.firebase.functions, 'optimizeRouteAssignments');
+                    const result = await optimizeFunction({
+                        carryoverAssignments: carryoverAssignments,
+                        regularAssignments: regularAssignments,
+                        numCarryoverRoutes: carryoverRoutes.length,
+                        numRegularRoutes: regularRoutes.length,
+                        numCarryoverDrivers: carryoverDrivers.length,
+                        numRegularDrivers: regularDrivers.length
+                    });
+                    
+                    if (result.data && result.data.success) {
+                        // Firebase returns indices into the assignments arrays
+                        const carryoverOptimalIndices = result.data.carryoverOptimal || [];
+                        const regularOptimalIndices = result.data.regularOptimal || [];
+                        
+                        // Map indices back to full assignment objects
+                        const carryoverFull = carryoverOptimalIndices.map(idx => {
+                            const assignmentData = carryoverAssignments[idx];
+                            return allAssignments[assignmentData.index];
+                        }).filter(Boolean);
+                        
+                        const regularFull = regularOptimalIndices.map(idx => {
+                            const assignmentData = regularAssignments[idx];
+                            return allAssignments[assignmentData.index];
+                        }).filter(Boolean);
+                        
+                        optimalAssignment = [...carryoverFull, ...regularFull];
+                        console.log(`✅ Optimal assignment found with ${optimalAssignment.length} assignments (via Firebase)`);
+                    } else {
+                        throw new Error(result.data?.error || 'Optimization failed');
+                    }
+                } else {
+                    // Fallback to client-side if Firebase not available (shouldn't happen in production)
+                    console.warn('Firebase Functions not available, using client-side optimization');
+                    let carryoverOptimal = [];
+                    if (carryoverAssignments.length > 0 && carryoverDrivers.length > 0) {
+                        carryoverOptimal = findOptimalAssignmentByPriority(
+                            allAssignments.filter(a => a.isCarryoverRoute), 
+                            carryoverRoutes.length, 
+                            carryoverDrivers.length
+                        );
+                    }
+                    let regularOptimal = [];
+                    if (regularAssignments.length > 0 && regularDrivers.length > 0) {
+                        regularOptimal = findOptimalAssignmentByPriority(
+                            allAssignments.filter(a => !a.isCarryoverRoute), 
+                            regularRoutes.length, 
+                            regularDrivers.length
+                        );
+                    }
+                    optimalAssignment = [...carryoverOptimal, ...regularOptimal];
+                    console.log(`✅ Optimal assignment found with ${optimalAssignment.length} assignments (client-side fallback)`);
+                }
+            } catch (error) {
+                console.error('Error optimizing routes:', error);
+                alert('Failed to optimize routes: ' + error.message);
+                return;
             }
-            
-            // Optimize regular drivers with remaining routes
-            let regularOptimal = [];
-            if (regularAssignments.length > 0 && regularDrivers.length > 0) {
-                regularOptimal = findOptimalAssignmentByPriority(
-                    regularAssignments, 
-                    regularRoutes.length, 
-                    regularDrivers.length
-                );
-                console.log(`✅ Regular optimization: ${regularOptimal.length} assignments`);
-            }
-            
-            // Combine both optimizations
-            const optimalAssignment = [...carryoverOptimal, ...regularOptimal];
-            
-            console.log(`✅ Optimal assignment found with ${optimalAssignment.length} assignments`);
             
             // Step 5: Assigning drivers
             updateOptimizationProgress(5, 95, 'Assigning drivers to routes...');
