@@ -1962,21 +1962,22 @@
                 }
             }
             
-            // Highlight price (try multiple formats)
+            // Highlight price (prioritize "Price - £X" format, then try other formats)
             if (parsedData.price && parsedData.price > 0) {
                 const priceScore = confidenceScores.price || 0;
-                const priceFormats = [
-                    `£${parsedData.price}`,
-                    `£${parsedData.price.toFixed(2)}`,
-                    `${parsedData.price}`,
-                    `${parsedData.price.toFixed(2)}`
+                
+                // First, try to find "Price - £X" or "Price: £X" pattern (most reliable)
+                const priceLabelPatterns = [
+                    new RegExp(`Price\\s*[-:]\\s*£?\\s*${escapeRegex(parsedData.price.toFixed(2))}`, 'gi'),
+                    new RegExp(`Price\\s*[-:]\\s*£?\\s*${escapeRegex(parsedData.price.toString())}`, 'gi')
                 ];
                 
-                priceFormats.forEach(priceStr => {
-                    const priceEscaped = escapeRegex(priceStr);
-                    const priceRegex = new RegExp(priceEscaped, 'gi');
-                    const matches = [...highlightedText.matchAll(priceRegex)];
-                    matches.forEach(match => {
+                let priceFound = false;
+                for (const pattern of priceLabelPatterns) {
+                    const matches = [...highlightedText.matchAll(pattern)];
+                    if (matches.length > 0) {
+                        // Use the first match (should be the actual price line)
+                        const match = matches[0];
                         if (!usedPositions.has(match.index)) {
                             highlights.push({
                                 start: match.index,
@@ -1985,9 +1986,62 @@
                                 score: priceScore
                             });
                             usedPositions.add(match.index);
+                            priceFound = true;
+                            break; // Found the price, don't look for other matches
                         }
-                    });
-                });
+                    }
+                }
+                
+                // If we didn't find "Price - £X" pattern, try other formats but be more selective
+                if (!priceFound) {
+                    const priceFormats = [
+                        `£${parsedData.price.toFixed(2)}`,
+                        `£${parsedData.price}`,
+                        `${parsedData.price.toFixed(2)}`,
+                        `${parsedData.price}`
+                    ];
+                    
+                    // Only highlight if the price is in a reasonable range (avoid highlighting random numbers)
+                    const reasonablePrice = parsedData.price >= 10 && parsedData.price <= 1000;
+                    
+                    if (reasonablePrice) {
+                        priceFormats.forEach(priceStr => {
+                            const priceEscaped = escapeRegex(priceStr);
+                            // Look for price that's not part of another word or context
+                            // Avoid matching prices that are part of phrases like "£22 uber auth"
+                            const priceRegex = new RegExp(`(?:^|[^\\w£])${priceEscaped}(?![\\w])`, 'gi');
+                            const matches = [...highlightedText.matchAll(priceRegex)];
+                            
+                            // Prefer matches that are on their own line or after common price indicators
+                            const preferredMatches = matches.filter(match => {
+                                const beforeMatch = highlightedText.substring(Math.max(0, match.index - 20), match.index);
+                                const afterMatch = highlightedText.substring(match.index + match[0].length, Math.min(highlightedText.length, match.index + match[0].length + 20));
+                                
+                                // Prefer if it's after "Price", "£", or on its own line
+                                const hasPriceIndicator = /(?:Price|Cost|Amount|Total|£|\n)/i.test(beforeMatch);
+                                // Avoid if it's followed by words like "uber", "auth", etc.
+                                const hasBadContext = /\b(?:uber|auth|taxi|job|see|chat)\b/i.test(afterMatch);
+                                
+                                return hasPriceIndicator && !hasBadContext;
+                            });
+                            
+                            // Use preferred matches first, or fall back to all matches
+                            const matchesToUse = preferredMatches.length > 0 ? preferredMatches : matches;
+                            
+                            matchesToUse.forEach(match => {
+                                if (!usedPositions.has(match.index)) {
+                                    highlights.push({
+                                        start: match.index,
+                                        end: match.index + match[0].length,
+                                        text: match[0],
+                                        score: priceScore
+                                    });
+                                    usedPositions.add(match.index);
+                                }
+                            });
+                        });
+                    }
+                }
             }
             
             // Sort highlights by position (from end to start to avoid index shifting)
@@ -2082,7 +2136,7 @@
                                                 type="number" 
                                                 step="0.01"
                                                 id="${jobKey}-price"
-                                                value="${job.parsedData.price || 0}"
+                                                value="${typeof job.parsedData.price === 'number' ? job.parsedData.price : (parseFloat(job.parsedData.price) || 0)}"
                                                 class="flex-1 px-3 py-2 bg-[#1a1f24] border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                             />
                                             <span class="text-xs ${getConfidenceColor(confidenceScores.price || 0)} font-semibold">
@@ -2326,35 +2380,50 @@
                 return !data.officeId || data.officeId === officeId;
             });
             
-            // Get all jobs for this route from Firebase
-            const jobsQuery = window.firebaseQuery(
-                window.firebaseCollection(window.firestore, 'jobs'),
-                window.where('assignedRouteId', '==', routeIdFormatted),
-                window.where('officeId', '==', officeId)
-            );
-            const jobsSnapshot = await window.firebaseGetDocs(jobsQuery);
-            
+            // CRITICAL FIX: Only get the jobs that were just saved (using savedJobIds)
+            // Don't query all jobs with this routeId, as that would include old jobs from previous saves
             const jobs = [];
-            for (const doc of jobsSnapshot.docs) {
-                const jobData = doc.data();
-                if (jobData.officeId && jobData.officeId !== officeId) {
-                    console.warn(`Skipping job ${doc.id} due to mismatched officeId.`);
-                    continue;
-                }
-                if (!jobData.officeId) {
-                    try {
-                        await window.firebaseUpdateDoc(doc.ref, { officeId });
-                        jobData.officeId = officeId;
-                        console.log(`Backfilled officeId for job ${doc.id}`);
-                    } catch (error) {
-                        console.warn(`Failed to backfill officeId for job ${doc.id}:`, error);
+            const savedJobIdsSet = new Set(savedJobIds);
+            
+            for (const jobId of savedJobIds) {
+                try {
+                    const jobDocRef = window.firebaseDoc(window.firebaseCollection(window.firestore, 'jobs'), jobId);
+                    const jobDoc = await window.firebaseGetDoc(jobDocRef);
+                    
+                    if (jobDoc.exists()) {
+                        const jobData = jobDoc.data();
+                        
+                        // Verify this job belongs to this office
+                        if (jobData.officeId && jobData.officeId !== officeId) {
+                            console.warn(`Skipping job ${jobId} due to mismatched officeId.`);
+                            continue;
+                        }
+                        
+                        // Backfill officeId if missing
+                        if (!jobData.officeId) {
+                            try {
+                                await window.firebaseUpdateDoc(jobDocRef, { officeId });
+                                jobData.officeId = officeId;
+                                console.log(`Backfilled officeId for job ${jobId}`);
+                            } catch (error) {
+                                console.warn(`Failed to backfill officeId for job ${jobId}:`, error);
+                            }
+                        }
+                        
+                        jobs.push({
+                            firebaseId: jobDoc.id,
+                            ...jobData
+                        });
+                    } else {
+                        console.warn(`Job ${jobId} not found in Firebase`);
                     }
+                } catch (error) {
+                    console.error(`Error loading job ${jobId}:`, error);
                 }
-                jobs.push({
-                    firebaseId: doc.id,
-                    ...jobData
-                });
             }
+            
+            // Sort jobs by jobNumber
+            jobs.sort((a, b) => (a.jobNumber || 0) - (b.jobNumber || 0));
             
             if (existingRoute) {
                 console.log(`Route summary for ${routeIdFormatted} already exists, updating...`);
