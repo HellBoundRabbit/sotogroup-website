@@ -737,6 +737,7 @@
         let selectedDate = null;
         let selectedProjectId = null;
         let selectedProjectName = null;
+        let selectedWorkspaceId = null; // Store workspace ID for Search API
         let availableProjects = [];
         let parsedJobsData = [];
         let routeGroupingMode = false;
@@ -1141,6 +1142,9 @@
                 if (!workspaceId) {
                     throw new Error('No workspace found');
                 }
+                
+                // Store workspace ID for Search API
+                selectedWorkspaceId = workspaceId;
 
                 const projectsUrl = `https://app.asana.com/api/1.0/workspaces/${workspaceId}/projects?opt_fields=gid,name&limit=100`;
                 const projectsResponse = await fetch(projectsUrl, {
@@ -1241,55 +1245,35 @@
         // All Asana API calls in this codebase are READ-ONLY (GET requests only)
         async function fetchAsanaTasks(accessToken, date, projectId) {
             try {
-                // Use direct API call for faster loading (only fetching task names)
-                // This is much faster than going through Firebase function for simple GET requests
-                console.log('Fetching task names directly from Asana API...');
-                const startTime = Date.now();
-                
-                // Query tasks by project and due date - only request name field for speed
-                const response = await fetch(`https://app.asana.com/api/1.0/projects/${projectId}/tasks?opt_fields=name,due_on&due_on=${date}&limit=100`, {
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`
-                    }
-                });
-
-                if (!response.ok) {
-                    if (response.status === 401) {
-                        // Token expired or invalid
-                        if (currentSession && currentSession.officeId) {
-                            localStorage.removeItem(`asana_token_${currentSession.officeId}`);
-                        }
-                        throw new Error('Asana connection expired. Please reconnect.');
-                    }
-                    throw new Error(`Asana API error: ${response.status}`);
-                }
-
-                const data = await response.json();
-                const tasks = data.data || [];
-                const elapsed = Date.now() - startTime;
-                console.log(`Fetched ${tasks.length} task names in ${elapsed}ms`);
-                return tasks;
-                
-            } catch (error) {
-                console.error('Error fetching Asana tasks:', error);
-                // Fallback to Firebase function if direct API fails
+                // Use Firebase function for server-side filtering
+                // Note: Asana API doesn't support filtering by due_on in query params,
+                // so Firebase function fetches all tasks and filters server-side (more efficient than client-side)
                 if (window.firebase && window.firebase.httpsCallable && window.firebase.functions) {
-                    console.log('Falling back to Firebase function...');
+                    console.log(`Fetching tasks for date ${date} via Firebase function (server-side filtering)...`);
+                    const startTime = Date.now();
+                    
                     const fetchTasksFunction = window.firebase.httpsCallable(window.firebase.functions, 'fetchAsanaTasks');
                     const result = await fetchTasksFunction({
                         access_token: accessToken,
                         date: date,
-                        project_id: projectId
+                        project_id: projectId,
+                        workspace_id: selectedWorkspaceId // Pass workspace ID for Search API
                     });
 
                     if (result.data && result.data.success) {
-                        return result.data.tasks || [];
+                        const tasks = result.data.tasks || [];
+                        const elapsed = Date.now() - startTime;
+                        console.log(`Fetched ${tasks.length} tasks for date ${date} in ${elapsed}ms`);
+                        return tasks;
                     } else {
                         throw new Error(result.data?.error || 'Failed to fetch tasks');
                     }
                 } else {
-                    throw error;
+                    throw new Error('Firebase functions not available');
                 }
+            } catch (error) {
+                console.error('Error fetching Asana tasks:', error);
+                throw error;
             }
         }
 
