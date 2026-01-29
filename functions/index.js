@@ -1982,3 +1982,105 @@ exports.fetchAsanaTasks = onCall(CALLABLE_OPTIONS, async (request) => {
     throw new HttpsError("internal", `Failed to fetch tasks: ${error.message}`);
   }
 });
+
+/**
+ * Optimize route assignments using proprietary algorithm
+ * SECURE: Business logic hidden on server to protect from competitors
+ * This implements the priority-based greedy assignment algorithm
+ */
+exports.optimizeRouteAssignments = onCall(CALLABLE_OPTIONS, async (request) => {
+  try {
+    requireAuth(request);
+
+    const {
+      carryoverAssignments,
+      regularAssignments,
+      numCarryoverRoutes,
+      numRegularRoutes,
+      numCarryoverDrivers,
+      numRegularDrivers,
+    } = request.data;
+
+    if (!carryoverAssignments || !regularAssignments) {
+      throw new HttpsError("invalid-argument",
+          "carryoverAssignments and regularAssignments are required");
+    }
+
+    /**
+     * Priority-based greedy assignment algorithm
+     * Sorts by priority score (descending) and assigns greedily
+     * @param {Array} assignments - Array of assignment objects with priorityScore
+     * @param {number} numRoutes - Number of routes to assign
+     * @param {number} numDrivers - Number of drivers available
+     * @return {Array} Array of indices into assignments array (optimal assignments)
+     */
+    function findOptimalAssignmentByPriority(assignments, numRoutes, numDrivers) {
+      // Sort by priority score (descending - highest priority first)
+      const sortedAssignments = assignments
+          .map((assignment, index) => ({assignment, index}))
+          .sort((a, b) => b.assignment.priorityScore - a.assignment.priorityScore);
+
+      const assignedRoutes = new Set();
+      const assignedDrivers = new Set();
+      const optimalIndices = [];
+
+      // Greedy assignment: pick the best available option at each step
+      for (const {assignment, index} of sortedAssignments) {
+        // Skip if this route or driver is already assigned
+        if (assignedRoutes.has(assignment.routeIndex) ||
+            assignedDrivers.has(assignment.driverIndex)) {
+          continue;
+        }
+
+        // Assign this driver to this route
+        assignedRoutes.add(assignment.routeIndex);
+        assignedDrivers.add(assignment.driverIndex);
+        optimalIndices.push(index);
+
+        // Stop if we've assigned all routes or all drivers
+        if (optimalIndices.length === Math.min(numRoutes, numDrivers)) {
+          break;
+        }
+      }
+
+      logger.info(`Optimization result: ${optimalIndices.length} assignments from ${assignments.length} options`);
+      return optimalIndices;
+    }
+
+    // Optimize carryover assignments separately
+    let carryoverOptimal = [];
+    if (carryoverAssignments.length > 0 && numCarryoverDrivers > 0) {
+      carryoverOptimal = findOptimalAssignmentByPriority(
+          carryoverAssignments,
+          numCarryoverRoutes,
+          numCarryoverDrivers,
+      );
+      logger.info(`Carryover optimization: ${carryoverOptimal.length} assignments`);
+    }
+
+    // Optimize regular assignments separately
+    let regularOptimal = [];
+    if (regularAssignments.length > 0 && numRegularDrivers > 0) {
+      regularOptimal = findOptimalAssignmentByPriority(
+          regularAssignments,
+          numRegularRoutes,
+          numRegularDrivers,
+      );
+      logger.info(`Regular optimization: ${regularOptimal.length} assignments`);
+    }
+
+    return {
+      success: true,
+      carryoverOptimal: carryoverOptimal,
+      regularOptimal: regularOptimal,
+      totalAssignments: carryoverOptimal.length + regularOptimal.length,
+    };
+  } catch (error) {
+    logger.error("Route assignment optimization error:", error);
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    throw new HttpsError("internal",
+        `Optimization failed: ${error.message}`);
+  }
+});
