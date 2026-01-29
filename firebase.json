@@ -12,6 +12,9 @@
         "destination": "/pages/soto-routes-login.html"
       }
     ]
+  },
+  "functions": {
+    "source": "functions"
   }
 }
 
