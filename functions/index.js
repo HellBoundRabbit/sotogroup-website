@@ -1885,14 +1885,15 @@ exports.fetchAsanaWorkspaces = onCall(CALLABLE_OPTIONS, async (request) => {
 });
 
 /**
- * Fetch tasks from Asana API for a specific project and date
+ * Fetch tasks from Asana API for a specific project and date using Search API
  * SECURE: Handles API calls server-side
+ * Uses the Search API to filter by date efficiently (no need to fetch all tasks)
  */
 exports.fetchAsanaTasks = onCall(CALLABLE_OPTIONS, async (request) => {
   try {
     requireAuth(request);
 
-    const {access_token: accessToken, date, project_id: projectId} = request.data;
+    const {access_token: accessToken, date, project_id: projectId, workspace_id: workspaceId} = request.data;
 
     if (!accessToken || !date) {
       throw new HttpsError("invalid-argument",
@@ -1904,70 +1905,66 @@ exports.fetchAsanaTasks = onCall(CALLABLE_OPTIONS, async (request) => {
           "project_id is required");
     }
 
-    // Fetch tasks from the specific project with pagination
-    let tasks = [];
-    let nextPageUrl = `https://app.asana.com/api/1.0/projects/${projectId}/tasks?opt_fields=name,due_on,notes,assignee,projects,custom_fields,workspace&limit=100`;
-    let pageCount = 0;
-    const maxPages = 50; // Safety limit to prevent infinite loops
-
-    while (nextPageUrl && pageCount < maxPages) {
-      const projectTasksResponse = await fetch(nextPageUrl, {
+    // Get workspace ID if not provided
+    let workspaceGid = workspaceId;
+    if (!workspaceGid) {
+      const workspacesUrl = "https://app.asana.com/api/1.0/workspaces";
+      const workspacesResponse = await fetch(workspacesUrl, {
         headers: {
           "Authorization": `Bearer ${accessToken}`,
         },
       });
 
-      if (!projectTasksResponse.ok) {
-        if (projectTasksResponse.status === 401) {
-          throw new HttpsError("unauthenticated",
-              "Asana access token is invalid or expired");
-        }
-        const errorText = await projectTasksResponse.text();
-        logger.error("Asana tasks API error:", errorText);
+      if (!workspacesResponse.ok) {
         throw new HttpsError("internal",
-            `Asana API error: ${projectTasksResponse.status}`);
+            `Failed to fetch workspaces: ${workspacesResponse.status}`);
       }
 
-      const projectTasksData = await projectTasksResponse.json();
-      const pageTasks = projectTasksData.data || [];
-      tasks = tasks.concat(pageTasks);
+      const workspacesData = await workspacesResponse.json();
+      workspaceGid = workspacesData.data?.[0]?.gid;
 
-      // Check for next page
-      // Asana API returns next_page as either a string URL or an object with uri property
-      const nextPage = projectTasksData.next_page;
-      if (nextPage) {
-        if (typeof nextPage === "string") {
-          nextPageUrl = nextPage;
-        } else if (nextPage.uri) {
-          nextPageUrl = nextPage.uri;
-        } else {
-          nextPageUrl = null;
-        }
-
-        if (nextPageUrl) {
-          pageCount++;
-          logger.info(`Fetched page ${pageCount}, ${pageTasks.length} tasks (total: ${tasks.length})`);
-        }
-      } else {
-        nextPageUrl = null; // No more pages
+      if (!workspaceGid) {
+        throw new HttpsError("internal", "No workspace found");
       }
     }
 
-    logger.info(`Fetched ${tasks.length} total tasks from project ${projectId} across ${pageCount + 1} page(s)`);
+    // Use Search API to filter tasks by project and due date efficiently
+    // Search API format: POST to /workspaces/{workspace_gid}/tasks/search
+    // According to Asana docs, filters go in the request body
+    const searchUrl = `https://app.asana.com/api/1.0/workspaces/${workspaceGid}/tasks/search`;
+    
+    // Build search query - filter by project and due_on date
+    // Search API uses POST with filters in the body
+    const searchBody = {
+      "opt_fields": ["name", "due_on"],
+      "projects.any": projectId,
+      "due_on": date,
+    };
 
-    // Filter tasks by due date (client-side since API doesn't support due_on filter)
-    // Format: date should be YYYY-MM-DD
-    if (date) {
-      const originalCount = tasks.length;
-      tasks = tasks.filter((task) => {
-        if (!task.due_on) return false;
-        // Asana returns dates in YYYY-MM-DD format
-        return task.due_on === date;
-      });
-      logger.info(`Filtered ${originalCount} tasks to ${tasks.length} tasks for date ${date} in project ${projectId}`);
+    const searchResponse = await fetch(searchUrl, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(searchBody),
+    });
+
+    if (!searchResponse.ok) {
+      if (searchResponse.status === 401) {
+        throw new HttpsError("unauthenticated",
+            "Asana access token is invalid or expired");
+      }
+      const errorText = await searchResponse.text();
+      logger.error("Asana Search API error:", errorText);
+      throw new HttpsError("internal",
+          `Asana Search API error: ${searchResponse.status}`);
     }
 
-    logger.info(`Fetched ${tasks.length} tasks for date ${date || "all"} from project ${projectId}`);
+    const searchData = await searchResponse.json();
+    const tasks = searchData.data || [];
+
+    logger.info(`Fetched ${tasks.length} tasks for date ${date} in project ${projectId} using Search API`);
 
     return {
       success: true,
