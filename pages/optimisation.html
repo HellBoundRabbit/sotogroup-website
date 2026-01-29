@@ -1048,10 +1048,10 @@
                     const redirectUri = window.location.origin + window.location.pathname;
                     console.log('Exchanging token with redirect_uri:', redirectUri);
                     
-                    const exchangeFunction = window.firebase.httpsCallable(window.firebase.functions, 'exchangeAsanaCode');
+                    // Use the same function name as automaticroutes.html
+                    const exchangeFunction = window.firebase.httpsCallable(window.firebase.functions, 'exchangeAsanaToken');
                     const result = await exchangeFunction({
                         code: code,
-                        office_id: officeId,
                         redirect_uri: redirectUri  // Must match the redirect_uri used in authorization
                     });
                     
