@@ -1000,12 +1000,40 @@
             const urlParams = new URLSearchParams(window.location.search);
             const code = urlParams.get('code');
             const state = urlParams.get('state');
+            const error = urlParams.get('error');
+            const errorDescription = urlParams.get('error_description');
+            
+            // Handle OAuth errors
+            if (error) {
+                console.error('Asana OAuth error:', error, errorDescription);
+                let errorMessage = 'Failed to connect to Asana. ';
+                
+                if (error === 'access_denied') {
+                    errorMessage += 'You denied access to the application.';
+                } else if (error === 'invalid_request') {
+                    errorMessage += 'The redirect URI may not be registered in your Asana app settings. Please check that https://sotogroup.uk/pages/optimisation.html is registered as a redirect URI.';
+                } else {
+                    errorMessage += errorDescription || error;
+                }
+                
+                alert(errorMessage);
+                showScreen('asanaConnectionScreen');
+                // Clean URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+                return;
+            }
             
             if (code && state) {
                 // Verify state matches officeId
                 if (currentSession && currentSession.officeId && state === currentSession.officeId) {
                     // Exchange code for token
                     exchangeCodeForToken(code, state);
+                } else {
+                    console.error('State mismatch or session not available');
+                    alert('Session expired. Please try connecting again.');
+                    showScreen('asanaConnectionScreen');
+                    // Clean URL
+                    window.history.replaceState({}, document.title, window.location.pathname);
                 }
             }
         }
@@ -1063,18 +1091,25 @@
             
             // Redirect to Asana OAuth
             // Note: redirect_uri must match exactly what's registered in Asana app settings
-            const clientId = '1209362501232013'; // Asana OAuth client ID
+            const clientId = '1212057669835882'; // Asana OAuth client ID (matches automaticroutes.html)
             const redirectUri = window.location.origin + window.location.pathname;
             const state = currentSession.officeId; // Use officeId as state
             
-            // Build URL properly
+            // Build URL properly with required scope parameters
             const authUrl = new URL('https://app.asana.com/-/oauth_authorize');
             authUrl.searchParams.set('client_id', clientId);
             authUrl.searchParams.set('redirect_uri', redirectUri);
             authUrl.searchParams.set('response_type', 'code');
             authUrl.searchParams.set('state', state);
+            // Include scope parameters for OAuth 2.0
+            authUrl.searchParams.set('scope', 'openid email profile default identity');
             
-            console.log('Redirecting to Asana OAuth with redirect_uri:', redirectUri);
+            console.log('Redirecting to Asana OAuth');
+            console.log('Redirect URI:', redirectUri);
+            console.log('Make sure this exact URI is registered in your Asana app settings at: https://app.asana.com/0/developer-console');
+            
+            // Note: If you get a 400 error, the redirect_uri is not registered in Asana app settings
+            // Go to https://app.asana.com/0/developer-console and add this exact redirect_uri
             window.location.href = authUrl.toString();
         }
 
