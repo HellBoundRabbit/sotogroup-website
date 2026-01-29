@@ -1415,21 +1415,11 @@
                 return;
             }
             
+            // Display jobs in the same order as they appear in Asana (no sorting)
             const jobsWithIndices = ungroupedJobs.map((jobData, index) => ({
                 jobData,
-                originalIndex: index,
-                driverName: extractDriverName(jobData.task.name || '')
+                originalIndex: index
             }));
-            
-            jobsWithIndices.sort((a, b) => {
-                const nameCompare = a.driverName.localeCompare(b.driverName, undefined, { sensitivity: 'base' });
-                if (nameCompare !== 0) return nameCompare;
-                const getJobNumber = (taskName) => {
-                    const match = taskName.match(/\((\d+)\)/);
-                    return match ? parseInt(match[1], 10) : 999;
-                };
-                return getJobNumber(a.jobData.task.name || '') - getJobNumber(b.jobData.task.name || '');
-            });
             
             jobsWithIndices.forEach(({ jobData, originalIndex }) => {
                 const { task } = jobData;
@@ -1513,19 +1503,9 @@
             
             selectedJobsForRoute = [];
             
+            // Keep focus on first job in Asana order (no sorting)
             if (ungroupedJobs.length > 0) {
-                const sortedIndices = ungroupedJobs.map((_, idx) => idx).sort((a, b) => {
-                    const aDriver = extractDriverName(ungroupedJobs[a].task.name || '');
-                    const bDriver = extractDriverName(ungroupedJobs[b].task.name || '');
-                    const nameCompare = aDriver.localeCompare(bDriver, undefined, { sensitivity: 'base' });
-                    if (nameCompare !== 0) return nameCompare;
-                    const getJobNum = (name) => {
-                        const match = name.match(/\((\d+)\)/);
-                        return match ? parseInt(match[1], 10) : 999;
-                    };
-                    return getJobNum(ungroupedJobs[a].task.name || '') - getJobNum(ungroupedJobs[b].task.name || '');
-                });
-                currentFocusedJobIndex = sortedIndices.length > 0 ? sortedIndices[0] : -1;
+                currentFocusedJobIndex = 0; // First job in Asana order
             } else {
                 currentFocusedJobIndex = -1;
             }
@@ -1543,18 +1523,8 @@
                     e.preventDefault();
                     if (!routeGroupingStarted) {
                         routeGroupingStarted = true;
-                        const sortedIndices = ungroupedJobs.map((_, idx) => idx).sort((a, b) => {
-                            const aDriver = extractDriverName(ungroupedJobs[a].task.name || '');
-                            const bDriver = extractDriverName(ungroupedJobs[b].task.name || '');
-                            const nameCompare = aDriver.localeCompare(bDriver, undefined, { sensitivity: 'base' });
-                            if (nameCompare !== 0) return nameCompare;
-                            const getJobNum = (name) => {
-                                const match = name.match(/\((\d+)\)/);
-                                return match ? parseInt(match[1], 10) : 999;
-                            };
-                            return getJobNum(ungroupedJobs[a].task.name || '') - getJobNum(ungroupedJobs[b].task.name || '');
-                        });
-                        currentFocusedJobIndex = sortedIndices.length > 0 ? sortedIndices[0] : -1;
+                        // Start with first job in Asana order (no sorting)
+                        currentFocusedJobIndex = ungroupedJobs.length > 0 ? 0 : -1;
                         displayJobsForGrouping();
                         setTimeout(() => {
                             if (currentFocusedJobIndex >= 0) {
@@ -1574,46 +1544,27 @@
                 
                 if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
                     e.preventDefault();
+                    // Navigate in Asana order (no sorting)
                     if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
-                        const sortedIndices = ungroupedJobs.map((_, idx) => idx).sort((a, b) => {
-                            const aDriver = extractDriverName(ungroupedJobs[a].task.name || '');
-                            const bDriver = extractDriverName(ungroupedJobs[b].task.name || '');
-                            const nameCompare = aDriver.localeCompare(bDriver, undefined, { sensitivity: 'base' });
-                            if (nameCompare !== 0) return nameCompare;
-                            const getJobNum = (name) => {
-                                const match = name.match(/\((\d+)\)/);
-                                return match ? parseInt(match[1], 10) : 999;
-                            };
-                            return getJobNum(ungroupedJobs[a].task.name || '') - getJobNum(ungroupedJobs[b].task.name || '');
-                        });
-                        const currentIndex = sortedIndices.indexOf(currentFocusedJobIndex);
-                        const nextIndex = currentIndex < sortedIndices.length - 1 ? sortedIndices[currentIndex + 1] : sortedIndices[0];
-                        if (nextIndex !== undefined) {
-                            currentFocusedJobIndex = nextIndex;
-                            displayJobsForGrouping();
-                            const jobCard = document.querySelector(`[data-job-index="${nextIndex}"]`);
-                            if (jobCard) jobCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        // Move to next job in Asana order
+                        if (currentFocusedJobIndex < ungroupedJobs.length - 1) {
+                            currentFocusedJobIndex++;
+                        } else {
+                            currentFocusedJobIndex = 0; // Wrap to first
                         }
+                        displayJobsForGrouping();
+                        const jobCard = document.querySelector(`[data-job-index="${currentFocusedJobIndex}"]`);
+                        if (jobCard) jobCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
-                        const sortedIndices = ungroupedJobs.map((_, idx) => idx).sort((a, b) => {
-                            const aDriver = extractDriverName(ungroupedJobs[a].task.name || '');
-                            const bDriver = extractDriverName(ungroupedJobs[b].task.name || '');
-                            const nameCompare = aDriver.localeCompare(bDriver, undefined, { sensitivity: 'base' });
-                            if (nameCompare !== 0) return nameCompare;
-                            const getJobNum = (name) => {
-                                const match = name.match(/\((\d+)\)/);
-                                return match ? parseInt(match[1], 10) : 999;
-                            };
-                            return getJobNum(ungroupedJobs[a].task.name || '') - getJobNum(ungroupedJobs[b].task.name || '');
-                        });
-                        const currentIndex = sortedIndices.indexOf(currentFocusedJobIndex);
-                        const prevIndex = currentIndex > 0 ? sortedIndices[currentIndex - 1] : sortedIndices[sortedIndices.length - 1];
-                        if (prevIndex !== undefined) {
-                            currentFocusedJobIndex = prevIndex;
-                            displayJobsForGrouping();
-                            const jobCard = document.querySelector(`[data-job-index="${prevIndex}"]`);
-                            if (jobCard) jobCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        // Move to previous job in Asana order
+                        if (currentFocusedJobIndex > 0) {
+                            currentFocusedJobIndex--;
+                        } else {
+                            currentFocusedJobIndex = ungroupedJobs.length - 1; // Wrap to last
                         }
+                        displayJobsForGrouping();
+                        const jobCard = document.querySelector(`[data-job-index="${currentFocusedJobIndex}"]`);
+                        if (jobCard) jobCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
                     return;
                 }
