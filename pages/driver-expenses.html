@@ -879,6 +879,9 @@
         const EXPENSE_SUBMISSION_QUEUE_KEY = 'expense_submission_queue_v1';
         const MAX_PHOTOS_PER_EXPENSE = 4;
 
+        // Prevent concurrent sync for the same batch (button + processSubmissionQueue race)
+        const expenseSyncLocks = new Set();
+
         function loadSubmissionQueue() {
             try {
                 const raw = localStorage.getItem(EXPENSE_SUBMISSION_QUEUE_KEY);
@@ -1057,6 +1060,35 @@
             return localId;
         }
 
+        /**
+         * Update only batch document to 'pending' (no saveExpenses).
+         * Use when batch and expenses were just created in same flow (e.g. submit without draft first).
+         */
+        async function updateBatchStatusToPending(batchId, draft) {
+            if (!batchId || !draft) {
+                throw new Error('Batch ID and draft required to update status.');
+            }
+            const totalAmount = (draft.expenses || []).reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0);
+            const updateData = {
+                status: 'pending',
+                submittedAt: window.serverTimestamp(),
+                updatedAt: window.serverTimestamp(),
+                totalAmount,
+                notes: draft.notes || ''
+            };
+            await window.updateDoc(window.doc(window.db, 'expenseBatches', batchId), updateData);
+            draft.status = 'pending';
+            draft.submittedAt = Date.now();
+            draft.totalAmount = totalAmount;
+            draft.updatedAt = Date.now();
+            try {
+                await window.expenseDraftDB.saveDraft(draft);
+            } catch (e) {
+                console.warn('Unable to store draft snapshot locally:', e);
+            }
+            removeSubmissionQueueEntry(draft.localId);
+        }
+
         async function syncDraftToFirestore(draft, targetStatus) {
             console.log('[syncDraftToFirestore] Starting sync', {
                 targetStatus,
@@ -1075,6 +1107,20 @@
             if (!draft) {
                 throw new Error('No draft provided for sync.');
             }
+            const syncKey = draft.localId || draft.id || 'unknown';
+            if (expenseSyncLocks.has(syncKey)) {
+                console.warn('[syncDraftToFirestore] Sync already in progress for', syncKey, '- skipping to prevent duplicate expenses.');
+                throw new Error('Sync already in progress for this batch. Please wait.');
+            }
+            expenseSyncLocks.add(syncKey);
+            try {
+                return await syncDraftToFirestoreImpl(draft, targetStatus);
+            } finally {
+                expenseSyncLocks.delete(syncKey);
+            }
+        }
+
+        async function syncDraftToFirestoreImpl(draft, targetStatus) {
             const driverId = draft.driverId || (currentUser && currentUser.uid);
             const officeId = draft.officeId || (currentUser && currentUser.officeId);
             if (!driverId || !officeId) {
@@ -1093,11 +1139,12 @@
             
             if (!batchId && draft.localId) {
                 // Check if a batch with this localId already exists (prevent duplicate creation)
-                // We'll store localId in the batch document, so check for it
                 const batchesQuery = window.query(
                     window.collection(window.db, 'expenseBatches'),
                     window.where('officeId', '==', officeId),
-                    window.where('driverId', '==', driverId)
+                    window.where('driverId', '==', driverId),
+                    window.orderBy('updatedAt', 'desc'),
+                    window.limit(50)
                 );
                 const batchesSnapshot = await window.getDocs(batchesQuery);
                 
@@ -1130,6 +1177,11 @@
             if (!draft.expenses || !Array.isArray(draft.expenses)) {
                 console.warn('[syncDraftToFirestore] Draft has no expenses array, initializing empty array');
                 draft.expenses = [];
+            }
+            
+            // Leakproof: allow draft with 0 expenses; block submit with 0 expenses
+            if (targetStatus === 'pending' && (!draft.expenses || draft.expenses.length === 0)) {
+                throw new Error('Cannot submit batch with no expenses. Add at least one expense.');
             }
             
             console.log('[syncDraftToFirestore] Before calculating total, expense count:', draft.expenses.length);
@@ -1377,6 +1429,14 @@
                 draft.registration = entry.registration;
                 }
 
+                // Leakproof: do not submit when draft has no expenses; allow draft with 0 expenses
+                if (entry.status === 'pending' && (!draft.expenses || draft.expenses.length === 0)) {
+                    console.warn('[processSubmissionQueue] Skipping submit: draft has no expenses', entry.localId);
+                    sessionStorage.removeItem(processingKey);
+                    remaining.push(entry);
+                    continue;
+                }
+
                 console.log('[processSubmissionQueue] Persisting draft to Firestore', {
                 registration: draft.registration,
                 status: draft.status,
@@ -1408,8 +1468,10 @@
                             
                             const isIncomplete = hasIncompleteFlag || 
                                                 (expectedExpenseCount > 0 && existingExpenseCount !== expectedExpenseCount);
+                            // Only cleanup when we expect expenses; avoid deleting then recreating empty batch
+                            const shouldCleanup = isIncomplete && expectedExpenseCount > 0;
                             
-                            if (isIncomplete) {
+                            if (shouldCleanup) {
                                 console.log('[processSubmissionQueue] Batch is incomplete, cleaning up and retrying:', {
                                     batchId: draft.id,
                                     hasIncompleteFlag,
@@ -2905,10 +2967,12 @@
         async function getUniqueReg(baseReg, excludeBatchId = null) {
             const normalizedReg = normalizeReg(baseReg);
             
-            // Check if any batch with this officeId has this exact reg
+            // Limit to recent batches only — avoid loading thousands and blocking save/submit
             const batchesQuery = window.query(
                 window.collection(window.db, 'expenseBatches'),
-                window.where('officeId', '==', currentUser.officeId)
+                window.where('officeId', '==', currentUser.officeId),
+                window.orderBy('updatedAt', 'desc'),
+                window.limit(300)
             );
             const batchesSnapshot = await window.getDocs(batchesQuery);
             
@@ -2955,6 +3019,7 @@
                 notifyWarning('Please enter a registration number.', 'Missing Registration');
                 return;
             }
+            // Allow draft with no expenses (user may add later); submit still requires ≥1 expense
 
             // Confirmation dialog
             const confirmed = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
@@ -3091,8 +3156,6 @@
             } catch (error) {
                 console.error('Error syncing draft:', error);
                 
-                // If sync failed, the batch is already queued (queuedLocalId was set above)
-                // Check if it's a network error - if so, queue is already set up
                 const isNetworkError = error.message && (
                     error.message.includes('network') || 
                     error.message.includes('Failed to fetch') ||
@@ -3100,11 +3163,12 @@
                     !navigator.onLine
                 );
                 
+                if (!isNetworkError) {
+                    notifyError(error.message || 'Failed to save draft.', 'Save Failed');
+                }
                 if (isNetworkError && queuedLocalId) {
-                    // Network error and already queued - this is expected offline behavior
                     console.log('[saveDraft] Network error, batch queued for later sync:', queuedLocalId);
                 } else if (!queuedLocalId) {
-                    // Not queued yet and sync failed - try to queue now
                     console.warn('[saveDraft] Sync failed and not queued, attempting to queue now');
                     try {
                         await queueExpenseAction('draft');
@@ -3113,7 +3177,6 @@
                     }
                 }
                 
-                // Upload banner will show the queue status, no need for dialog
                 currentBatch = null;
                 window.currentBatch = null;
                 window.isUploadingExpense = false;
@@ -3236,6 +3299,7 @@
                 // Ensure currentBatch.id is set before syncing
                 // If missing, save as draft first to create the batch ID
                 // This is especially important when expenses have photos that need uploading
+                const hadNoBatchId = !currentBatch.id;
                 if (!currentBatch.id) {
                     console.log('[submitBatch] Batch ID missing, saving as draft first to create batch ID...');
                     try {
@@ -3271,7 +3335,13 @@
                     return;
                 }
                 
-                await syncDraftToFirestore(currentBatch, 'pending');
+                // Leakproof: if we just created the batch in this flow, only update status to pending
+                // (do NOT call saveExpenses again — would delete/recreate expenses and duplicate photo uploads)
+                if (hadNoBatchId) {
+                    await updateBatchStatusToPending(batchId, currentBatch);
+                } else {
+                    await syncDraftToFirestore(currentBatch, 'pending');
+                }
 
                 if (queuedLocalId) {
                 removeSubmissionQueueEntry(queuedLocalId);
@@ -3317,8 +3387,6 @@
             } catch (error) {
                 console.error('Error submitting batch:', error);
                 
-                // If sync failed, the batch is already queued (queuedLocalId was set above)
-                // Check if it's a network error - if so, queue is already set up
                 const isNetworkError = error.message && (
                     error.message.includes('network') || 
                     error.message.includes('Failed to fetch') ||
@@ -3326,11 +3394,12 @@
                     !navigator.onLine
                 );
                 
+                if (!isNetworkError) {
+                    notifyError(error.message || 'Failed to submit batch.', 'Submit Failed');
+                }
                 if (isNetworkError && queuedLocalId) {
-                    // Network error and already queued - this is expected offline behavior
                     console.log('[submitBatch] Network error, batch queued for later sync:', queuedLocalId);
                 } else if (!queuedLocalId) {
-                    // Not queued yet and sync failed - try to queue now
                     console.warn('[submitBatch] Sync failed and not queued, attempting to queue now');
                     try {
                         await queueExpenseAction('pending');
@@ -3339,8 +3408,6 @@
                     }
                 }
                 
-                // Upload banner will show the queue status, no need for dialog
-                // Close modal and return to list
                 document.getElementById('batchModal').classList.add('hidden');
                 currentBatch = null;
                 window.currentBatch = null;
@@ -3442,16 +3509,14 @@
                 throw new Error(errorMsg);
             }
 
-            // STEP 2: WRITE-FIRST - Save all expense data + photo blobs to IndexedDB immediately
-            // No upload happens here - Service Worker handles it
+            // STEP 2: WRITE-FIRST - Save all expense data + photo blobs to IndexedDB (parallel, not sequential)
             if (!isLocalhost && window.expenseUploadQueue) {
                 console.log('[saveExpenses] Step 2: WRITE-FIRST - Saving to IndexedDB (Service Worker will handle uploads)...');
                 
-                for (const result of expenseResults) {
-                    const { expenseDocId, expenseIndex, expense, photoBlobs } = result;
-                    
-                    if (photoBlobs.length > 0) {
-                        // Enqueue this expense for upload
+                const enqueuePromises = expenseResults
+                    .filter((r) => r.photoBlobs && r.photoBlobs.length > 0)
+                    .map(async (result) => {
+                        const { expenseDocId, expenseIndex, expense, photoBlobs } = result;
                         try {
                             const expenseUploadData = {
                                 batchId: batchId,
@@ -3460,20 +3525,20 @@
                                 officeId: officeId,
                                 driverId: batchRef.driverId || currentUser.uid
                             };
-                            
                             await window.expenseUploadQueue.enqueueExpenseUpload(
                                 batchId,
                                 expenseUploadData,
                                 photoBlobs,
                                 expenseDocId
                             );
-                            
                             console.log(`[saveExpenses] Enqueued ${photoBlobs.length} photos for expense ${expenseDocId}`);
                         } catch (error) {
                             console.error(`[saveExpenses] Failed to enqueue upload for expense ${expenseDocId}:`, error);
-                            // Continue - we'll try again later
                         }
-                    }
+                    });
+                await Promise.all(enqueuePromises);
+                if (enqueuePromises.length > 0 && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
+                    await window.expenseUploadQueue.updateGlobalUploadStatus();
                 }
             } else if (isLocalhost) {
                 console.warn('[saveExpenses] Running on localhost: Photo upload queueing disabled.');
