@@ -219,6 +219,12 @@ class ExpenseDraftDB {
                 });
                 if (photoRecords.length > 0) {
                     if (!photos[expIndex]) photos[expIndex] = [];
+                    // Preserve order: derive from photoId (e.g. "..._photo0", "..._photo1")
+                    const photoIndexFromId = (r) => {
+                        const m = (r.photoId || '').match(/_photo(\d+)$/);
+                        return m ? parseInt(m[1], 10) : 0;
+                    };
+                    photoRecords.sort((a, b) => photoIndexFromId(a) - photoIndexFromId(b));
                     for (const record of photoRecords) {
                         photos[expIndex].push(record.blob);
                     }
@@ -227,9 +233,11 @@ class ExpenseDraftDB {
         }
         if (batch.expenses) {
             for (let expIndex = 0; expIndex < batch.expenses.length; expIndex++) {
-                if (photos[expIndex]) {
-                    batch.expenses[expIndex].photos = photos[expIndex];
-                }
+                const existingPhotos = batch.expenses[expIndex].photos;
+                const existingURLs = Array.isArray(existingPhotos) ? existingPhotos.filter(p => typeof p === 'string') : [];
+                const rehydratedBlobs = photos[expIndex] || [];
+                // Leakproof: merge existing URLs with rehydrated blobs (do not replace — preserve already-uploaded URLs)
+                batch.expenses[expIndex].photos = [...existingURLs, ...rehydratedBlobs];
             }
         }
         return batch;
@@ -903,74 +911,68 @@ class ExpenseUploadQueue {
         const timestamp = Date.now();
         const uid = window.currentUser?.uid || null;
 
-        // Save photo blobs to photoBlobs store first
-        const photoBlobIds = [];
-        for (let i = 0; i < photoBlobs.length; i++) {
-            const blob = photoBlobs[i];
-            if (blob instanceof File || blob instanceof Blob) {
-                const blobId = `${uploadId}_photo${i}`;
-                
-                // Convert File to Blob if needed
-                let blobToStore = blob;
-                if (blob instanceof File) {
-                    try {
-                        const arrayBuffer = await blob.arrayBuffer();
-                        blobToStore = new Blob([arrayBuffer], { type: blob.type || 'image/jpeg' });
-                    } catch (error) {
-                        console.error('[ExpenseUploadQueue] Error converting File to Blob:', error);
-                        throw new Error(`Failed to convert File to Blob: ${error.message}`);
-                    }
+        // Convert all Files to Blobs in parallel (avoids sequential arrayBuffer() + single transaction below)
+        const blobsToStore = await Promise.all(
+            photoBlobs.map(async (blob, i) => {
+                if (!(blob instanceof File || blob instanceof Blob)) return null;
+                if (blob instanceof Blob && !(blob instanceof File)) return { blob, i };
+                try {
+                    const arrayBuffer = await blob.arrayBuffer();
+                    return { blob: new Blob([arrayBuffer], { type: blob.type || 'image/jpeg' }), i };
+                } catch (error) {
+                    console.error('[ExpenseUploadQueue] Error converting File to Blob:', error);
+                    throw new Error(`Failed to convert File to Blob: ${error.message}`);
                 }
+            })
+        );
 
-                // Store blob
-                const blobTx = this.db.transaction(['photoBlobs'], 'readwrite');
-                await new Promise((resolve, reject) => {
-                    const req = blobTx.objectStore('photoBlobs').put({
-                        blobId: blobId,
-                        blob: blobToStore,
-                        uploadId: uploadId,
-                        photoIndex: i,
-                        timestamp: timestamp
-                    });
-                    req.onsuccess = () => resolve();
-                    req.onerror = () => reject(req.error);
-                });
+        const photoBlobIds = [];
+        const recordsToPut = blobsToStore.filter(Boolean).map(({ blob: blobToStore, i }) => {
+            const blobId = `${uploadId}_photo${i}`;
+            photoBlobIds.push({
+                blobId,
+                photoIndex: i,
+                filename: `expenses/${batchId}/${expenseData.category}_${timestamp}_${i}.jpg`
+            });
+            return { blobId, blob: blobToStore, uploadId, photoIndex: i, timestamp };
+        });
 
-                photoBlobIds.push({
-                    blobId: blobId,
-                    photoIndex: i,
-                    filename: `expenses/${batchId}/${expenseData.category}_${timestamp}_${i}.jpg`
-                });
-            }
-        }
-
-        // Create upload task record
         const uploadTask = {
-            uploadId: uploadId,
-            batchId: batchId,
-            expenseDocId: expenseDocId, // Firestore expense document ID (to update after upload)
-            expenseData: expenseData, // All expense values
-            photoBlobIds: photoBlobIds, // References to stored blobs
-            uid: uid,
-            timestamp: timestamp,
-            status: 'pending', // Will be 'pending' -> 'uploading' -> 'completed'
+            uploadId,
+            batchId,
+            expenseDocId,
+            expenseData,
+            photoBlobIds,
+            uid,
+            timestamp,
+            status: 'pending',
             retries: 0,
             error: null,
             createdAt: timestamp,
             updatedAt: timestamp
         };
 
-        // Save upload task to expenseUploadQueue
-        const taskTx = this.db.transaction(['expenseUploadQueue'], 'readwrite');
+        // Single transaction: all blobs + one task (much faster than N+1 transactions)
+        const tx = this.db.transaction(['photoBlobs', 'expenseUploadQueue'], 'readwrite');
+        const blobStore = tx.objectStore('photoBlobs');
+        const taskStore = tx.objectStore('expenseUploadQueue');
+        for (const rec of recordsToPut) {
+            blobStore.put({
+                blobId: rec.blobId,
+                blob: rec.blob,
+                uploadId: rec.uploadId,
+                photoIndex: rec.photoIndex,
+                timestamp: rec.timestamp
+            });
+        }
+        taskStore.put(uploadTask);
         await new Promise((resolve, reject) => {
-            const req = taskTx.objectStore('expenseUploadQueue').put(uploadTask);
-            req.onsuccess = () => resolve();
-            req.onerror = () => reject(req.error);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
         });
 
         console.log('[ExpenseUploadQueue] Enqueued expense upload', { uploadId, batchId, photoCount: photoBlobIds.length });
         
-        // Update banner immediately
         await this.updateGlobalUploadStatus();
         
         // Trigger service worker to process queue if online
