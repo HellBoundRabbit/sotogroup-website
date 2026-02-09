@@ -587,8 +587,12 @@
                     clearInterval(window.uploadStatusCheckInterval);
                 }
                 window.uploadStatusCheckInterval = setInterval(async () => {
-                    if (window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
-                        await window.expenseUploadQueue.updateGlobalUploadStatus();
+                    try {
+                        if (window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
+                            await window.expenseUploadQueue.updateGlobalUploadStatus();
+                        }
+                    } catch (e) {
+                        console.warn('[Driver Portal] Upload status check failed:', e);
                     }
                 }, 3000); // Check every 3 seconds
 
