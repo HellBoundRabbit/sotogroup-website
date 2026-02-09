@@ -51,7 +51,7 @@ class ExpenseDraftDB {
     }
 
     async init() {
-        return new Promise((resolve, reject) => {
+        const openDb = () => new Promise((resolve, reject) => {
             const request = indexedDB.open(this.dbName, this.version);
             request.onerror = () => reject(request.error);
             request.onsuccess = () => {
@@ -93,6 +93,31 @@ class ExpenseDraftDB {
                 }
             };
         });
+
+        const isRetryableDbError = (err) => {
+            if (!err || !err.message) return false;
+            const msg = String(err.message);
+            const name = err.name || '';
+            return msg.includes('Internal error opening backing store') ||
+                msg.includes('backing store') ||
+                name === 'UnknownError' ||
+                name === 'InternalError';
+        };
+
+        let lastErr;
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                return await openDb();
+            } catch (err) {
+                lastErr = err;
+                if (attempt < 2 && isRetryableDbError(err)) {
+                    await new Promise((r) => setTimeout(r, 400));
+                    continue;
+                }
+                throw err;
+            }
+        }
+        throw lastErr;
     }
 
     async saveDraft(batch, photos) {

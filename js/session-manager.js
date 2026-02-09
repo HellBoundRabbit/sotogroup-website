@@ -82,10 +82,10 @@
           "bootstrapSession",
       );
       
-      // Retry logic for transient Firebase Function errors
+      // Retry logic for transient Firebase Function errors (e.g. after clearing cache / fresh login)
       let response;
       let lastError;
-      const maxRetries = 3;
+      const maxRetries = 4;
       
       for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
@@ -93,16 +93,13 @@
           break; // Success, exit retry loop
         } catch (retryError) {
           lastError = retryError;
-          // Only retry on internal/network errors, not auth errors
-          if (retryError.code === 'internal' || retryError.code === 'unavailable' || retryError.code === 'deadline-exceeded') {
-            if (attempt < maxRetries - 1) {
-              // Wait before retry (exponential backoff: 200ms, 400ms, 800ms)
-              const delay = 200 * Math.pow(2, attempt);
-              await new Promise(resolve => setTimeout(resolve, delay));
-              continue;
-            }
+          const isRetryable = retryError.code === 'internal' || retryError.code === 'unavailable' || retryError.code === 'deadline-exceeded';
+          if (isRetryable && attempt < maxRetries - 1) {
+            // Exponential backoff: 300ms, 600ms, 1200ms, 2400ms (one extra retry for "internal" after clear data)
+            const delay = 300 * Math.pow(2, attempt);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
           }
-          // Non-retryable error or max retries reached
           throw retryError;
         }
       }
