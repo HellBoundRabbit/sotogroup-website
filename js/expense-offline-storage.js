@@ -903,23 +903,26 @@ class ExpenseUploadQueue {
     }
 
     async init() {
-        if (!window.expenseDraftDB) {
-            window.expenseDraftDB = new ExpenseDraftDB();
+        if (this.db) return;
+        try {
+            if (!window.expenseDraftDB) {
+                window.expenseDraftDB = new ExpenseDraftDB();
+            }
+            await window.expenseDraftDB.init();
+            let retries = 0;
+            while (!window.expenseDraftDB.db && retries < 20) {
+                await new Promise(resolve => setTimeout(resolve, 50));
+                retries++;
+            }
+            if (window.expenseDraftDB.db) {
+                this.db = window.expenseDraftDB.db;
+            } else {
+                this.db = null;
+            }
+        } catch (err) {
+            console.warn('[ExpenseUploadQueue] IndexedDB unavailable, upload queue disabled:', err?.message || err);
+            this.db = null;
         }
-        await window.expenseDraftDB.init();
-        
-        // Wait for database to be available
-        let retries = 0;
-        while (!window.expenseDraftDB.db && retries < 20) {
-            await new Promise(resolve => setTimeout(resolve, 50));
-            retries++;
-        }
-        
-        if (!window.expenseDraftDB.db) {
-            throw new Error('Failed to initialize IndexedDB');
-        }
-        
-        this.db = window.expenseDraftDB.db;
     }
 
     /**
