@@ -180,7 +180,6 @@ async function uploadPhotoBlobMedia(blob, path, authToken) {
 async function processUploadQueue(authToken) {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-    
     request.onsuccess = async () => {
       const db = request.result;
       
@@ -246,7 +245,7 @@ async function processUploadQueue(authToken) {
             });
 
             // Process all photos for this expense task IN PARALLEL
-            // CRITICAL: Handle partial uploads - if some photos already uploaded, don't re-upload them
+                                              // CRITICAL: Handle partial uploads - if some photos already uploaded, don't re-upload them
             const photoBlobIds = task.photoBlobIds || [];
             
             // First, check if expense document exists and get already-uploaded photo URLs
@@ -688,19 +687,42 @@ async function checkAndProcessQueue() {
   }
 
   try {
-    // Request auth token from active client
     const authToken = await requestAuthToken();
-    if (!authToken) {
-      // Silently skip if no auth token - this is normal when page hasn't authenticated yet
-      return;
+    if (!authToken) return;
+
+    const isBackingStoreError = (e) => e && (e.message || '').includes('Internal error opening backing store');
+    let expenseResult;
+    try {
+      expenseResult = await processUploadQueue(authToken);
+    } catch (e) {
+      if (isBackingStoreError(e)) {
+        await new Promise((r) => setTimeout(r, 500));
+        try {
+          expenseResult = await processUploadQueue(authToken);
+        } catch (_) {
+          expenseResult = { processed: 0, failed: 0 };
+        }
+      } else {
+        throw e;
+      }
     }
-    
-    // Process expense upload queue
-    const expenseResult = await processUploadQueue(authToken);
     console.log('[SW] Expense queue processed:', expenseResult);
-    
-    // Process wait time upload queue
-    const waitTimeResult = await processWaitTimeQueue(authToken);
+
+    let waitTimeResult;
+    try {
+      waitTimeResult = await processWaitTimeQueue(authToken);
+    } catch (e) {
+      if (isBackingStoreError(e)) {
+        await new Promise((r) => setTimeout(r, 500));
+        try {
+          waitTimeResult = await processWaitTimeQueue(authToken);
+        } catch (_) {
+          waitTimeResult = { processed: 0, failed: 0 };
+        }
+      } else {
+        throw e;
+      }
+    }
     console.log('[SW] Wait time queue processed:', waitTimeResult);
     
     // Notify all clients about upload status change
@@ -715,7 +737,12 @@ async function checkAndProcessQueue() {
       });
     });
   } catch (error) {
-    console.error('[SW] Error processing queue:', error);
+    const msg = error && (error.message || String(error));
+    if (msg && msg.includes('Internal error opening backing store')) {
+      console.warn('[SW] IndexedDB temporarily unavailable (e.g. after clearing data), queue skipped');
+    } else {
+      console.error('[SW] Error processing queue:', error);
+    }
   }
 }
 
