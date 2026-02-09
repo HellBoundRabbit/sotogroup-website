@@ -587,15 +587,10 @@
                     clearInterval(window.uploadStatusCheckInterval);
                 }
                 window.uploadStatusCheckInterval = setInterval(() => {
-                    (async () => {
-                        try {
-                            if (window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
-                                await window.expenseUploadQueue.updateGlobalUploadStatus();
-                            }
-                        } catch (e) {
-                            console.warn('[Driver Portal] Upload status check failed:', e);
-                        }
-                    })().catch(() => {}); // Prevent any uncaught rejection from the async callback
+                    const fn = window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function'
+                        ? () => window.expenseUploadQueue.updateGlobalUploadStatus()
+                        : () => Promise.resolve();
+                    Promise.resolve().then(fn).catch(function () {});
                 }, 3000); // Check every 3 seconds
 
                 // Listen for Service Worker messages (auth token requests and photo uploads)
