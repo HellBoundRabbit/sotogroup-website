@@ -1505,8 +1505,10 @@
                 sessionStorage.removeItem(processingKey);
                 } catch (error) {
                 console.error('Error syncing queued expense submission:', entry, error);
-                // Clear processing flag on error so it can be retried
-                sessionStorage.removeItem(processingKey);
+                // Clear processing flag on error so it can be retried (use entry.localId — processingKey is try-scoped)
+                if (entry && entry.localId) {
+                    sessionStorage.removeItem(`processing_${entry.localId}`);
+                }
                 const needsRegistration = error && typeof error.message === 'string' && error.message.includes('Registration is required');
                 if (needsRegistration && (!entry.registration || entry.registration.trim() === '')) {
                 console.warn('Discarding queued submission with no registration. User must re-open and save the draft.', entry);
