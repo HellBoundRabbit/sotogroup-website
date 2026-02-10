@@ -160,21 +160,6 @@
                                 console.error('[Main Thread] Upload failed:', error);
                                 ports[0].postMessage({ success: false, error: error.message });
                             }
-                        } else if (type === 'check-expense-photos' && ports.length > 0 && expenseDocId) {
-                            try {
-                                const expenseRef = window.doc(window.db, 'expenses', expenseDocId);
-                                const expenseSnap = await window.getDoc(expenseRef);
-                                if (expenseSnap.exists()) {
-                                    const data = expenseSnap.data();
-                                    const photoURLs = Array.isArray(data.photos) ? data.photos.filter(p => typeof p === 'string') : [];
-                                    ports[0].postMessage({ success: true, photoURLs });
-                                } else {
-                                    ports[0].postMessage({ success: true, photoURLs: [] });
-                                }
-                            } catch (error) {
-                                console.error('[Main Thread] Error checking expense photos:', error);
-                                ports[0].postMessage({ success: false, photoURLs: [] });
-                            }
                         } else if (type === 'check-batch-line-photos' && ports.length > 0 && batchId && lineKey) {
                             try {
                                 const batchRef = window.doc(window.db, 'expenseBatches', batchId);
@@ -989,13 +974,8 @@
             }
             const hasLines = batch.lines && typeof batch.lines === 'object';
             const lineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.LINE_KEYS) ? EXPENSE_BATCH_SCHEMA.LINE_KEYS : [];
-            console.log('[buildBatchSnapshot] Building snapshot for batch', {
-                localId: batch.localId,
-                id: batch.id,
-                registration: batch.registration,
-                hasLines,
-                lineCount: hasLines ? (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.getUsedLineCount ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(batch) : 0) : (batch.expenses ? batch.expenses.length : 0)
-            });
+            const lineCount = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.getUsedLineCount) ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(batch) : 0;
+            console.log('[buildBatchSnapshot] Building snapshot for batch', { localId: batch.localId, id: batch.id, registration: batch.registration, lineCount });
             
             try {
                 const snapshot = {
@@ -1025,16 +1005,7 @@
                         }
                     });
                 }
-                if (batch.expenses && batch.expenses.length) {
-                    snapshot.expenses = (batch.expenses || []).map(exp => ({
-                        category: exp.category || null,
-                        amount: exp.amount || 0,
-                        photos: getValidPhotoURLs(exp),
-                        id: exp.id || null,
-                        serverId: exp.serverId || null
-                    }));
-                }
-                console.log('[buildBatchSnapshot] Snapshot created', { hasLines: !!snapshot.lines, lineKeys: snapshot.lines ? Object.keys(snapshot.lines).length : 0, expenseCount: snapshot.expenses ? snapshot.expenses.length : 0 });
+                console.log('[buildBatchSnapshot] Snapshot created', { lineKeys: snapshot.lines ? Object.keys(snapshot.lines).length : 0 });
                 return snapshot;
             } catch (error) {
                 console.error('[buildBatchSnapshot] Error building snapshot:', error);
@@ -1047,7 +1018,7 @@
                 console.warn('[queueExpenseAction] No currentBatch available');
                 return null;
             }
-            const usedCount = (currentBatch.lines && EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.getUsedLineCount) ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(currentBatch) : (currentBatch.expenses ? currentBatch.expenses.length : 0);
+            const usedCount = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.getUsedLineCount) ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(currentBatch) : 0;
             console.log('[queueExpenseAction] Queueing batch for', targetStatus, { localId: currentBatch.localId, usedCount });
             
             currentBatch.status = targetStatus;
@@ -1071,7 +1042,7 @@
                 const snapshot = buildBatchSnapshot(currentBatch);
                 if (snapshot) {
                 entry.snapshot = JSON.stringify(snapshot);
-                console.log('[queueExpenseAction] Snapshot serialized', snapshot.lines ? { lines: Object.keys(snapshot.lines).length } : { expenses: (snapshot.expenses || []).length });
+                console.log('[queueExpenseAction] Snapshot serialized', snapshot.lines ? { lines: Object.keys(snapshot.lines).length } : {});
                 } else {
                 console.warn('[queueExpenseAction] Failed to build snapshot');
                 }
@@ -1109,7 +1080,7 @@
             if (!batchId || !draft) {
                 throw new Error('Batch ID and draft required to update status.');
             }
-            const totalAmount = (draft.expenses || []).reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0);
+            const totalAmount = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.getTotalFromLines && draft.lines) ? EXPENSE_BATCH_SCHEMA.getTotalFromLines(draft.lines) : 0;
             const updateData = {
                 status: 'pending',
                 submittedAt: window.serverTimestamp(),
@@ -1131,19 +1102,8 @@
         }
 
         async function syncDraftToFirestore(draft, targetStatus) {
-            console.log('[syncDraftToFirestore] Starting sync', {
-                targetStatus,
-                hasDraft: !!draft,
-                draftId: draft?.id,
-                localId: draft?.localId,
-                draftExpenseCount: draft?.expenses ? draft.expenses.length : 0,
-                draftExpenses: draft?.expenses ? draft.expenses.map((exp, idx) => ({
-                    idx,
-                    category: exp.category,
-                    amount: exp.amount,
-                    photoCount: Array.isArray(exp.photos) ? exp.photos.length : 0
-                })) : []
-            });
+            const usedLineCount = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLineCount && draft?.lines) ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(draft) : 0;
+            console.log('[syncDraftToFirestore] Starting sync', { targetStatus, hasDraft: !!draft, draftId: draft?.id, localId: draft?.localId, usedLineCount });
             
             if (!draft) {
                 throw new Error('No draft provided for sync.');
@@ -1214,29 +1174,22 @@
 
             draft.registration = registration;
             
-            const hasLines = draft.lines && typeof draft.lines === 'object' && typeof EXPENSE_BATCH_SCHEMA !== 'undefined';
-            const LINE_KEYS = hasLines && EXPENSE_BATCH_SCHEMA.LINE_KEYS ? EXPENSE_BATCH_SCHEMA.LINE_KEYS : [];
-            const getTotalFromLines = hasLines && EXPENSE_BATCH_SCHEMA.getTotalFromLines ? EXPENSE_BATCH_SCHEMA.getTotalFromLines : (() => 0);
-            const getUsedLineCount = hasLines && EXPENSE_BATCH_SCHEMA.getUsedLineCount ? EXPENSE_BATCH_SCHEMA.getUsedLineCount : (() => 0);
-            const hasLineContent = hasLines && EXPENSE_BATCH_SCHEMA.hasLineContent ? EXPENSE_BATCH_SCHEMA.hasLineContent : (() => false);
-            const normalizeLines = hasLines && EXPENSE_BATCH_SCHEMA.normalizeLines ? EXPENSE_BATCH_SCHEMA.normalizeLines : (l) => l || {};
+            const LINE_KEYS = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.LINE_KEYS) ? EXPENSE_BATCH_SCHEMA.LINE_KEYS : [];
+            const getTotalFromLines = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getTotalFromLines) ? EXPENSE_BATCH_SCHEMA.getTotalFromLines : (() => 0);
+            const getUsedLineCount = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLineCount) ? EXPENSE_BATCH_SCHEMA.getUsedLineCount : (() => 0);
+            const hasLineContent = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.hasLineContent) ? EXPENSE_BATCH_SCHEMA.hasLineContent : (() => false);
+            const normalizeLines = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.normalizeLines) ? EXPENSE_BATCH_SCHEMA.normalizeLines : (l) => l || {};
 
-            if (hasLines) {
-                draft.lines = normalizeLines(draft.lines);
-                if (targetStatus === 'pending' && getUsedLineCount(draft) === 0) {
-                    throw new Error('Cannot submit batch with no expenses. Add at least one line (amount or photo).');
-                }
-            } else {
-                if (!draft.expenses || !Array.isArray(draft.expenses)) {
-                    draft.expenses = [];
-                }
-                if (targetStatus === 'pending' && (!draft.expenses || draft.expenses.length === 0)) {
-                    throw new Error('Cannot submit batch with no expenses. Add at least one expense.');
-                }
+            if (!draft.lines || typeof draft.lines !== 'object') {
+                draft.lines = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.emptyLines) ? EXPENSE_BATCH_SCHEMA.emptyLines() : {};
             }
-            
-            const totalAmount = hasLines ? getTotalFromLines(draft.lines) : (draft.expenses || []).reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0);
-            console.log('[syncDraftToFirestore] totalAmount:', totalAmount, hasLines ? '(from lines)' : 'from ' + (draft.expenses || []).length + ' expenses');
+            draft.lines = normalizeLines(draft.lines);
+            if (targetStatus === 'pending' && getUsedLineCount(draft) === 0) {
+                throw new Error('Cannot submit batch with no expenses. Add at least one expense.');
+            }
+
+            const totalAmount = getTotalFromLines(draft.lines);
+            console.log('[syncDraftToFirestore] totalAmount:', totalAmount, '(from lines)');
             const driverName =
                 draft.driverName ||
                 currentUser?.name ||
@@ -1261,72 +1214,44 @@
                 draft.submittedAt = Date.now();
             }
 
-            if (hasLines) {
-                // Merged model: batch doc contains lines (no separate expenses collection)
-                const linesForFirestore = {};
-                LINE_KEYS.forEach(k => {
-                    const line = draft.lines[k];
-                    if (!line) return;
-                    const urls = (line.photos || []).filter(p => typeof p === 'string');
-                    const blobs = (line.photos || []).filter(p => p instanceof File || p instanceof Blob);
-                    linesForFirestore[k] = { amount: typeof line.amount === 'number' ? line.amount : 0, photos: urls, photosUploading: blobs.length > 0 };
-                });
-                batchData.lines = linesForFirestore;
-                if (!batchId) {
-                    batchData.createdAt = window.serverTimestamp();
-                    const batchRef = await window.addDoc(window.collection(window.db, 'expenseBatches'), batchData);
-                    batchId = batchRef.id;
-                    draft.id = batchId;
-                    console.log('[syncDraftToFirestore] Created batch with lines:', batchId);
-                } else {
-                    await window.updateDoc(window.doc(window.db, 'expenseBatches', batchId), batchData);
-                    console.log('[syncDraftToFirestore] Updated batch with lines:', batchId);
-                }
-                const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                if (!isLocalhost && window.expenseUploadQueue) {
-                    for (const k of LINE_KEYS) {
-                        const line = draft.lines[k];
-                        if (!line || !hasLineContent(line)) continue;
-                        const photoBlobs = (line.photos || []).filter(p => p instanceof File || p instanceof Blob);
-                        if (photoBlobs.length === 0) continue;
-                        try {
-                            await window.expenseUploadQueue.enqueueExpenseUpload(batchId, k, { amount: line.amount }, photoBlobs);
-                        } catch (e) {
-                            console.error('[syncDraftToFirestore] Failed to enqueue photo upload for line', k, e);
-                        }
-                    }
-                    if (typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
-                        await window.expenseUploadQueue.updateGlobalUploadStatus();
-                    }
-                }
+            // Single structure: batch doc contains lines only (no separate expenses collection)
+            if (!draft.lines || typeof draft.lines !== 'object') {
+                draft.lines = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.emptyLines) ? EXPENSE_BATCH_SCHEMA.emptyLines() : {};
+            }
+            const linesForFirestore = {};
+            LINE_KEYS.forEach(k => {
+                const line = draft.lines[k];
+                if (!line) return;
+                const urls = (line.photos || []).filter(p => typeof p === 'string');
+                const blobs = (line.photos || []).filter(p => p instanceof File || p instanceof Blob);
+                linesForFirestore[k] = { amount: typeof line.amount === 'number' ? line.amount : 0, photos: urls, photosUploading: blobs.length > 0 };
+            });
+            batchData.lines = linesForFirestore;
+            if (!batchId) {
+                batchData.createdAt = window.serverTimestamp();
+                const batchRef = await window.addDoc(window.collection(window.db, 'expenseBatches'), batchData);
+                batchId = batchRef.id;
+                draft.id = batchId;
+                console.log('[syncDraftToFirestore] Created batch with lines:', batchId);
             } else {
-                // Legacy: separate expenses collection
-                let expensesCreated = false;
-                try {
-                    if (batchId) {
-                        await saveExpenses(batchId, draft);
-                        expensesCreated = true;
-                    } else {
-                        batchData.createdAt = window.serverTimestamp();
-                        batchData.expensesIncomplete = true;
-                        const batchRef = await window.addDoc(window.collection(window.db, 'expenseBatches'), batchData);
-                        batchId = batchRef.id;
-                        draft.id = batchId;
-                        try {
-                            await saveExpenses(batchId, draft);
-                            expensesCreated = true;
-                            await window.updateDoc(window.doc(window.db, 'expenseBatches', batchId), { updatedAt: window.serverTimestamp(), status: targetStatus, ...(window.deleteField ? { expensesIncomplete: window.deleteField() } : {}) });
-                        } catch (expenseError) {
-                            await window.deleteDoc(window.doc(window.db, 'expenseBatches', batchId));
-                            throw expenseError;
-                        }
+                await window.updateDoc(window.doc(window.db, 'expenseBatches', batchId), batchData);
+                console.log('[syncDraftToFirestore] Updated batch with lines:', batchId);
+            }
+            const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            if (!isLocalhost && window.expenseUploadQueue) {
+                for (const k of LINE_KEYS) {
+                    const line = draft.lines[k];
+                    if (!line || !hasLineContent(line)) continue;
+                    const photoBlobs = (line.photos || []).filter(p => p instanceof File || p instanceof Blob);
+                    if (photoBlobs.length === 0) continue;
+                    try {
+                        await window.expenseUploadQueue.enqueueExpenseUpload(batchId, k, { amount: line.amount }, photoBlobs);
+                    } catch (e) {
+                        console.error('[syncDraftToFirestore] Failed to enqueue photo upload for line', k, e);
                     }
-                    if (batchId) await window.updateDoc(window.doc(window.db, 'expenseBatches', batchId), batchData);
-                } catch (error) {
-                    if (batchId && !expensesCreated && !existingBatch) {
-                        try { await window.deleteDoc(window.doc(window.db, 'expenseBatches', batchId)); } catch (_) {}
-                    }
-                    throw error;
+                }
+                if (typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
+                    await window.expenseUploadQueue.updateGlobalUploadStatus();
                 }
             }
 
@@ -1411,20 +1336,6 @@
                 continue;
                 }
 
-                console.log('[processSubmissionQueue] Processing queued draft', entry.localId, {
-                status: entry.status,
-                hasSnapshot: Boolean(snapshot),
-                hasIndexedDBDraft: draft !== snapshot,
-                draftExpenseCount: draft.expenses ? draft.expenses.length : 0,
-                draftExpenses: draft.expenses ? draft.expenses.map((exp, idx) => ({
-                idx,
-                category: exp.category,
-                amount: exp.amount,
-                photos: Array.isArray(exp.photos) ? exp.photos.length : 0,
-                })) : 'none',
-                snapshotExpenseCount: snapshot?.expenses ? snapshot.expenses.length : 0
-                });
-
                 draft.localId = draft.localId || entry.localId;
                 draft.registration = draft.registration || snapshot?.registration || entry.registration || null;
                 draft.driverId = draft.driverId || snapshot?.driverId || currentUser?.uid || null;
@@ -1435,99 +1346,24 @@
                 if (snapshot?.lines && typeof snapshot.lines === 'object') {
                     draft.lines = snapshot.lines;
                     if (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.normalizeLines) draft.lines = EXPENSE_BATCH_SCHEMA.normalizeLines(draft.lines);
-                    console.log('[processSubmissionQueue] Merged snapshot.lines', Object.keys(draft.lines || {}).length, 'lines');
-                } else if (!draft.lines && snapshot?.expenses?.length) {
-                    draft.expenses = snapshot.expenses;
-                    console.log('[processSubmissionQueue] Merged snapshot.expenses (legacy)', draft.expenses.length);
                 }
-                if ((!draft.expenses || draft.expenses.length === 0) && snapshot?.expenses?.length && !draft.lines) {
-                    draft.expenses = snapshot.expenses;
-                }
-                if (draft.expenses && draft.expenses.length > 0 && !draft.lines) {
-                    console.log('[processSubmissionQueue] Using draft expenses:', draft.expenses.length);
-                }
-                if (!draft.lines && (!draft.expenses || draft.expenses.length === 0)) {
-                    console.warn('[processSubmissionQueue] No lines or expenses in draft after merge');
+                if (!draft.lines || typeof draft.lines !== 'object') {
+                    draft.lines = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.emptyLines) ? EXPENSE_BATCH_SCHEMA.emptyLines() : {};
                 }
 
                 if ((!draft.registration || draft.registration.trim() === '') && entry.registration) {
-                draft.registration = entry.registration;
+                    draft.registration = entry.registration;
                 }
 
-                const hasLines = draft.lines && typeof draft.lines === 'object';
-                const usedLineCount = hasLines && EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.getUsedLineCount ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(draft) : 0;
-                const hasExpenses = draft.expenses && draft.expenses.length > 0;
-                if (entry.status === 'pending' && !hasLines && !hasExpenses) {
-                    console.warn('[processSubmissionQueue] Skipping submit: draft has no expenses', entry.localId);
-                    sessionStorage.removeItem(processingKey);
-                    remaining.push(entry);
-                    continue;
-                }
-                if (entry.status === 'pending' && hasLines && usedLineCount === 0) {
+                const usedLineCount = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.getUsedLineCount) ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(draft) : 0;
+                if (entry.status === 'pending' && usedLineCount === 0) {
                     console.warn('[processSubmissionQueue] Skipping submit: draft has no used lines', entry.localId);
                     sessionStorage.removeItem(processingKey);
                     remaining.push(entry);
                     continue;
                 }
 
-                console.log('[processSubmissionQueue] Persisting draft to Firestore', {
-                registration: draft.registration,
-                status: draft.status,
-                expenseCount: draft.expenses ? draft.expenses.length : 0,
-                expenses: draft.expenses ? draft.expenses.map(exp => ({ category: exp.category, amount: exp.amount })) : [],
-                fullExpenses: draft.expenses
-                });
-
-                // CRITICAL: Check if batch already exists and is incomplete before syncing
-                if (draft.id) {
-                    try {
-                        const batchRef = window.doc(window.db, 'expenseBatches', draft.id);
-                        const batchSnap = await window.getDoc(batchRef);
-                        
-                        if (batchSnap.exists()) {
-                            const batchData = batchSnap.data();
-                            
-                            // Check if batch is incomplete (missing expenses or expense count mismatch)
-                            const hasIncompleteFlag = batchData.expensesIncomplete === true;
-                            
-                            // Check expense count
-                            const expensesQuery = window.query(
-                                window.collection(window.db, 'expenses'),
-                                window.where('batchId', '==', draft.id)
-                            );
-                            const expensesSnapshot = await window.getDocs(expensesQuery);
-                            const existingExpenseCount = expensesSnapshot.docs.length;
-                            const expectedExpenseCount = draft.expenses ? draft.expenses.length : 0;
-                            
-                            const isIncomplete = hasIncompleteFlag || 
-                                                (expectedExpenseCount > 0 && existingExpenseCount !== expectedExpenseCount);
-                            // Only cleanup when we expect expenses; avoid deleting then recreating empty batch
-                            const shouldCleanup = isIncomplete && expectedExpenseCount > 0;
-                            
-                            if (shouldCleanup) {
-                                console.log('[processSubmissionQueue] Batch is incomplete, cleaning up and retrying:', {
-                                    batchId: draft.id,
-                                    hasIncompleteFlag,
-                                    existingExpenseCount,
-                                    expectedExpenseCount
-                                });
-                                
-                                // Delete all expenses for this batch
-                                const deletePromises = expensesSnapshot.docs.map(doc => window.deleteDoc(doc.ref));
-                                await Promise.all(deletePromises);
-                                
-                                // Delete the incomplete batch
-                                await window.deleteDoc(batchRef);
-                                
-                                // Clear the batch ID so it gets recreated
-                                draft.id = null;
-                                console.log('[processSubmissionQueue] Cleaned up incomplete batch, will recreate');
-                            }
-                        }
-                    } catch (checkError) {
-                        console.warn('[processSubmissionQueue] Error checking batch completeness, proceeding anyway:', checkError);
-                    }
-                }
+                console.log('[processSubmissionQueue] Persisting draft to Firestore', { registration: draft.registration, status: draft.status, usedLineCount });
 
                 await syncDraftToFirestore(draft, entry.status);
                 console.log('[processSubmissionQueue] Successfully synced draft', entry.localId);
@@ -1861,32 +1697,6 @@
                         } catch (error) {
                             console.error('[Main Thread] Error updating batch line with photo URLs:', error);
                         }
-                    } else if (expenseDocId) {
-                        try {
-                            const expenseRef = window.doc(window.db, 'expenses', expenseDocId);
-                            const expenseSnap = await window.getDoc(expenseRef);
-                            if (expenseSnap.exists()) {
-                                const currentData = expenseSnap.data();
-                                const existingPhotos = Array.isArray(currentData.photos) ? currentData.photos.filter(p => typeof p === 'string' && isValidPhotoURL(p)) : [];
-                                const allPhotoURLs = [...existingPhotos];
-                                for (const newURL of downloadURLs) {
-                                    if (isValidPhotoURL(newURL) && !hasSameFile(allPhotoURLs, newURL)) allPhotoURLs.push(newURL);
-                                }
-                                const deduped = (window.dedupePhotoURLsByPath && window.dedupePhotoURLsByPath(allPhotoURLs)) || allPhotoURLs;
-                                await window.updateDoc(expenseRef, {
-                                    photos: deduped,
-                                    photosUploading: false,
-                                    updatedAt: window.serverTimestamp ? window.serverTimestamp() : new Date()
-                                });
-                                console.log('[Main Thread] Updated expense document with photo URLs:', expenseDocId);
-                            }
-                            if (window.expenseUploadQueue) await window.expenseUploadQueue.updateGlobalUploadStatus();
-                            if (typeof window.loadExpenseBatches === 'function') {
-                                setTimeout(() => window.loadExpenseBatches().catch(() => {}), 1000);
-                            }
-                        } catch (error) {
-                            console.error('[Main Thread] Error updating expense with photo URLs:', error);
-                        }
                     }
                 }
             });
@@ -1939,52 +1749,10 @@
                 continue;
                 }
                 
-                if (batchData.lines && typeof batchData.lines === 'object') {
-                    batchData.hasPendingUploads = Object.values(batchData.lines).some(line => line && line.photosUploading === true);
-                } else {
-                console.log(`Loading expenses for batch ${doc.id}, officeId: ${officeId}`);
-                try {
-                const expensesQuery = window.query(
-                window.collection(window.db, 'expenses'),
-                window.where('batchId', '==', doc.id),
-                window.where('officeId', '==', officeId)
-                );
-                const expensesSnapshot = await window.getDocs(expensesQuery);
-                console.log(`Found ${expensesSnapshot.docs.length} expenses for batch ${doc.id}`);
-                const expenseMap = new Map();
-                for (const expDoc of expensesSnapshot.docs) {
-                const expenseData = { id: expDoc.id, ...expDoc.data() };
-                console.log('Fetched expense doc', expDoc.id, {
-                category: expenseData.category,
-                amount: expenseData.amount,
-                officeId: expenseData.officeId,
-                photoCount: Array.isArray(expenseData.photos) ? expenseData.photos.length : 0
-                });
-                if (!expenseData.officeId) {
-                try {
-                await window.updateDoc(window.doc(window.db, 'expenses', expDoc.id), { officeId });
-                expenseData.officeId = officeId;
-                } catch (error) {
-                console.warn(`Failed to backfill officeId for expense ${expDoc.id}:`, error);
+                if (!batchData.lines || typeof batchData.lines !== 'object') {
+                    batchData.lines = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.emptyLines) ? EXPENSE_BATCH_SCHEMA.emptyLines() : {};
                 }
-                } else if (expenseData.officeId !== officeId) {
-                console.warn(`Skipping expense ${expDoc.id} due to mismatched officeId. Expected: ${officeId}, Got: ${expenseData.officeId}`);
-                continue;
-                }
-                const expenseKey = expenseData.id || `${doc.id}_${expenseData.category || 'expense'}_${expenseData.createdAt?.seconds || expenseData.createdAt || Math.random()}`;
-                expenseMap.set(expenseKey, expenseData);
-                }
-                // Filter out expenses with incomplete photos (photosUploading flag)
-                const allExpenses = Array.from(expenseMap.values());
-                // Keep all expenses, mark batch as uploading if any expense has photosUploading flag
-                batchData.expenses = allExpenses;
-                batchData.hasPendingUploads = allExpenses.some(exp => exp.photosUploading === true);
-                console.log(`Loaded ${batchData.expenses.length} expenses for batch ${doc.id} (hasPendingUploads: ${batchData.hasPendingUploads})`);
-                } catch (expenseError) {
-                console.error(`Error loading expenses for batch ${doc.id}:`, expenseError);
-                batchData.expenses = [];
-                }
-                }
+                batchData.hasPendingUploads = Object.values(batchData.lines).some(line => line && line.photosUploading === true);
                 
                 batchMap.set(batchData.id || `local_${batchData.localId || Math.random()}`, batchData);
                 }
@@ -2121,7 +1889,7 @@
                     borderClass = 'animated-border-panel animated-border-returned';
                 }
                 
-                const hasPendingUploads = batch.hasPendingUploads || (batch.expenses && batch.expenses.some(exp => exp.photosUploading === true)) || (batch.lines && typeof batch.lines === 'object' && Object.values(batch.lines).some(line => line && line.photosUploading === true));
+                const hasPendingUploads = batch.hasPendingUploads || (batch.lines && typeof batch.lines === 'object' && Object.values(batch.lines).some(line => line && line.photosUploading === true));
                 // Also check if batch is in submission queue (offline or processing)
                 let isInQueue = false;
                 if (batch.localId && typeof loadSubmissionQueue === 'function') {
@@ -2147,7 +1915,7 @@
                 <span class="${statusColor} px-3 py-1 rounded-full text-xs font-semibold uppercase">${batch.status}</span>
                 </div>
                 <div class="flex items-center justify-between mt-3">
-                <span class="text-gray-400 text-sm">${(batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLineCount ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(batch) : batch.expenses?.length) || 0} item${(((batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLineCount ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(batch) : batch.expenses?.length) || 0) !== 1 ? 's' : '')}</span>
+                <span class="text-gray-400 text-sm">${(typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLineCount ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(batch) : 0) || 0} item${((EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.getUsedLineCount ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(batch) : 0) !== 1 ? 's' : '')}</span>
                 <span class="text-green-500 font-semibold text-lg">£${(batch.totalAmount != null ? batch.totalAmount : 0).toFixed(2)}</span>
                 </div>
                 ${timerHTML}
@@ -2241,12 +2009,7 @@
                     if (batch.lines && typeof batch.lines === 'object') {
                         batch.lines = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.normalizeLines) ? EXPENSE_BATCH_SCHEMA.normalizeLines(batch.lines) : batch.lines;
                     } else {
-                        const expensesQuery = window.query(
-                            window.collection(window.db, 'expenses'),
-                            window.where('batchId', '==', batch.id)
-                        );
-                        const expensesSnapshot = await window.getDocs(expensesQuery);
-                        batch.expenses = expensesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        batch.lines = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.emptyLines) ? EXPENSE_BATCH_SCHEMA.emptyLines() : {};
                     }
                     const index = allBatches.findIndex(b => b.id === batchId);
                     if (index >= 0) allBatches[index] = batch;
@@ -2258,8 +2021,7 @@
                         const draft = await window.expenseDraftDB.getDraft(batch.localId);
                         if (draft) {
                             if (draft.notes != null) batch.notes = draft.notes;
-                            if (draft.lines && (!batch.lines || Object.keys(batch.lines).length === 0)) batch.lines = draft.lines;
-                            if (draft.expenses && (!batch.expenses || batch.expenses.length === 0)) batch.expenses = draft.expenses;
+                            if (draft.lines && typeof draft.lines === 'object' && (!batch.lines || Object.keys(batch.lines).length === 0)) batch.lines = draft.lines;
                         }
                     } catch (dbError) {
                         console.warn('Failed to load draft from IndexedDB:', dbError);
@@ -2267,23 +2029,8 @@
                 }
             }
 
-            if (!batch.lines && batch.expenses && Array.isArray(batch.expenses) && EXPENSE_BATCH_SCHEMA) {
-                const empty = EXPENSE_BATCH_SCHEMA.emptyLines ? EXPENSE_BATCH_SCHEMA.emptyLines() : {};
-                const prefixMap = { train: 'train', taxi: 'taxi', fuel: 'fuel', charge: 'charge', bus: 'bus', carwash: 'carWash', 'car wash': 'carWash', toll: 'toll', tolls: 'toll', other: 'other' };
-                const keySlots = { train: ['train1','train2','train3','train4'], taxi: ['taxi1','taxi2','taxi3','taxi4'], fuel: ['fuel1','fuel2','fuel3','fuel4'], charge: ['charge1','charge2','charge3','charge4'], bus: ['bus1','bus2','bus3','bus4'], carWash: ['carWash1','carWash2','carWash3','carWash4'], toll: ['toll1','toll2','toll3','toll4'], other: ['other1','other2','other3','other4'] };
-                const catIndex = {};
-                batch.expenses.forEach(exp => {
-                    const cat = String(exp.category || 'other').toLowerCase().replace(/\s+/g, '');
-                    const key = prefixMap[cat] || 'other';
-                    const slots = keySlots[key] || keySlots.other;
-                    const idx = (catIndex[key] || 0) % 4;
-                    const lineKey = slots[idx];
-                    if (lineKey) {
-                        empty[lineKey] = { amount: parseFloat(exp.amount) || 0, photos: Array.isArray(exp.photos) ? exp.photos.filter(p => typeof p === 'string') : [] };
-                        catIndex[key] = (catIndex[key] || 0) + 1;
-                    }
-                });
-                batch.lines = empty;
+            if (!batch.lines || typeof batch.lines !== 'object') {
+                batch.lines = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.emptyLines) ? EXPENSE_BATCH_SCHEMA.emptyLines() : {};
             }
 
             currentBatch = batch;
@@ -2350,18 +2097,12 @@
             const addExpenseBtn = document.getElementById('addExpenseBtn');
             const linesContainerEl = document.getElementById('linesContainer');
             const expensesListEl = document.getElementById('expensesList');
-            if (batch.lines) {
-                if (linesContainerEl) { linesContainerEl.classList.remove('hidden'); renderLines(); }
-                if (expensesListEl) { expensesListEl.classList.add('hidden'); expensesListEl.innerHTML = ''; }
-                if (addExpenseBtn) addExpenseBtn.classList.toggle('hidden', batch.status !== 'draft');
-                const totalEl = document.getElementById('totalAmount');
-                if (totalEl && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getTotalFromLines) {
-                    totalEl.textContent = '£' + (EXPENSE_BATCH_SCHEMA.getTotalFromLines(batch.lines) || 0).toFixed(2);
-                }
-            } else {
-                if (addExpenseBtn) addExpenseBtn.classList.add('hidden');
-                if (linesContainerEl) linesContainerEl.classList.add('hidden');
-                if (expensesListEl) { expensesListEl.classList.remove('hidden'); renderExpenses(); }
+            if (linesContainerEl) { linesContainerEl.classList.remove('hidden'); renderLines(); }
+            if (expensesListEl) { expensesListEl.classList.add('hidden'); expensesListEl.innerHTML = ''; }
+            if (addExpenseBtn) addExpenseBtn.classList.toggle('hidden', batch.status !== 'draft');
+            const totalEl = document.getElementById('totalAmount');
+            if (totalEl && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getTotalFromLines) {
+                totalEl.textContent = '£' + (EXPENSE_BATCH_SCHEMA.getTotalFromLines(batch.lines) || 0).toFixed(2);
             }
 
             // Show/hide action buttons based on status
@@ -2400,98 +2141,17 @@
                 actionButtons.innerHTML = '';
             }
 
-            // Display expenses
-            renderExpenses();
-            
             document.getElementById('batchModal').classList.remove('hidden');
         }
 
-        // Render expenses in batch modal
+        // Single workflow: batch modal always uses lines; renderExpenses just delegates to renderLines
         function renderExpenses() {
-            // Don't render if user is actively typing (prevents keyboard from closing)
             if (window.isUserTyping) {
-                // Defer rendering until user stops typing
                 clearTimeout(renderExpenses.deferTimer);
-                renderExpenses.deferTimer = setTimeout(() => {
-                    renderExpenses();
-                }, 1500);
+                renderExpenses.deferTimer = setTimeout(renderExpenses, 1500);
                 return;
             }
-            
-            const container = document.getElementById('expensesList');
-            if (!container) {
-                console.error('expensesList container not found');
-                return;
-            }
-            const expenses = currentBatch.expenses || [];
-            
-            if (expenses.length === 0) {
-                container.innerHTML = '<p class="text-gray-500 text-center py-4">No expenses added yet</p>';
-            } else {
-                const categoryEmojis = {
-                'Fuel': '⛽',
-                'Charge': '🔌',
-                'Train': '🚂',
-                'Bus': '🚌',
-                'Taxi': '🚕',
-                'Car Wash': '🧼',
-                'Tolls': '🛣️',
-                'Parking': '🅿️',
-                'Other': '📝',
-                // Lowercase fallbacks
-                'fuel': '⛽',
-                'charge': '🔌',
-                'train': '🚂',
-                'bus': '🚌',
-                'taxi': '🚕',
-                'car wash': '🧼',
-                'tolls': '🛣️',
-                'parking': '🅿️',
-                'other': '📝'
-                };
-                
-                container.innerHTML = expenses.map((exp, index) => {
-                return `
-                <div class="bg-[#283039] rounded-lg p-3 flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                <span class="text-2xl">${categoryEmojis[exp.category] || '📝'}</span>
-                <div>
-                <div class="font-medium capitalize">${exp.category || 'Other'}</div>
-                ${getDisplayPhotoCount(exp) > 0 ? `
-                <button onclick="viewExpensePhotos(${index})" class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1">
-                <span class="material-symbols-outlined text-xs">photo_camera</span>
-                ${getDisplayPhotoCount(exp)} photo${getDisplayPhotoCount(exp) !== 1 ? 's' : ''}
-                </button>
-                ` : ''}
-                </div>
-                </div>
-                <div class="flex items-center gap-3">
-                <span class="font-semibold text-green-500">£${parseFloat(exp.amount || 0).toFixed(2)}</span>
-                ${currentBatch.status === 'returned' ? `
-                <button onclick="addPhotosToExpense(${index})" class="text-blue-500 hover:text-blue-400 transition-colors" title="Add Photos">
-                <span class="material-symbols-outlined">add_a_photo</span>
-                </button>
-                <button onclick="deleteExpense(${index})" class="text-red-500 hover:text-red-400 transition-colors" title="Delete Expense">
-                <span class="material-symbols-outlined">delete</span>
-                </button>
-                ` : ''}
-                ${currentBatch.status === 'draft' ? `
-                <button onclick="deleteExpense(${index})" class="text-red-500 hover:text-red-400 transition-colors">
-                <span class="material-symbols-outlined">delete</span>
-                </button>
-                ` : ''}
-                </div>
-                </div>
-                `;
-                }).join('');
-            }
-
-            // Update total
-            const total = expenses.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0);
-            const totalAmountEl = document.getElementById('totalAmount');
-            if (totalAmountEl) {
-                totalAmountEl.textContent = `£${total.toFixed(2)}`;
-            }
+            if (currentBatch && currentBatch.lines) renderLines();
         }
 
         // Same category emoji map as renderExpenses (by category key for lines)
@@ -3079,7 +2739,7 @@
                 return;
             }
             
-            // When batch uses .lines (merged model), assign to next empty line slot for this category
+            // Assign to first empty slot for this category (e.g. train1..train4). If user deletes train1, next Train added goes to train1, not train3.
             if (currentBatch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined') {
                 var catMap = { fuel: 'fuel', charge: 'charge', train: 'train', bus: 'bus', taxi: 'taxi', 'car wash': 'carWash', tolls: 'toll', toll: 'toll', other: 'other' };
                 var norm = (currentExpense.category || '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -3088,7 +2748,7 @@
                 var getCategoryGroup = EXPENSE_BATCH_SCHEMA.getCategoryGroup || (function(k) { return (k || '').replace(/\d+$/, ''); });
                 var hasLineContent = EXPENSE_BATCH_SCHEMA.hasLineContent || (function() { return false; });
                 var slots = LINE_KEYS.filter(function(k) { return getCategoryGroup(k) === prefix; });
-                var lineKey = null;
+                var lineKey = null; // first slot in category order that has no value (amount or photos)
                 for (var s = 0; s < slots.length; s++) {
                     if (!hasLineContent(currentBatch.lines[slots[s]])) {
                         lineKey = slots[s];
@@ -3111,45 +2771,6 @@
                 return;
             }
 
-            const normalizedSelectedCategory = (currentExpense.category || '').trim().toLowerCase();
-            const existingCount = (currentBatch.expenses || []).reduce((count, exp, idx) => {
-                if (!exp || !exp.category) return count;
-                const matchesCategory = exp.category.trim().toLowerCase() === normalizedSelectedCategory;
-                const isEditingCurrent = window.editingExpenseIndex !== undefined && idx === window.editingExpenseIndex;
-                return matchesCategory && !isEditingCurrent ? count + 1 : count;
-            }, 0);
-
-            if (existingCount >= 4) {
-                notifyWarning('You have hit your limit of that type of expense', 'Limit Reached');
-                return;
-            }
-
-            // If editing, update existing expense
-            if (window.editingExpenseIndex !== undefined) {
-                currentBatch.expenses[window.editingExpenseIndex] = { ...currentExpense };
-            } else {
-                // Add new expense
-                if (!currentBatch.expenses) {
-                currentBatch.expenses = [];
-                }
-                currentBatch.expenses.push({ ...currentExpense });
-            }
-            
-            // Update global reference
-            window.currentBatch = currentBatch;
-            
-            // Clear typing flag to ensure renderExpenses doesn't defer
-            window.isUserTyping = false;
-            
-            closeExpenseModal();
-            
-            // Render immediately - expense is already in the array
-                renderExpenses();
-            
-            // Auto-save draft to IndexedDB (will check if typing before saving)
-            if (window.scheduleAutoSave) {
-                window.scheduleAutoSave();
-            }
         }
 
         // Delete expense
@@ -3321,17 +2942,16 @@
             }
 
             // CRITICAL: Add batch to local list immediately so it shows greyed out
-            // This ensures user sees the expense appear right away
             if (currentBatch && currentBatch.localId) {
-                // Create a local batch object for immediate display
+                const totalAmount = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.getTotalFromLines && currentBatch.lines) ? EXPENSE_BATCH_SCHEMA.getTotalFromLines(currentBatch.lines) : 0;
                 const localBatch = {
                     id: currentBatch.id || `temp_${currentBatch.localId}`,
                     localId: currentBatch.localId,
                     registration: currentBatch.registration,
                     status: 'draft',
-                    totalAmount: currentBatch.expenses ? currentBatch.expenses.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0) : 0,
-                    expenses: currentBatch.expenses || [],
-                    hasPendingUploads: true, // Mark as uploading
+                    totalAmount,
+                    lines: currentBatch.lines || {},
+                    hasPendingUploads: true,
                     driverId: currentBatch.driverId,
                     officeId: currentBatch.officeId,
                     notes: currentBatch.notes,
@@ -3437,7 +3057,7 @@
                 return;
             }
 
-            const usedCount = (currentBatch.lines && EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.getUsedLineCount) ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(currentBatch) : (currentBatch.expenses ? currentBatch.expenses.length : 0);
+            const usedCount = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.getUsedLineCount) ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(currentBatch) : 0;
             if (usedCount === 0) {
                 notifyWarning('Please add at least one expense (amount or photo).', 'No Expenses Added');
                 return;
@@ -3503,15 +3123,15 @@
             const targetStatus = isAppeal ? 'pending' : 'pending';
             
             if (currentBatch && (currentBatch.id || currentBatch.localId)) {
-                // Create/update local batch object for immediate display
+                const totalAmount = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.getTotalFromLines && currentBatch.lines) ? EXPENSE_BATCH_SCHEMA.getTotalFromLines(currentBatch.lines) : 0;
                 const localBatch = {
                     id: currentBatch.id || `temp_${currentBatch.localId}`,
                     localId: currentBatch.localId,
                     registration: currentBatch.registration,
-                    status: targetStatus, // Will be pending (for both new and appeals)
-                    totalAmount: currentBatch.expenses ? currentBatch.expenses.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0) : 0,
-                    expenses: currentBatch.expenses || [],
-                    hasPendingUploads: true, // Mark as uploading
+                    status: targetStatus,
+                    totalAmount,
+                    lines: currentBatch.lines || {},
+                    hasPendingUploads: true,
                     driverId: currentBatch.driverId,
                     officeId: currentBatch.officeId,
                     notes: currentBatch.notes,
@@ -3668,137 +3288,6 @@
             return reg.replace(/[/\\]/g, '_').trim() || '';
         }
 
-        // Save expenses to Firebase - WRITE-FIRST APPROACH
-        // All data written to IndexedDB immediately, uploads happen via Service Worker
-        async function saveExpenses(batchId, sourceBatch = currentBatch) {
-            if (!batchId) {
-                throw new Error('Batch ID is required to save expenses');
-            }
-            
-            const batchRef = sourceBatch || currentBatch;
-            const expensesToSave = (batchRef && Array.isArray(batchRef.expenses)) ? batchRef.expenses : [];
-            const officeId = batchRef.officeId || currentUser.officeId;
-
-            console.log(`[saveExpenses] WRITE-FIRST: Saving ${expensesToSave.length} expenses for batch ${batchId}, officeId: ${officeId}`);
-            
-            // CRITICAL: Validate expenses exist before proceeding
-            if (expensesToSave.length === 0) {
-                console.warn(`[saveExpenses] No expenses to save for batch ${batchId}. Expenses array is empty.`);
-                // Don't throw error - allow empty batches (user might add expenses later)
-                return;
-            }
-
-            // Delete existing expenses for this batch
-            const existingExpensesQuery = window.query(
-                window.collection(window.db, 'expenses'),
-                window.where('batchId', '==', batchId),
-                window.where('officeId', '==', officeId)
-            );
-            const existingSnapshot = await window.getDocs(existingExpensesQuery);
-            const deletePromises = existingSnapshot.docs.map(async (doc) => {
-                const data = doc.data();
-                if (!data.officeId) {
-                try {
-                await window.updateDoc(doc.ref, { officeId });
-                } catch (error) {
-                console.warn(`Failed to backfill officeId for expense ${doc.id}:`, error);
-                }
-                }
-                if (!data.officeId || data.officeId === officeId) {
-                await window.deleteDoc(doc.ref);
-                }
-            });
-            await Promise.all(deletePromises);
-            console.log(`[saveExpenses] Deleted ${existingSnapshot.docs.length} existing expenses for batch ${batchId}`);
-
-            const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            
-            // STEP 1: Create expense documents in Firestore immediately (with existing URLs only)
-            // Photos that are File/Blob objects will be uploaded later by Service Worker
-            console.log('[saveExpenses] Step 1: Creating expense documents in Firestore...');
-            
-            const expenseDocIds = [];
-            const addPromises = expensesToSave.map(async (expense, expenseIndex) => {
-                // Only include valid image URLs (no placeholders or empty strings)
-                const isValidPhotoURL = window.isValidPhotoURL || (u => typeof u === 'string' && u.trim().length > 0 && (u.startsWith('http://') || u.startsWith('https://')));
-                const existingPhotoURLs = (expense.photos || []).filter((p) => typeof p === 'string' && isValidPhotoURL(p));
-                const photoBlobs = (expense.photos || []).filter((p) => p instanceof File || p instanceof Blob);
-                
-                const expenseData = {
-                    batchId: batchId,
-                    driverId: batchRef.driverId || currentUser.uid,
-                    officeId: batchRef.officeId || currentUser.officeId,
-                    category: expense.category,
-                    amount: parseFloat(expense.amount),
-                    photos: existingPhotoURLs, // Start with existing URLs only
-                    photosUploading: photoBlobs.length > 0, // Mark as uploading if we have blobs to upload
-                    createdAt: window.serverTimestamp()
-                };
-
-                // Create expense document immediately (even if photos aren't uploaded yet)
-                const expenseDocRef = await window.addDoc(window.collection(window.db, 'expenses'), expenseData);
-                const expenseDocId = expenseDocRef.id;
-                expenseDocIds.push(expenseDocId);
-                
-                console.log(`[saveExpenses] Created expense doc ${expenseDocId}: ${expenseData.category}, £${expenseData.amount}, ${existingPhotoURLs.length} existing photos, ${photoBlobs.length} photos queued for upload`);
-
-                if (currentBatch && currentBatch.expenses && currentBatch.expenses[expenseIndex]) {
-                    currentBatch.expenses[expenseIndex].serverId = expenseDocId;
-                    currentBatch.expenses[expenseIndex].id = expenseDocId;
-                }
-                
-                return { expenseDocId, expenseIndex, expense, photoBlobs };
-            });
-
-            const expenseResults = await Promise.all(addPromises);
-            console.log('[saveExpenses] All expense documents created in Firestore:', expenseResults.length);
-            
-            // CRITICAL: Validate that all expenses were created successfully
-            if (expenseResults.length !== expensesToSave.length) {
-                const errorMsg = `Failed to create all expenses. Expected ${expensesToSave.length}, created ${expenseResults.length}`;
-                console.error(`[saveExpenses] ${errorMsg}`);
-                throw new Error(errorMsg);
-            }
-
-            // STEP 2: WRITE-FIRST - Save all expense data + photo blobs to IndexedDB (parallel, not sequential)
-            if (!isLocalhost && window.expenseUploadQueue) {
-                console.log('[saveExpenses] Step 2: WRITE-FIRST - Saving to IndexedDB (Service Worker will handle uploads)...');
-                
-                const enqueuePromises = expenseResults
-                    .filter((r) => r.photoBlobs && r.photoBlobs.length > 0)
-                    .map(async (result) => {
-                        const { expenseDocId, expenseIndex, expense, photoBlobs } = result;
-                        try {
-                            const expenseUploadData = {
-                                batchId: batchId,
-                                registration: batchRef.registration || null,
-                                category: expense.category,
-                                amount: parseFloat(expense.amount),
-                                officeId: officeId,
-                                driverId: batchRef.driverId || currentUser.uid
-                            };
-                            await window.expenseUploadQueue.enqueueExpenseUpload(
-                                batchId,
-                                expenseUploadData,
-                                photoBlobs,
-                                expenseDocId
-                            );
-                            console.log(`[saveExpenses] Enqueued ${photoBlobs.length} photos for expense ${expenseDocId}`);
-                        } catch (error) {
-                            console.error(`[saveExpenses] Failed to enqueue upload for expense ${expenseDocId}:`, error);
-                        }
-                    });
-                await Promise.all(enqueuePromises);
-                if (enqueuePromises.length > 0 && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
-                    await window.expenseUploadQueue.updateGlobalUploadStatus();
-                }
-            } else if (isLocalhost) {
-                console.warn('[saveExpenses] Running on localhost: Photo upload queueing disabled.');
-            }
-
-            console.log('[saveExpenses] WRITE-FIRST complete. All data saved to IndexedDB and Firestore. Service Worker will handle photo uploads.');
-        }
-
         // Helper function to extract storage path from Firebase Storage download URL
         function extractStoragePathFromURL(downloadURL) {
             try {
@@ -3835,46 +3324,20 @@
                 const localCopy = currentBatch;
                 const photoDeletePromises = [];
 
-                if (currentBatch.lines && typeof currentBatch.lines === 'object') {
-                    for (const line of Object.values(currentBatch.lines)) {
-                        if (line && Array.isArray(line.photos)) {
-                            for (const photoURL of line.photos) {
-                                if (typeof photoURL === 'string' && photoURL.startsWith('http')) {
-                                    try {
-                                        const storagePath = extractStoragePathFromURL(photoURL);
-                                        if (storagePath) {
-                                            const photoRef = window.ref(window.storage, storagePath);
-                                            photoDeletePromises.push(window.deleteObject(photoRef).catch(err => { console.warn('[deleteBatch] Photo delete failed', err); }));
-                                        }
-                                    } catch (e) { console.warn('[deleteBatch] URL parse failed', e); }
-                                }
+                for (const line of Object.values(currentBatch.lines || {})) {
+                    if (line && Array.isArray(line.photos)) {
+                        for (const photoURL of line.photos) {
+                            if (typeof photoURL === 'string' && photoURL.startsWith('http')) {
+                                try {
+                                    const storagePath = extractStoragePathFromURL(photoURL);
+                                    if (storagePath) {
+                                        const photoRef = window.ref(window.storage, storagePath);
+                                        photoDeletePromises.push(window.deleteObject(photoRef).catch(err => { console.warn('[deleteBatch] Photo delete failed', err); }));
+                                    }
+                                } catch (e) { console.warn('[deleteBatch] URL parse failed', e); }
                             }
                         }
                     }
-                } else {
-                    const expensesQuery = window.query(
-                        window.collection(window.db, 'expenses'),
-                        window.where('batchId', '==', currentBatch.id),
-                        window.where('officeId', '==', currentUser.officeId)
-                    );
-                    const expensesSnapshot = await window.getDocs(expensesQuery);
-                    for (const expDoc of expensesSnapshot.docs) {
-                        const expenseData = expDoc.data();
-                        if (expenseData.photos && Array.isArray(expenseData.photos)) {
-                            for (const photoURL of expenseData.photos) {
-                                if (typeof photoURL === 'string' && photoURL.startsWith('http')) {
-                                    try {
-                                        const storagePath = extractStoragePathFromURL(photoURL);
-                                        if (storagePath) {
-                                            const photoRef = window.ref(window.storage, storagePath);
-                                            photoDeletePromises.push(window.deleteObject(photoRef).catch(err => { console.warn('[deleteBatch] Photo delete failed', err); }));
-                                        }
-                                    } catch (e) { console.warn('[deleteBatch] URL parse failed', e); }
-                                }
-                            }
-                        }
-                    }
-                    await Promise.all(expensesSnapshot.docs.map(doc => window.deleteDoc(doc.ref)));
                 }
 
                 await Promise.allSettled(photoDeletePromises);
@@ -3940,33 +3403,18 @@
                 const deletedLocalId = currentBatch?.localId || null;
                 const localCopy = currentBatch;
  
-                // Get all expenses in this batch BEFORE deleting them
-                const expensesQuery = window.query(
-                window.collection(window.db, 'expenses'),
-                window.where('batchId', '==', currentBatch.id),
-                window.where('officeId', '==', currentUser.officeId)
-                );
-                const expensesSnapshot = await window.getDocs(expensesQuery);
-
-                // Delete all photos from Firebase Storage for each expense
                 const photoDeletePromises = [];
-                for (const expDoc of expensesSnapshot.docs) {
-                    const expenseData = expDoc.data();
-                    
-                    // Delete all photos associated with this expense
-                    if (expenseData.photos && Array.isArray(expenseData.photos)) {
-                        for (const photoURL of expenseData.photos) {
+                for (const line of Object.values(currentBatch.lines || {})) {
+                    if (line && Array.isArray(line.photos)) {
+                        for (const photoURL of line.photos) {
                             if (typeof photoURL === 'string' && photoURL.startsWith('http')) {
                                 try {
                                     const storagePath = extractStoragePathFromURL(photoURL);
                                     if (storagePath) {
                                         const photoRef = window.ref(window.storage, storagePath);
-                                        // Use deleteObject from Firebase Storage SDK
-                                        const deletePhotoPromise = window.deleteObject(photoRef).catch(error => {
-                                            // Photo may already be deleted or not exist - log but don't fail
-                                            console.warn(`[discardReturnedBatch] Failed to delete photo from storage: ${photoURL}`, error);
-                                        });
-                                        photoDeletePromises.push(deletePhotoPromise);
+                                        photoDeletePromises.push(window.deleteObject(photoRef).catch(error => {
+                                            console.warn(`[discardReturnedBatch] Failed to delete photo: ${photoURL}`, error);
+                                        }));
                                     }
                                 } catch (error) {
                                     console.warn(`[discardReturnedBatch] Error processing photo URL: ${photoURL}`, error);
@@ -3975,15 +3423,8 @@
                         }
                     }
                 }
-
-                // Wait for all photo deletions to complete (or fail gracefully)
                 await Promise.allSettled(photoDeletePromises);
-                console.log(`[discardReturnedBatch] Attempted to delete ${photoDeletePromises.length} photos from Firebase Storage`);
 
-                // Delete all expense documents
-                const deletePromises = expensesSnapshot.docs.map(doc => window.deleteDoc(doc.ref));
-                await Promise.all(deletePromises);
- 
                 // Delete the batch
                 await window.deleteDoc(window.doc(window.db, 'expenseBatches', currentBatch.id));
  
@@ -4040,20 +3481,21 @@
                 // Get unique reg (will add ! if needed)
                 const newReg = await getUniqueReg(baseReg);
 
-                // Create new batch
+                const emptyLines = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.emptyLines) ? EXPENSE_BATCH_SCHEMA.emptyLines() : {};
                 currentBatch = {
-                id: null,
-                registration: newReg,
-                status: 'draft',
-                expenses: [],
-                totalAmount: 0
+                    id: null,
+                    localId: null,
+                    registration: newReg,
+                    status: 'draft',
+                    lines: emptyLines,
+                    totalAmount: 0
                 };
-                
+                window.currentBatch = currentBatch;
+
                 // Update UI
                 setStatusTitle('draft');
                 document.getElementById('regInput').value = newReg;
                 document.getElementById('regInput').disabled = false;
-                // Show notes section for new additional expense drafts
                 const notesSection = document.getElementById('notesSection');
                 notesSection.classList.remove('hidden');
                 const notesInput = document.getElementById('notesInput');
@@ -4061,14 +3503,13 @@
                 notesInput.disabled = false;
                 document.getElementById('returnNotesDiv').classList.add('hidden');
                 document.getElementById('deleteBatchBtn').classList.add('hidden');
-                document.getElementById('expensesList').innerHTML = '<p class="text-gray-500 text-center py-4">No expenses added yet</p>';
+                const expensesListEl = document.getElementById('expensesList');
+                if (expensesListEl) { expensesListEl.classList.add('hidden'); expensesListEl.innerHTML = ''; }
+                const linesContainer = document.getElementById('linesContainer');
+                if (linesContainer) { linesContainer.classList.remove('hidden'); renderLines(); }
                 document.getElementById('totalAmount').textContent = '£0.00';
-                
-                // Show Add Expense button
                 const addExpenseBtn = document.getElementById('addExpenseBtn');
-                addExpenseBtn.classList.remove('hidden');
-                
-                // Update action buttons to show draft buttons
+                if (addExpenseBtn) addExpenseBtn.classList.remove('hidden');
                 const actionButtons = document.getElementById('actionButtons');
                 actionButtons.innerHTML = `
                 <button onclick="saveDraft()" class="w-full animated-button animated-button-draft touch-target">
@@ -4078,15 +3519,16 @@
                 <span class="text-white font-semibold">Submit for Processing</span>
                 </button>
                 `;
+                document.getElementById('batchModal').classList.remove('hidden');
             } catch (error) {
                 console.error('Error creating additional expenses batch:', error);
-            notifyError('Error creating additional expenses batch. Please try again.');
+                notifyError('Error creating additional expenses batch. Please try again.');
             }
         }
 
-        // View photos for an expense
+        // View photos for a batch line (used when batch has lines)
         async function viewExpensePhotos(expenseIndex) {
-            const expense = currentBatch.expenses[expenseIndex];
+            const expense = currentBatch.expenses && currentBatch.expenses[expenseIndex];
             const filePhotos = (expense && expense.photos) ? expense.photos.filter(p => p instanceof File || p instanceof Blob) : [];
             const validURLs = getValidPhotoURLs(expense);
             if (filePhotos.length === 0 && validURLs.length === 0) {
@@ -4261,9 +3703,13 @@
         function renderPaidBatchList(batches, containerId) {
             const container = document.getElementById(containerId);
             container.innerHTML = batches.map(batch => {
-                // Count total photos (valid URLs only)
-                const totalPhotos = batch.expenses?.reduce((sum, exp) => sum + getValidPhotoCount(exp), 0) || 0;
-                
+                const itemCount = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLineCount) ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(batch) : 0;
+                let totalPhotos = 0;
+                if (batch.lines && typeof batch.lines === 'object') {
+                    for (const line of Object.values(batch.lines)) {
+                        if (line && Array.isArray(line.photos)) totalPhotos += line.photos.filter(p => typeof p === 'string').length;
+                    }
+                }
                 return `
                 <div class="animated-border-panel animated-border-paid fade-in">
                 <div class="flex items-start justify-between mb-2">
@@ -4271,7 +3717,7 @@
                 <span class="bg-green-500 px-3 py-1 rounded-full text-xs font-semibold uppercase">PAID</span>
                 </div>
                 <div class="flex items-center justify-between mt-3 mb-2">
-                <span class="text-gray-400 text-sm">${batch.expenses?.length || 0} expense${batch.expenses?.length !== 1 ? 's' : ''}</span>
+                <span class="text-gray-400 text-sm">${itemCount} item${itemCount !== 1 ? 's' : ''}</span>
                 <span class="text-green-500 font-semibold text-lg">£${batch.totalAmount?.toFixed(2) || '0.00'}</span>
                 </div>
                 <div class="flex gap-2 mt-3">
@@ -4379,15 +3825,16 @@
             
             const categories = ['Fuel', 'Charge', 'Train', 'Bus', 'Taxi', 'Car Wash', 'Tolls', 'Other'];
             
-            // Group expenses by normalized category
             const expensesByCategory = {};
-            batch.expenses?.forEach(exp => {
-                const rawCat = (exp.category || 'other').trim().toLowerCase();
-                const normalizedCat = categoryMap[rawCat] || 'Other';
-                if (!expensesByCategory[normalizedCat]) {
-                expensesByCategory[normalizedCat] = [];
-                }
-                expensesByCategory[normalizedCat].push(exp);
+            const usedLines = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) ? EXPENSE_BATCH_SCHEMA.getUsedLines(batch) : [];
+            const getCategoryLabel = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getCategoryLabel) ? EXPENSE_BATCH_SCHEMA.getCategoryLabel : (k) => k;
+            usedLines.forEach(lineKey => {
+                const line = batch.lines && batch.lines[lineKey];
+                if (!line) return;
+                const label = getCategoryLabel(lineKey);
+                const normalizedCat = (label && label.split(' ')[0]) ? label.split(' ')[0] : 'Other';
+                if (!expensesByCategory[normalizedCat]) expensesByCategory[normalizedCat] = [];
+                expensesByCategory[normalizedCat].push({ amount: line.amount || 0 });
             });
             
             // Create table data
@@ -4555,20 +4002,19 @@
                 const pdfFileName = `${cleanedReg}_${driverNameForFile}.pdf`;
                 zip.file(folderPath + pdfFileName, pdfBlob);
                 
-                // Download and add photos (valid URLs only)
+                // Download and add photos (valid URLs only) from batch.lines
                 let photoIndex = 1;
-                for (const expense of batch.expenses || []) {
-                    const urls = getValidPhotoURLs(expense);
-                    if (urls.length > 0) {
-                        for (const photoURL of urls) {
-                            try {
-                                const response = await fetch(photoURL);
-                                const photoBlob = await response.blob();
-                                zip.file(folderPath + `photo_${photoIndex}.jpg`, photoBlob);
-                                photoIndex++;
-                            } catch (error) {
-                                console.error('Error downloading photo:', photoURL, error);
-                            }
+                for (const line of Object.values(batch.lines || {})) {
+                    if (!line || !Array.isArray(line.photos)) continue;
+                    for (const photoURL of line.photos) {
+                        if (typeof photoURL !== 'string' || !photoURL.startsWith('http')) continue;
+                        try {
+                            const response = await fetch(photoURL);
+                            const photoBlob = await response.blob();
+                            zip.file(folderPath + `photo_${photoIndex}.jpg`, photoBlob);
+                            photoIndex++;
+                        } catch (error) {
+                            console.error('Error downloading photo:', photoURL, error);
                         }
                     }
                 }
@@ -4594,16 +4040,16 @@
         // View all photos for a paid expense batch
         function viewPaidExpensePhotos(batchId) {
             const batch = allBatches.find(b => b.id === batchId && b.status === 'paid');
-            if (!batch || !batch.expenses) {
+            if (!batch || !batch.lines) {
                 notifyError('Batch not found.', 'Missing Batch');
                 return;
             }
 
-            // Collect all photos from all expenses (valid URLs only)
             const allPhotos = [];
-            batch.expenses.forEach(expense => {
-                getValidPhotoURLs(expense).forEach(photoURL => allPhotos.push(photoURL));
-            });
+            for (const line of Object.values(batch.lines)) {
+                if (!line || !Array.isArray(line.photos)) continue;
+                line.photos.filter(p => typeof p === 'string' && p.startsWith('http')).forEach(photoURL => allPhotos.push(photoURL));
+            }
 
             if (allPhotos.length === 0) {
                 notifyInfo('No photos available for this expense batch.', 'No Photos');

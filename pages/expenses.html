@@ -515,8 +515,7 @@
         }
         let allBatches = [];
         function getBatchItemCount(batch) {
-            if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLineCount) return EXPENSE_BATCH_SCHEMA.getUsedLineCount(batch);
-            return batch.expenses?.length || 0;
+            return (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLineCount) ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(batch) : 0;
         }
         let currentBatch = null;
         let activeTab = 'pending';
@@ -888,7 +887,7 @@
                     list.innerHTML = sortedDrivers.map(driverGroup => {
                         // Calculate total for this driver
                         const totalAmount = driverGroup.batches.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
-                        const totalExpenses = driverGroup.batches.reduce((sum, b) => sum + (b.expenses?.length || 0), 0);
+                        const totalExpenses = driverGroup.batches.reduce((sum, b) => sum + getBatchItemCount(b), 0);
                         
                         const batchesHTML = driverGroup.batches.map(batch => {
                             const date = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
@@ -977,7 +976,7 @@
                     list.innerHTML = sortedDrivers.map(driverGroup => {
                         // Calculate total for this driver
                         const totalAmount = driverGroup.batches.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
-                        const totalExpenses = driverGroup.batches.reduce((sum, b) => sum + (b.expenses?.length || 0), 0);
+                        const totalExpenses = driverGroup.batches.reduce((sum, b) => sum + getBatchItemCount(b), 0);
                         
                         const batchesHTML = driverGroup.batches.map(batch => {
                             const date = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
@@ -1092,18 +1091,12 @@
             currentBatch = allBatches.find(b => b.id === batchId);
             if (!currentBatch) return;
 
-            console.log('Opening batch:', currentBatch);
-            console.log('Driver name:', currentBatch.driverName);
-            console.log('Expenses:', currentBatch.expenses);
-
             const date = currentBatch.submittedAt?.toDate ? currentBatch.submittedAt.toDate() : new Date();
-            
             document.getElementById('modal-driver').textContent = currentBatch.driverName || 'Unknown Driver';
             document.getElementById('modal-reg').textContent = currentBatch.registration;
             document.getElementById('modal-total').textContent = `£${currentBatch.totalAmount?.toFixed(2) || '0.00'}`;
             document.getElementById('modal-date').textContent = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
 
-            // Show driver notes if provided
             if (currentBatch.notes && currentBatch.notes.trim()) {
                 document.getElementById('modal-driver-notes').classList.remove('hidden');
                 document.getElementById('modal-driver-notes-text').textContent = currentBatch.notes;
@@ -1111,7 +1104,6 @@
                 document.getElementById('modal-driver-notes').classList.add('hidden');
             }
 
-            // Show return notes if returned
             if (currentBatch.status === 'returned' && currentBatch.returnNotes) {
                 document.getElementById('modal-return-notes').classList.remove('hidden');
                 document.getElementById('modal-return-text').textContent = currentBatch.returnNotes;
@@ -1119,49 +1111,32 @@
                 document.getElementById('modal-return-notes').classList.add('hidden');
             }
 
-            // Display expenses
-            const categoryEmojis = {
-                // Capitalized (as used in driver expenses)
-                'Fuel': '⛽',
-                'Charge': '🔌',
-                'Train': '🚂',
-                'Bus': '🚌',
-                'Taxi': '🚕',
-                'Car Wash': '🧼',
-                'Tolls': '🛣️',
-                'Parking': '🅿️',
-                'Other': '📝',
-                // Lowercase fallbacks
-                'fuel': '⛽',
-                'charge': '🔌',
-                'train': '🚂',
-                'bus': '🚌',
-                'taxi': '🚕',
-                'car wash': '🧼',
-                'tolls': '🛣️',
-                'parking': '🅿️',
-                'food': '🍔',
-                'maintenance': '🔧',
-                'other': '📝'
-            };
-
-            document.getElementById('modal-expenses').innerHTML = currentBatch.expenses.map(exp => `
-                <div class="bg-[#283039] rounded-lg p-3 flex items-center justify-between">
+            const categoryEmojis = { 'Fuel': '⛽', 'Charge': '🔌', 'Train': '🚂', 'Bus': '🚌', 'Taxi': '🚕', 'Car Wash': '🧼', 'Tolls': '🛣️', 'Other': '📝', 'fuel': '⛽', 'charge': '🔌', 'train': '🚂', 'bus': '🚌', 'taxi': '🚕', 'car wash': '🧼', 'tolls': '🛣️', 'other': '📝' };
+            const usedKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) ? EXPENSE_BATCH_SCHEMA.getUsedLines(currentBatch) : [];
+            const getCategoryLabel = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getCategoryLabel) ? EXPENSE_BATCH_SCHEMA.getCategoryLabel : (k) => k;
+            const getCategoryGroup = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getCategoryGroup) ? EXPENSE_BATCH_SCHEMA.getCategoryGroup : (k) => (k || '').replace(/\d+$/, '');
+            const lineEmojis = { train: '🚂', taxi: '🚕', fuel: '⛽', charge: '🔌', bus: '🚌', carWash: '🧼', toll: '🛣️', other: '📝' };
+            document.getElementById('modal-expenses').innerHTML = usedKeys.map(lineKey => {
+                const line = (currentBatch.lines || {})[lineKey];
+                if (!line) return '';
+                const label = getCategoryLabel(lineKey);
+                const prefix = getCategoryGroup(lineKey) || 'other';
+                const emoji = lineEmojis[prefix] || '📝';
+                const validPhotos = Array.isArray(line.photos) ? line.photos.filter(isValidPhotoURL) : [];
+                return `<div class="bg-[#283039] rounded-lg p-3 flex items-center justify-between">
                     <div class="flex items-center gap-3">
-                        <span class="text-2xl">${categoryEmojis[exp.category] || '📝'}</span>
+                        <span class="text-2xl">${emoji}</span>
                         <div>
-                            <div class="font-medium capitalize">${exp.category}</div>
-${(function() { const validPhotos = (exp.photos || []).filter(isValidPhotoURL); return validPhotos.length > 0 ? `
-                                    <button onclick="viewExpensePhotos(${currentBatch.expenses.indexOf(exp)})" class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1">
-                                    <span class="material-symbols-outlined text-xs">photo_camera</span>
-                                    ${validPhotos.length} photo${validPhotos.length !== 1 ? 's' : ''}
-                                </button>
-                            ` : ''; })()}
+                            <div class="font-medium capitalize">${label}</div>
+                            ${validPhotos.length > 0 ? `<button onclick="viewExpensePhotos('${lineKey}')" class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1">
+                                <span class="material-symbols-outlined text-xs">photo_camera</span>
+                                ${validPhotos.length} photo${validPhotos.length !== 1 ? 's' : ''}
+                            </button>` : ''}
                         </div>
                     </div>
-                    <span class="font-semibold text-green-500">£${parseFloat(exp.amount).toFixed(2)}</span>
-                </div>
-            `).join('');
+                    <span class="font-semibold text-green-500">£${parseFloat(line.amount || 0).toFixed(2)}</span>
+                </div>`;
+            }).join('');
 
             // Show appropriate actions
             const actions = document.getElementById('modal-actions');
@@ -1305,10 +1280,10 @@ ${(function() { const validPhotos = (exp.photos || []).filter(isValidPhotoURL); 
             return photoZoomStates.get(photo);
         }
 
-        // View photos for an expense
-        async function viewExpensePhotos(expenseIndex) {
-            const expense = currentBatch.expenses[expenseIndex];
-            const validPhotos = (expense && expense.photos) ? expense.photos.filter(isValidPhotoURL) : [];
+        // View photos for a batch line (lineKey e.g. 'train1')
+        async function viewExpensePhotos(lineKey) {
+            const line = currentBatch && currentBatch.lines && currentBatch.lines[lineKey];
+            const validPhotos = (line && Array.isArray(line.photos)) ? line.photos.filter(isValidPhotoURL) : [];
             if (validPhotos.length === 0) {
                 return;
             }
@@ -1797,10 +1772,8 @@ ${(function() { const validPhotos = (exp.photos || []).filter(isValidPhotoURL); 
             await pdfWritable.write(pdfBlob);
             await pdfWritable.close();
             
-            let expensesForPhotos = batch.expenses || [];
-            if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) {
-                expensesForPhotos = EXPENSE_BATCH_SCHEMA.getUsedLines(batch).map(k => batch.lines[k]).filter(Boolean);
-            }
+            const usedLineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) ? EXPENSE_BATCH_SCHEMA.getUsedLines(batch) : [];
+            const expensesForPhotos = usedLineKeys.map(k => (batch.lines || {})[k]).filter(Boolean);
             let photoIndex = 1;
             for (const expense of expensesForPhotos) {
                 const urls = (expense.photos || []).filter(isValidPhotoURL);
@@ -1875,10 +1848,8 @@ ${(function() { const validPhotos = (exp.photos || []).filter(isValidPhotoURL); 
                     const pdfFileName = `${cleanedReg}_${driverNameForFile}.pdf`;
                     zip.file(folderPath + pdfFileName, pdfBlob);
                     
-                    let expensesForPhotos = batch.expenses || [];
-                    if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) {
-                        expensesForPhotos = EXPENSE_BATCH_SCHEMA.getUsedLines(batch).map(k => batch.lines[k]).filter(Boolean);
-                    }
+                    const usedLineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) ? EXPENSE_BATCH_SCHEMA.getUsedLines(batch) : [];
+                    const expensesForPhotos = usedLineKeys.map(k => (batch.lines || {})[k]).filter(Boolean);
                     let photoIndex = 1;
                     for (const expense of expensesForPhotos) {
                         const urls = (expense.photos || []).filter(isValidPhotoURL);
@@ -2059,15 +2030,8 @@ ${(function() { const validPhotos = (exp.photos || []).filter(isValidPhotoURL); 
                     if (!expensesByCategory[cat]) expensesByCategory[cat] = [];
                     expensesByCategory[cat].push({ amount: line.amount || 0, photos: line.photos || [] });
                 });
-            } else {
-                batch.expenses?.forEach(exp => {
-                    const rawCat = (exp.category || 'other').trim().toLowerCase();
-                    const normalizedCat = categoryMap[rawCat] || 'Other';
-                    if (!expensesByCategory[normalizedCat]) expensesByCategory[normalizedCat] = [];
-                    expensesByCategory[normalizedCat].push(exp);
-                });
             }
-            
+
             // Create table data matching app format
             const tableData = [];
             const headers = ['', '1', '2', '3', '4', 'TOTAL'];

@@ -392,13 +392,7 @@
                         }
                     }
                     if (!batchData.lines || typeof batchData.lines !== 'object') {
-                        const expensesQuery = window.query(
-                            window.collection(window.db, 'expenses'),
-                            window.where('batchId', '==', doc.id),
-                            window.where('officeId', '==', officeId)
-                        );
-                        const expensesSnapshot = await window.getDocs(expensesQuery);
-                        batchData.expenses = expensesSnapshot.docs.map(expDoc => ({ ...expDoc.data() }));
+                        batchData.lines = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.emptyLines) ? EXPENSE_BATCH_SCHEMA.emptyLines() : {};
                     }
                     batches.push(batchData);
                 }
@@ -495,13 +489,6 @@
                 for (const batch of batchesToDelete) {
                     try {
                         // Delete all expenses in this batch
-                        const expensesQuery = window.query(
-                            window.collection(window.db, 'expenses'),
-                            window.where('batchId', '==', batch.id)
-                        );
-                        const expensesSnapshot = await window.getDocs(expensesQuery);
-                        
-                        // Helper function to extract storage path from Firebase Storage download URL
                         function extractStoragePathFromURL(downloadURL) {
                             try {
                                 // Firebase Storage URLs format: https://firebasestorage.googleapis.com/v0/b/{bucket}/o/{encodedPath}?alt=media&token={token}
@@ -518,38 +505,22 @@
                             }
                         }
                         
-                        // Delete photos from Firebase Storage and then delete expense documents
-                        const deleteExpensePromises = expensesSnapshot.docs.map(async (expDoc) => {
-                            const expenseData = expDoc.data();
-                            
-                            // Delete all photos associated with this expense
-                            if (expenseData.photos && Array.isArray(expenseData.photos)) {
-                                const photoDeletePromises = expenseData.photos.map(async (photoURL) => {
-                                    if (typeof photoURL === 'string' && photoURL.startsWith('http')) {
-                                        try {
-                                            const storagePath = extractStoragePathFromURL(photoURL);
-                                            if (storagePath) {
-                                                const photoRef = window.ref(window.storage, storagePath);
-                                                await window.deleteObject(photoRef);
-                                                console.log(`Deleted photo from storage: ${storagePath}`);
-                                            }
-                                        } catch (error) {
-                                            // Photo may already be deleted or not exist - log but don't fail
-                                            console.warn(`Failed to delete photo from storage: ${photoURL}`, error);
+                        const photoDeletePromises = [];
+                        for (const line of Object.values(batch.lines || {})) {
+                            if (!line || !Array.isArray(line.photos)) continue;
+                            for (const photoURL of line.photos) {
+                                if (typeof photoURL === 'string' && photoURL.startsWith('http')) {
+                                    try {
+                                        const storagePath = extractStoragePathFromURL(photoURL);
+                                        if (storagePath) {
+                                            const photoRef = window.ref(window.storage, storagePath);
+                                            photoDeletePromises.push(window.deleteObject(photoRef).catch(err => console.warn('Photo delete failed', err)));
                                         }
-                                    }
-                                });
-                                
-                                await Promise.all(photoDeletePromises);
+                                    } catch (e) { console.warn('URL parse failed', e); }
+                                }
                             }
-                            
-                            // Delete the expense document
-                            await window.deleteDoc(window.doc(window.db, 'expenses', expDoc.id));
-                        });
-                        
-                        await Promise.all(deleteExpensePromises);
-                        
-                        // Delete the batch
+                        }
+                        await Promise.allSettled(photoDeletePromises);
                         await window.deleteDoc(window.doc(window.db, 'expenseBatches', batch.id));
                         
                         console.log(`Auto-deleted expired batch: ${batch.registration}`);
@@ -595,9 +566,14 @@
                     const used = EXPENSE_BATCH_SCHEMA.getUsedLines ? EXPENSE_BATCH_SCHEMA.getUsedLines(batch) : [];
                     totalPhotos = used.reduce((sum, k) => sum + ((batch.lines[k] && batch.lines[k].photos && batch.lines[k].photos.length) || 0), 0);
                 } else {
-                    totalPhotos = batch.expenses?.reduce((sum, exp) => sum + (exp.photos?.length || 0), 0) || 0;
+                    totalPhotos = 0;
+                    if (batch.lines && typeof batch.lines === 'object') {
+                        for (const line of Object.values(batch.lines)) {
+                            if (line && Array.isArray(line.photos)) totalPhotos += line.photos.filter(p => typeof p === 'string').length;
+                        }
+                    }
                 }
-                const itemCount = (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLineCount ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(batch) : batch.expenses?.length) || 0;
+                const itemCount = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLineCount) ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(batch) : 0;
                 
                 const transferredDate = batch.transferredAt?.toDate ? batch.transferredAt.toDate() : 
                                        (batch.paidAt?.toDate ? batch.paidAt.toDate() : new Date());
@@ -762,15 +738,8 @@
                     if (!expensesByCategory[cat]) expensesByCategory[cat] = [];
                     expensesByCategory[cat].push({ amount: line.amount || 0, photos: line.photos || [] });
                 });
-            } else {
-                batch.expenses?.forEach(exp => {
-                    const rawCat = (exp.category || 'other').trim().toLowerCase();
-                    const normalizedCat = categoryMap[rawCat] || 'Other';
-                    if (!expensesByCategory[normalizedCat]) expensesByCategory[normalizedCat] = [];
-                    expensesByCategory[normalizedCat].push(exp);
-                });
             }
-            
+
             // Create table data matching app format
             const tableData = [];
             const headers = ['', '1', '2', '3', '4', 'TOTAL'];
@@ -975,14 +944,12 @@
                 await pdfWritable.write(pdfBlob);
                 await pdfWritable.close();
                 
-                let expensesForPhotos = batch.expenses || [];
-                if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) {
-                    expensesForPhotos = EXPENSE_BATCH_SCHEMA.getUsedLines(batch).map(k => batch.lines[k]).filter(Boolean);
-                }
+                const usedLineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) ? EXPENSE_BATCH_SCHEMA.getUsedLines(batch) : [];
+                const expensesForPhotos = usedLineKeys.map(k => (batch.lines || {})[k]).filter(Boolean);
                 let photoIndex = 1;
-                for (const expense of expensesForPhotos) {
-                    if (expense.photos && expense.photos.length > 0) {
-                        for (const photoURL of expense.photos) {
+                for (const line of expensesForPhotos) {
+                    if (line && Array.isArray(line.photos)) {
+                        for (const photoURL of line.photos) {
                             if (typeof photoURL !== 'string') continue;
                             try {
                                 const response = await fetch(photoURL);
@@ -999,7 +966,6 @@
                         }
                     }
                 }
-                
                 notifySuccess(`Successfully saved PDF and photos to ${dateFolderName}/${cleanedReg}/`, 'Files Saved');
             } catch (error) {
                 if (error.name === 'AbortError' || error.message?.includes('canceled')) {
@@ -1046,14 +1012,12 @@
                 const pdfFileName = `${cleanedReg}_${driverNameForFile}.pdf`;
                 zip.file(folderPath + pdfFileName, pdfBlob);
                 
-                let expensesForPhotos = batch.expenses || [];
-                if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) {
-                    expensesForPhotos = EXPENSE_BATCH_SCHEMA.getUsedLines(batch).map(k => batch.lines[k]).filter(Boolean);
-                }
+                const usedLineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) ? EXPENSE_BATCH_SCHEMA.getUsedLines(batch) : [];
+                const expensesForPhotos = usedLineKeys.map(k => (batch.lines || {})[k]).filter(Boolean);
                 let photoIndex = 1;
-                for (const expense of expensesForPhotos) {
-                    if (expense.photos && expense.photos.length > 0) {
-                        for (const photoURL of expense.photos) {
+                for (const line of expensesForPhotos) {
+                    if (line && Array.isArray(line.photos)) {
+                        for (const photoURL of line.photos) {
                             if (typeof photoURL !== 'string') continue;
                             try {
                                 const response = await fetch(photoURL);
@@ -1103,10 +1067,6 @@
                 EXPENSE_BATCH_SCHEMA.getUsedLines(batch).forEach(k => {
                     const line = batch.lines[k];
                     if (line && line.photos) line.photos.forEach(url => { if (typeof url === 'string' && url.startsWith('http')) allPhotos.push(url); });
-                });
-            } else if (batch.expenses) {
-                batch.expenses.forEach(expense => {
-                    if (expense.photos && expense.photos.length > 0) expense.photos.forEach(photoURL => allPhotos.push(photoURL));
                 });
             }
 
