@@ -2033,6 +2033,18 @@
                 batch.lines = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.emptyLines) ? EXPENSE_BATCH_SCHEMA.emptyLines() : {};
             }
 
+            // Rehydrate from IndexedDB when reopening a draft so photo blobs (and amounts) are restored; Firestore only has URLs after upload
+            if (batch.localId && window.expenseDraftDB) {
+                try {
+                    const draft = await window.expenseDraftDB.getDraft(batch.localId);
+                    if (draft && draft.lines && typeof draft.lines === 'object') {
+                        batch.lines = draft.lines;
+                    }
+                } catch (e) {
+                    console.warn('Failed to rehydrate draft from IndexedDB:', e);
+                }
+            }
+
             currentBatch = batch;
             
             // Update global reference for offline storage
@@ -2233,12 +2245,8 @@
                 }
                 html += '</div></div>';
                 html += '<div class="flex items-center gap-3">';
-                if (canEdit) {
-                    html += '<span class="font-semibold text-green-500">£</span>';
-                    html += '<input type="number" step="0.01" min="0" value="' + (amount || '') + '" placeholder="0.00" class="font-semibold text-green-500 w-20 bg-transparent border-b border-gray-600 focus:border-blue-500 focus:outline-none py-0.5 text-right" data-line-key="' + lineKey + '" onchange="updateLineAmount(\'' + lineKey + '\', this.value)">';
-                } else {
-                    html += '<span class="font-semibold text-green-500">£' + (amount ? parseFloat(amount).toFixed(2) : '0.00') + '</span>';
-                }
+                // Amount is read-only: to change value, delete the line and add expense again
+                html += '<span class="font-semibold text-green-500">£' + (amount ? parseFloat(amount).toFixed(2) : '0.00') + '</span>';
                 if (currentBatch.status === 'returned') {
                     html += '<button type="button" onclick="addNextLinePhoto(\'' + lineKey + '\')" class="text-blue-500 hover:text-blue-400 transition-colors" title="Add Photos"><span class="material-symbols-outlined">add_a_photo</span></button>';
                     html += '<button type="button" onclick="clearLine(\'' + lineKey + '\')" class="text-red-500 hover:text-red-400 transition-colors" title="Clear line"><span class="material-symbols-outlined">delete</span></button>';
@@ -2741,6 +2749,10 @@
             
             // Assign to first empty slot for this category (e.g. train1..train4). If user deletes train1, next Train added goes to train1, not train3.
             if (currentBatch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined') {
+                if (!currentExpense.photos || currentExpense.photos.length === 0) {
+                    notifyWarning('Please add at least one receipt photo.', 'Photo Required');
+                    return;
+                }
                 var catMap = { fuel: 'fuel', charge: 'charge', train: 'train', bus: 'bus', taxi: 'taxi', 'car wash': 'carWash', tolls: 'toll', toll: 'toll', other: 'other' };
                 var norm = (currentExpense.category || '').trim().toLowerCase().replace(/\s+/g, ' ');
                 var prefix = catMap[norm] || catMap[norm.replace(/\s+/g, '')] || 'other';
