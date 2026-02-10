@@ -3,6 +3,14 @@
  * Handles IndexedDB storage and smart photo upload queue
  */
 
+/** Returns true only for non-empty HTTP/HTTPS URLs (avoids storing/displaying placeholders or broken entries). */
+function isValidPhotoURL(url) {
+    return typeof url === 'string' && url.trim().length > 0 && (url.startsWith('http://') || url.startsWith('https://'));
+}
+if (typeof window !== 'undefined') {
+    window.isValidPhotoURL = isValidPhotoURL;
+}
+
 // IndexedDB wrapper for expense drafts
 class ExpenseDraftDB {
     constructor() {
@@ -259,7 +267,7 @@ class ExpenseDraftDB {
         if (batch.expenses) {
             for (let expIndex = 0; expIndex < batch.expenses.length; expIndex++) {
                 const existingPhotos = batch.expenses[expIndex].photos;
-                const existingURLs = Array.isArray(existingPhotos) ? existingPhotos.filter(p => typeof p === 'string') : [];
+                const existingURLs = Array.isArray(existingPhotos) ? existingPhotos.filter(p => typeof p === 'string' && isValidPhotoURL(p)) : [];
                 const rehydratedBlobs = photos[expIndex] || [];
                 // Leakproof: merge existing URLs with rehydrated blobs (do not replace — preserve already-uploaded URLs)
                 batch.expenses[expIndex].photos = [...existingURLs, ...rehydratedBlobs];
@@ -647,9 +655,11 @@ class UploadQueue {
             } else {
                 expenseData.photos.push(downloadURL);
             }
+            // Only persist valid image URLs (no placeholders or empty strings)
+            const validPhotos = expenseData.photos.filter(p => typeof p === 'string' && isValidPhotoURL(p));
 
             await window.updateDoc(expenseDocRef, {
-                photos: expenseData.photos,
+                photos: validPhotos,
                 updatedAt: window.serverTimestamp ? window.serverTimestamp() : new Date()
             });
             console.log('[UploadQueue] Expense photo array updated in Firestore', {expenseDocId: expenseDocRef.id, photoIndex});
@@ -896,6 +906,11 @@ class UploadQueue {
     }
 }
 
+function sanitizeRegForStoragePath(reg) {
+    if (!reg || typeof reg !== 'string') return '';
+    return String(reg).replace(/[/\\]/g, '_').trim() || '';
+}
+
 // NEW: Write-First Expense Upload Queue (replaces old UploadQueue)
 class ExpenseUploadQueue {
     constructor() {
@@ -954,13 +969,14 @@ class ExpenseUploadQueue {
             })
         );
 
+        const storageFolder = sanitizeRegForStoragePath(expenseData.registration) || batchId;
         const photoBlobIds = [];
         const recordsToPut = blobsToStore.filter(Boolean).map(({ blob: blobToStore, i }) => {
             const blobId = `${uploadId}_photo${i}`;
             photoBlobIds.push({
                 blobId,
                 photoIndex: i,
-                filename: `expenses/${batchId}/${expenseData.category}_${timestamp}_${i}.jpg`
+                filename: `expenses/${storageFolder}/${expenseData.category}_${timestamp}_${i}.jpg`
             });
             return { blobId, blob: blobToStore, uploadId, photoIndex: i, timestamp };
         });
