@@ -1735,8 +1735,14 @@
             });
         }
 
-        // Warn user if they try to leave while uploading
+        // Warn user if they try to leave while uploading (only after a user gesture to avoid browser intervention)
+        let userHasInteracted = false;
+        const markUserInteracted = () => { userHasInteracted = true; };
+        document.addEventListener('click', markUserInteracted, { once: true });
+        document.addEventListener('keydown', markUserInteracted, { once: true });
+        document.addEventListener('touchstart', markUserInteracted, { once: true });
         window.addEventListener('beforeunload', (e) => {
+            if (!userHasInteracted) return;
             const banner = document.getElementById('uploadBanner');
             if (banner && !banner.classList.contains('hidden')) {
                 e.preventDefault();
