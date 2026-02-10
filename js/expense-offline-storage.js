@@ -1028,7 +1028,7 @@ class ExpenseUploadQueue {
         );
 
         const storageFolder = lineKey
-            ? batchId
+            ? (sanitizeRegForStoragePath(lineData && lineData.registration) || batchId)
             : (sanitizeRegForStoragePath(expenseData && expenseData.registration) || batchId);
         const photoBlobIds = [];
         const recordsToPut = blobsToStore.filter(Boolean).map(({ blob: blobToStore, i }) => {
