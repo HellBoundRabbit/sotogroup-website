@@ -1819,17 +1819,21 @@
                             const currentData = expenseSnap.data();
                             const isValidPhotoURL = window.isValidPhotoURL || (u => typeof u === 'string' && u.trim().length > 0 && (u.startsWith('http://') || u.startsWith('https://')));
                             const existingPhotos = Array.isArray(currentData.photos) ? currentData.photos.filter(p => typeof p === 'string' && isValidPhotoURL(p)) : [];
-                            
-                            // Merge existing URLs with new uploads (avoid duplicates); only add valid URLs
+                            // Normalize Firebase Storage URL to path (strip token) so same file = same key (retries produce new token)
+                            const storagePathKey = (url) => (url || '').replace(/\&token=[^&]*/i, '').trim();
+                            const hasSameFile = (existingList, url) => existingList.some(ex => storagePathKey(ex) === storagePathKey(url));
+                            // Merge: only add a URL if we don't already have one for the same storage file (stops duplicate URLs from retries)
                             const allPhotoURLs = [...existingPhotos];
                             for (const newURL of downloadURLs) {
-                                if (isValidPhotoURL(newURL) && !allPhotoURLs.includes(newURL)) {
+                                if (isValidPhotoURL(newURL) && !hasSameFile(allPhotoURLs, newURL)) {
                                     allPhotoURLs.push(newURL);
                                 }
                             }
+                            // Final dedupe by storage path (cleans any existing duplicates in doc)
+                            const deduped = (window.dedupePhotoURLsByPath && window.dedupePhotoURLsByPath(allPhotoURLs)) || allPhotoURLs;
                             
                             await window.updateDoc(expenseRef, {
-                                photos: allPhotoURLs,
+                                photos: deduped,
                                 photosUploading: false,
                                 updatedAt: window.serverTimestamp ? window.serverTimestamp() : new Date()
                             });
