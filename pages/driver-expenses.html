@@ -1183,6 +1183,14 @@
             if (!draft.lines || typeof draft.lines !== 'object') {
                 draft.lines = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.emptyLines) ? EXPENSE_BATCH_SCHEMA.emptyLines() : {};
             }
+            // Collect photo blobs per line BEFORE normalizeLines (normalizeLines strips blobs and keeps only URL strings)
+            const photoBlobsByLineKey = {};
+            LINE_KEYS.forEach(k => {
+                const line = draft.lines[k];
+                if (!line || !hasLineContent(line)) return;
+                const blobs = (line.photos || []).filter(p => p instanceof File || p instanceof Blob);
+                if (blobs.length > 0) photoBlobsByLineKey[k] = blobs;
+            });
             draft.lines = normalizeLines(draft.lines);
             if (targetStatus === 'pending' && getUsedLineCount(draft) === 0) {
                 throw new Error('Cannot submit batch with no expenses. Add at least one expense.');
@@ -1223,8 +1231,8 @@
                 const line = draft.lines[k];
                 if (!line) return;
                 const urls = (line.photos || []).filter(p => typeof p === 'string');
-                const blobs = (line.photos || []).filter(p => p instanceof File || p instanceof Blob);
-                linesForFirestore[k] = { amount: typeof line.amount === 'number' ? line.amount : 0, photos: urls, photosUploading: blobs.length > 0 };
+                const hasBlobsPending = !!(photoBlobsByLineKey[k] && photoBlobsByLineKey[k].length > 0);
+                linesForFirestore[k] = { amount: typeof line.amount === 'number' ? line.amount : 0, photos: urls, photosUploading: hasBlobsPending };
             });
             batchData.lines = linesForFirestore;
             if (!batchId) {
@@ -1240,12 +1248,12 @@
             const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
             if (!isLocalhost && window.expenseUploadQueue) {
                 for (const k of LINE_KEYS) {
+                    const photoBlobs = photoBlobsByLineKey[k];
+                    if (!photoBlobs || photoBlobs.length === 0) continue;
                     const line = draft.lines[k];
-                    if (!line || !hasLineContent(line)) continue;
-                    const photoBlobs = (line.photos || []).filter(p => p instanceof File || p instanceof Blob);
-                    if (photoBlobs.length === 0) continue;
+                    const amount = line && typeof line.amount === 'number' ? line.amount : 0;
                     try {
-                        await window.expenseUploadQueue.enqueueExpenseUpload(batchId, k, { amount: line.amount }, photoBlobs);
+                        await window.expenseUploadQueue.enqueueExpenseUpload(batchId, k, { amount }, photoBlobs);
                     } catch (e) {
                         console.error('[syncDraftToFirestore] Failed to enqueue photo upload for line', k, e);
                     }
@@ -1314,8 +1322,10 @@
                 sessionStorage.setItem(processingKey, Date.now().toString());
                 
                 let draft = null;
+                let draftFromIndexedDB = false;
                 try {
                 draft = await window.expenseDraftDB.getDraft(entry.localId);
+                if (draft) draftFromIndexedDB = true;
                 } catch (dbError) {
                 console.warn('Failed to read draft from IndexedDB, falling back to snapshot:', dbError);
                 }
@@ -1347,13 +1357,16 @@
                 draft.notes = draft.notes || snapshot?.notes || '';
                 draft.totalAmount = draft.totalAmount != null ? Number(draft.totalAmount) : (snapshot?.totalAmount != null ? Number(snapshot.totalAmount) : null);
 
-                if (snapshot?.lines && typeof snapshot.lines === 'object') {
+                // Only use snapshot.lines when we have no IndexedDB draft (snapshot has no photo blobs).
+                // When draftFromIndexedDB, draft.lines already has blobs — do NOT overwrite or we lose photos for upload.
+                if (snapshot?.lines && typeof snapshot.lines === 'object' && !draftFromIndexedDB) {
                     draft.lines = snapshot.lines;
                     if (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.normalizeLines) draft.lines = EXPENSE_BATCH_SCHEMA.normalizeLines(draft.lines);
                 }
                 if (!draft.lines || typeof draft.lines !== 'object') {
                     draft.lines = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.emptyLines) ? EXPENSE_BATCH_SCHEMA.emptyLines() : {};
                 }
+                // Do not normalize draft.lines when from IndexedDB — it would strip photo blobs; syncDraftToFirestore handles shape
 
                 if ((!draft.registration || draft.registration.trim() === '') && entry.registration) {
                     draft.registration = entry.registration;
