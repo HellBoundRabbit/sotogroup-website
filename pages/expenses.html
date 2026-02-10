@@ -1223,7 +1223,7 @@
                     returnedAt: window.serverTimestamp(),
                     returnedBy: currentUser.uid,
                     updatedAt: window.serverTimestamp(),
-                    communications: window.arrayUnion({ from: 'office', authorName: officeName, message: reason, createdAt: window.serverTimestamp() })
+                    communications: window.arrayUnion({ from: 'office', authorName: officeName, message: reason, createdAt: Date.now() })
                 });
 
             notifySuccess('Batch returned to the driver.');

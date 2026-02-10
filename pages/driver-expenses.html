@@ -1223,11 +1223,13 @@
                 draft.submittedAt = Date.now();
             }
             // Communications thread: driver first notes (new batch) or appeal message (existing batch)
+            // Use client timestamp: serverTimestamp() is not allowed inside arrayUnion()
             if (targetStatus === 'pending' && (draft.notes || '').trim()) {
+                const commEntry = { from: 'driver', authorName: driverName, message: (draft.notes || '').trim(), createdAt: Date.now() };
                 if (!batchId) {
-                    batchData.communications = [{ from: 'driver', authorName: driverName, message: (draft.notes || '').trim(), createdAt: window.serverTimestamp() }];
+                    batchData.communications = [commEntry];
                 } else {
-                    batchData.communications = window.arrayUnion({ from: 'driver', authorName: driverName, message: (draft.notes || '').trim(), createdAt: window.serverTimestamp() });
+                    batchData.communications = window.arrayUnion(commEntry);
                 }
             }
 
@@ -1256,13 +1258,18 @@
             }
             const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
             if (!isLocalhost && window.expenseUploadQueue) {
+                const reg = (draft.registration || '').trim();
+                const submissionDate = targetStatus === 'pending' ? (() => {
+                    const d = draft.submittedAt ? new Date(typeof draft.submittedAt.toDate === 'function' ? draft.submittedAt.toDate() : draft.submittedAt) : new Date();
+                    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                })() : null;
                 for (const k of LINE_KEYS) {
                     const photoBlobs = photoBlobsByLineKey[k];
                     if (!photoBlobs || photoBlobs.length === 0) continue;
                     const line = draft.lines[k];
                     const amount = line && typeof line.amount === 'number' ? line.amount : 0;
                     try {
-                        await window.expenseUploadQueue.enqueueExpenseUpload(batchId, k, { amount, registration: draft.registration }, photoBlobs);
+                        await window.expenseUploadQueue.enqueueExpenseUpload(batchId, k, { amount, registration: reg, targetStatus, submissionDate }, photoBlobs);
                     } catch (e) {
                         console.error('[syncDraftToFirestore] Failed to enqueue photo upload for line', k, e);
                     }
