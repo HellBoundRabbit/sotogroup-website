@@ -862,7 +862,21 @@
         </div>
     </div>
 
-    <!-- Photo Viewer Modal -->
+    <!-- Thumbnail gallery modal (larger thumbs, click one → fullscreen) -->
+    <div id="linePhotoGalleryModal" class="hidden fixed inset-0 z-[60]" style="background: rgba(0,0,0,0.92);">
+        <div class="w-full h-full flex flex-col">
+            <div class="flex justify-end p-3">
+                <button type="button" onclick="closeLinePhotoGallery()" class="text-white hover:text-gray-300 p-2 rounded-full hover:bg-white hover:bg-opacity-10 transition-colors" aria-label="Close">
+                    <span class="material-symbols-outlined text-3xl">close</span>
+                </button>
+            </div>
+            <div id="linePhotoGalleryThumbs" class="flex-1 overflow-y-auto p-4 flex flex-wrap gap-4 justify-center items-start content-start">
+                <!-- Larger thumbnails; click opens fullscreen viewer -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Photo Viewer Modal (fullscreen) -->
     <div id="photoViewerModal" class="hidden fixed inset-0 bg-black bg-opacity-90 z-50">
         <div class="w-full h-full flex flex-col">
             <!-- Header -->
@@ -2271,6 +2285,29 @@
             renderLines();
             if (window.scheduleAutoSave) window.scheduleAutoSave();
         }
+        function openLinePhotoGallery(lineKey) {
+            var line = currentBatch && currentBatch.lines && currentBatch.lines[lineKey];
+            var photos = line && Array.isArray(line.photos) ? line.photos : [];
+            var filePhotos = photos.filter(function(p) { return p instanceof File || p instanceof Blob; });
+            var fn = window.isValidPhotoURL || (function(u) { return typeof u === 'string' && u.trim().length > 0 && (u.startsWith('http://') || u.startsWith('https://')); });
+            var validURLs = photos.filter(function(p) { return typeof p === 'string' && fn(p); });
+            if (filePhotos.length === 0 && validURLs.length === 0) return;
+            var container = document.getElementById('linePhotoGalleryThumbs');
+            var modal = document.getElementById('linePhotoGalleryModal');
+            if (!container || !modal) return;
+            var urls = filePhotos.length > 0
+                ? filePhotos.map(function(f) { return URL.createObjectURL(f); })
+                : validURLs;
+            container.innerHTML = urls.map(function(src, index) {
+                var safe = (src || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                return '<button type="button" onclick="closeLinePhotoGallery(); viewLinePhotos(\'' + lineKey + '\')" class="w-28 h-28 rounded-lg overflow-hidden border-2 border-gray-600 hover:border-blue-400 flex-shrink-0 hover:opacity-95"><img src="' + safe + '" alt="" class="w-full h-full object-cover"></button>';
+            }).join('');
+            modal.classList.remove('hidden');
+        }
+        function closeLinePhotoGallery() {
+            var modal = document.getElementById('linePhotoGalleryModal');
+            if (modal) modal.classList.add('hidden');
+        }
         function viewLinePhotos(lineKey) {
             var line = currentBatch && currentBatch.lines && currentBatch.lines[lineKey];
             var photos = line && Array.isArray(line.photos) ? line.photos : [];
@@ -2318,15 +2355,27 @@
                     html += '<span class="material-symbols-outlined text-xs">photo_camera</span> Add photos</button>';
                 }
                 html += '</div></div>';
-                html += '<div class="flex items-center justify-center flex-1 min-w-0 gap-2">';
+                html += '<div class="flex items-center justify-center flex-1 min-w-0">';
                 if (photoCount > 0) {
                     var thumbSrcs = getThumbnailSourcesForLine(line);
-                    thumbSrcs.forEach(function(src) {
-                        var safe = (src || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-                        html += '<button type="button" onclick="viewLinePhotos(\'' + lineKey + '\')" class="w-12 h-12 rounded overflow-hidden border border-gray-600 flex-shrink-0 hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-blue-400">';
-                        html += '<img src="' + safe + '" alt="" class="w-full h-full object-cover">';
+                    if (thumbSrcs.length === 1) {
+                        var safe1 = (thumbSrcs[0] || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                        html += '<button type="button" onclick="openLinePhotoGallery(\'' + lineKey + '\')" class="w-12 h-12 rounded overflow-hidden border border-gray-600 flex-shrink-0 hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-blue-400"><img src="' + safe1 + '" alt="" class="w-full h-full object-cover"></button>';
+                    } else {
+                        var stackOffset = 6;
+                        var thumbSize = 48;
+                        var stackW = thumbSize + (thumbSrcs.length - 1) * stackOffset;
+                        var stackH = thumbSize + (thumbSrcs.length - 1) * (stackOffset - 2);
+                        html += '<button type="button" onclick="openLinePhotoGallery(\'' + lineKey + '\')" class="flex-shrink-0 relative rounded overflow-visible focus:outline-none focus:ring-2 focus:ring-blue-400" style="width:' + stackW + 'px;height:' + stackH + 'px;">';
+                        thumbSrcs.forEach(function(src, idx) {
+                            var safe = (src || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                            var left = idx * stackOffset;
+                            var top = idx * (stackOffset - 2);
+                            var z = thumbSrcs.length - idx;
+                            html += '<span class="absolute rounded overflow-hidden border border-gray-600 shadow" style="left:' + left + 'px;top:' + top + 'px;width:' + thumbSize + 'px;height:' + thumbSize + 'px;z-index:' + z + ';"><img src="' + safe + '" alt="" class="w-full h-full object-cover"></span>';
+                        });
                         html += '</button>';
-                    });
+                    }
                 }
                 html += '</div>';
                 html += '<div class="flex items-center gap-3 flex-shrink-0">';
