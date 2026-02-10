@@ -890,6 +890,8 @@
         let currentExpense = { category: null, amount: 0, photos: [] };
         let allBatches = [];
         let submissionQueueRetryTimer = null;
+        /** Batch IDs that stay greyed out until uploads complete (stops flashing during save/submit). */
+        let batchIdsGreyedUntilUploadDone = new Set();
 
         const fallbackDialogs = {
             showAlert({ title, message }) {
@@ -1727,6 +1729,7 @@
                                 if (batchInList && batchInList.lines && batchInList.lines[lineKey]) {
                                     batchInList.lines[lineKey] = { ...batchInList.lines[lineKey], photos: deduped, photosUploading: false };
                                     batchInList.hasPendingUploads = Object.values(batchInList.lines).some(l => l && l.photosUploading === true);
+                                    if (!batchInList.hasPendingUploads) batchIdsGreyedUntilUploadDone.delete(batchId);
                                     if (typeof displayBatches === 'function') displayBatches();
                                 }
                             }
@@ -1808,7 +1811,18 @@
                 return;
                 }
 
+                const previousBatches = allBatches;
                 allBatches = Array.from(batchMap.values());
+                // Keep batches that are still "greyed until done" but missing from fetch (avoids card disappearing/reappearing)
+                if (batchIdsGreyedUntilUploadDone.size > 0 && previousBatches.length > 0) {
+                    const loadedIds = new Set(allBatches.map(b => b.id));
+                    for (const id of batchIdsGreyedUntilUploadDone) {
+                        if (!loadedIds.has(id)) {
+                            const kept = previousBatches.find(b => b.id === id);
+                            if (kept) { allBatches.push(kept); loadedIds.add(id); }
+                        }
+                    }
+                }
 
                 // Sort by updatedAt descending (client-side)
                 allBatches.sort((a, b) => {
@@ -1935,7 +1949,8 @@
                     borderClass = 'animated-border-panel animated-border-returned';
                 }
                 
-                const hasPendingUploads = batch.hasPendingUploads || (batch.lines && typeof batch.lines === 'object' && Object.values(batch.lines).some(line => line && line.photosUploading === true));
+                const forceGreyed = batch.id && batchIdsGreyedUntilUploadDone.has(batch.id);
+                const hasPendingUploads = forceGreyed || batch.hasPendingUploads || (batch.lines && typeof batch.lines === 'object' && Object.values(batch.lines).some(line => line && line.photosUploading === true));
                 // Also check if batch is in submission queue (offline or processing)
                 let isInQueue = false;
                 if (batch.localId && typeof loadSubmissionQueue === 'function') {
@@ -2293,28 +2308,28 @@
                 var prefix = getCategoryGroup(lineKey) || 'other';
                 var emoji = categoryEmojisLines[prefix] || '📝';
                 var label = getCategoryLabel(lineKey);
-                html += '<div class="bg-[#283039] rounded-lg p-3 flex items-center justify-between" data-line-key="' + lineKey + '">';
-                html += '<div class="flex items-center gap-3 min-w-0 flex-1">';
+                html += '<div class="bg-[#283039] rounded-lg p-3 flex items-center justify-between gap-2" data-line-key="' + lineKey + '">';
+                html += '<div class="flex items-center gap-3 min-w-0 flex-shrink-0">';
                 html += '<span class="text-2xl flex-shrink-0">' + emoji + '</span>';
-                html += '<div class="flex items-center gap-2 min-w-0 flex-1">';
-                html += '<div class="font-medium capitalize flex-shrink-0">' + label + '</div>';
-                if (photoCount > 0) {
-                    var thumbSrcs = getThumbnailSourcesForLine(line);
-                    html += '<div class="flex items-center gap-1 flex-shrink-0">';
-                    thumbSrcs.forEach(function(src) {
-                        var safe = (src || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-                        html += '<button type="button" onclick="viewLinePhotos(\'' + lineKey + '\')" class="w-9 h-9 rounded overflow-hidden border border-gray-600 flex-shrink-0 hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-blue-400">';
-                        html += '<img src="' + safe + '" alt="" class="w-full h-full object-cover">';
-                        html += '</button>';
-                    });
-                    html += '</div>';
-                } else if (canEdit && currentBatch.status === 'draft') {
-                    // Only show "Add photos" under label for draft; returned batches use the blue camera button on the right
+                html += '<div class="min-w-0">';
+                html += '<div class="font-medium capitalize">' + label + '</div>';
+                if (photoCount === 0 && canEdit && currentBatch.status === 'draft') {
                     html += '<button type="button" onclick="addNextLinePhoto(\'' + lineKey + '\')" class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1">';
                     html += '<span class="material-symbols-outlined text-xs">photo_camera</span> Add photos</button>';
                 }
                 html += '</div></div>';
-                html += '<div class="flex items-center gap-3">';
+                html += '<div class="flex items-center justify-center flex-1 min-w-0 gap-2">';
+                if (photoCount > 0) {
+                    var thumbSrcs = getThumbnailSourcesForLine(line);
+                    thumbSrcs.forEach(function(src) {
+                        var safe = (src || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                        html += '<button type="button" onclick="viewLinePhotos(\'' + lineKey + '\')" class="w-12 h-12 rounded overflow-hidden border border-gray-600 flex-shrink-0 hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-blue-400">';
+                        html += '<img src="' + safe + '" alt="" class="w-full h-full object-cover">';
+                        html += '</button>';
+                    });
+                }
+                html += '</div>';
+                html += '<div class="flex items-center gap-3 flex-shrink-0">';
                 // Amount is read-only: to change value, delete the line and add expense again
                 html += '<span class="font-semibold text-green-500">£' + (amount ? parseFloat(amount).toFixed(2) : '0.00') + '</span>';
                 if (currentBatch.status === 'returned') {
@@ -3048,8 +3063,8 @@
                 } else {
                     allBatches.unshift(localBatch); // Add to beginning
                 }
-                
-                // Refresh display immediately
+                batchIdsGreyedUntilUploadDone.add(localBatch.id);
+                // Refresh display immediately (stays greyed)
                 displayBatches();
             }
 
@@ -3064,7 +3079,8 @@
                 if (savedBatch && savedBatch.id) {
                     currentBatch.id = savedBatch.id;
                     window.currentBatch = currentBatch;
-                    
+                    batchIdsGreyedUntilUploadDone.delete(`temp_${currentBatch.localId}`);
+                    batchIdsGreyedUntilUploadDone.add(savedBatch.id);
                     // Update local batch with real ID
                     const localIndex = allBatches.findIndex(b => b.localId === currentBatch.localId);
                     if (localIndex >= 0) {
@@ -3080,18 +3096,10 @@
                 }
                 }
 
-                // Refresh batches list immediately to show draft expense (greyed out if uploading)
-                if (typeof window.loadExpenseBatches === 'function') {
-                    await window.loadExpenseBatches();
-                }
-                
-                // If batch still doesn't show up, try one more time after a longer delay
-                // This handles Firestore eventual consistency edge cases
+                // Don't refetch immediately - keeps card solid greyed until upload-complete un-greys it
                 setTimeout(async () => {
-                    if (typeof window.loadExpenseBatches === 'function') {
-                        await window.loadExpenseBatches();
-                    }
-                }, 2000);
+                    if (typeof window.loadExpenseBatches === 'function') await window.loadExpenseBatches().catch(() => {});
+                }, 3000);
 
                 // No success message - banner is enough
                 currentBatch = null;
@@ -3233,8 +3241,8 @@
                     // Add new batch
                     allBatches.unshift(localBatch);
                 }
-                
-                // Refresh display immediately
+                if (localBatch.id) batchIdsGreyedUntilUploadDone.add(localBatch.id);
+                // Refresh display immediately (stays greyed via batchIdsGreyedUntilUploadDone)
                 displayBatches();
             }
 
@@ -3304,23 +3312,18 @@
                 if (localIndex >= 0) {
                     allBatches[localIndex].id = batchId;
                     allBatches[localIndex].status = 'pending';
+                    batchIdsGreyedUntilUploadDone.add(batchId);
                 }
-                
-                // Refresh display immediately (already showing, but update with real data)
+                // Refresh display once (stays greyed until upload-complete removes from set)
                 displayBatches();
 
-                // Small delay to ensure photos are queued in IndexedDB before refreshing from Firestore
-                await new Promise(resolve => setTimeout(resolve, 100));
-
-                // Refresh batches list from Firestore to get latest data (greyed out if uploading)
-                if (typeof window.loadExpenseBatches === 'function') {
-                    await window.loadExpenseBatches();
-                }
-                
-                // Update upload status again after refresh
-                if (window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
-                    await window.expenseUploadQueue.updateGlobalUploadStatus();
-                }
+                // Defer refetch so card stays solid greyed until uploads finish
+                setTimeout(async () => {
+                    if (typeof window.loadExpenseBatches === 'function') await window.loadExpenseBatches().catch(() => {});
+                    if (window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
+                        await window.expenseUploadQueue.updateGlobalUploadStatus();
+                    }
+                }, 2500);
 
                 // No success message - banner is enough
                 // Note: isUploadingExpense will be set to false after all uploads complete
