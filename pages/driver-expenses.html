@@ -89,6 +89,18 @@
         console.log('Firebase initialized successfully!');
     </script>
     <script>
+        // Helpers for photo display: only count/show valid image URLs (avoids wrong counts and black images)
+        function getValidPhotoCount(exp) {
+            if (!exp || !exp.photos || !Array.isArray(exp.photos)) return 0;
+            const fn = window.isValidPhotoURL || (u => typeof u === 'string' && u.trim().length > 0 && (u.startsWith('http://') || u.startsWith('https://')));
+            return exp.photos.filter(p => typeof p === 'string' && fn(p)).length;
+        }
+        function getValidPhotoURLs(exp) {
+            if (!exp || !exp.photos || !Array.isArray(exp.photos)) return [];
+            const fn = window.isValidPhotoURL || (u => typeof u === 'string' && u.trim().length > 0 && (u.startsWith('http://') || u.startsWith('https://')));
+            return exp.photos.filter(p => typeof p === 'string' && fn(p));
+        }
+
         // Register Service Worker for background uploads
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
@@ -974,11 +986,12 @@
                     notes: batch.notes || '',
                     totalAmount: batch.totalAmount || 0,
                     expenses: (batch.expenses || []).map(exp => {
-                        // Sanitize expense - remove File/Blob objects, keep only URLs
+                        // Sanitize expense - remove File/Blob, keep only valid image URLs
+                        const validURLs = getValidPhotoURLs(exp);
                         const sanitized = {
                             category: exp.category || null,
                             amount: exp.amount || 0,
-                            photos: (exp.photos || []).filter(p => typeof p === 'string'), // Only keep URLs, not File objects
+                            photos: validURLs,
                             id: exp.id || null,
                             serverId: exp.serverId || null
                         };
@@ -2386,10 +2399,10 @@
                 <span class="text-2xl">${categoryEmojis[exp.category] || '📝'}</span>
                 <div>
                 <div class="font-medium capitalize">${exp.category || 'Other'}</div>
-                ${exp.photos && exp.photos.length > 0 ? `
+                ${getValidPhotoCount(exp) > 0 ? `
                 <button onclick="viewExpensePhotos(${index})" class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1">
                 <span class="material-symbols-outlined text-xs">photo_camera</span>
-                ${exp.photos.length} photo${exp.photos.length !== 1 ? 's' : ''}
+                ${getValidPhotoCount(exp)} photo${getValidPhotoCount(exp) !== 1 ? 's' : ''}
                 </button>
                 ` : ''}
                 </div>
@@ -3849,22 +3862,23 @@
         // View photos for an expense
         async function viewExpensePhotos(expenseIndex) {
             const expense = currentBatch.expenses[expenseIndex];
-            if (!expense || !expense.photos || expense.photos.length === 0) {
+            const filePhotos = (expense && expense.photos) ? expense.photos.filter(p => p instanceof File || p instanceof Blob) : [];
+            const validURLs = getValidPhotoURLs(expense);
+            if (filePhotos.length === 0 && validURLs.length === 0) {
                 return;
             }
 
             const grid = document.getElementById('photoViewerGrid');
             
-            // If photos are File objects (from new uploads)
-            if (expense.photos[0] instanceof File) {
-                grid.innerHTML = expense.photos.map((file, index) => `
+            if (filePhotos.length > 0) {
+                grid.innerHTML = filePhotos.map((file) => `
                 <div class="mb-4">
                 <img src="${URL.createObjectURL(file)}" class="w-full rounded-lg">
                 </div>
                 `).join('');
             } else {
-                // Photos are URLs (from Firebase Storage)
-                grid.innerHTML = expense.photos.map((url, index) => `
+                // Only show valid image URLs (avoids black/broken images)
+                grid.innerHTML = validURLs.map((url, index) => `
                 <div class="mb-4">
                 <img src="${url}" class="w-full rounded-lg" alt="Expense photo ${index + 1}">
                 </div>
@@ -3876,22 +3890,22 @@
 
         // View photos from current expense being edited
         function viewCurrentExpensePhotos(startIndex = 0) {
-            if (!currentExpense || !currentExpense.photos || currentExpense.photos.length === 0) {
+            const filePhotos = (currentExpense && currentExpense.photos) ? currentExpense.photos.filter(p => p instanceof File || p instanceof Blob) : [];
+            const validURLs = getValidPhotoURLs(currentExpense);
+            if (filePhotos.length === 0 && validURLs.length === 0) {
                 return;
             }
 
             const grid = document.getElementById('photoViewerGrid');
             
-            // If photos are File objects (from new uploads)
-            if (currentExpense.photos[0] instanceof File) {
-                grid.innerHTML = currentExpense.photos.map((file, index) => `
+            if (filePhotos.length > 0) {
+                grid.innerHTML = filePhotos.map((file, index) => `
                 <div class="mb-4">
                 <img src="${URL.createObjectURL(file)}" class="w-full rounded-lg" alt="Receipt photo ${index + 1}">
                 </div>
                 `).join('');
             } else {
-                // Photos are URLs (from Firebase Storage)
-                grid.innerHTML = currentExpense.photos.map((url, index) => `
+                grid.innerHTML = validURLs.map((url, index) => `
                 <div class="mb-4">
                 <img src="${url}" class="w-full rounded-lg" alt="Receipt photo ${index + 1}">
                 </div>
@@ -4022,8 +4036,8 @@
         function renderPaidBatchList(batches, containerId) {
             const container = document.getElementById(containerId);
             container.innerHTML = batches.map(batch => {
-                // Count total photos
-                const totalPhotos = batch.expenses?.reduce((sum, exp) => sum + (exp.photos?.length || 0), 0) || 0;
+                // Count total photos (valid URLs only)
+                const totalPhotos = batch.expenses?.reduce((sum, exp) => sum + getValidPhotoCount(exp), 0) || 0;
                 
                 return `
                 <div class="animated-border-panel animated-border-paid fade-in">
@@ -4316,11 +4330,12 @@
                 const pdfFileName = `${cleanedReg}_${driverNameForFile}.pdf`;
                 zip.file(folderPath + pdfFileName, pdfBlob);
                 
-                // Download and add photos
+                // Download and add photos (valid URLs only)
                 let photoIndex = 1;
                 for (const expense of batch.expenses || []) {
-                    if (expense.photos && expense.photos.length > 0) {
-                        for (const photoURL of expense.photos) {
+                    const urls = getValidPhotoURLs(expense);
+                    if (urls.length > 0) {
+                        for (const photoURL of urls) {
                             try {
                                 const response = await fetch(photoURL);
                                 const photoBlob = await response.blob();
@@ -4359,14 +4374,10 @@
                 return;
             }
 
-            // Collect all photos from all expenses
+            // Collect all photos from all expenses (valid URLs only)
             const allPhotos = [];
             batch.expenses.forEach(expense => {
-                if (expense.photos && expense.photos.length > 0) {
-                    expense.photos.forEach(photoURL => {
-                        allPhotos.push(photoURL);
-                    });
-                }
+                getValidPhotoURLs(expense).forEach(photoURL => allPhotos.push(photoURL));
             });
 
             if (allPhotos.length === 0) {
