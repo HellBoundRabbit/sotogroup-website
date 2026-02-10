@@ -23,6 +23,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <!-- ZIP Creation Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="/js/expense-batch-schema.js"></script>
     <script src="../js/ui-dialogs.js"></script>
     <script>
         // CACHE BUSTER - Force fresh load
@@ -513,6 +514,10 @@
             return typeof url === 'string' && url.trim().length > 0 && (url.startsWith('http://') || url.startsWith('https://'));
         }
         let allBatches = [];
+        function getBatchItemCount(batch) {
+            if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLineCount) return EXPENSE_BATCH_SCHEMA.getUsedLineCount(batch);
+            return batch.expenses?.length || 0;
+        }
         let currentBatch = null;
         let activeTab = 'pending';
         let groupByDriver = false; // Toggle for grouping validated expenses by driver
@@ -901,7 +906,7 @@
                                         </div>
                                         <span class="text-green-400 font-semibold">£${batch.totalAmount?.toFixed(2) || '0.00'}</span>
                                     </div>
-                                    <div class="text-xs text-gray-500 ml-4">${batch.expenses?.length || 0} expense${batch.expenses?.length !== 1 ? 's' : ''}</div>
+                                    <div class="text-xs text-gray-500 ml-4">${getBatchItemCount(batch)} item${getBatchItemCount(batch) !== 1 ? 's' : ''}</div>
                                 </div>
                             `;
                         }).join('');
@@ -990,7 +995,7 @@
                                         </div>
                                         <span class="text-green-400 font-semibold">£${batch.totalAmount?.toFixed(2) || '0.00'}</span>
                                     </div>
-                                    <div class="text-xs text-gray-500 ml-4">${batch.expenses?.length || 0} expense${batch.expenses?.length !== 1 ? 's' : ''}</div>
+                                    <div class="text-xs text-gray-500 ml-4">${getBatchItemCount(batch)} item${getBatchItemCount(batch) !== 1 ? 's' : ''}</div>
                                 </div>
                             `;
                         }).join('');
@@ -1073,7 +1078,7 @@
                                 <div class="license-plate">${batch.registration}</div>
                             </div>
                             <div class="flex items-center justify-between">
-                                <span class="text-gray-400 text-sm">${batch.expenses?.length || 0} expense${batch.expenses?.length !== 1 ? 's' : ''} • ${date.toLocaleDateString()}</span>
+                                <span class="text-gray-400 text-sm">${getBatchItemCount(batch)} item${getBatchItemCount(batch) !== 1 ? 's' : ''} • ${date.toLocaleDateString()}</span>
                                 <span class="text-green-500 font-semibold text-xl">£${batch.totalAmount?.toFixed(2) || '0.00'}</span>
                             </div>
                         </div>
@@ -1792,9 +1797,12 @@ ${(function() { const validPhotos = (exp.photos || []).filter(isValidPhotoURL); 
             await pdfWritable.write(pdfBlob);
             await pdfWritable.close();
             
-            // Download and save photos (only valid image URLs)
+            let expensesForPhotos = batch.expenses || [];
+            if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) {
+                expensesForPhotos = EXPENSE_BATCH_SCHEMA.getUsedLines(batch).map(k => batch.lines[k]).filter(Boolean);
+            }
             let photoIndex = 1;
-            for (const expense of batch.expenses || []) {
+            for (const expense of expensesForPhotos) {
                 const urls = (expense.photos || []).filter(isValidPhotoURL);
                 if (urls.length > 0) {
                     for (const photoURL of urls) {
@@ -1867,9 +1875,12 @@ ${(function() { const validPhotos = (exp.photos || []).filter(isValidPhotoURL); 
                     const pdfFileName = `${cleanedReg}_${driverNameForFile}.pdf`;
                     zip.file(folderPath + pdfFileName, pdfBlob);
                     
-                    // Download and add photos (only valid image URLs)
+                    let expensesForPhotos = batch.expenses || [];
+                    if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) {
+                        expensesForPhotos = EXPENSE_BATCH_SCHEMA.getUsedLines(batch).map(k => batch.lines[k]).filter(Boolean);
+                    }
                     let photoIndex = 1;
-                    for (const expense of batch.expenses || []) {
+                    for (const expense of expensesForPhotos) {
                         const urls = (expense.photos || []).filter(isValidPhotoURL);
                         if (urls.length > 0) {
                             for (const photoURL of urls) {
@@ -2037,17 +2048,25 @@ ${(function() { const validPhotos = (exp.photos || []).filter(isValidPhotoURL); 
             };
             
             const categories = ['Fuel', 'Charge', 'Train', 'Bus', 'Taxi', 'Car Wash', 'Tolls', 'Other'];
-            
-            // Group expenses by normalized category
             const expensesByCategory = {};
-            batch.expenses?.forEach(exp => {
-                const rawCat = (exp.category || 'other').trim().toLowerCase();
-                const normalizedCat = categoryMap[rawCat] || 'Other';
-                if (!expensesByCategory[normalizedCat]) {
-                    expensesByCategory[normalizedCat] = [];
-                }
-                expensesByCategory[normalizedCat].push(exp);
-            });
+            if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) {
+                const prefixToCat = { train: 'Train', taxi: 'Taxi', fuel: 'Fuel', charge: 'Charge', bus: 'Bus', carWash: 'Car Wash', toll: 'Tolls', other: 'Other' };
+                EXPENSE_BATCH_SCHEMA.getUsedLines(batch).forEach(lineKey => {
+                    const line = batch.lines[lineKey];
+                    if (!line || !EXPENSE_BATCH_SCHEMA.hasLineContent(line)) return;
+                    const prefix = (EXPENSE_BATCH_SCHEMA.getCategoryGroup && EXPENSE_BATCH_SCHEMA.getCategoryGroup(lineKey)) || 'other';
+                    const cat = prefixToCat[prefix] || 'Other';
+                    if (!expensesByCategory[cat]) expensesByCategory[cat] = [];
+                    expensesByCategory[cat].push({ amount: line.amount || 0, photos: line.photos || [] });
+                });
+            } else {
+                batch.expenses?.forEach(exp => {
+                    const rawCat = (exp.category || 'other').trim().toLowerCase();
+                    const normalizedCat = categoryMap[rawCat] || 'Other';
+                    if (!expensesByCategory[normalizedCat]) expensesByCategory[normalizedCat] = [];
+                    expensesByCategory[normalizedCat].push(exp);
+                });
+            }
             
             // Create table data matching app format
             const tableData = [];
@@ -2625,7 +2644,7 @@ ${(function() { const validPhotos = (exp.photos || []).filter(isValidPhotoURL); 
                                 </div>
                                 <div class="text-right ml-4">
                                     <div class="text-green-400 font-semibold">£${batch.totalAmount?.toFixed(2) || '0.00'}</div>
-                                    <div class="text-xs text-gray-500">${batch.expenses?.length || 0} expense${batch.expenses?.length !== 1 ? 's' : ''}</div>
+                                    <div class="text-xs text-gray-500">${getBatchItemCount(batch)} item${getBatchItemCount(batch) !== 1 ? 's' : ''}</div>
                                 </div>
                             </div>
                         </div>

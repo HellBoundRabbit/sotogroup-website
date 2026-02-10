@@ -11,6 +11,7 @@
     <link rel="manifest" href="/manifest.json">
     <title>Paid Expenses - SOTO Routes</title>
     <script src="/assets/js/tailwind-runtime.js"></script>
+    <script src="/js/expense-batch-schema.js"></script>
     <script src="/js/session-manager.js"></script>
     <script src="../js/ui-dialogs.js"></script>
     <!-- PDF Generation Library -->
@@ -390,25 +391,15 @@
                             console.warn(`Failed to backfill officeId for batch ${doc.id}:`, error);
                         }
                     }
-                    
-                    const expensesQuery = window.query(
-                        window.collection(window.db, 'expenses'),
-                        window.where('batchId', '==', doc.id),
-                        window.where('officeId', '==', officeId)
-                    );
-                    const expensesSnapshot = await window.getDocs(expensesQuery);
-                    batchData.expenses = expensesSnapshot.docs.map(expDoc => {
-                        const expenseData = expDoc.data();
-                        if (!expenseData.officeId) {
-                            try {
-                                window.updateDoc(window.doc(window.db, 'expenses', expDoc.id), { officeId });
-                            } catch (error) {
-                                console.warn(`Failed to backfill officeId for expense ${expDoc.id}:`, error);
-                            }
-                        }
-                        return expenseData;
-                    });
-                    
+                    if (!batchData.lines || typeof batchData.lines !== 'object') {
+                        const expensesQuery = window.query(
+                            window.collection(window.db, 'expenses'),
+                            window.where('batchId', '==', doc.id),
+                            window.where('officeId', '==', officeId)
+                        );
+                        const expensesSnapshot = await window.getDocs(expensesQuery);
+                        batchData.expenses = expensesSnapshot.docs.map(expDoc => ({ ...expDoc.data() }));
+                    }
                     batches.push(batchData);
                 }
 
@@ -599,8 +590,14 @@
                 const dateStr = paidDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
                 const timeStr = paidDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
                 
-                // Count total photos
-                const totalPhotos = batch.expenses?.reduce((sum, exp) => sum + (exp.photos?.length || 0), 0) || 0;
+                let totalPhotos = 0;
+                if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined') {
+                    const used = EXPENSE_BATCH_SCHEMA.getUsedLines ? EXPENSE_BATCH_SCHEMA.getUsedLines(batch) : [];
+                    totalPhotos = used.reduce((sum, k) => sum + ((batch.lines[k] && batch.lines[k].photos && batch.lines[k].photos.length) || 0), 0);
+                } else {
+                    totalPhotos = batch.expenses?.reduce((sum, exp) => sum + (exp.photos?.length || 0), 0) || 0;
+                }
+                const itemCount = (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLineCount ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(batch) : batch.expenses?.length) || 0;
                 
                 const transferredDate = batch.transferredAt?.toDate ? batch.transferredAt.toDate() : 
                                        (batch.paidAt?.toDate ? batch.paidAt.toDate() : new Date());
@@ -624,7 +621,7 @@
                             <span class="bg-green-500 px-3 py-1 rounded-full text-xs font-semibold uppercase">PDF READY</span>
                         </div>
                         <div class="flex items-center justify-between mt-3 mb-2">
-                            <span class="text-gray-400 text-sm">${batch.expenses?.length || 0} expense${batch.expenses?.length !== 1 ? 's' : ''}</span>
+                            <span class="text-gray-400 text-sm">${itemCount} item${itemCount !== 1 ? 's' : ''}</span>
                             <span class="text-green-500 font-semibold text-lg">£${batch.totalAmount?.toFixed(2) || '0.00'}</span>
                         </div>
                         <div class="text-gray-500 text-xs mb-3">
@@ -754,16 +751,25 @@
             
             const categories = ['Fuel', 'Charge', 'Train', 'Bus', 'Taxi', 'Car Wash', 'Tolls', 'Other'];
             
-            // Group expenses by normalized category
             const expensesByCategory = {};
-            batch.expenses?.forEach(exp => {
-                const rawCat = (exp.category || 'other').trim().toLowerCase();
-                const normalizedCat = categoryMap[rawCat] || 'Other';
-                if (!expensesByCategory[normalizedCat]) {
-                    expensesByCategory[normalizedCat] = [];
-                }
-                expensesByCategory[normalizedCat].push(exp);
-            });
+            if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) {
+                const prefixToCat = { train: 'Train', taxi: 'Taxi', fuel: 'Fuel', charge: 'Charge', bus: 'Bus', carWash: 'Car Wash', toll: 'Tolls', other: 'Other' };
+                (EXPENSE_BATCH_SCHEMA.getUsedLines(batch) || []).forEach(lineKey => {
+                    const line = batch.lines[lineKey];
+                    if (!line || !EXPENSE_BATCH_SCHEMA.hasLineContent(line)) return;
+                    const prefix = (EXPENSE_BATCH_SCHEMA.getCategoryGroup && EXPENSE_BATCH_SCHEMA.getCategoryGroup(lineKey)) || 'other';
+                    const cat = prefixToCat[prefix] || 'Other';
+                    if (!expensesByCategory[cat]) expensesByCategory[cat] = [];
+                    expensesByCategory[cat].push({ amount: line.amount || 0, photos: line.photos || [] });
+                });
+            } else {
+                batch.expenses?.forEach(exp => {
+                    const rawCat = (exp.category || 'other').trim().toLowerCase();
+                    const normalizedCat = categoryMap[rawCat] || 'Other';
+                    if (!expensesByCategory[normalizedCat]) expensesByCategory[normalizedCat] = [];
+                    expensesByCategory[normalizedCat].push(exp);
+                });
+            }
             
             // Create table data matching app format
             const tableData = [];
@@ -969,11 +975,15 @@
                 await pdfWritable.write(pdfBlob);
                 await pdfWritable.close();
                 
-                // Download and save photos
+                let expensesForPhotos = batch.expenses || [];
+                if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) {
+                    expensesForPhotos = EXPENSE_BATCH_SCHEMA.getUsedLines(batch).map(k => batch.lines[k]).filter(Boolean);
+                }
                 let photoIndex = 1;
-                for (const expense of batch.expenses || []) {
+                for (const expense of expensesForPhotos) {
                     if (expense.photos && expense.photos.length > 0) {
                         for (const photoURL of expense.photos) {
+                            if (typeof photoURL !== 'string') continue;
                             try {
                                 const response = await fetch(photoURL);
                                 const photoBlob = await response.blob();
@@ -1036,11 +1046,15 @@
                 const pdfFileName = `${cleanedReg}_${driverNameForFile}.pdf`;
                 zip.file(folderPath + pdfFileName, pdfBlob);
                 
-                // Download and add photos
+                let expensesForPhotos = batch.expenses || [];
+                if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) {
+                    expensesForPhotos = EXPENSE_BATCH_SCHEMA.getUsedLines(batch).map(k => batch.lines[k]).filter(Boolean);
+                }
                 let photoIndex = 1;
-                for (const expense of batch.expenses || []) {
+                for (const expense of expensesForPhotos) {
                     if (expense.photos && expense.photos.length > 0) {
                         for (const photoURL of expense.photos) {
+                            if (typeof photoURL !== 'string') continue;
                             try {
                                 const response = await fetch(photoURL);
                                 const photoBlob = await response.blob();
@@ -1081,22 +1095,20 @@
             }
         }
 
-        // View all photos for an expense batch
         function viewExpensePhotos(batchId) {
             const batch = allPaidBatches.find(b => b.id === batchId);
-            if (!batch || !batch.expenses) {
-                return;
-            }
-
-            // Collect all photos from all expenses
+            if (!batch) return;
             const allPhotos = [];
-            batch.expenses.forEach(expense => {
-                if (expense.photos && expense.photos.length > 0) {
-                    expense.photos.forEach(photoURL => {
-                        allPhotos.push(photoURL);
-                    });
-                }
-            });
+            if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) {
+                EXPENSE_BATCH_SCHEMA.getUsedLines(batch).forEach(k => {
+                    const line = batch.lines[k];
+                    if (line && line.photos) line.photos.forEach(url => { if (typeof url === 'string' && url.startsWith('http')) allPhotos.push(url); });
+                });
+            } else if (batch.expenses) {
+                batch.expenses.forEach(expense => {
+                    if (expense.photos && expense.photos.length > 0) expense.photos.forEach(photoURL => allPhotos.push(photoURL));
+                });
+            }
 
             if (allPhotos.length === 0) {
         notifyInfo('No photos available for this expense batch.', 'No Photos');
