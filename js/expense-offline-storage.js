@@ -1,6 +1,7 @@
 /**
  * Offline Storage & Upload Queue System for Expenses
- * Handles IndexedDB storage and smart photo upload queue
+ * Handles IndexedDB storage and smart photo upload queue.
+ * Supports both: (1) merged batch.lines (lineKey-based) and (2) legacy batch.expenses (expenseIndex-based).
  */
 
 /** Returns true only for non-empty HTTP/HTTPS URLs (avoids storing/displaying placeholders or broken entries). */
@@ -32,7 +33,7 @@ if (typeof window !== 'undefined') {
 class ExpenseDraftDB {
     constructor() {
         this.dbName = 'ExpenseDraftsDB';
-        this.version = 3; // Updated to support waitTimeUploadQueue store
+        this.version = 4; // v4: batch.lines support + expenseUploadQueue lineKey index
         this.db = null;
     }
 
@@ -109,6 +110,12 @@ class ExpenseDraftDB {
                     expenseUploadStore.createIndex('batchId', 'batchId', { unique: false });
                     expenseUploadStore.createIndex('status', 'status', { unique: false });
                     expenseUploadStore.createIndex('expenseDocId', 'expenseDocId', { unique: false });
+                    expenseUploadStore.createIndex('lineKey', 'lineKey', { unique: false });
+                } else if (event.oldVersion < 4) {
+                    const expenseUploadStore = event.target.transaction.objectStore('expenseUploadQueue');
+                    if (!expenseUploadStore.indexNames.contains('lineKey')) {
+                        expenseUploadStore.createIndex('lineKey', 'lineKey', { unique: false });
+                    }
                 }
                 // Wait time upload queue store
                 if (!db.objectStoreNames.contains('waitTimeUploadQueue')) {
@@ -147,9 +154,11 @@ class ExpenseDraftDB {
 
     async saveDraft(batch, photos) {
         if (!this.db) await this.init();
-        if (!batch.expenses) {
-             return batch.localId;
-         }
+        const hasLines = batch.lines && typeof batch.lines === 'object';
+        const hasExpenses = batch.expenses && Array.isArray(batch.expenses);
+        if (!hasLines && !hasExpenses) {
+            return batch.localId || null;
+        }
         const transaction = this.db.transaction(['batches', 'photos'], 'readwrite');
         if (!batch.localId) {
             batch.localId = `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -157,7 +166,26 @@ class ExpenseDraftDB {
         batch.lastSaved = Date.now();
         const sanitizedBatch = this.sanitizeForStorage(batch);
         await transaction.objectStore('batches').put(sanitizedBatch);
-        if (photos && batch.expenses) {
+        const photoStore = transaction.objectStore('photos');
+        if (hasLines && batch.lines) {
+            const lineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.LINE_KEYS) || [];
+            for (const lineKey of lineKeys) {
+                const line = batch.lines[lineKey];
+                if (!line || !Array.isArray(line.photos)) continue;
+                for (let photoIndex = 0; photoIndex < line.photos.length; photoIndex++) {
+                    const photo = line.photos[photoIndex];
+                    if (photo instanceof File || photo instanceof Blob) {
+                        const photoId = `${batch.localId}_${lineKey}_photo${photoIndex}`;
+                        const expenseKey = `${batch.localId}_${lineKey}`;
+                        photoStore.put({
+                            photoId, expenseKey, batchLocalId: batch.localId,
+                            blob: photo, timestamp: Date.now()
+                        });
+                    }
+                }
+            }
+        }
+        if (hasExpenses && photos !== false) {
             for (let expIndex = 0; expIndex < batch.expenses.length; expIndex++) {
                 const expense = batch.expenses[expIndex];
                 if (expense.photos && Array.isArray(expense.photos)) {
@@ -166,7 +194,7 @@ class ExpenseDraftDB {
                         if (photo instanceof File || photo instanceof Blob) {
                             const photoId = `${batch.localId}_exp${expIndex}_photo${photoIndex}`;
                             const expenseKey = `${batch.localId}_exp${expIndex}`;
-                            await transaction.objectStore('photos').put({
+                            photoStore.put({
                                 photoId, expenseKey, batchLocalId: batch.localId,
                                 blob: photo, timestamp: Date.now()
                             });
@@ -235,10 +263,35 @@ class ExpenseDraftDB {
         });
     }
 
+    /** Get photo blob by line key (merged batch.lines model). */
+    async getPhotoBlobByLineKey(localId, lineKey, photoIndex) {
+        if (!this.db) await this.init();
+        const transaction = this.db.transaction(['photos'], 'readonly');
+        return new Promise((resolve, reject) => {
+            const request = transaction.objectStore('photos').get(`${localId}_${lineKey}_photo${photoIndex}`);
+            request.onsuccess = () => resolve(request.result ? request.result.blob : null);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    /** Get blob for upload task: supports both expenseIndex (legacy) and lineKey (merged) task shape. */
+    async getPhotoBlobForTask(task) {
+        if (task.lineKey != null) {
+            return this.getPhotoBlobByLineKey(task.batchLocalId || task.batchId, task.lineKey, task.photoIndex);
+        }
+        return this.getPhotoBlob(task.batchLocalId || task.batchId, task.expenseIndex, task.photoIndex);
+    }
+
     async deletePhotoBlob(localId, expenseIndex, photoIndex) {
         if (!this.db) await this.init();
         const transaction = this.db.transaction(['photos'], 'readwrite');
         await transaction.objectStore('photos').delete(`${localId}_exp${expenseIndex}_photo${photoIndex}`);
+    }
+
+    async deletePhotoBlobByLineKey(localId, lineKey, photoIndex) {
+        if (!this.db) await this.init();
+        const transaction = this.db.transaction(['photos'], 'readwrite');
+        await transaction.objectStore('photos').delete(`${localId}_${lineKey}_photo${photoIndex}`);
     }
 
     async getDraft(localIdOrBatchId) {
@@ -258,7 +311,31 @@ class ExpenseDraftDB {
         if (!batch) return null;
         const photoStore = transaction.objectStore('photos');
         const expenseKeyIndex = photoStore.index('expenseKey');
-        const photos = {};
+        const photosByExpIndex = {};
+        if (batch.lines && typeof batch.lines === 'object') {
+            const lineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.LINE_KEYS) ? EXPENSE_BATCH_SCHEMA.LINE_KEYS : Object.keys(batch.lines);
+            for (const lineKey of lineKeys) {
+                const expenseKey = `${batch.localId}_${lineKey}`;
+                const request = expenseKeyIndex.getAll(expenseKey);
+                const photoRecords = await new Promise((resolve) => {
+                    request.onsuccess = (e) => resolve(e.target.result || []);
+                    request.onerror = () => resolve([]);
+                });
+                if (photoRecords.length > 0) {
+                    const photoIndexFromId = (r) => {
+                        const m = (r.photoId || '').match(/_photo(\d+)$/);
+                        return m ? parseInt(m[1], 10) : 0;
+                    };
+                    photoRecords.sort((a, b) => photoIndexFromId(a) - photoIndexFromId(b));
+                    const blobs = photoRecords.map(r => r.blob);
+                    const line = batch.lines[lineKey];
+                    if (line) {
+                        const existingURLs = Array.isArray(line.photos) ? line.photos.filter(p => typeof p === 'string' && isValidPhotoURL(p)) : [];
+                        line.photos = [...existingURLs, ...blobs];
+                    }
+                }
+            }
+        }
         if (batch.expenses) {
             for (let expIndex = 0; expIndex < batch.expenses.length; expIndex++) {
                 const expenseKey = `${batch.localId}_exp${expIndex}`;
@@ -268,25 +345,21 @@ class ExpenseDraftDB {
                     request.onerror = () => resolve([]);
                 });
                 if (photoRecords.length > 0) {
-                    if (!photos[expIndex]) photos[expIndex] = [];
-                    // Preserve order: derive from photoId (e.g. "..._photo0", "..._photo1")
+                    if (!photosByExpIndex[expIndex]) photosByExpIndex[expIndex] = [];
                     const photoIndexFromId = (r) => {
                         const m = (r.photoId || '').match(/_photo(\d+)$/);
                         return m ? parseInt(m[1], 10) : 0;
                     };
                     photoRecords.sort((a, b) => photoIndexFromId(a) - photoIndexFromId(b));
                     for (const record of photoRecords) {
-                        photos[expIndex].push(record.blob);
+                        photosByExpIndex[expIndex].push(record.blob);
                     }
                 }
             }
-        }
-        if (batch.expenses) {
             for (let expIndex = 0; expIndex < batch.expenses.length; expIndex++) {
                 const existingPhotos = batch.expenses[expIndex].photos;
                 const existingURLs = Array.isArray(existingPhotos) ? existingPhotos.filter(p => typeof p === 'string' && isValidPhotoURL(p)) : [];
-                const rehydratedBlobs = photos[expIndex] || [];
-                // Leakproof: merge existing URLs with rehydrated blobs (do not replace — preserve already-uploaded URLs)
+                const rehydratedBlobs = photosByExpIndex[expIndex] || [];
                 batch.expenses[expIndex].photos = [...existingURLs, ...rehydratedBlobs];
             }
         }
@@ -958,20 +1031,38 @@ class ExpenseUploadQueue {
     }
 
     /**
-     * Write-first: Save expense data and photo blobs to IndexedDB immediately
-     * NO UPLOAD - that happens later via service worker
+     * Write-first: Save expense/line data and photo blobs to IndexedDB immediately.
+     * NO UPLOAD - that happens later via service worker.
+     * Signatures:
+     *   Legacy: enqueueExpenseUpload(batchId, expenseData, photoBlobs, expenseDocId)
+     *   Merged: enqueueExpenseUpload(batchId, lineKey, lineData, photoBlobs)
      */
-    async enqueueExpenseUpload(batchId, expenseData, photoBlobs = [], expenseDocId = null) {
+    async enqueueExpenseUpload(batchId, expenseDataOrLineKey, photoBlobsOrLineData = [], expenseDocIdOrPhotoBlobs = null) {
         await this.init();
         if (!this.db) {
             throw new Error('Database not initialized');
+        }
+
+        let expenseData = null;
+        let expenseDocId = null;
+        let lineKey = null;
+        let lineData = null;
+        let photoBlobs = [];
+        const isLineKeySignature = typeof expenseDataOrLineKey === 'string' && Array.isArray(expenseDocIdOrPhotoBlobs);
+        if (isLineKeySignature) {
+            lineKey = expenseDataOrLineKey;
+            lineData = photoBlobsOrLineData || {};
+            photoBlobs = expenseDocIdOrPhotoBlobs || [];
+        } else {
+            expenseData = expenseDataOrLineKey;
+            photoBlobs = photoBlobsOrLineData || [];
+            expenseDocId = expenseDocIdOrPhotoBlobs || null;
         }
 
         const uploadId = `expense_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const timestamp = Date.now();
         const uid = window.currentUser?.uid || null;
 
-        // Convert all Files to Blobs in parallel (avoids sequential arrayBuffer() + single transaction below)
         const blobsToStore = await Promise.all(
             photoBlobs.map(async (blob, i) => {
                 if (!(blob instanceof File || blob instanceof Blob)) return null;
@@ -986,23 +1077,26 @@ class ExpenseUploadQueue {
             })
         );
 
-        const storageFolder = sanitizeRegForStoragePath(expenseData.registration) || batchId;
+        const storageFolder = lineKey
+            ? batchId
+            : (sanitizeRegForStoragePath(expenseData && expenseData.registration) || batchId);
         const photoBlobIds = [];
         const recordsToPut = blobsToStore.filter(Boolean).map(({ blob: blobToStore, i }) => {
             const blobId = `${uploadId}_photo${i}`;
-            photoBlobIds.push({
-                blobId,
-                photoIndex: i,
-                filename: `expenses/${storageFolder}/${expenseData.category}_${timestamp}_${i}.jpg`
-            });
+            const filename = lineKey
+                ? `expenses/${storageFolder}/${lineKey}_${timestamp}_${i}.jpg`
+                : `expenses/${storageFolder}/${(expenseData && expenseData.category) || 'expense'}_${timestamp}_${i}.jpg`;
+            photoBlobIds.push({ blobId, photoIndex: i, filename });
             return { blobId, blob: blobToStore, uploadId, photoIndex: i, timestamp };
         });
 
         const uploadTask = {
             uploadId,
             batchId,
-            expenseDocId,
-            expenseData,
+            expenseDocId: expenseDocId || null,
+            expenseData: expenseData || null,
+            lineKey: lineKey || null,
+            lineData: lineData || null,
             photoBlobIds,
             uid,
             timestamp,
@@ -1841,27 +1935,32 @@ window.addEventListener('offline', () => {
 window.autoSaveDraft = async function() {
     if (!window.currentBatch || !window.currentUser) return;
     try {
-        // Read notes from textarea before saving
         const notesInput = document.getElementById('notesInput');
         if (notesInput && window.currentBatch) {
             window.currentBatch.notes = notesInput.value.trim() || '';
         }
-        
-        const batchCopy = JSON.parse(JSON.stringify(window.currentBatch));
-        const photos = {};
-        if (batchCopy.expenses) {
-            for (let i = 0; i < batchCopy.expenses.length; i++) {
-                const expense = batchCopy.expenses[i];
-                if (expense.photos && Array.isArray(expense.photos)) {
-                    photos[i] = expense.photos.filter(p => p instanceof File || p instanceof Blob);
+        const batch = window.currentBatch;
+        const hasLines = batch.lines && typeof batch.lines === 'object';
+        let batchToSave = batch;
+        let photos = null;
+        if (hasLines) {
+            batchToSave = batch;
+            photos = true;
+        } else {
+            batchToSave = JSON.parse(JSON.stringify(batch));
+            photos = {};
+            if (batchToSave.expenses) {
+                for (let i = 0; i < batch.expenses.length; i++) {
+                    const expense = batch.expenses[i];
+                    if (expense.photos && Array.isArray(expense.photos)) {
+                        photos[i] = expense.photos.filter(p => p instanceof File || p instanceof Blob);
+                    }
                 }
             }
         }
-        const localId = await window.expenseDraftDB.saveDraft(batchCopy, photos);
-        if (window.currentBatch) {
-            window.currentBatch.localId = localId;
-        }
-        console.log('💾 Draft auto-saved to IndexedDB', { notes: batchCopy.notes || '(no notes)' });
+        const localId = await window.expenseDraftDB.saveDraft(batchToSave, photos);
+        if (window.currentBatch) window.currentBatch.localId = localId;
+        console.log('💾 Draft auto-saved to IndexedDB', { hasLines: !!hasLines, notes: (batch.notes || '').slice(0, 30) });
     } catch (error) {
         console.error('Error auto-saving draft:', error);
     }
