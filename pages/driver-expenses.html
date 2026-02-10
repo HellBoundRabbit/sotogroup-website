@@ -1804,12 +1804,13 @@
                         
                         if (expenseSnap.exists()) {
                             const currentData = expenseSnap.data();
-                            const existingPhotos = Array.isArray(currentData.photos) ? currentData.photos.filter(p => typeof p === 'string') : [];
+                            const isValidPhotoURL = window.isValidPhotoURL || (u => typeof u === 'string' && u.trim().length > 0 && (u.startsWith('http://') || u.startsWith('https://')));
+                            const existingPhotos = Array.isArray(currentData.photos) ? currentData.photos.filter(p => typeof p === 'string' && isValidPhotoURL(p)) : [];
                             
-                            // Merge existing URLs with new uploads (avoid duplicates)
+                            // Merge existing URLs with new uploads (avoid duplicates); only add valid URLs
                             const allPhotoURLs = [...existingPhotos];
                             for (const newURL of downloadURLs) {
-                                if (!allPhotoURLs.includes(newURL)) {
+                                if (isValidPhotoURL(newURL) && !allPhotoURLs.includes(newURL)) {
                                     allPhotoURLs.push(newURL);
                                 }
                             }
@@ -2758,10 +2759,11 @@
                 
                 const expenseId = expense.id || window.editingExpenseIndex;
                 
+                const storageFolder = sanitizeRegForStoragePath(currentBatch.registration) || batchId;
                 const uploadPromises = newPhotos.map(async (photoFile, index) => {
                 try {
                 const timestamp = Date.now();
-                const filename = `expenses/${batchId}/${expenseId}/${expense.category}_${timestamp}_${index}.jpg`;
+                const filename = `expenses/${storageFolder}/${expense.category}_${timestamp}_${index}.jpg`;
                 const photoRef = window.ref(window.storage, filename);
                 await window.uploadBytes(photoRef, photoFile);
                 const downloadURL = await window.getDownloadURL(photoRef);
@@ -3421,6 +3423,12 @@
             }
         }
 
+        // Sanitize registration for Firebase Storage path (no / or \ in folder names)
+        function sanitizeRegForStoragePath(reg) {
+            if (!reg || typeof reg !== 'string') return '';
+            return reg.replace(/[/\\]/g, '_').trim() || '';
+        }
+
         // Save expenses to Firebase - WRITE-FIRST APPROACH
         // All data written to IndexedDB immediately, uploads happen via Service Worker
         async function saveExpenses(batchId, sourceBatch = currentBatch) {
@@ -3472,9 +3480,9 @@
             
             const expenseDocIds = [];
             const addPromises = expensesToSave.map(async (expense, expenseIndex) => {
-                // Only include URLs that are already uploaded (strings)
-                // File/Blob objects will be handled by Service Worker
-                const existingPhotoURLs = (expense.photos || []).filter((p) => typeof p === 'string');
+                // Only include valid image URLs (no placeholders or empty strings)
+                const isValidPhotoURL = window.isValidPhotoURL || (u => typeof u === 'string' && u.trim().length > 0 && (u.startsWith('http://') || u.startsWith('https://')));
+                const existingPhotoURLs = (expense.photos || []).filter((p) => typeof p === 'string' && isValidPhotoURL(p));
                 const photoBlobs = (expense.photos || []).filter((p) => p instanceof File || p instanceof Blob);
                 
                 const expenseData = {
@@ -3524,6 +3532,7 @@
                         try {
                             const expenseUploadData = {
                                 batchId: batchId,
+                                registration: batchRef.registration || null,
                                 category: expense.category,
                                 amount: parseFloat(expense.amount),
                                 officeId: officeId,

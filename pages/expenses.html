@@ -507,6 +507,11 @@
     <script>
         let currentSession = null;
         let currentUser = null;
+
+        /** Only count/display real image URLs (avoids placeholders or broken entries showing as "X photos" or black images). */
+        function isValidPhotoURL(url) {
+            return typeof url === 'string' && url.trim().length > 0 && (url.startsWith('http://') || url.startsWith('https://'));
+        }
         let allBatches = [];
         let currentBatch = null;
         let activeTab = 'pending';
@@ -1141,12 +1146,12 @@
                         <span class="text-2xl">${categoryEmojis[exp.category] || '📝'}</span>
                         <div>
                             <div class="font-medium capitalize">${exp.category}</div>
-                            ${exp.photos && exp.photos.length > 0 ? `
-                                <button onclick="viewExpensePhotos(${currentBatch.expenses.indexOf(exp)})" class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1">
+${(function() { const validPhotos = (exp.photos || []).filter(isValidPhotoURL); return validPhotos.length > 0 ? `
+                                    <button onclick="viewExpensePhotos(${currentBatch.expenses.indexOf(exp)})" class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1">
                                     <span class="material-symbols-outlined text-xs">photo_camera</span>
-                                    ${exp.photos.length} photo${exp.photos.length !== 1 ? 's' : ''}
+                                    ${validPhotos.length} photo${validPhotos.length !== 1 ? 's' : ''}
                                 </button>
-                            ` : ''}
+                            ` : ''; })()}
                         </div>
                     </div>
                     <span class="font-semibold text-green-500">£${parseFloat(exp.amount).toFixed(2)}</span>
@@ -1298,7 +1303,8 @@
         // View photos for an expense
         async function viewExpensePhotos(expenseIndex) {
             const expense = currentBatch.expenses[expenseIndex];
-            if (!expense || !expense.photos || expense.photos.length === 0) {
+            const validPhotos = (expense && expense.photos) ? expense.photos.filter(isValidPhotoURL) : [];
+            if (validPhotos.length === 0) {
                 return;
             }
 
@@ -1313,8 +1319,8 @@
             photoZoomStates.clear();
             currentActivePhoto = null;
             
-            // Photos are URLs (from Firebase Storage) - display with zoomable styling
-            content.innerHTML = expense.photos.map((url, index) => {
+            // Photos are URLs (from Firebase Storage) - display only valid URLs to avoid black/broken images
+            content.innerHTML = validPhotos.map((url, index) => {
                 const state = { zoom: 1, offsetX: 0, offsetY: 0 };
                 return `
                 <div class="w-full max-w-4xl mx-auto photo-container" data-photo-index="${index}">
@@ -1330,8 +1336,8 @@
                                 data-photo-url="${url}"
                             >
                         </div>
-                        <div class="text-center mt-3 text-sm text-gray-400 photo-zoom-indicator" data-base-text="Photo ${index + 1} of ${expense.photos.length}">
-                            Photo ${index + 1} of ${expense.photos.length}
+                        <div class="text-center mt-3 text-sm text-gray-400 photo-zoom-indicator" data-base-text="Photo ${index + 1} of ${validPhotos.length}">
+                            Photo ${index + 1} of ${validPhotos.length}
                         </div>
                     </div>
                 </div>
@@ -1786,11 +1792,12 @@
             await pdfWritable.write(pdfBlob);
             await pdfWritable.close();
             
-            // Download and save photos
+            // Download and save photos (only valid image URLs)
             let photoIndex = 1;
             for (const expense of batch.expenses || []) {
-                if (expense.photos && expense.photos.length > 0) {
-                    for (const photoURL of expense.photos) {
+                const urls = (expense.photos || []).filter(isValidPhotoURL);
+                if (urls.length > 0) {
+                    for (const photoURL of urls) {
                         try {
                             // Fetch photo from Firebase Storage
                             const response = await fetch(photoURL);
@@ -1860,11 +1867,12 @@
                     const pdfFileName = `${cleanedReg}_${driverNameForFile}.pdf`;
                     zip.file(folderPath + pdfFileName, pdfBlob);
                     
-                    // Download and add photos
+                    // Download and add photos (only valid image URLs)
                     let photoIndex = 1;
                     for (const expense of batch.expenses || []) {
-                        if (expense.photos && expense.photos.length > 0) {
-                            for (const photoURL of expense.photos) {
+                        const urls = (expense.photos || []).filter(isValidPhotoURL);
+                        if (urls.length > 0) {
+                            for (const photoURL of urls) {
                                 try {
                                     const response = await fetch(photoURL);
                                     const photoBlob = await response.blob();
