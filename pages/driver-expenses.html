@@ -95,6 +95,14 @@
             const fn = window.isValidPhotoURL || (u => typeof u === 'string' && u.trim().length > 0 && (u.startsWith('http://') || u.startsWith('https://')));
             return exp.photos.filter(p => typeof p === 'string' && fn(p)).length;
         }
+        /** Count for UI: valid URLs + File/Blob (so draft expenses with attached photos show "1 photo"). */
+        function getDisplayPhotoCount(exp) {
+            if (!exp || !exp.photos || !Array.isArray(exp.photos)) return 0;
+            const fn = window.isValidPhotoURL || (u => typeof u === 'string' && u.trim().length > 0 && (u.startsWith('http://') || u.startsWith('https://')));
+            const urlCount = exp.photos.filter(p => typeof p === 'string' && fn(p)).length;
+            const fileCount = exp.photos.filter(p => p instanceof File || p instanceof Blob).length;
+            return urlCount + fileCount;
+        }
         function getValidPhotoURLs(exp) {
             if (!exp || !exp.photos || !Array.isArray(exp.photos)) return [];
             const fn = window.isValidPhotoURL || (u => typeof u === 'string' && u.trim().length > 0 && (u.startsWith('http://') || u.startsWith('https://')));
@@ -2403,10 +2411,10 @@
                 <span class="text-2xl">${categoryEmojis[exp.category] || '📝'}</span>
                 <div>
                 <div class="font-medium capitalize">${exp.category || 'Other'}</div>
-                ${getValidPhotoCount(exp) > 0 ? `
+                ${getDisplayPhotoCount(exp) > 0 ? `
                 <button onclick="viewExpensePhotos(${index})" class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1">
                 <span class="material-symbols-outlined text-xs">photo_camera</span>
-                ${getValidPhotoCount(exp)} photo${getValidPhotoCount(exp) !== 1 ? 's' : ''}
+                ${getDisplayPhotoCount(exp)} photo${getDisplayPhotoCount(exp) !== 1 ? 's' : ''}
                 </button>
                 ` : ''}
                 </div>
