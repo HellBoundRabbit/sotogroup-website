@@ -727,11 +727,14 @@
                 <span id="totalAmount" class="text-lg font-semibold text-green-500">£0.00</span>
                 </div>
                 <div id="linesContainer" class="space-y-4 max-h-[50vh] overflow-y-auto">
-                <!-- Lines grid rendered by renderLines() -->
+                <!-- Variable list of added expenses, rendered by renderLines() -->
                 </div>
                 <input type="file" id="linePhotoInput" accept="image/*" capture="environment" class="hidden" onchange="onLinePhotoSelected(event)">
                 <div id="expensesList" class="hidden"></div>
-                <button id="addExpenseBtn" onclick="addExpense()" class="hidden touch-target"></button>
+                <button id="addExpenseBtn" onclick="addExpense()" class="hidden mt-3 w-full py-3 bg-[#283039] hover:bg-[#3a4552] text-white rounded-lg border border-dashed border-gray-600 flex items-center justify-center gap-2 touch-target transition-colors">
+                <span class="material-symbols-outlined">add</span>
+                <span>Add expense</span>
+                </button>
                 </div>
 
                 <!-- Notes Section -->
@@ -2198,7 +2201,11 @@
             document.getElementById('returnNotesDiv').classList.add('hidden');
             document.getElementById('deleteBatchBtn').classList.add('hidden');
             const addExpenseBtn = document.getElementById('addExpenseBtn');
-            if (addExpenseBtn) addExpenseBtn.classList.add('hidden');
+            if (addExpenseBtn) addExpenseBtn.classList.remove('hidden');
+            const expensesListEl = document.getElementById('expensesList');
+            if (expensesListEl) { expensesListEl.classList.add('hidden'); expensesListEl.innerHTML = ''; }
+            const linesContainer = document.getElementById('linesContainer');
+            if (linesContainer) { linesContainer.classList.remove('hidden'); renderLines(); }
             const actionButtons = document.getElementById('actionButtons');
             actionButtons.innerHTML = `
                 <button onclick="saveDraft()" class="w-full animated-button animated-button-draft touch-target">
@@ -2208,8 +2215,6 @@
                 <span class="text-white font-semibold">Submit for Processing</span>
                 </button>
             `;
-            const linesContainer = document.getElementById('linesContainer');
-            if (linesContainer) renderLines(); else if (document.getElementById('expensesList')) document.getElementById('expensesList').innerHTML = '';
             const totalEl = document.getElementById('totalAmount');
             if (totalEl) totalEl.textContent = '£0.00';
             if (window.isUploadingExpense) {
@@ -2343,16 +2348,20 @@
             document.getElementById('deleteBatchBtn').classList.toggle('hidden', batch.status !== 'draft');
 
             const addExpenseBtn = document.getElementById('addExpenseBtn');
-            if (addExpenseBtn) addExpenseBtn.classList.add('hidden');
+            const linesContainerEl = document.getElementById('linesContainer');
+            const expensesListEl = document.getElementById('expensesList');
             if (batch.lines) {
-                if (document.getElementById('linesContainer')) renderLines();
+                if (linesContainerEl) { linesContainerEl.classList.remove('hidden'); renderLines(); }
+                if (expensesListEl) { expensesListEl.classList.add('hidden'); expensesListEl.innerHTML = ''; }
+                if (addExpenseBtn) addExpenseBtn.classList.toggle('hidden', batch.status !== 'draft');
                 const totalEl = document.getElementById('totalAmount');
                 if (totalEl && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getTotalFromLines) {
                     totalEl.textContent = '£' + (EXPENSE_BATCH_SCHEMA.getTotalFromLines(batch.lines) || 0).toFixed(2);
                 }
-            } else if (document.getElementById('expensesList')) {
-                document.getElementById('expensesList').classList.remove('hidden');
-                renderExpenses();
+            } else {
+                if (addExpenseBtn) addExpenseBtn.classList.add('hidden');
+                if (linesContainerEl) linesContainerEl.classList.add('hidden');
+                if (expensesListEl) { expensesListEl.classList.remove('hidden'); renderExpenses(); }
             }
 
             // Show/hide action buttons based on status
@@ -2537,19 +2546,19 @@
             if (!currentBatch || !currentBatch.lines || typeof EXPENSE_BATCH_SCHEMA === 'undefined') return;
             var container = document.getElementById('linesContainer');
             if (!container) return;
-            var LINE_KEYS = EXPENSE_BATCH_SCHEMA.LINE_KEYS || [];
+            var getUsedLines = EXPENSE_BATCH_SCHEMA.getUsedLines || (function() { return []; });
+            var usedKeys = getUsedLines(currentBatch);
             var getCategoryLabel = EXPENSE_BATCH_SCHEMA.getCategoryLabel || (function(k) { return k; });
             var getCategoryGroup = EXPENSE_BATCH_SCHEMA.getCategoryGroup || (function(k) { return (k || '').replace(/\d+$/, ''); });
             var canEdit = currentBatch.status === 'draft' || currentBatch.status === 'returned';
             var html = '';
-            LINE_KEYS.forEach(function(lineKey) {
+            usedKeys.forEach(function(lineKey) {
                 var line = currentBatch.lines[lineKey] || { amount: 0, photos: [] };
                 var amount = typeof line.amount === 'number' ? line.amount : 0;
                 var photoCount = getDisplayPhotoCountForLine(line);
                 var prefix = getCategoryGroup(lineKey) || 'other';
                 var emoji = categoryEmojisLines[prefix] || '📝';
                 var label = getCategoryLabel(lineKey);
-                // Exact same card structure as renderExpenses: bg-[#283039] rounded-lg p-3 flex items-center justify-between
                 html += '<div class="bg-[#283039] rounded-lg p-3 flex items-center justify-between" data-line-key="' + lineKey + '">';
                 html += '<div class="flex items-center gap-3">';
                 html += '<span class="text-2xl">' + emoji + '</span>';
@@ -2578,7 +2587,11 @@
                 }
                 html += '</div></div>';
             });
-            container.innerHTML = html || '<p class="text-gray-500 text-center py-4">No expenses added yet</p>';
+            if (html === '') {
+                container.innerHTML = '<p class="text-gray-500 text-center py-4">No expenses added yet</p>';
+            } else {
+                container.innerHTML = html;
+            }
             var total = EXPENSE_BATCH_SCHEMA.getTotalFromLines ? EXPENSE_BATCH_SCHEMA.getTotalFromLines(currentBatch.lines) : 0;
             currentBatch.totalAmount = total;
             var totalEl = document.getElementById('totalAmount');
@@ -3066,6 +3079,38 @@
                 return;
             }
             
+            // When batch uses .lines (merged model), assign to next empty line slot for this category
+            if (currentBatch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined') {
+                var catMap = { fuel: 'fuel', charge: 'charge', train: 'train', bus: 'bus', taxi: 'taxi', 'car wash': 'carWash', tolls: 'toll', toll: 'toll', other: 'other' };
+                var norm = (currentExpense.category || '').trim().toLowerCase().replace(/\s+/g, ' ');
+                var prefix = catMap[norm] || catMap[norm.replace(/\s+/g, '')] || 'other';
+                var LINE_KEYS = EXPENSE_BATCH_SCHEMA.LINE_KEYS || [];
+                var getCategoryGroup = EXPENSE_BATCH_SCHEMA.getCategoryGroup || (function(k) { return (k || '').replace(/\d+$/, ''); });
+                var hasLineContent = EXPENSE_BATCH_SCHEMA.hasLineContent || (function() { return false; });
+                var slots = LINE_KEYS.filter(function(k) { return getCategoryGroup(k) === prefix; });
+                var lineKey = null;
+                for (var s = 0; s < slots.length; s++) {
+                    if (!hasLineContent(currentBatch.lines[slots[s]])) {
+                        lineKey = slots[s];
+                        break;
+                    }
+                }
+                if (!lineKey) {
+                    notifyWarning('You have hit your limit of 4 expenses for that category.', 'Limit Reached');
+                    return;
+                }
+                currentBatch.lines[lineKey] = {
+                    amount: currentExpense.amount,
+                    photos: (currentExpense.photos && currentExpense.photos.length) ? currentExpense.photos.slice() : []
+                };
+                window.currentBatch = currentBatch;
+                window.isUserTyping = false;
+                closeExpenseModal();
+                renderLines();
+                if (window.scheduleAutoSave) window.scheduleAutoSave();
+                return;
+            }
+
             const normalizedSelectedCategory = (currentExpense.category || '').trim().toLowerCase();
             const existingCount = (currentBatch.expenses || []).reduce((count, exp, idx) => {
                 if (!exp || !exp.category) return count;
