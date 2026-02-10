@@ -1722,6 +1722,13 @@
                                     window.currentBatch.lines[lineKey].photos = deduped;
                                     window.currentBatch.lines[lineKey].photosUploading = false;
                                 }
+                                // Update in-memory list immediately so card un-greys without waiting for refetch
+                                const batchInList = typeof allBatches !== 'undefined' && allBatches.find(b => b.id === batchId);
+                                if (batchInList && batchInList.lines && batchInList.lines[lineKey]) {
+                                    batchInList.lines[lineKey] = { ...batchInList.lines[lineKey], photos: deduped, photosUploading: false };
+                                    batchInList.hasPendingUploads = Object.values(batchInList.lines).some(l => l && l.photosUploading === true);
+                                    if (typeof displayBatches === 'function') displayBatches();
+                                }
                             }
                             if (window.expenseUploadQueue) await window.expenseUploadQueue.updateGlobalUploadStatus();
                             if (typeof window.loadExpenseBatches === 'function') {
@@ -2221,6 +2228,15 @@
             var fileCount = line.photos.filter(function(p) { return p instanceof File || p instanceof Blob; }).length;
             return urlCount + fileCount;
         }
+        function getThumbnailSourcesForLine(line) {
+            if (!line || !line.photos || !Array.isArray(line.photos)) return [];
+            var fn = window.isValidPhotoURL || (function(u) { return typeof u === 'string' && u.trim().length > 0 && (u.startsWith('http://') || u.startsWith('https://')); });
+            return line.photos.map(function(p) {
+                if (typeof p === 'string' && fn(p)) return p;
+                if (p instanceof File || p instanceof Blob) return URL.createObjectURL(p);
+                return null;
+            }).filter(Boolean);
+        }
         function addNextLinePhoto(lineKey) {
             var line = currentBatch && currentBatch.lines && currentBatch.lines[lineKey];
             var photos = line && Array.isArray(line.photos) ? line.photos : [];
@@ -2278,13 +2294,20 @@
                 var emoji = categoryEmojisLines[prefix] || '📝';
                 var label = getCategoryLabel(lineKey);
                 html += '<div class="bg-[#283039] rounded-lg p-3 flex items-center justify-between" data-line-key="' + lineKey + '">';
-                html += '<div class="flex items-center gap-3">';
-                html += '<span class="text-2xl">' + emoji + '</span>';
-                html += '<div>';
-                html += '<div class="font-medium capitalize">' + label + '</div>';
+                html += '<div class="flex items-center gap-3 min-w-0 flex-1">';
+                html += '<span class="text-2xl flex-shrink-0">' + emoji + '</span>';
+                html += '<div class="flex items-center gap-2 min-w-0 flex-1">';
+                html += '<div class="font-medium capitalize flex-shrink-0">' + label + '</div>';
                 if (photoCount > 0) {
-                    html += '<button type="button" onclick="viewLinePhotos(\'' + lineKey + '\')" class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1">';
-                    html += '<span class="material-symbols-outlined text-xs">photo_camera</span> ' + photoCount + ' photo' + (photoCount !== 1 ? 's' : '') + '</button>';
+                    var thumbSrcs = getThumbnailSourcesForLine(line);
+                    html += '<div class="flex items-center gap-1 flex-shrink-0">';
+                    thumbSrcs.forEach(function(src) {
+                        var safe = (src || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                        html += '<button type="button" onclick="viewLinePhotos(\'' + lineKey + '\')" class="w-9 h-9 rounded overflow-hidden border border-gray-600 flex-shrink-0 hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-blue-400">';
+                        html += '<img src="' + safe + '" alt="" class="w-full h-full object-cover">';
+                        html += '</button>';
+                    });
+                    html += '</div>';
                 } else if (canEdit && currentBatch.status === 'draft') {
                     // Only show "Add photos" under label for draft; returned batches use the blue camera button on the right
                     html += '<button type="button" onclick="addNextLinePhoto(\'' + lineKey + '\')" class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1">';
