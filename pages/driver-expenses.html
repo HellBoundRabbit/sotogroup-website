@@ -1253,6 +1253,10 @@
                 if (typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
                     await window.expenseUploadQueue.updateGlobalUploadStatus();
                 }
+                // Trigger Service Worker to process uploads immediately (otherwise they only run on 30s timer or page load)
+                if (navigator.onLine && typeof window.expenseUploadQueue.getAuthTokenAndProcessQueue === 'function') {
+                    await window.expenseUploadQueue.getAuthTokenAndProcessQueue();
+                }
             }
 
             draft.status = targetStatus;
