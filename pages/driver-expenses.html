@@ -2485,45 +2485,59 @@
             }
         }
 
+        var categoryEmojis = { train: '🚂', taxi: '🚕', fuel: '⛽', charge: '🔌', bus: '🚌', carWash: '🧼', toll: '🛣️', other: '📝' };
         function renderLines() {
             if (!currentBatch || !currentBatch.lines || typeof EXPENSE_BATCH_SCHEMA === 'undefined') return;
             const container = document.getElementById('linesContainer');
             if (!container) return;
             const LINE_KEYS = EXPENSE_BATCH_SCHEMA.LINE_KEYS || [];
             const getCategoryLabel = EXPENSE_BATCH_SCHEMA.getCategoryLabel || (k => k);
+            const getCategoryGroup = EXPENSE_BATCH_SCHEMA.getCategoryGroup || (k => k.replace(/\d+$/, ''));
             const MAX_PHOTOS = EXPENSE_BATCH_SCHEMA.MAX_PHOTOS_PER_LINE || 4;
             const canEdit = currentBatch.status === 'draft' || currentBatch.status === 'returned';
-            let html = '';
-            let lastPrefix = '';
-            LINE_KEYS.forEach(lineKey => {
-                const line = currentBatch.lines[lineKey] || { amount: 0, photos: [] };
-                const prefix = (EXPENSE_BATCH_SCHEMA.getCategoryGroup && EXPENSE_BATCH_SCHEMA.getCategoryGroup(lineKey)) || lineKey.replace(/\d+$/, '');
-                if (prefix !== lastPrefix) {
-                    lastPrefix = prefix;
-                    const label = getCategoryLabel(lineKey).split(' ')[0];
-                    html += '<div class="text-xs font-bold text-gray-500 mt-2 mb-1">' + label + '</div>';
-                }
-                const amount = typeof line.amount === 'number' ? line.amount : 0;
-                const photos = Array.isArray(line.photos) ? line.photos : [];
-                html += '<div class="flex items-center gap-2 py-1 border-b border-gray-800/50" data-line-key="' + lineKey + '">';
-                html += '<span class="text-gray-400 w-20 shrink-0 text-sm">' + getCategoryLabel(lineKey) + '</span>';
-                html += '<input type="number" step="0.01" min="0" value="' + (amount || '') + '" placeholder="0" class="w-20 bg-[#283039] text-white rounded px-2 py-1 text-sm border border-gray-700 focus:border-blue-500" ' + (!canEdit ? 'readonly' : '') + ' data-line-key="' + lineKey + '" onchange="updateLineAmount(\'' + lineKey + '\', this.value)">';
-                html += '<div class="flex gap-1 flex-wrap flex-1">';
-                for (let i = 0; i < MAX_PHOTOS; i++) {
-                    const p = photos[i];
-                    if (p && (typeof p === 'string' || p instanceof File || p instanceof Blob)) {
-                        const url = typeof p === 'string' ? p : (URL.createObjectURL ? URL.createObjectURL(p) : '');
-                        html += '<span class="inline-block w-8 h-8 rounded bg-gray-700 bg-cover shrink-0" style="background-image:url(' + url + ')" title="Photo ' + (i+1) + '"></span>';
-                    } else if (canEdit) {
-                        html += '<button type="button" onclick="addLinePhoto(\'' + lineKey + '\', ' + i + ')" class="w-8 h-8 rounded border border-dashed border-gray-600 text-gray-500 hover:border-blue-500 hover:text-blue-400 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-lg">add</span></button>';
-                    }
-                }
-                html += '</div></div>';
+            var groups = {};
+            LINE_KEYS.forEach(function(lineKey) {
+                var prefix = getCategoryGroup(lineKey) || 'other';
+                if (!groups[prefix]) groups[prefix] = [];
+                groups[prefix].push(lineKey);
             });
-            container.innerHTML = html || '<p class="text-gray-500 text-center py-4">Fill in amounts and add photos as needed.</p>';
-            const total = EXPENSE_BATCH_SCHEMA.getTotalFromLines ? EXPENSE_BATCH_SCHEMA.getTotalFromLines(currentBatch.lines) : 0;
+            var categoryOrder = ['train', 'taxi', 'fuel', 'charge', 'bus', 'carWash', 'toll', 'other'];
+            var html = '';
+            categoryOrder.forEach(function(prefix) {
+                var keys = groups[prefix];
+                if (!keys || keys.length === 0) return;
+                var emoji = categoryEmojis[prefix] || '📝';
+                var label = (prefix === 'carWash' ? 'Car Wash' : prefix.charAt(0).toUpperCase() + prefix.slice(1));
+                html += '<div class="bg-[#283039] rounded-xl p-4 mb-3 border border-gray-700/50">';
+                html += '<div class="flex items-center gap-2 mb-3 pb-2 border-b border-gray-700/50">';
+                html += '<span class="text-2xl">' + emoji + '</span>';
+                html += '<span class="font-semibold text-white">' + label + '</span>';
+                html += '</div>';
+                keys.forEach(function(lineKey) {
+                    var line = currentBatch.lines[lineKey] || { amount: 0, photos: [] };
+                    var amount = typeof line.amount === 'number' ? line.amount : 0;
+                    var photos = Array.isArray(line.photos) ? line.photos : [];
+                    html += '<div class="flex items-center gap-3 py-2.5 border-b border-gray-700/30 last:border-0" data-line-key="' + lineKey + '">';
+                    html += '<span class="text-gray-400 w-16 shrink-0 text-sm">' + getCategoryLabel(lineKey) + '</span>';
+                    html += '<input type="number" step="0.01" min="0" value="' + (amount || '') + '" placeholder="0.00" class="flex-1 min-w-0 max-w-24 bg-[#1a1f24] text-white rounded-lg px-3 py-2 text-base border border-gray-600 focus:border-blue-500 focus:outline-none" ' + (!canEdit ? 'readonly' : '') + ' data-line-key="' + lineKey + '" onchange="updateLineAmount(\'' + lineKey + '\', this.value)">';
+                    html += '<div class="flex items-center gap-1.5 flex-wrap flex-1 justify-end">';
+                    for (var i = 0; i < MAX_PHOTOS; i++) {
+                        var p = photos[i];
+                        if (p && (typeof p === 'string' || p instanceof File || p instanceof Blob)) {
+                            var url = typeof p === 'string' ? p : (URL.createObjectURL ? URL.createObjectURL(p) : '');
+                            html += '<span class="w-10 h-10 rounded-lg bg-gray-700 bg-cover bg-center shrink-0 border border-gray-600" style="background-image:url(' + url + ')" title="Photo ' + (i+1) + '"></span>';
+                        } else if (canEdit) {
+                            html += '<button type="button" onclick="addLinePhoto(\'' + lineKey + '\', ' + i + ')" class="w-10 h-10 rounded-lg border border-dashed border-gray-600 text-gray-500 hover:border-blue-500 hover:text-blue-400 hover:bg-gray-700/50 flex items-center justify-center shrink-0 transition-colors touch-target"><span class="material-symbols-outlined text-xl">add_a_photo</span></button>';
+                        }
+                    }
+                    html += '</div></div>';
+                });
+                html += '</div>';
+            });
+            container.innerHTML = html || '<p class="text-gray-500 text-center py-6">Fill in amounts and add photos as needed.</p>';
+            var total = EXPENSE_BATCH_SCHEMA.getTotalFromLines ? EXPENSE_BATCH_SCHEMA.getTotalFromLines(currentBatch.lines) : 0;
             currentBatch.totalAmount = total;
-            const totalEl = document.getElementById('totalAmount');
+            var totalEl = document.getElementById('totalAmount');
             if (totalEl) totalEl.textContent = '£' + total.toFixed(2);
         }
 
