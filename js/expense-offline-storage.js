@@ -7,8 +7,25 @@
 function isValidPhotoURL(url) {
     return typeof url === 'string' && url.trim().length > 0 && (url.startsWith('http://') || url.startsWith('https://'));
 }
+/** Normalize Firebase Storage URL to path (strip token) so same file = same key; retries produce new token. */
+function storagePathKey(url) {
+    return (url || '').replace(/\&token=[^&]*/i, '').trim();
+}
+/** Dedupe photo URL array by storage path (keeps first URL per file). */
+function dedupePhotoURLsByPath(urls) {
+    if (!Array.isArray(urls)) return [];
+    const seen = new Set();
+    return urls.filter(u => {
+        if (!isValidPhotoURL(u)) return false;
+        const key = storagePathKey(u);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
 if (typeof window !== 'undefined') {
     window.isValidPhotoURL = isValidPhotoURL;
+    window.dedupePhotoURLsByPath = dedupePhotoURLsByPath;
 }
 
 // IndexedDB wrapper for expense drafts
@@ -655,8 +672,8 @@ class UploadQueue {
             } else {
                 expenseData.photos.push(downloadURL);
             }
-            // Only persist valid image URLs (no placeholders or empty strings)
-            const validPhotos = expenseData.photos.filter(p => typeof p === 'string' && isValidPhotoURL(p));
+            // Only persist valid image URLs; dedupe by storage path (same file can have multiple tokens from retries)
+            const validPhotos = dedupePhotoURLsByPath(expenseData.photos);
 
             await window.updateDoc(expenseDocRef, {
                 photos: validPhotos,
