@@ -1030,12 +1030,22 @@ class ExpenseUploadQueue {
         const storageFolder = lineKey
             ? (sanitizeRegForStoragePath(lineData && lineData.registration) || batchId)
             : (sanitizeRegForStoragePath(expenseData && expenseData.registration) || batchId);
+        const regBase = storageFolder;
+        const targetStatus = lineData?.targetStatus || expenseData?.targetStatus || 'draft';
+        const submissionDate = lineData?.submissionDate || expenseData?.submissionDate;
         const photoBlobIds = [];
         const recordsToPut = blobsToStore.filter(Boolean).map(({ blob: blobToStore, i }) => {
             const blobId = `${uploadId}_photo${i}`;
-            const filename = lineKey
-                ? `expenses/${storageFolder}/${lineKey}_${timestamp}_${i}.jpg`
-                : `expenses/${storageFolder}/${(expenseData && expenseData.category) || 'expense'}_${timestamp}_${i}.jpg`;
+            let filename;
+            if (lineKey) {
+                if (targetStatus === 'pending' && submissionDate) {
+                    filename = `expenses/${storageFolder}/${regBase}_${submissionDate}_${lineKey}_${timestamp}_${i}.jpg`;
+                } else {
+                    filename = `expenses/${storageFolder}/${regBase}_${timestamp}_${i}.jpg`;
+                }
+            } else {
+                filename = `expenses/${storageFolder}/${(expenseData && expenseData.category) || 'expense'}_${timestamp}_${i}.jpg`;
+            }
             photoBlobIds.push({ blobId, photoIndex: i, filename });
             return { blobId, blob: blobToStore, uploadId, photoIndex: i, timestamp };
         });
