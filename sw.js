@@ -7,7 +7,7 @@
 const CACHE_NAME = 'expense-upload-v1';
 const STORAGE_BUCKET = 'soto-routes.firebasestorage.app';
 const DB_NAME = 'ExpenseDraftsDB';
-const DB_VERSION = 3; // Match the version in expense-offline-storage.js (includes waitTimeUploadQueue)
+const DB_VERSION = 4; // Match expense-offline-storage.js v4 (batch.lines + lineKey index)
 
 // Firebase Storage REST API helper
 function getStorageUploadUrl(path, uploadType = 'multipart') {
@@ -248,41 +248,38 @@ async function processUploadQueue(authToken) {
                                               // CRITICAL: Handle partial uploads - if some photos already uploaded, don't re-upload them
             const photoBlobIds = task.photoBlobIds || [];
             
-            // First, check if expense document exists and get already-uploaded photo URLs
+            // Get already-uploaded photo URLs (expense doc or batch doc line)
             let existingPhotoURLs = [];
             try {
-              // Request main thread to check existing photos
-              const checkResult = await new Promise((resolve, reject) => {
+              const checkResult = await new Promise((resolve) => {
                 const messageChannel = new MessageChannel();
                 messageChannel.port1.onmessage = (event) => {
-                  const { success, photoURLs } = event.data;
-                  if (success) {
-                    resolve(photoURLs || []);
-                  } else {
-                    resolve([]); // If check fails, assume no photos uploaded yet
-                  }
+                  const { success, photoURLs } = event.data || {};
+                  resolve(success ? (photoURLs || []) : []);
                   messageChannel.port1.close();
                 };
-                
                 self.clients.matchAll({ includeUncontrolled: true, type: 'window' }).then(clients => {
                   if (clients.length > 0) {
-                    clients[0].postMessage({
-                      type: 'check-expense-photos',
-                      expenseDocId: task.expenseDocId
-                    }, [messageChannel.port2]);
-                    
-                    // Timeout after 5 seconds
-                    setTimeout(() => {
-                      messageChannel.port1.close();
-                      resolve([]);
-                    }, 5000);
+                    if (task.lineKey) {
+                      clients[0].postMessage({
+                        type: 'check-batch-line-photos',
+                        batchId: task.batchId,
+                        lineKey: task.lineKey
+                      }, [messageChannel.port2]);
+                    } else {
+                      clients[0].postMessage({
+                        type: 'check-expense-photos',
+                        expenseDocId: task.expenseDocId
+                      }, [messageChannel.port2]);
+                    }
+                    setTimeout(() => { messageChannel.port1.close(); resolve([]); }, 5000);
                   } else {
                     resolve([]);
                   }
                 }).catch(() => resolve([]));
               });
               existingPhotoURLs = checkResult || [];
-              console.log(`[SW] Found ${existingPhotoURLs.length} already-uploaded photos for expense ${task.expenseDocId}`);
+              console.log(`[SW] Found ${existingPhotoURLs.length} already-uploaded photos for ${task.lineKey ? `batch line ${task.lineKey}` : `expense ${task.expenseDocId}`}`);
             } catch (error) {
               console.warn('[SW] Could not check existing photos, proceeding with upload:', error);
             }
@@ -352,13 +349,15 @@ async function processUploadQueue(authToken) {
                 req.onerror = () => rej(req.error);
               });
 
-              // Notify main thread via BroadcastChannel to update Firestore
+              // Notify main thread via BroadcastChannel to update Firestore (batch doc or expense doc)
               if (self.BroadcastChannel) {
                 const channel = new BroadcastChannel('expense-upload-channel');
                 channel.postMessage({
                   type: 'upload-complete',
                   uploadId: task.uploadId,
+                  batchId: task.batchId,
                   expenseDocId: task.expenseDocId,
+                  lineKey: task.lineKey || null,
                   downloadURLs: uploadedURLs,
                   task: task
                 });
@@ -385,7 +384,9 @@ async function processUploadQueue(authToken) {
                 channel.postMessage({
                   type: 'upload-complete',
                   uploadId: task.uploadId,
+                  batchId: task.batchId,
                   expenseDocId: task.expenseDocId,
+                  lineKey: task.lineKey || null,
                   downloadURLs: uploadedURLs,
                   task: task,
                   partial: true
@@ -432,14 +433,19 @@ async function processUploadQueue(authToken) {
     };
 
     request.onerror = () => reject(request.error);
-    request.onupgradeneeded = () => {
-      // Database upgrade handled by main thread
+    request.onupgradeneeded = (event) => {
       const db = request.result;
       if (!db.objectStoreNames.contains('expenseUploadQueue')) {
         const expenseUploadStore = db.createObjectStore('expenseUploadQueue', { keyPath: 'uploadId' });
         expenseUploadStore.createIndex('batchId', 'batchId', { unique: false });
         expenseUploadStore.createIndex('status', 'status', { unique: false });
         expenseUploadStore.createIndex('expenseDocId', 'expenseDocId', { unique: false });
+        expenseUploadStore.createIndex('lineKey', 'lineKey', { unique: false });
+      } else if (event.oldVersion < 4) {
+        const expenseUploadStore = event.target.transaction.objectStore('expenseUploadQueue');
+        if (!expenseUploadStore.indexNames.contains('lineKey')) {
+          expenseUploadStore.createIndex('lineKey', 'lineKey', { unique: false });
+        }
       }
       if (!db.objectStoreNames.contains('waitTimeUploadQueue')) {
         const waitTimeUploadStore = db.createObjectStore('waitTimeUploadQueue', { keyPath: 'uploadId' });
