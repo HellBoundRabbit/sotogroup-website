@@ -39,7 +39,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, where, updateDoc, doc, deleteDoc, getDoc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, where, updateDoc, doc, deleteDoc, getDoc, setDoc, serverTimestamp, arrayUnion } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         
@@ -82,6 +82,7 @@
         window.firebaseGetDoc = getDoc;
         window.firebaseSetDoc = setDoc;
         window.serverTimestamp = serverTimestamp;
+        window.arrayUnion = arrayUnion;
         
         // Make individual functions globally accessible
         window.query = query;
@@ -421,16 +422,10 @@
                         </div>
                     </div>
 
-                    <!-- Driver Notes (if provided) -->
-                    <div id="modal-driver-notes" class="hidden bg-blue-900 bg-opacity-20 border border-blue-500 rounded-lg p-4 mb-6">
-                        <label class="text-sm text-blue-400 block mb-2">Driver Notes</label>
-                        <p id="modal-driver-notes-text" class="text-white whitespace-pre-wrap"></p>
-                    </div>
-
-                    <!-- Return Notes (if applicable) -->
-                    <div id="modal-return-notes" class="hidden bg-red-900 bg-opacity-20 border border-red-500 rounded-lg p-4 mb-6">
-                        <label class="text-sm text-red-400 block mb-2">Return Reason</label>
-                        <p id="modal-return-text" class="text-white"></p>
+                    <!-- Communications (driver notes, return reasons, appeal messages) -->
+                    <div id="modal-communications" class="hidden mb-6">
+                        <label class="text-sm text-gray-400 block mb-2">Communications</label>
+                        <div id="modal-communications-list" class="space-y-3 rounded-lg border border-gray-700 p-4 bg-[#1a1f24]"></div>
                     </div>
 
                     <!-- Expenses List -->
@@ -516,6 +511,10 @@
         let allBatches = [];
         function getBatchItemCount(batch) {
             return (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLineCount) ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(batch) : 0;
+        }
+        function escapeHtml(s) {
+            if (s == null) return '';
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
         let currentBatch = null;
         let activeTab = 'pending';
@@ -1097,18 +1096,29 @@
             document.getElementById('modal-total').textContent = `£${currentBatch.totalAmount?.toFixed(2) || '0.00'}`;
             document.getElementById('modal-date').textContent = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
 
-            if (currentBatch.notes && currentBatch.notes.trim()) {
-                document.getElementById('modal-driver-notes').classList.remove('hidden');
-                document.getElementById('modal-driver-notes-text').textContent = currentBatch.notes;
-            } else {
-                document.getElementById('modal-driver-notes').classList.add('hidden');
-            }
-
-            if (currentBatch.status === 'returned' && currentBatch.returnNotes) {
-                document.getElementById('modal-return-notes').classList.remove('hidden');
-                document.getElementById('modal-return-text').textContent = currentBatch.returnNotes;
-            } else {
-                document.getElementById('modal-return-notes').classList.add('hidden');
+            // Communications: thread of driver notes, return messages, appeal messages
+            const commsList = document.getElementById('modal-communications-list');
+            const commsSection = document.getElementById('modal-communications');
+            if (commsList && commsSection) {
+                const entries = Array.isArray(currentBatch.communications) && currentBatch.communications.length > 0
+                    ? currentBatch.communications.map(c => ({
+                        from: c.from || 'driver',
+                        authorName: c.authorName || (c.from === 'office' ? 'Office' : (currentBatch.driverName || 'Driver')),
+                        message: c.message || '',
+                        createdAt: c.createdAt
+                    }))
+                    : [];
+                if (entries.length > 0) {
+                    commsSection.classList.remove('hidden');
+                    commsList.innerHTML = entries.map(e => {
+                        const dateStr = e.createdAt && (e.createdAt.toDate ? e.createdAt.toDate() : e.createdAt) ? new Date(e.createdAt.toDate ? e.createdAt.toDate() : e.createdAt).toLocaleString() : '';
+                        const namePart = `<strong>${escapeHtml(e.authorName)}</strong>`;
+                        const label = dateStr ? namePart + ' · ' + escapeHtml(dateStr) : namePart;
+                        return `<div class="border-l-2 pl-3 ${e.from === 'office' ? 'border-red-500' : 'border-blue-500'}"><p class="text-sm font-medium text-gray-300 mb-1">${label}</p><p class="text-white whitespace-pre-wrap text-sm">${escapeHtml(e.message)}</p></div>`;
+                    }).join('');
+                } else {
+                    commsSection.classList.add('hidden');
+                }
             }
 
             const categoryEmojis = { 'Fuel': '⛽', 'Charge': '🔌', 'Train': '🚂', 'Bus': '🚌', 'Taxi': '🚕', 'Car Wash': '🧼', 'Tolls': '🛣️', 'Other': '📝', 'fuel': '⛽', 'charge': '🔌', 'train': '🚂', 'bus': '🚌', 'taxi': '🚕', 'car wash': '🧼', 'tolls': '🛣️', 'other': '📝' };
@@ -1205,14 +1215,15 @@
                 notifyWarning('Please provide a reason for returning this batch.', 'Action Required');
                 return;
             }
+            const officeName = (currentUser.name || [currentUser.firstName, currentUser.lastName].filter(Boolean).join(' ') || 'Office').trim() || 'Office';
 
             try {
                 await window.updateDoc(window.doc(window.db, 'expenseBatches', currentBatch.id), {
                     status: 'returned',
-                    returnNotes: reason,
                     returnedAt: window.serverTimestamp(),
                     returnedBy: currentUser.uid,
-                    updatedAt: window.serverTimestamp()
+                    updatedAt: window.serverTimestamp(),
+                    communications: window.arrayUnion({ from: 'office', authorName: officeName, message: reason, createdAt: window.serverTimestamp() })
                 });
 
             notifySuccess('Batch returned to the driver.');
