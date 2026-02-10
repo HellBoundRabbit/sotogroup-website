@@ -2485,56 +2485,100 @@
             }
         }
 
-        var categoryEmojis = { train: '🚂', taxi: '🚕', fuel: '⛽', charge: '🔌', bus: '🚌', carWash: '🧼', toll: '🛣️', other: '📝' };
+        // Same category emoji map as renderExpenses (by category key for lines)
+        var categoryEmojisLines = { train: '🚂', taxi: '🚕', fuel: '⛽', charge: '🔌', bus: '🚌', carWash: '🧼', toll: '🛣️', other: '📝' };
+        function getDisplayPhotoCountForLine(line) {
+            if (!line || !line.photos || !Array.isArray(line.photos)) return 0;
+            var fn = window.isValidPhotoURL || (function(u) { return typeof u === 'string' && u.trim().length > 0 && (u.startsWith('http://') || u.startsWith('https://')); });
+            var urlCount = line.photos.filter(function(p) { return typeof p === 'string' && fn(p); }).length;
+            var fileCount = line.photos.filter(function(p) { return p instanceof File || p instanceof Blob; }).length;
+            return urlCount + fileCount;
+        }
+        function addNextLinePhoto(lineKey) {
+            var line = currentBatch && currentBatch.lines && currentBatch.lines[lineKey];
+            var photos = line && Array.isArray(line.photos) ? line.photos : [];
+            var MAX_PHOTOS = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.MAX_PHOTOS_PER_LINE) || 4;
+            for (var i = 0; i < MAX_PHOTOS; i++) {
+                var p = photos[i];
+                if (!p || (typeof p !== 'string' && !(p instanceof File) && !(p instanceof Blob))) {
+                    addLinePhoto(lineKey, i);
+                    return;
+                }
+            }
+            addLinePhoto(lineKey, MAX_PHOTOS - 1);
+        }
+        function clearLine(lineKey) {
+            if (!currentBatch || !currentBatch.lines) return;
+            currentBatch.lines[lineKey] = { amount: 0, photos: [] };
+            renderLines();
+            if (window.scheduleAutoSave) window.scheduleAutoSave();
+        }
+        function viewLinePhotos(lineKey) {
+            var line = currentBatch && currentBatch.lines && currentBatch.lines[lineKey];
+            var photos = line && Array.isArray(line.photos) ? line.photos : [];
+            var filePhotos = photos.filter(function(p) { return p instanceof File || p instanceof Blob; });
+            var fn = window.isValidPhotoURL || (function(u) { return typeof u === 'string' && u.trim().length > 0 && (u.startsWith('http://') || u.startsWith('https://')); });
+            var validURLs = photos.filter(function(p) { return typeof p === 'string' && fn(p); });
+            if (filePhotos.length === 0 && validURLs.length === 0) return;
+            var grid = document.getElementById('photoViewerGrid');
+            if (!grid) return;
+            if (filePhotos.length > 0) {
+                grid.innerHTML = filePhotos.map(function(file) {
+                    return '<div class="mb-4"><img src="' + (URL.createObjectURL(file)) + '" class="w-full rounded-lg"></div>';
+                }).join('');
+            } else {
+                grid.innerHTML = validURLs.map(function(url, index) {
+                    return '<div class="mb-4"><img src="' + url + '" class="w-full rounded-lg" alt="Photo ' + (index + 1) + '"></div>';
+                }).join('');
+            }
+            document.getElementById('photoViewerModal').classList.remove('hidden');
+        }
         function renderLines() {
             if (!currentBatch || !currentBatch.lines || typeof EXPENSE_BATCH_SCHEMA === 'undefined') return;
-            const container = document.getElementById('linesContainer');
+            var container = document.getElementById('linesContainer');
             if (!container) return;
-            const LINE_KEYS = EXPENSE_BATCH_SCHEMA.LINE_KEYS || [];
-            const getCategoryLabel = EXPENSE_BATCH_SCHEMA.getCategoryLabel || (k => k);
-            const getCategoryGroup = EXPENSE_BATCH_SCHEMA.getCategoryGroup || (k => k.replace(/\d+$/, ''));
-            const MAX_PHOTOS = EXPENSE_BATCH_SCHEMA.MAX_PHOTOS_PER_LINE || 4;
-            const canEdit = currentBatch.status === 'draft' || currentBatch.status === 'returned';
-            var groups = {};
-            LINE_KEYS.forEach(function(lineKey) {
-                var prefix = getCategoryGroup(lineKey) || 'other';
-                if (!groups[prefix]) groups[prefix] = [];
-                groups[prefix].push(lineKey);
-            });
-            var categoryOrder = ['train', 'taxi', 'fuel', 'charge', 'bus', 'carWash', 'toll', 'other'];
+            var LINE_KEYS = EXPENSE_BATCH_SCHEMA.LINE_KEYS || [];
+            var getCategoryLabel = EXPENSE_BATCH_SCHEMA.getCategoryLabel || (function(k) { return k; });
+            var getCategoryGroup = EXPENSE_BATCH_SCHEMA.getCategoryGroup || (function(k) { return (k || '').replace(/\d+$/, ''); });
+            var canEdit = currentBatch.status === 'draft' || currentBatch.status === 'returned';
             var html = '';
-            categoryOrder.forEach(function(prefix) {
-                var keys = groups[prefix];
-                if (!keys || keys.length === 0) return;
-                var emoji = categoryEmojis[prefix] || '📝';
-                var label = (prefix === 'carWash' ? 'Car Wash' : prefix.charAt(0).toUpperCase() + prefix.slice(1));
-                html += '<div class="bg-[#283039] rounded-xl p-4 mb-3 border border-gray-700/50">';
-                html += '<div class="flex items-center gap-2 mb-3 pb-2 border-b border-gray-700/50">';
+            LINE_KEYS.forEach(function(lineKey) {
+                var line = currentBatch.lines[lineKey] || { amount: 0, photos: [] };
+                var amount = typeof line.amount === 'number' ? line.amount : 0;
+                var photoCount = getDisplayPhotoCountForLine(line);
+                var prefix = getCategoryGroup(lineKey) || 'other';
+                var emoji = categoryEmojisLines[prefix] || '📝';
+                var label = getCategoryLabel(lineKey);
+                // Exact same card structure as renderExpenses: bg-[#283039] rounded-lg p-3 flex items-center justify-between
+                html += '<div class="bg-[#283039] rounded-lg p-3 flex items-center justify-between" data-line-key="' + lineKey + '">';
+                html += '<div class="flex items-center gap-3">';
                 html += '<span class="text-2xl">' + emoji + '</span>';
-                html += '<span class="font-semibold text-white">' + label + '</span>';
-                html += '</div>';
-                keys.forEach(function(lineKey) {
-                    var line = currentBatch.lines[lineKey] || { amount: 0, photos: [] };
-                    var amount = typeof line.amount === 'number' ? line.amount : 0;
-                    var photos = Array.isArray(line.photos) ? line.photos : [];
-                    html += '<div class="flex items-center gap-3 py-2.5 border-b border-gray-700/30 last:border-0" data-line-key="' + lineKey + '">';
-                    html += '<span class="text-gray-400 w-16 shrink-0 text-sm">' + getCategoryLabel(lineKey) + '</span>';
-                    html += '<input type="number" step="0.01" min="0" value="' + (amount || '') + '" placeholder="0.00" class="flex-1 min-w-0 max-w-24 bg-[#1a1f24] text-white rounded-lg px-3 py-2 text-base border border-gray-600 focus:border-blue-500 focus:outline-none" ' + (!canEdit ? 'readonly' : '') + ' data-line-key="' + lineKey + '" onchange="updateLineAmount(\'' + lineKey + '\', this.value)">';
-                    html += '<div class="flex items-center gap-1.5 flex-wrap flex-1 justify-end">';
-                    for (var i = 0; i < MAX_PHOTOS; i++) {
-                        var p = photos[i];
-                        if (p && (typeof p === 'string' || p instanceof File || p instanceof Blob)) {
-                            var url = typeof p === 'string' ? p : (URL.createObjectURL ? URL.createObjectURL(p) : '');
-                            html += '<span class="w-10 h-10 rounded-lg bg-gray-700 bg-cover bg-center shrink-0 border border-gray-600" style="background-image:url(' + url + ')" title="Photo ' + (i+1) + '"></span>';
-                        } else if (canEdit) {
-                            html += '<button type="button" onclick="addLinePhoto(\'' + lineKey + '\', ' + i + ')" class="w-10 h-10 rounded-lg border border-dashed border-gray-600 text-gray-500 hover:border-blue-500 hover:text-blue-400 hover:bg-gray-700/50 flex items-center justify-center shrink-0 transition-colors touch-target"><span class="material-symbols-outlined text-xl">add_a_photo</span></button>';
-                        }
-                    }
-                    html += '</div></div>';
-                });
-                html += '</div>';
+                html += '<div>';
+                html += '<div class="font-medium capitalize">' + label + '</div>';
+                if (photoCount > 0) {
+                    html += '<button type="button" onclick="viewLinePhotos(\'' + lineKey + '\')" class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1">';
+                    html += '<span class="material-symbols-outlined text-xs">photo_camera</span> ' + photoCount + ' photo' + (photoCount !== 1 ? 's' : '') + '</button>';
+                } else if (canEdit) {
+                    html += '<button type="button" onclick="addNextLinePhoto(\'' + lineKey + '\')" class="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1">';
+                    html += '<span class="material-symbols-outlined text-xs">photo_camera</span> Add photos</button>';
+                }
+                html += '</div></div>';
+                html += '<div class="flex items-center gap-3">';
+                if (canEdit) {
+                    html += '<span class="font-semibold text-green-500">£</span>';
+                    html += '<input type="number" step="0.01" min="0" value="' + (amount || '') + '" placeholder="0.00" class="font-semibold text-green-500 w-20 bg-transparent border-b border-gray-600 focus:border-blue-500 focus:outline-none py-0.5 text-right" data-line-key="' + lineKey + '" onchange="updateLineAmount(\'' + lineKey + '\', this.value)">';
+                } else {
+                    html += '<span class="font-semibold text-green-500">£' + (amount ? parseFloat(amount).toFixed(2) : '0.00') + '</span>';
+                }
+                if (currentBatch.status === 'returned') {
+                    html += '<button type="button" onclick="addNextLinePhoto(\'' + lineKey + '\')" class="text-blue-500 hover:text-blue-400 transition-colors" title="Add Photos"><span class="material-symbols-outlined">add_a_photo</span></button>';
+                    html += '<button type="button" onclick="clearLine(\'' + lineKey + '\')" class="text-red-500 hover:text-red-400 transition-colors" title="Clear line"><span class="material-symbols-outlined">delete</span></button>';
+                } else if (currentBatch.status === 'draft') {
+                    html += '<button type="button" onclick="clearLine(\'' + lineKey + '\')" class="text-red-500 hover:text-red-400 transition-colors" title="Clear line"><span class="material-symbols-outlined">delete</span></button>';
+                }
+                html += '</div></div>';
             });
-            container.innerHTML = html || '<p class="text-gray-500 text-center py-6">Fill in amounts and add photos as needed.</p>';
+            container.innerHTML = html || '<p class="text-gray-500 text-center py-4">No expenses added yet</p>';
             var total = EXPENSE_BATCH_SCHEMA.getTotalFromLines ? EXPENSE_BATCH_SCHEMA.getTotalFromLines(currentBatch.lines) : 0;
             currentBatch.totalAmount = total;
             var totalEl = document.getElementById('totalAmount');
