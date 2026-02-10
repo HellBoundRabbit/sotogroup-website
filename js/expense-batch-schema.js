@@ -61,11 +61,14 @@
         return Math.round(total * 100) / 100;
     }
 
+    /** True if this line has a value: amount > 0 or at least one photo (URL or File/Blob). Used for "first empty slot" and expense count. */
     function hasLineContent(line) {
         if (!line) return false;
         const amount = typeof line.amount === 'number' && !isNaN(line.amount) ? line.amount : 0;
-        const photos = Array.isArray(line.photos) ? line.photos.filter(p => typeof p === 'string' && p.trim()) : [];
-        return amount > 0 || photos.length > 0;
+        const hasAnyPhoto = Array.isArray(line.photos) && line.photos.some(p =>
+            (typeof p === 'string' && p.trim()) || (typeof File !== 'undefined' && p instanceof File) || (typeof Blob !== 'undefined' && p instanceof Blob)
+        );
+        return amount > 0 || !!hasAnyPhoto;
     }
 
     function getUsedLines(batch) {

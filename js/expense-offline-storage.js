@@ -1,7 +1,7 @@
 /**
  * Offline Storage & Upload Queue System for Expenses
  * Handles IndexedDB storage and smart photo upload queue.
- * Supports both: (1) merged batch.lines (lineKey-based) and (2) legacy batch.expenses (expenseIndex-based).
+ * Single structure: batch.lines only (lineKey-based). No separate expenses collection.
  */
 
 /** Returns true only for non-empty HTTP/HTTPS URLs (avoids storing/displaying placeholders or broken entries). */
@@ -154,9 +154,7 @@ class ExpenseDraftDB {
 
     async saveDraft(batch, photos) {
         if (!this.db) await this.init();
-        const hasLines = batch.lines && typeof batch.lines === 'object';
-        const hasExpenses = batch.expenses && Array.isArray(batch.expenses);
-        if (!hasLines && !hasExpenses) {
+        if (!batch.lines || typeof batch.lines !== 'object') {
             return batch.localId || null;
         }
         const transaction = this.db.transaction(['batches', 'photos'], 'readwrite');
@@ -167,39 +165,19 @@ class ExpenseDraftDB {
         const sanitizedBatch = this.sanitizeForStorage(batch);
         await transaction.objectStore('batches').put(sanitizedBatch);
         const photoStore = transaction.objectStore('photos');
-        if (hasLines && batch.lines) {
-            const lineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.LINE_KEYS) || [];
-            for (const lineKey of lineKeys) {
-                const line = batch.lines[lineKey];
-                if (!line || !Array.isArray(line.photos)) continue;
-                for (let photoIndex = 0; photoIndex < line.photos.length; photoIndex++) {
-                    const photo = line.photos[photoIndex];
-                    if (photo instanceof File || photo instanceof Blob) {
-                        const photoId = `${batch.localId}_${lineKey}_photo${photoIndex}`;
-                        const expenseKey = `${batch.localId}_${lineKey}`;
-                        photoStore.put({
-                            photoId, expenseKey, batchLocalId: batch.localId,
-                            blob: photo, timestamp: Date.now()
-                        });
-                    }
-                }
-            }
-        }
-        if (hasExpenses && photos !== false) {
-            for (let expIndex = 0; expIndex < batch.expenses.length; expIndex++) {
-                const expense = batch.expenses[expIndex];
-                if (expense.photos && Array.isArray(expense.photos)) {
-                    for (let photoIndex = 0; photoIndex < expense.photos.length; photoIndex++) {
-                        const photo = expense.photos[photoIndex];
-                        if (photo instanceof File || photo instanceof Blob) {
-                            const photoId = `${batch.localId}_exp${expIndex}_photo${photoIndex}`;
-                            const expenseKey = `${batch.localId}_exp${expIndex}`;
-                            photoStore.put({
-                                photoId, expenseKey, batchLocalId: batch.localId,
-                                blob: photo, timestamp: Date.now()
-                            });
-                        }
-                    }
+        const lineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.LINE_KEYS) || [];
+        for (const lineKey of lineKeys) {
+            const line = batch.lines[lineKey];
+            if (!line || !Array.isArray(line.photos)) continue;
+            for (let photoIndex = 0; photoIndex < line.photos.length; photoIndex++) {
+                const photo = line.photos[photoIndex];
+                if (photo instanceof File || photo instanceof Blob) {
+                    const photoId = `${batch.localId}_${lineKey}_photo${photoIndex}`;
+                    const expenseKey = `${batch.localId}_${lineKey}`;
+                    photoStore.put({
+                        photoId, expenseKey, batchLocalId: batch.localId,
+                        blob: photo, timestamp: Date.now()
+                    });
                 }
             }
         }
@@ -311,7 +289,6 @@ class ExpenseDraftDB {
         if (!batch) return null;
         const photoStore = transaction.objectStore('photos');
         const expenseKeyIndex = photoStore.index('expenseKey');
-        const photosByExpIndex = {};
         if (batch.lines && typeof batch.lines === 'object') {
             const lineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.LINE_KEYS) ? EXPENSE_BATCH_SCHEMA.LINE_KEYS : Object.keys(batch.lines);
             for (const lineKey of lineKeys) {
@@ -334,33 +311,6 @@ class ExpenseDraftDB {
                         line.photos = [...existingURLs, ...blobs];
                     }
                 }
-            }
-        }
-        if (batch.expenses) {
-            for (let expIndex = 0; expIndex < batch.expenses.length; expIndex++) {
-                const expenseKey = `${batch.localId}_exp${expIndex}`;
-                const request = expenseKeyIndex.getAll(expenseKey);
-                const photoRecords = await new Promise((resolve) => {
-                    request.onsuccess = (e) => resolve(e.target.result || []);
-                    request.onerror = () => resolve([]);
-                });
-                if (photoRecords.length > 0) {
-                    if (!photosByExpIndex[expIndex]) photosByExpIndex[expIndex] = [];
-                    const photoIndexFromId = (r) => {
-                        const m = (r.photoId || '').match(/_photo(\d+)$/);
-                        return m ? parseInt(m[1], 10) : 0;
-                    };
-                    photoRecords.sort((a, b) => photoIndexFromId(a) - photoIndexFromId(b));
-                    for (const record of photoRecords) {
-                        photosByExpIndex[expIndex].push(record.blob);
-                    }
-                }
-            }
-            for (let expIndex = 0; expIndex < batch.expenses.length; expIndex++) {
-                const existingPhotos = batch.expenses[expIndex].photos;
-                const existingURLs = Array.isArray(existingPhotos) ? existingPhotos.filter(p => typeof p === 'string' && isValidPhotoURL(p)) : [];
-                const rehydratedBlobs = photosByExpIndex[expIndex] || [];
-                batch.expenses[expIndex].photos = [...existingURLs, ...rehydratedBlobs];
             }
         }
         return batch;
@@ -806,8 +756,8 @@ class UploadQueue {
     }
 
     updateUploadStatus(batchId, expenseIndex) {
-        if (typeof renderExpenses === 'function' && window.currentBatch && window.currentBatch.id === batchId) {
-            renderExpenses();
+        if (typeof renderLines === 'function' && window.currentBatch && window.currentBatch.id === batchId) {
+            renderLines();
         }
     }
 
