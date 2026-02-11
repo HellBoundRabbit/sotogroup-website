@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="SOTO Routes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#000000">
@@ -667,10 +667,10 @@
         </div>
     </button>
 
-    <!-- Batch Detail Modal -->
+    <!-- Batch Detail Modal: aligned below status bar, scrolls when tall (no bottom-stuck, no overlap) -->
     <div id="batchModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 overflow-y-auto">
-        <div class="min-h-screen px-4 flex items-end sm:items-center justify-center">
-            <div id="batchModalContent" class="bg-[#1a1f24] rounded-2xl w-full max-w-2xl transform transition-all animated-border-modal">
+        <div class="min-h-full min-h-screen px-4 flex items-start justify-center pt-[env(safe-area-inset-top)] pt-4 pb-6 sm:pt-6 sm:pb-8">
+            <div id="batchModalContent" class="bg-[#1a1f24] rounded-2xl w-full max-w-2xl transform transition-all animated-border-modal max-h-[calc(100vh-env(safe-area-inset-top)-2rem)] flex flex-col overflow-hidden">
                 
                 <!-- Modal Header -->
                 <div class="sticky top-0 bg-[#1a1f24] border-b border-gray-800 rounded-t-2xl z-10">
@@ -687,8 +687,8 @@
                 </div>
                 </div>
 
-                <!-- Modal Content -->
-                <div class="p-6 pb-24">
+                <!-- Modal Content (scrolls when many expenses) -->
+                <div class="p-6 pb-24 flex-1 min-h-0 overflow-y-auto">
                 
                 <!-- Registration Input -->
                 <div class="mb-6">
@@ -2365,8 +2365,19 @@
             }
             addLinePhoto(lineKey, MAX_PHOTOS - 1);
         }
-        function clearLine(lineKey) {
+        async function clearLine(lineKey) {
             if (!currentBatch || !currentBatch.lines) return;
+            var label = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getCategoryLabel) ? EXPENSE_BATCH_SCHEMA.getCategoryLabel(lineKey) : lineKey;
+            var confirmed = (typeof dialogApi !== 'undefined' && dialogApi.showConfirmation)
+                ? await dialogApi.showConfirmation({
+                    title: 'Remove expense',
+                    message: 'Remove "' + label + '" and its photos from this batch?',
+                    confirmText: 'Remove',
+                    cancelText: 'Cancel',
+                    tone: 'danger'
+                })
+                : window.confirm('Remove "' + label + '" and its photos from this batch?');
+            if (!confirmed) return;
             currentBatch.lines[lineKey] = { amount: 0, photos: [] };
             renderLines();
             if (window.scheduleAutoSave) window.scheduleAutoSave();
