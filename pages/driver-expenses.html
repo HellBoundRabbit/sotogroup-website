@@ -1719,7 +1719,21 @@
                     if (lineKey && batchId) {
                         try {
                             const batchRef = window.doc(window.db, 'expenseBatches', batchId);
-                            const batchSnap = await window.getDoc(batchRef);
+                            // Read from server so we merge new URL into latest state (avoids stale cache overwriting other lines' photos)
+                            var batchSnap;
+                            if (typeof window.getDocFromServer === 'function') {
+                                try {
+                                    batchSnap = await window.getDocFromServer(batchRef);
+                                } catch (e) {
+                                    if (e && (e.code === 'unavailable' || (e.message && (e.message.indexOf('network') !== -1 || e.message.indexOf('unavailable') !== -1)))) {
+                                        batchSnap = await window.getDoc(batchRef);
+                                    } else {
+                                        throw e;
+                                    }
+                                }
+                            } else {
+                                batchSnap = await window.getDoc(batchRef);
+                            }
                             if (batchSnap.exists()) {
                                 const data = batchSnap.data();
                                 const lines = data.lines || {};
@@ -2135,40 +2149,19 @@
                 batch.lines = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.emptyLines) ? EXPENSE_BATCH_SCHEMA.emptyLines() : {};
             }
 
-            // Rehydrate from IndexedDB only when we don't have full lines from Firestore (e.g. fetch failed or offline). When we have batch.lines from a successful fetch, use them as-is so we never overwrite server photo URLs with stale/empty IndexedDB data.
-            var hasLinesFromFirestore = batch.lines && typeof batch.lines === 'object' && Object.keys(batch.lines).length > 0;
-            if (!hasLinesFromFirestore && batch.localId && window.expenseDraftDB) {
-                try {
-                    const draft = await window.expenseDraftDB.getDraft(batch.localId);
-                    if (draft && draft.lines && typeof draft.lines === 'object') {
-                        batch.lines = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.normalizeLines) ? EXPENSE_BATCH_SCHEMA.normalizeLines(draft.lines) : draft.lines;
-                    }
-                } catch (e) {
-                    console.warn('Failed to rehydrate draft from IndexedDB:', e);
-                }
-            } else if (hasLinesFromFirestore && batch.localId && window.expenseDraftDB) {
-                // We have Firestore lines; only merge in any draft blobs (File/Blob) for lines that have no URLs yet, never replace URLs with draft data
-                try {
-                    const draft = await window.expenseDraftDB.getDraft(batch.localId);
-                    if (draft && draft.lines && typeof draft.lines === 'object') {
-                        const firestoreLines = batch.lines || {};
-                        const draftLines = draft.lines || {};
-                        const lineKeys = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.LINE_KEYS) ? EXPENSE_BATCH_SCHEMA.LINE_KEYS : Object.keys(firestoreLines);
-                        for (var ki = 0; ki < lineKeys.length; ki++) {
-                            var k = lineKeys[ki];
-                            var fline = firestoreLines[k];
-                            var dline = draftLines[k];
-                            var fUrls = (fline && Array.isArray(fline.photos)) ? fline.photos.filter(function(p) { return typeof p === 'string'; }) : [];
-                            var dBlobs = (dline && Array.isArray(dline.photos)) ? dline.photos.filter(function(p) { return p instanceof File || p instanceof Blob; }) : [];
-                            if (fUrls.length > 0) {
-                                batch.lines[k] = { ...(fline || {}), photos: [...fUrls, ...dBlobs], photosUploading: false };
-                            } else if (dBlobs.length > 0) {
-                                batch.lines[k] = { ...(fline || dline || {}), amount: typeof (fline || dline || {}).amount === 'number' ? (fline || dline).amount : 0, photos: dBlobs, photosUploading: true };
-                            }
+            // Reopened draft = 100% from Firebase. When batch has a Firestore id (saved to server), use only the fetched data — do not merge IndexedDB so we never overwrite server photo URLs with stale local data.
+            // Only use IndexedDB when fetch failed (catch block already applied) or we have no batch.id (e.g. offline draft never synced).
+            if (!batch.id && batch.localId && window.expenseDraftDB) {
+                var hasLines = batch.lines && typeof batch.lines === 'object' && Object.keys(batch.lines).length > 0;
+                if (!hasLines) {
+                    try {
+                        var draft = await window.expenseDraftDB.getDraft(batch.localId);
+                        if (draft && draft.lines && typeof draft.lines === 'object') {
+                            batch.lines = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.normalizeLines) ? EXPENSE_BATCH_SCHEMA.normalizeLines(draft.lines) : draft.lines;
                         }
+                    } catch (e) {
+                        console.warn('Failed to rehydrate draft from IndexedDB:', e);
                     }
-                } catch (e) {
-                    console.warn('Failed to merge draft blobs from IndexedDB:', e);
                 }
             }
 
