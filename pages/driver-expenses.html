@@ -1720,7 +1720,7 @@
                             const batchSnap = await window.getDoc(batchRef);
                             if (batchSnap.exists()) {
                                 const data = batchSnap.data();
-                                const lines = { ...(data.lines || {}) };
+                                const lines = data.lines || {};
                                 const line = lines[lineKey] || { amount: 0, photos: [] };
                                 const existingPhotos = Array.isArray(line.photos) ? line.photos.filter(p => typeof p === 'string' && isValidPhotoURL(p)) : [];
                                 const allPhotoURLs = [...existingPhotos];
@@ -1728,9 +1728,11 @@
                                     if (isValidPhotoURL(newURL) && !hasSameFile(allPhotoURLs, newURL)) allPhotoURLs.push(newURL);
                                 }
                                 const deduped = (window.dedupePhotoURLsByPath && window.dedupePhotoURLsByPath(allPhotoURLs)) || allPhotoURLs;
-                                lines[lineKey] = { ...line, photos: deduped, photosUploading: false };
+                                const updatedLine = { ...line, photos: deduped, photosUploading: false };
+                                // Update only this line using dot notation so concurrent upload-complete handlers don't overwrite each other's lines
+                                const path = 'lines.' + lineKey;
                                 await window.updateDoc(batchRef, {
-                                    lines: lines,
+                                    [path]: updatedLine,
                                     updatedAt: window.serverTimestamp ? window.serverTimestamp() : new Date()
                                 });
                                 console.log('[Main Thread] Updated batch line with photo URLs:', batchId, lineKey);
