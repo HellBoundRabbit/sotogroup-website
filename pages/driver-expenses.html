@@ -1716,6 +1716,7 @@
             uploadChannel.addEventListener('message', function(event) {
                 const { type, uploadId, expenseDocId, batchId, lineKey, downloadURLs } = event.data || {};
                 if (type !== 'upload-complete' || !downloadURLs || downloadURLs.length === 0 || !lineKey || !batchId) return;
+                // Always persist every URL we receive so we keep the storage path; refresh on open fixes broken/revoked tokens.
                 var isValidPhotoURL = window.isValidPhotoURL || (function(u) { return typeof u === 'string' && u.trim().length > 0 && (u.startsWith('http://') || u.startsWith('https://')); });
                 var storagePathKey = function(url) { return (url || '').replace(/\&token=[^&]*/i, '').trim(); };
                 var hasSameFile = function(existingList, url) { return existingList.some(function(ex) { return storagePathKey(ex) === storagePathKey(url); }); };
@@ -2187,6 +2188,9 @@
                 }
             }
 
+            // Resolve fresh Firebase Storage URLs before showing modal (avoids question-mark flash; tokens can be revoked or stale)
+            if (typeof refreshFirebasePhotoURLs === 'function') await refreshFirebasePhotoURLs(batch);
+
             currentBatch = batch;
             
             // Update global reference for offline storage
@@ -2303,8 +2307,6 @@
             }
 
             document.getElementById('batchModal').classList.remove('hidden');
-            // Refresh Firebase Storage URLs in background (fixes expired/revoked tokens so thumbnails load)
-            if (typeof refreshFirebasePhotoURLs === 'function') refreshFirebasePhotoURLs(currentBatch);
         }
 
         // Single workflow: batch modal always uses lines; renderExpenses just delegates to renderLines
@@ -3509,7 +3511,7 @@
         }
 
         const FIREBASE_STORAGE_URL_PREFIX = 'https://firebasestorage.googleapis.com/v0/b/soto-routes.firebasestorage.app/';
-        // Refresh Firebase Storage photo URLs in batch (fixes expired/revoked tokens). Runs in background; re-renders when done.
+        // Refresh Firebase Storage photo URLs (getDownloadURL gives fresh token). Needed because tokens can be revoked in Firebase Console; we also only persist URLs with token in upload-complete.
         async function refreshFirebasePhotoURLs(batch) {
             if (!batch || !batch.lines || !window.storage || typeof window.ref !== 'function' || typeof window.getDownloadURL !== 'function') return;
             var updated = false;
