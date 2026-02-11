@@ -1141,7 +1141,7 @@ class ExpenseUploadQueue {
             req.onerror = () => resolve(0);
         });
 
-        // Get all tasks to count photos
+        // Get all tasks to count photos (remaining and total for progress %)
         const allTasks = await new Promise((resolve) => {
             const req = store.getAll();
             req.onsuccess = () => resolve(req.result || []);
@@ -1149,15 +1149,19 @@ class ExpenseUploadQueue {
         });
 
         let photoCount = 0;
+        let totalPhotoCount = 0;
         allTasks.forEach(task => {
+            const n = (task.photoBlobIds || []).length;
+            totalPhotoCount += n;
             if (task.status === 'pending' || task.status === 'uploading') {
-                photoCount += (task.photoBlobIds || []).length;
+                photoCount += n;
             }
         });
 
         return {
             expenseCount: pending + uploading,
-            photoCount: photoCount
+            photoCount: photoCount,
+            totalPhotoCount: totalPhotoCount
         };
     }
 
@@ -1184,7 +1188,7 @@ class ExpenseUploadQueue {
         }
 
         const pendingCounts = await this.getPendingCount();
-        const { expenseCount, photoCount } = pendingCounts;
+        const { expenseCount, photoCount, totalPhotoCount } = pendingCounts;
         
         // Check for submission queue too
         let submissionQueued = 0;
@@ -1233,9 +1237,16 @@ class ExpenseUploadQueue {
                 }
             }
             
-            // Update subtitle - show what's actually happening
+            // Subtitle and progress: show photo count and percentage when we have photo uploads
+            const totalPhotos = typeof totalPhotoCount === 'number' ? totalPhotoCount : 0;
+            const remainingPhotos = typeof photoCount === 'number' ? photoCount : 0;
+            const completedPhotos = totalPhotos > 0 ? Math.max(0, totalPhotos - remainingPhotos) : 0;
+            const percent = totalPhotos > 0 ? Math.round((completedPhotos / totalPhotos) * 100) : 0;
+
             if (bannerSubtitle) {
-                if (photoCount > 0) {
+                if (remainingPhotos > 0 && totalPhotos > 0) {
+                    bannerSubtitle.textContent = `${completedPhotos} of ${totalPhotos} photo${totalPhotos === 1 ? '' : 's'} (${percent}%)`;
+                } else if (photoCount > 0) {
                     bannerSubtitle.textContent = `Uploading ${photoCount} photo${photoCount === 1 ? '' : 's'}...`;
                 } else if (submissionQueued > 0) {
                     bannerSubtitle.textContent = 'Saving expenses...';
@@ -1244,11 +1255,8 @@ class ExpenseUploadQueue {
                 }
             }
             
-            // Update progress bar (simplified - shows based on tasks)
             if (progressFill) {
-                // Simple progress: if we have tasks, show indeterminate progress
-                // In future, can track actual upload progress per task
-                progressFill.style.width = '50%'; // Indeterminate progress
+                progressFill.style.width = totalPhotos > 0 ? percent + '%' : '0%';
             }
         } else {
             this.hideUploadBanner();
