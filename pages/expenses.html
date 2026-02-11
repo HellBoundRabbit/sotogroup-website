@@ -39,7 +39,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, where, updateDoc, doc, deleteDoc, getDoc, setDoc, serverTimestamp, arrayUnion } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, where, updateDoc, doc, deleteDoc, getDoc, getDocFromServer, setDoc, serverTimestamp, arrayUnion } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         
@@ -94,6 +94,7 @@
         window.orderBy = orderBy;
         window.doc = doc;
         window.getDoc = getDoc;
+        window.getDocFromServer = getDocFromServer;
         window.setDoc = setDoc;
         window.signOut = signOut;
         
@@ -1085,10 +1086,25 @@
             }
         }
 
-        // Open batch detail
-        function openBatchDetail(batchId) {
-            currentBatch = allBatches.find(b => b.id === batchId);
-            if (!currentBatch) return;
+        // Open batch detail — fetch from server so we always show latest (including all photo URLs). List data can be cached.
+        async function openBatchDetail(batchId) {
+            var batch = allBatches.find(b => b.id === batchId);
+            if (!batch) return;
+            try {
+                var batchRef = window.doc(window.db, 'expenseBatches', batchId);
+                if (typeof window.getDocFromServer === 'function') {
+                    var snap = await window.getDocFromServer(batchRef);
+                    if (snap.exists()) batch = { id: snap.id, ...snap.data() };
+                } else {
+                    var snap = await window.getDoc(batchRef);
+                    if (snap.exists()) batch = { id: snap.id, ...snap.data() };
+                }
+                var idx = allBatches.findIndex(b => b.id === batchId);
+                if (idx >= 0) allBatches[idx] = batch;
+            } catch (e) {
+                console.warn('Could not refetch batch, using list data:', e);
+            }
+            currentBatch = batch;
 
             const date = currentBatch.submittedAt?.toDate ? currentBatch.submittedAt.toDate() : new Date();
             document.getElementById('modal-driver').textContent = currentBatch.driverName || 'Unknown Driver';
