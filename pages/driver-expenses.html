@@ -2108,12 +2108,32 @@
                 batch.lines = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.emptyLines) ? EXPENSE_BATCH_SCHEMA.emptyLines() : {};
             }
 
-            // Rehydrate from IndexedDB when reopening a draft so photo blobs (and amounts) are restored; Firestore only has URLs after upload
+            // Rehydrate from IndexedDB when reopening a draft. Prefer Firestore for photo URLs (they are updated when uploads complete); only use draft for amounts and any blobs not yet uploaded. Never overwrite Firestore URLs with stale/empty IndexedDB data.
             if (batch.localId && window.expenseDraftDB) {
                 try {
                     const draft = await window.expenseDraftDB.getDraft(batch.localId);
                     if (draft && draft.lines && typeof draft.lines === 'object') {
-                        batch.lines = draft.lines;
+                        const firestoreLines = batch.lines || {};
+                        const draftLines = draft.lines || {};
+                        const lineKeys = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.LINE_KEYS) ? EXPENSE_BATCH_SCHEMA.LINE_KEYS : [...new Set([...Object.keys(firestoreLines), ...Object.keys(draftLines)])];
+                        const merged = {};
+                        for (const k of lineKeys) {
+                            const fline = firestoreLines[k];
+                            const dline = draftLines[k];
+                            const fPhotos = (fline && Array.isArray(fline.photos)) ? fline.photos : [];
+                            const dPhotos = (dline && Array.isArray(dline.photos)) ? dline.photos : [];
+                            const fUrls = fPhotos.filter(function(p) { return typeof p === 'string'; });
+                            const dUrls = dPhotos.filter(function(p) { return typeof p === 'string'; });
+                            const dBlobs = dPhotos.filter(function(p) { return p instanceof File || p instanceof Blob; });
+                            // Prefer Firestore URLs (source of truth after upload); add any draft blobs (e.g. not yet uploaded)
+                            const urls = fUrls.length > 0 ? fUrls : dUrls;
+                            merged[k] = {
+                                amount: typeof (fline || dline || {}).amount === 'number' ? (fline || dline).amount : 0,
+                                photos: [...urls, ...dBlobs],
+                                photosUploading: (fline || dline || {}).photosUploading || false
+                            };
+                        }
+                        batch.lines = merged;
                     }
                 } catch (e) {
                     console.warn('Failed to rehydrate draft from IndexedDB:', e);
