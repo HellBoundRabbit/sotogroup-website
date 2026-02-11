@@ -925,42 +925,6 @@
         const EXPENSE_SUBMISSION_QUEUE_KEY = 'expense_submission_queue_v1';
         const MAX_PHOTOS_PER_EXPENSE = 4;
 
-        /** Compress image for faster upload: resize if over maxDim, export as JPEG. Keeps quality good for receipts. */
-        function compressImageFile(file, maxDim, quality) {
-            maxDim = maxDim || 1920;
-            quality = quality || 0.88;
-            if (!file || !file.type || !file.type.startsWith('image/')) return Promise.resolve(file);
-            return new Promise(function(resolve, reject) {
-                var img = new Image();
-                var url = URL.createObjectURL(file);
-                img.onload = function() {
-                    URL.revokeObjectURL(url);
-                    var w = img.naturalWidth || img.width;
-                    var h = img.naturalHeight || img.height;
-                    if (w <= 0 || h <= 0) { resolve(file); return; }
-                    var scale = 1;
-                    if (w > maxDim || h > maxDim) scale = Math.min(maxDim / w, maxDim / h);
-                    var cw = Math.round(w * scale);
-                    var ch = Math.round(h * scale);
-                    var canvas = document.createElement('canvas');
-                    canvas.width = cw;
-                    canvas.height = ch;
-                    var ctx = canvas.getContext('2d');
-                    if (!ctx) { resolve(file); return; }
-                    ctx.drawImage(img, 0, 0, cw, ch);
-                    canvas.toBlob(function(blob) {
-                        if (blob) resolve(blob);
-                        else resolve(file);
-                    }, 'image/jpeg', quality);
-                };
-                img.onerror = function() {
-                    URL.revokeObjectURL(url);
-                    resolve(file);
-                };
-                img.src = url;
-            });
-        }
-
         // Prevent concurrent sync for the same batch (button + processSubmissionQueue race)
         const expenseSyncLocks = new Set();
 
@@ -2528,6 +2492,48 @@
             if (window.scheduleAutoSave) window.scheduleAutoSave();
         }
 
+        // Compress image for faster upload: max dimension 1600px, JPEG quality 0.88. Keeps quality, reduces size.
+        function compressImageForUpload(fileOrBlob) {
+            return new Promise(function(resolve) {
+                if (!fileOrBlob || !(fileOrBlob instanceof File || fileOrBlob instanceof Blob)) {
+                    resolve(fileOrBlob);
+                    return;
+                }
+                var url = URL.createObjectURL(fileOrBlob);
+                var img = new Image();
+                img.onerror = function() {
+                    URL.revokeObjectURL(url);
+                    resolve(fileOrBlob);
+                };
+                img.onload = function() {
+                    URL.revokeObjectURL(url);
+                    var maxDim = 1600;
+                    var w = img.naturalWidth || img.width;
+                    var h = img.naturalHeight || img.height;
+                    if (!w || !h) { resolve(fileOrBlob); return; }
+                    var scale = Math.min(1, maxDim / Math.max(w, h));
+                    var cw = Math.round(w * scale);
+                    var ch = Math.round(h * scale);
+                    if (scale >= 1 && fileOrBlob.size && fileOrBlob.size < 300000) {
+                        resolve(fileOrBlob);
+                        return;
+                    }
+                    var canvas = document.createElement('canvas');
+                    canvas.width = cw;
+                    canvas.height = ch;
+                    var ctx = canvas.getContext('2d');
+                    if (!ctx) { resolve(fileOrBlob); return; }
+                    ctx.drawImage(img, 0, 0, cw, ch);
+                    canvas.toBlob(function(blob) {
+                        if (blob) resolve(blob);
+                        else resolve(fileOrBlob);
+                    }, 'image/jpeg', 0.88);
+                };
+                img.src = url;
+            });
+        }
+        if (typeof window !== 'undefined') window.compressImageForUpload = compressImageForUpload;
+
         function addLinePhoto(lineKey, photoIndex) {
             if (!currentBatch || !currentBatch.lines) return;
             window._pendingLinePhoto = { lineKey, photoIndex };
@@ -2535,21 +2541,24 @@
             if (input) input.click();
         }
 
-        function onLinePhotoSelected(event) {
+        async function onLinePhotoSelected(event) {
             var f = event.target && event.target.files && event.target.files[0];
             if (!f || !window._pendingLinePhoto) return;
             var pending = window._pendingLinePhoto;
             window._pendingLinePhoto = null;
             event.target.value = '';
-            if (!currentBatch.lines[pending.lineKey]) currentBatch.lines[pending.lineKey] = { amount: 0, photos: [] }
+            if (!currentBatch.lines[pending.lineKey]) currentBatch.lines[pending.lineKey] = { amount: 0, photos: [] };
             var photos = currentBatch.lines[pending.lineKey].photos || [];
             while (photos.length <= pending.photoIndex) photos.push(null);
-            (typeof compressImageFile === 'function' ? compressImageFile(f, 1920, 0.88) : Promise.resolve(f)).then(function(blob) {
-                photos[pending.photoIndex] = blob;
-                currentBatch.lines[pending.lineKey].photos = photos.filter(Boolean);
-                renderLines();
-                if (window.scheduleAutoSave) window.scheduleAutoSave();
-            });
+            try {
+                var compressed = await compressImageForUpload(f);
+                photos[pending.photoIndex] = compressed;
+            } catch (e) {
+                photos[pending.photoIndex] = f;
+            }
+            currentBatch.lines[pending.lineKey].photos = photos.filter(Boolean);
+            renderLines();
+            if (window.scheduleAutoSave) window.scheduleAutoSave();
         }
 
         // Helper function to ensure expense modal has no border classes
@@ -2632,10 +2641,11 @@
             }
         }
         
-        // Handle photo selection (works with both camera and gallery inputs)
-        function handlePhotoSelect(event) {
-            const files = Array.from(event.target.files);
-            
+        // Handle photo selection (works with both camera and gallery inputs). Compresses for faster upload.
+        async function handlePhotoSelect(event) {
+            const files = Array.from(event.target.files || []);
+            if (files.length === 0) return;
+
             if (!currentExpense.photos) {
                 currentExpense.photos = [];
             }
@@ -2657,26 +2667,22 @@
                 notifyWarning(`Only the first ${remainingSlots} photo${remainingSlots === 1 ? '' : 's'} were added. Each expense can include up to ${MAX_PHOTOS_PER_EXPENSE} photos.`, 'Photo Limit Reached');
             }
 
-            const compress = typeof compressImageFile === 'function' ? compressImageFile : (f) => Promise.resolve(f);
-            Promise.all(filesToAdd.map((f) => compress(f, 1920, 0.88))).then((compressed) => {
-                currentExpense.photos = currentExpense.photos.concat(compressed);
-                updatePhotoPreview();
-                const cameraInput = document.getElementById('photoInputCamera');
-                const galleryInput = document.getElementById('photoInputGallery');
-                if (cameraInput) cameraInput.value = '';
-                if (galleryInput) galleryInput.value = '';
-                if (currentBatch && window.scheduleAutoSave) window.scheduleAutoSave();
-            });
-            return;
-        }
-
-        function updatePhotoPreview() {
-            if (!currentExpense || !currentExpense.photos) return;
+            var compressed = [];
+            for (var i = 0; i < filesToAdd.length; i++) {
+                try {
+                    var c = await (window.compressImageForUpload || (function(f) { return Promise.resolve(f); }))(filesToAdd[i]);
+                    compressed.push(c);
+                } catch (e) {
+                    compressed.push(filesToAdd[i]);
+                }
+            }
+            currentExpense.photos = currentExpense.photos.concat(compressed);
+            
+            // Update preview
             const preview = document.getElementById('photoPreview');
-            if (!preview) return;
             preview.innerHTML = currentExpense.photos.map((photo, index) => {
                 if (photo instanceof File || photo instanceof Blob) {
-                    return `
+                return `
                 <div class="relative cursor-pointer group" onclick="viewCurrentExpensePhotos(${index})">
                 <img src="${URL.createObjectURL(photo)}" class="w-full h-24 object-cover rounded-lg transition-opacity group-hover:opacity-80">
                 <button onclick="event.stopPropagation(); removePhoto(${index})" class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs z-10 hover:bg-red-600">
@@ -2688,6 +2694,7 @@
                 </div>
                 `;
                 }
+
                 return `
                 <div class="relative cursor-pointer group" onclick="viewCurrentExpensePhotos(${index})">
                 <img src="${photo}" class="w-full h-24 object-cover rounded-lg transition-opacity group-hover:opacity-80">
@@ -2698,6 +2705,17 @@
                 </div>
                 `;
             }).join('');
+            
+            // Reset both inputs so same file can be selected again if needed
+            const cameraInput = document.getElementById('photoInputCamera');
+            const galleryInput = document.getElementById('photoInputGallery');
+            if (cameraInput) cameraInput.value = '';
+            if (galleryInput) galleryInput.value = '';
+            
+            // Trigger auto-save if we're editing a batch
+            if (currentBatch && window.scheduleAutoSave) {
+                window.scheduleAutoSave();
+            }
         }
 
         // Remove photo
@@ -2710,6 +2728,7 @@
                 preview.innerHTML = '';
             } else {
                 preview.innerHTML = currentExpense.photos.map((file, idx) => {
+                // Check if it's a File/Blob or URL
                 if (file instanceof File || file instanceof Blob) {
                 return `
                 <div class="relative cursor-pointer group" onclick="viewCurrentExpensePhotos(${idx})">
