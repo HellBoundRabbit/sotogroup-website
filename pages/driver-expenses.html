@@ -2165,6 +2165,34 @@
                 }
             }
 
+            // If this is a saved draft and any used line has amount but no photo URLs, refetch once from server (catches race where we opened before all upload-complete writes had propagated)
+            if (batch.id && batch.lines && typeof batch.lines === 'object' && typeof window.getDocFromServer === 'function') {
+                var getUsedLines = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.getUsedLines) ? EXPENSE_BATCH_SCHEMA.getUsedLines : function() { return []; };
+                var usedKeys = getUsedLines(batch);
+                var anyMissingPhotos = false;
+                for (var ui = 0; ui < usedKeys.length; ui++) {
+                    var l = batch.lines[usedKeys[ui]];
+                    if (l && typeof l.amount === 'number' && l.amount > 0) {
+                        var urls = (l.photos && Array.isArray(l.photos)) ? l.photos.filter(function(p) { return typeof p === 'string'; }) : [];
+                        if (urls.length === 0) { anyMissingPhotos = true; break; }
+                    }
+                }
+                if (anyMissingPhotos) {
+                    try {
+                        var refetchSnap = await window.getDocFromServer(window.doc(window.db, 'expenseBatches', batch.id));
+                        if (refetchSnap.exists()) {
+                            var refetchData = refetchSnap.data();
+                            if (refetchData.lines && typeof refetchData.lines === 'object') {
+                                batch.lines = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.normalizeLines) ? EXPENSE_BATCH_SCHEMA.normalizeLines(refetchData.lines) : refetchData.lines;
+                                if (typeof console !== 'undefined' && console.log) console.log('[openBatch] Refetched batch from server (some lines were missing photos):', batch.id);
+                            }
+                        }
+                    } catch (refetchErr) {
+                        // ignore
+                    }
+                }
+            }
+
             currentBatch = batch;
             
             // Update global reference for offline storage
