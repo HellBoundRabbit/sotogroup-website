@@ -2443,25 +2443,11 @@
                 html += '</div></div>';
                 html += '<div class="flex items-center justify-center flex-1 min-w-0">';
                 if (photoCount > 0) {
-                    var thumbSrcs = getThumbnailSourcesForLine(line);
-                    if (thumbSrcs.length === 1) {
-                        var safe1 = (thumbSrcs[0] || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-                        html += '<button type="button" onclick="openLinePhotoGallery(\'' + lineKey + '\')" class="w-12 h-12 rounded overflow-hidden border border-gray-600 flex-shrink-0 hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-blue-400"><img src="' + safe1 + '" alt="" class="w-full h-full object-cover"></button>';
-                    } else {
-                        var stackOffset = 6;
-                        var thumbSize = 48;
-                        var stackW = thumbSize + (thumbSrcs.length - 1) * stackOffset;
-                        var stackH = thumbSize + (thumbSrcs.length - 1) * (stackOffset - 2);
-                        html += '<button type="button" onclick="openLinePhotoGallery(\'' + lineKey + '\')" class="flex-shrink-0 relative rounded overflow-visible focus:outline-none focus:ring-2 focus:ring-blue-400" style="width:' + stackW + 'px;height:' + stackH + 'px;">';
-                        thumbSrcs.forEach(function(src, idx) {
-                            var safe = (src || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-                            var left = idx * stackOffset;
-                            var top = idx * (stackOffset - 2);
-                            var z = thumbSrcs.length - idx;
-                            html += '<span class="absolute rounded overflow-hidden border border-gray-600 shadow" style="left:' + left + 'px;top:' + top + 'px;width:' + thumbSize + 'px;height:' + thumbSize + 'px;z-index:' + z + ';"><img src="' + safe + '" alt="" class="w-full h-full object-cover"></span>';
-                        });
-                        html += '</button>';
-                    }
+                    var count = Math.min(photoCount, 4);
+                    html += '<button type="button" onclick="openLinePhotoGallery(\'' + lineKey + '\')" class="w-12 h-12 rounded-lg border border-gray-600 flex-shrink-0 flex items-center justify-center bg-[#1e252b] hover:bg-[#283039] focus:outline-none focus:ring-2 focus:ring-blue-400 relative" title="' + count + ' photo' + (count !== 1 ? 's' : '') + '">';
+                    html += '<span class="material-symbols-outlined text-gray-400 text-2xl">photo_camera</span>';
+                    html += '<span class="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full bg-blue-500 text-white text-xs font-semibold flex items-center justify-center px-1">' + count + '</span>';
+                    html += '</button>';
                 }
                 html += '</div>';
                 html += '<div class="flex items-center gap-3 flex-shrink-0">';
