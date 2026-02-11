@@ -18,6 +18,7 @@ function getStorageUploadUrl(path, uploadType = 'multipart') {
   return `https://firebasestorage.googleapis.com/v0/b/${bucketId}/o?name=${encodedPath}&uploadType=${uploadType}`;
 }
 
+// Do NOT use for URLs we persist to Firestore: this URL has no token and will 403. Use only getDownloadURL from main thread (requestMainThreadUpload).
 function getStorageDownloadUrl(path) {
   const bucketId = 'soto-routes';
   const encodedPath = encodeURIComponent(path);
