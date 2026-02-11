@@ -1706,78 +1706,72 @@
             }
         }, { once: true });
 
-        // Listen for Service Worker upload completion messages
+        // Listen for Service Worker upload completion messages.
+        // CRITICAL: Serialize all Firestore updates so they run one-after-another. On iOS/slow devices, concurrent
+        // getDoc+updateDoc caused one write to overwrite another — one photo URL never made it into the doc.
+        // One source of truth: read latest from server, merge this line's URL, write full lines object.
         if ('BroadcastChannel' in window) {
+            var uploadCompleteUpdateChain = Promise.resolve();
             const uploadChannel = new BroadcastChannel('expense-upload-channel');
-            uploadChannel.addEventListener('message', async (event) => {
+            uploadChannel.addEventListener('message', function(event) {
                 const { type, uploadId, expenseDocId, batchId, lineKey, downloadURLs } = event.data || {};
-                const isValidPhotoURL = window.isValidPhotoURL || (u => typeof u === 'string' && u.trim().length > 0 && (u.startsWith('http://') || u.startsWith('https://')));
-                const storagePathKey = (url) => (url || '').replace(/\&token=[^&]*/i, '').trim();
-                const hasSameFile = (existingList, url) => existingList.some(ex => storagePathKey(ex) === storagePathKey(url));
-
-                if (type === 'upload-complete' && downloadURLs && downloadURLs.length > 0) {
-                    if (lineKey && batchId) {
-                        try {
-                            const batchRef = window.doc(window.db, 'expenseBatches', batchId);
-                            // Read from server so we merge new URL into latest state (avoids stale cache overwriting other lines' photos)
-                            var batchSnap;
-                            if (typeof window.getDocFromServer === 'function') {
-                                try {
-                                    batchSnap = await window.getDocFromServer(batchRef);
-                                } catch (e) {
-                                    if (e && (e.code === 'unavailable' || (e.message && (e.message.indexOf('network') !== -1 || e.message.indexOf('unavailable') !== -1)))) {
-                                        batchSnap = await window.getDoc(batchRef);
-                                    } else {
-                                        throw e;
-                                    }
-                                }
-                            } else {
-                                batchSnap = await window.getDoc(batchRef);
+                if (type !== 'upload-complete' || !downloadURLs || downloadURLs.length === 0 || !lineKey || !batchId) return;
+                var isValidPhotoURL = window.isValidPhotoURL || (function(u) { return typeof u === 'string' && u.trim().length > 0 && (u.startsWith('http://') || u.startsWith('https://')); });
+                var storagePathKey = function(url) { return (url || '').replace(/\&token=[^&]*/i, '').trim(); };
+                var hasSameFile = function(existingList, url) { return existingList.some(function(ex) { return storagePathKey(ex) === storagePathKey(url); }); };
+                var payload = { batchId: batchId, lineKey: lineKey, downloadURLs: downloadURLs };
+                uploadCompleteUpdateChain = uploadCompleteUpdateChain.then(function() {
+                    return (function() {
+                        var batchRef = window.doc(window.db, 'expenseBatches', payload.batchId);
+                        return (typeof window.getDocFromServer === 'function' ? window.getDocFromServer(batchRef).catch(function(e) {
+                            if (e && (e.code === 'unavailable' || (e.message && (e.message.indexOf('network') !== -1 || e.message.indexOf('unavailable') !== -1)))) return window.getDoc(batchRef);
+                            throw e;
+                        }) : window.getDoc(batchRef)).then(function(batchSnap) {
+                            if (!batchSnap.exists()) return;
+                            var data = batchSnap.data();
+                            var lines = {};
+                            var key;
+                            for (key in (data.lines || {})) { if (Object.prototype.hasOwnProperty.call(data.lines, key)) lines[key] = { ...data.lines[key] }; }
+                            var line = lines[payload.lineKey] || { amount: 0, photos: [] };
+                            var existingPhotos = Array.isArray(line.photos) ? line.photos.filter(function(p) { return typeof p === 'string' && isValidPhotoURL(p); }) : [];
+                            var allPhotoURLs = existingPhotos.slice();
+                            for (var i = 0; i < payload.downloadURLs.length; i++) {
+                                var u = payload.downloadURLs[i];
+                                if (isValidPhotoURL(u) && !hasSameFile(allPhotoURLs, u)) allPhotoURLs.push(u);
                             }
-                            if (batchSnap.exists()) {
-                                const data = batchSnap.data();
-                                const lines = data.lines || {};
-                                const line = lines[lineKey] || { amount: 0, photos: [] };
-                                const existingPhotos = Array.isArray(line.photos) ? line.photos.filter(p => typeof p === 'string' && isValidPhotoURL(p)) : [];
-                                const allPhotoURLs = [...existingPhotos];
-                                for (const newURL of downloadURLs) {
-                                    if (isValidPhotoURL(newURL) && !hasSameFile(allPhotoURLs, newURL)) allPhotoURLs.push(newURL);
+                            var deduped = (window.dedupePhotoURLsByPath && window.dedupePhotoURLsByPath(allPhotoURLs)) || allPhotoURLs;
+                            lines[payload.lineKey] = { ...line, photos: deduped, photosUploading: false };
+                            return window.updateDoc(batchRef, {
+                                lines: lines,
+                                updatedAt: window.serverTimestamp ? window.serverTimestamp() : new Date()
+                            }).then(function() {
+                                if (typeof console !== 'undefined' && console.log) console.log('[Main Thread] Updated batch line with photo URLs:', payload.batchId, payload.lineKey);
+                                if (window.currentBatch && window.currentBatch.id === payload.batchId && window.currentBatch.lines && window.currentBatch.lines[payload.lineKey]) {
+                                    window.currentBatch.lines[payload.lineKey].photos = deduped;
+                                    window.currentBatch.lines[payload.lineKey].photosUploading = false;
                                 }
-                                const deduped = (window.dedupePhotoURLsByPath && window.dedupePhotoURLsByPath(allPhotoURLs)) || allPhotoURLs;
-                                const updatedLine = { ...line, photos: deduped, photosUploading: false };
-                                // Update only this line using dot notation so concurrent upload-complete handlers don't overwrite each other's lines
-                                const path = 'lines.' + lineKey;
-                                await window.updateDoc(batchRef, {
-                                    [path]: updatedLine,
-                                    updatedAt: window.serverTimestamp ? window.serverTimestamp() : new Date()
-                                });
-                                console.log('[Main Thread] Updated batch line with photo URLs:', batchId, lineKey);
-                                if (window.currentBatch && window.currentBatch.id === batchId && window.currentBatch.lines && window.currentBatch.lines[lineKey]) {
-                                    window.currentBatch.lines[lineKey].photos = deduped;
-                                    window.currentBatch.lines[lineKey].photosUploading = false;
-                                }
-                                // Update in-memory list immediately so card un-greys without waiting for refetch
-                                const batchInList = typeof allBatches !== 'undefined' && allBatches.find(b => b.id === batchId);
-                                if (batchInList && batchInList.lines && batchInList.lines[lineKey]) {
-                                    batchInList.lines[lineKey] = { ...batchInList.lines[lineKey], photos: deduped, photosUploading: false };
-                                    batchInList.hasPendingUploads = Object.values(batchInList.lines).some(l => l && l.photosUploading === true);
-                                    if (!batchInList.hasPendingUploads) batchIdsGreyedUntilUploadDone.delete(batchId);
+                                var batchInList = typeof allBatches !== 'undefined' && allBatches && allBatches.find(function(b) { return b.id === payload.batchId; });
+                                if (batchInList && batchInList.lines && batchInList.lines[payload.lineKey]) {
+                                    batchInList.lines[payload.lineKey] = { ...batchInList.lines[payload.lineKey], photos: deduped, photosUploading: false };
+                                    batchInList.hasPendingUploads = Object.keys(batchInList.lines).some(function(k) { var l = batchInList.lines[k]; return l && l.photosUploading === true; });
+                                    if (!batchInList.hasPendingUploads && typeof batchIdsGreyedUntilUploadDone !== 'undefined') batchIdsGreyedUntilUploadDone.delete(payload.batchId);
                                     if (typeof displayBatches === 'function') displayBatches();
                                 }
-                            }
-                            if (window.expenseUploadQueue) await window.expenseUploadQueue.updateGlobalUploadStatus();
-                            // Debounce list refresh so multiple upload-complete events don't trigger many loads
-                            if (typeof window.loadExpenseBatches === 'function') {
-                                if (window._uploadCompleteRefreshTimer) clearTimeout(window._uploadCompleteRefreshTimer);
-                                window._uploadCompleteRefreshTimer = setTimeout(function() {
-                                    window._uploadCompleteRefreshTimer = null;
-                                    window.loadExpenseBatches().catch(function() {});
-                                }, 1500);
-                            }
-                        } catch (error) {
-                            console.error('[Main Thread] Error updating batch line with photo URLs:', error);
-                        }
-                    }
+                            });
+                        });
+                    })();
+                }).catch(function(error) {
+                    console.error('[Main Thread] Error updating batch line with photo URLs:', error);
+                });
+                uploadCompleteUpdateChain.then(function() {
+                    if (window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') return window.expenseUploadQueue.updateGlobalUploadStatus();
+                }).catch(function() {});
+                if (typeof window.loadExpenseBatches === 'function') {
+                    if (window._uploadCompleteRefreshTimer) clearTimeout(window._uploadCompleteRefreshTimer);
+                    window._uploadCompleteRefreshTimer = setTimeout(function() {
+                        window._uploadCompleteRefreshTimer = null;
+                        window.loadExpenseBatches().catch(function() {});
+                    }, 1500);
                 }
             });
         }
