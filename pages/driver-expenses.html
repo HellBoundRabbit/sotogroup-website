@@ -2303,6 +2303,8 @@
             }
 
             document.getElementById('batchModal').classList.remove('hidden');
+            // Refresh Firebase Storage URLs in background (fixes expired/revoked tokens so thumbnails load)
+            if (typeof refreshFirebasePhotoURLs === 'function') refreshFirebasePhotoURLs(currentBatch);
         }
 
         // Single workflow: batch modal always uses lines; renderExpenses just delegates to renderLines
@@ -3504,6 +3506,34 @@
                 console.warn('[deleteBatch] Failed to extract storage path from URL:', downloadURL, error);
                 return null;
             }
+        }
+
+        const FIREBASE_STORAGE_URL_PREFIX = 'https://firebasestorage.googleapis.com/v0/b/soto-routes.firebasestorage.app/';
+        // Refresh Firebase Storage photo URLs in batch (fixes expired/revoked tokens). Runs in background; re-renders when done.
+        async function refreshFirebasePhotoURLs(batch) {
+            if (!batch || !batch.lines || !window.storage || typeof window.ref !== 'function' || typeof window.getDownloadURL !== 'function') return;
+            var updated = false;
+            for (var lineKey in batch.lines) {
+                var line = batch.lines[lineKey];
+                if (!line || !Array.isArray(line.photos)) continue;
+                for (var i = 0; i < line.photos.length; i++) {
+                    var p = line.photos[i];
+                    if (typeof p !== 'string' || p.indexOf(FIREBASE_STORAGE_URL_PREFIX) !== 0) continue;
+                    var path = extractStoragePathFromURL(p);
+                    if (!path) continue;
+                    try {
+                        var photoRef = window.ref(window.storage, path);
+                        var freshURL = await window.getDownloadURL(photoRef);
+                        if (freshURL && freshURL !== p) {
+                            line.photos[i] = freshURL;
+                            updated = true;
+                        }
+                    } catch (err) {
+                        console.warn('[refreshFirebasePhotoURLs] Failed to refresh URL for', path, err);
+                    }
+                }
+            }
+            if (updated && currentBatch === batch && typeof renderLines === 'function') renderLines();
         }
 
         // Delete batch
