@@ -1709,9 +1709,25 @@
         // Listen for Service Worker upload completion messages.
         // CRITICAL: Serialize all Firestore updates so they run one-after-another. On iOS/slow devices, concurrent
         // getDoc+updateDoc caused one write to overwrite another — one photo URL never made it into the doc.
-        // One source of truth: read latest from server, merge this line's URL, write full lines object.
+        // ROOT CAUSE of "some photos missing": we used to fall back to getDoc(cache) when getDocFromServer failed.
+        // Cache can be stale (from before a previous handler's write), so we merged into stale data and overwrote
+        // other lines' URLs. Fix: only read from server (with retries); never use cache for this merge.
         if ('BroadcastChannel' in window) {
             var uploadCompleteUpdateChain = Promise.resolve();
+            function getBatchFromServerWithRetry(batchRef, maxAttempts) {
+                maxAttempts = maxAttempts || 3;
+                var attempt = 0;
+                function tryGet() {
+                    attempt++;
+                    return window.getDocFromServer(batchRef).catch(function(e) {
+                        if (attempt < maxAttempts && e && (e.code === 'unavailable' || (e.message && (e.message.indexOf('network') !== -1 || e.message.indexOf('unavailable') !== -1)))) {
+                            return new Promise(function(resolve) { setTimeout(resolve, 400); }).then(tryGet);
+                        }
+                        throw e;
+                    });
+                }
+                return tryGet();
+            }
             const uploadChannel = new BroadcastChannel('expense-upload-channel');
             uploadChannel.addEventListener('message', function(event) {
                 const { type, uploadId, expenseDocId, batchId, lineKey, downloadURLs } = event.data || {};
@@ -1724,10 +1740,10 @@
                 uploadCompleteUpdateChain = uploadCompleteUpdateChain.then(function() {
                     return (function() {
                         var batchRef = window.doc(window.db, 'expenseBatches', payload.batchId);
-                        return (typeof window.getDocFromServer === 'function' ? window.getDocFromServer(batchRef).catch(function(e) {
-                            if (e && (e.code === 'unavailable' || (e.message && (e.message.indexOf('network') !== -1 || e.message.indexOf('unavailable') !== -1)))) return window.getDoc(batchRef);
-                            throw e;
-                        }) : window.getDoc(batchRef)).then(function(batchSnap) {
+                        var readPromise = typeof window.getDocFromServer === 'function'
+                            ? getBatchFromServerWithRetry(batchRef)
+                            : window.getDoc(batchRef);
+                        return readPromise.then(function(batchSnap) {
                             if (!batchSnap.exists()) return;
                             var data = batchSnap.data();
                             var lines = {};
@@ -2188,9 +2204,6 @@
                 }
             }
 
-            // Resolve fresh Firebase Storage URLs before showing modal (avoids question-mark flash; tokens can be revoked or stale)
-            if (typeof refreshFirebasePhotoURLs === 'function') await refreshFirebasePhotoURLs(batch);
-
             currentBatch = batch;
             
             // Update global reference for offline storage
@@ -2307,6 +2320,8 @@
             }
 
             document.getElementById('batchModal').classList.remove('hidden');
+            // Fallback: refresh Firebase Storage URLs in background (e.g. if a token was revoked). Root cause fix above should mean all URLs are already in the doc.
+            if (typeof refreshFirebasePhotoURLs === 'function') refreshFirebasePhotoURLs(currentBatch);
         }
 
         // Single workflow: batch modal always uses lines; renderExpenses just delegates to renderLines

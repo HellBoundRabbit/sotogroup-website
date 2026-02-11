@@ -1169,9 +1169,6 @@
             }
             currentBatch = batch;
 
-            // Resolve fresh Firebase Storage URLs before building modal (avoids question-mark flash)
-            if (typeof refreshFirebasePhotoURLs === 'function') await refreshFirebasePhotoURLs(currentBatch);
-
             const date = currentBatch.submittedAt?.toDate ? currentBatch.submittedAt.toDate() : new Date();
             document.getElementById('modal-driver').textContent = currentBatch.driverName || 'Unknown Driver';
             document.getElementById('modal-reg').textContent = currentBatch.registration;
@@ -1230,6 +1227,10 @@
             }
 
             document.getElementById('batchModal').classList.remove('hidden');
+            // Fallback: refresh Firebase Storage URLs in background (e.g. revoked token). Root cause fix is in driver upload-complete (no cache read).
+            if (typeof refreshFirebasePhotoURLs === 'function') refreshFirebasePhotoURLs(currentBatch, function(updated) {
+                if (updated && typeof renderBatchDetailExpenses === 'function') renderBatchDetailExpenses();
+            });
         }
 
         // Validate batch
