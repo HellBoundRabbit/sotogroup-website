@@ -667,10 +667,10 @@
         </div>
     </button>
 
-    <!-- Batch Detail Modal: aligned below status bar, scrolls when tall (no bottom-stuck, no overlap) -->
-    <div id="batchModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 overflow-y-auto">
-        <div class="min-h-full min-h-screen px-4 flex items-start justify-center pt-[env(safe-area-inset-top)] pt-4 pb-6 sm:pt-6 sm:pb-8">
-            <div id="batchModalContent" class="bg-[#1a1f24] rounded-2xl w-full max-w-2xl transform transition-all animated-border-modal max-h-[calc(100vh-env(safe-area-inset-top)-2rem)] flex flex-col overflow-hidden">
+    <!-- Batch Detail Modal: a few mm below status bar, grey border, only modal scrolls (body locked) -->
+    <div id="batchModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 overflow-hidden">
+        <div class="min-h-full min-h-screen px-4 flex items-start justify-center pt-[calc(env(safe-area-inset-top)+10px)] pb-6 sm:pt-[calc(env(safe-area-inset-top)+14px)] sm:pb-8">
+            <div id="batchModalContent" class="bg-[#1a1f24] rounded-2xl w-full max-w-2xl transform transition-all animated-border-modal border border-gray-600 max-h-[calc(100vh-env(safe-area-inset-top)-2rem)] flex flex-col overflow-hidden">
                 
                 <!-- Modal Header -->
                 <div class="sticky top-0 bg-[#1a1f24] border-b border-gray-800 rounded-t-2xl z-10">
@@ -714,7 +714,7 @@
                 <label class="text-sm text-gray-400">EXPENSES</label>
                 <span id="totalAmount" class="text-lg font-semibold text-green-500">£0.00</span>
                 </div>
-                <div id="linesContainer" class="space-y-4 max-h-[50vh] overflow-y-auto">
+                <div id="linesContainer" class="space-y-4">
                 <!-- Variable list of added expenses, rendered by renderLines() -->
                 </div>
                 <input type="file" id="linePhotoInput" accept="image/*" capture="environment" class="hidden" onchange="onLinePhotoSelected(event)">
@@ -2099,6 +2099,7 @@
                 return;
             }
             document.getElementById('batchModal').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
         }
 
         // Open existing batch (supports merged .lines and legacy .expenses)
@@ -2320,6 +2321,7 @@
             }
 
             document.getElementById('batchModal').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
             // Fallback: refresh Firebase Storage URLs in background (e.g. if a token was revoked). Root cause fix above should mean all URLs are already in the doc.
             if (typeof refreshFirebasePhotoURLs === 'function') refreshFirebasePhotoURLs(currentBatch);
         }
@@ -3133,7 +3135,7 @@
 
             // Close modal immediately after confirmation
             document.getElementById('batchModal').classList.add('hidden');
-            
+            document.body.style.overflow = '';
             // Prevent modal from being reopened during upload
             window.isUploadingExpense = true;
 
@@ -3305,7 +3307,7 @@
 
             // Close modal immediately after confirmation
             document.getElementById('batchModal').classList.add('hidden');
-            
+            document.body.style.overflow = '';
             // Prevent modal from being reopened during upload
             window.isUploadingExpense = true;
 
@@ -3460,6 +3462,7 @@
                 // (handled by upload queue when banner is hidden)
                 // Close modal and return to list
                 document.getElementById('batchModal').classList.add('hidden');
+                document.body.style.overflow = '';
                 currentBatch = null;
                 window.currentBatch = null;
                 if (saveBtn) saveBtn.disabled = false;
@@ -3489,6 +3492,7 @@
                 }
                 
                 document.getElementById('batchModal').classList.add('hidden');
+                document.body.style.overflow = '';
                 currentBatch = null;
                 window.currentBatch = null;
                 window.isUploadingExpense = false;
@@ -3763,6 +3767,7 @@
                 </button>
                 `;
                 document.getElementById('batchModal').classList.remove('hidden');
+                document.body.style.overflow = 'hidden';
             } catch (error) {
                 console.error('Error creating additional expenses batch:', error);
                 notifyError('Error creating additional expenses batch. Please try again.');
@@ -3879,11 +3884,13 @@
                 } else {
                 // User wants to discard - close without saving
                 document.getElementById('batchModal').classList.add('hidden');
+                document.body.style.overflow = '';
                 currentBatch = null;
                 }
             } else {
                 // No unsaved changes, just close
                 document.getElementById('batchModal').classList.add('hidden');
+                document.body.style.overflow = '';
                 currentBatch = null;
             }
         }
