@@ -533,13 +533,13 @@
         
         /* Circular animated buttons */
         .spinner-wrapper {
-            width: 42px;
-            height: 42px;
+            width: 56px;
+            height: 56px;
             position: relative;
         }
         .spinner {
-            width: 42px;
-            height: 42px;
+            width: 56px;
+            height: 56px;
             border-radius: 50%;
             position: absolute;
             top: 0;
@@ -559,8 +559,8 @@
             box-shadow: 0px -5px 20px 0px rgb(186, 66, 255), 0px 5px 20px 0px rgb(0, 225, 255);
         }
         .spinner-green {
-            width: 42px;
-            height: 42px;
+            width: 56px;
+            height: 56px;
             border-radius: 50%;
             position: absolute;
             top: 0;
@@ -581,8 +581,8 @@
         }
         .spinner1 {
             background-color: rgb(36, 36, 36);
-            width: 33px;
-            height: 33px;
+            width: 44px;
+            height: 44px;
             border-radius: 50%;
             position: absolute;
             top: 50%;
@@ -597,7 +597,7 @@
             position: relative;
             z-index: 3;
             color: white;
-            font-size: 1.406rem;
+            font-size: 1.875rem;
             -webkit-font-smoothing: antialiased;
             text-rendering: optimizeLegibility;
             filter: none !important;
@@ -639,7 +639,7 @@
 
     <!-- Top Navigation -->
     <div id="topNav" class="bg-black border-b border-gray-800 sticky top-0 z-50 hidden">
-        <div class="flex items-center justify-between px-4 py-2">
+        <div class="flex items-center justify-between px-4 py-3">
             <button onclick="goToPortal()" class="touch-target">
                 <div class="spinner-wrapper">
                     <div class="spinner"></div>
@@ -1836,16 +1836,20 @@
                                 var batchInList = typeof allBatches !== 'undefined' && allBatches && allBatches.find(function(b) { return b.id === payload.batchId; });
                                 if (batchInList && batchInList.lines && batchInList.lines[payload.lineKey]) {
                                     batchInList.lines[payload.lineKey] = { ...batchInList.lines[payload.lineKey], photos: deduped, photosUploading: false };
+                                    var wasUploading = batchInList.hasPendingUploads;
                                     batchInList.hasPendingUploads = Object.keys(batchInList.lines).some(function(k) { var l = batchInList.lines[k]; return l && l.photosUploading === true; });
-                                    if (!batchInList.hasPendingUploads && typeof batchIdsGreyedUntilUploadDone !== 'undefined') {
+                                    
+                                    // Only reload once when transitioning from "has pending" to "no pending"
+                                    if (wasUploading && !batchInList.hasPendingUploads && typeof batchIdsGreyedUntilUploadDone !== 'undefined') {
                                         batchIdsGreyedUntilUploadDone.delete(payload.batchId);
-                                        // All uploads complete for this batch - reload to ensure fresh state
+                                        // All uploads complete for this batch - single reload after brief delay
                                         if (typeof window.loadExpenseBatches === 'function') {
-                                            setTimeout(() => window.loadExpenseBatches().catch(() => {}), 500);
+                                            setTimeout(() => window.loadExpenseBatches().catch(() => {}), 800);
                                         }
+                                    } else {
+                                        // Use debounced display to prevent flickering during multi-photo uploads
+                                        if (typeof debouncedDisplayBatches === 'function') debouncedDisplayBatches();
                                     }
-                                    // Use debounced display to prevent flickering during multi-photo uploads
-                                    if (typeof debouncedDisplayBatches === 'function') debouncedDisplayBatches();
                                 }
                             });
                         });
