@@ -198,27 +198,28 @@
         /* Mobile-optimized touch targets */
         .touch-target { min-height: 44px; min-width: 44px; }
         
-        /* UK Number Plate styling */
-        .uk-number-plate {
-            background: linear-gradient(180deg, #FDB813 0%, #F39C12 100%);
-            border: 3px solid #000;
-            border-radius: 8px;
-            padding: 12px 16px;
-            font-family: 'Courier New', monospace;
-            font-weight: 700;
-            font-size: 2rem;
-            letter-spacing: 0.1em;
-            text-align: center;
+        /* Registration input field - matches license-plate display */
+        .reg-input {
+            background: #FFD500;
             color: #000;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            letter-spacing: 2px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: 2px solid #000;
+            text-align: center;
             text-transform: uppercase;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+            font-size: 1rem;
+            width: auto;
+            display: inline-block;
         }
-        .uk-number-plate::placeholder {
+        .reg-input::placeholder {
             color: rgba(0, 0, 0, 0.4);
         }
-        .uk-number-plate:focus {
+        .reg-input:focus {
             outline: none;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 0 0 3px rgba(59, 130, 246, 0.5);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
         }
         
         /* Status badge colors */
@@ -688,7 +689,7 @@
 
         <!-- Validated Batches Section -->
         <div id="validatedSection" class="hidden mb-6">
-            <h2 class="text-sm font-bold text-green-500 mb-3 px-1">VALIDATED</h2>
+            <h2 class="text-sm font-bold text-green-500 mb-3 px-1">VALIDATED <span class="text-xs font-normal">(yet to be paid)</span></h2>
             <div id="validatedBatches" class="space-y-3"></div>
         </div>
 
@@ -713,7 +714,7 @@
     <!-- Batch Detail Modal: a few mm below status bar, grey border, only modal scrolls (body locked) -->
     <div id="batchModal" class="hidden fixed inset-0 bg-black z-50 overflow-hidden">
         <div class="h-full px-4 flex items-center justify-center py-[calc(env(safe-area-inset-top)+10px)]">
-            <div id="batchModalContent" class="bg-[#1a1f24] rounded-2xl w-full max-w-2xl transform transition-all animated-border-modal h-[calc(100%-20px)] flex flex-col overflow-hidden">
+            <div id="batchModalContent" class="bg-[#1a1f24] rounded-2xl w-full max-w-2xl transform transition-all animated-border-modal h-[calc(100%-20px)] flex flex-col overflow-hidden" style="position: relative;">
                 
                 <!-- Modal Header -->
                 <div class="sticky top-0 bg-[#1a1f24] border-b border-gray-800 rounded-t-2xl z-10">
@@ -734,24 +735,24 @@
                 <div class="p-6 pb-24 flex-1 min-h-0 overflow-y-auto">
                 
                 <!-- Registration Input -->
-                <div class="mb-4">
+                <div class="mb-4 text-center">
                 <label class="text-sm text-gray-400 mb-2 block">REGISTRATION</label>
                 <input 
                 type="text" 
                 id="regInput" 
                 placeholder="AB12 CDE"
-                class="w-full uk-number-plate"
+                class="reg-input"
                 maxlength="8"
                 >
                 </div>
                 
                 <!-- Collection Date -->
                 <div class="mb-6">
-                <label class="text-sm text-gray-400 mb-2 block">COLLECTION DATE</label>
+                <label class="text-sm text-gray-400 mb-2 block text-center">COLLECTION DATE</label>
                 <input 
                 type="date" 
                 id="collectionDateInput" 
-                class="w-full bg-[#283039] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none"
+                class="w-full bg-[#283039] text-white text-center px-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none"
                 >
                 </div>
 
@@ -805,9 +806,9 @@
     </div>
 
     <!-- Add Expense Modal -->
-    <div id="expenseModal" class="hidden fixed inset-0 bg-black z-50 overflow-y-auto">
-        <div class="min-h-screen px-4 flex items-end sm:items-center justify-center">
-            <div id="expenseModalContent" class="bg-[#1a1f24] rounded-2xl w-full max-w-lg transform transition-all">
+    <div id="expenseModal" class="hidden fixed inset-0 bg-black z-50 overflow-hidden">
+        <div class="h-full px-4 flex items-center justify-center py-[calc(env(safe-area-inset-top)+10px)]">
+            <div id="expenseModalContent" class="bg-[#1a1f24] rounded-2xl w-full max-w-lg transform transition-all animated-border-modal animated-border-modal-pending h-[calc(100%-20px)] flex flex-col overflow-hidden" style="position: relative;">
                 
                 <!-- Modal Header -->
                 <div class="sticky top-0 bg-[#1a1f24] border-b border-gray-800 rounded-t-2xl z-10">
@@ -821,50 +822,50 @@
                 </div>
 
                 <!-- Modal Content -->
-                <div class="p-6 pb-24">
+                <div class="flex-1 overflow-y-auto p-4 sm:p-6">
                 
                 <!-- Category Selection -->
-                <div id="categorySection" class="mb-6">
-                <label class="text-sm text-gray-400 mb-3 block">CATEGORY</label>
-                <div class="grid grid-cols-2 gap-3">
-                <button onclick="selectCategory('Fuel')" class="category-btn p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-2">
-                <span class="text-3xl">⛽</span>
-                <span class="text-sm">Fuel</span>
+                <div id="categorySection" class="mb-4 sm:mb-6">
+                <label class="text-xs sm:text-sm text-gray-400 mb-2 sm:mb-3 block">CATEGORY</label>
+                <div class="grid grid-cols-2 gap-2 sm:gap-3">
+                <button onclick="selectCategory('Fuel')" class="category-btn p-3 sm:p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-1 sm:gap-2">
+                <span class="text-2xl sm:text-3xl">⛽</span>
+                <span class="text-xs sm:text-sm">Fuel</span>
                 </button>
-                <button onclick="selectCategory('Charge')" class="category-btn p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-2">
-                <span class="text-3xl">🔌</span>
-                <span class="text-sm">Charge</span>
+                <button onclick="selectCategory('Charge')" class="category-btn p-3 sm:p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-1 sm:gap-2">
+                <span class="text-2xl sm:text-3xl">🔌</span>
+                <span class="text-xs sm:text-sm">Charge</span>
                 </button>
-                <button onclick="selectCategory('Train')" class="category-btn p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-2">
-                <span class="text-3xl">🚂</span>
-                <span class="text-sm">Train</span>
+                <button onclick="selectCategory('Train')" class="category-btn p-3 sm:p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-1 sm:gap-2">
+                <span class="text-2xl sm:text-3xl">🚂</span>
+                <span class="text-xs sm:text-sm">Train</span>
                 </button>
-                <button onclick="selectCategory('Bus')" class="category-btn p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-2">
-                <span class="text-3xl">🚌</span>
-                <span class="text-sm">Bus</span>
+                <button onclick="selectCategory('Bus')" class="category-btn p-3 sm:p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-1 sm:gap-2">
+                <span class="text-2xl sm:text-3xl">🚌</span>
+                <span class="text-xs sm:text-sm">Bus</span>
                 </button>
-                <button onclick="selectCategory('Taxi')" class="category-btn p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-2">
-                <span class="text-3xl">🚕</span>
-                <span class="text-sm">Taxi</span>
+                <button onclick="selectCategory('Taxi')" class="category-btn p-3 sm:p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-1 sm:gap-2">
+                <span class="text-2xl sm:text-3xl">🚕</span>
+                <span class="text-xs sm:text-sm">Taxi</span>
                 </button>
-                <button onclick="selectCategory('Car Wash')" class="category-btn p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-2">
-                <span class="text-3xl">🧼</span>
-                <span class="text-sm">Car Wash</span>
+                <button onclick="selectCategory('Car Wash')" class="category-btn p-3 sm:p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-1 sm:gap-2">
+                <span class="text-2xl sm:text-3xl">🧼</span>
+                <span class="text-xs sm:text-sm">Car Wash</span>
                 </button>
-                <button onclick="selectCategory('Tolls')" class="category-btn p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-2">
-                <span class="text-3xl">🛣️</span>
-                <span class="text-sm">Tolls</span>
+                <button onclick="selectCategory('Tolls')" class="category-btn p-3 sm:p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-1 sm:gap-2">
+                <span class="text-2xl sm:text-3xl">🛣️</span>
+                <span class="text-xs sm:text-sm">Tolls</span>
                 </button>
-                <button onclick="selectCategory('Other')" class="category-btn p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-2">
-                <span class="text-3xl">📝</span>
-                <span class="text-sm">Other</span>
+                <button onclick="selectCategory('Other')" class="category-btn p-3 sm:p-4 bg-[#283039] hover:bg-[#3a4552] rounded-lg transition-colors flex flex-col items-center gap-1 sm:gap-2">
+                <span class="text-2xl sm:text-3xl">📝</span>
+                <span class="text-xs sm:text-sm">Other</span>
                 </button>
                 </div>
                 </div>
 
                 <!-- Amount Input -->
-                <div class="mb-6">
-                <label class="text-sm text-gray-400 mb-2 block">AMOUNT (£)</label>
+                <div class="mb-4 sm:mb-6">
+                <label class="text-xs sm:text-sm text-gray-400 mb-2 block">AMOUNT (£)</label>
                 <input 
                 type="number" 
                 id="amountInput" 
@@ -873,13 +874,13 @@
                 min="0"
                 inputmode="decimal"
                 pattern="[0-9]*"
-                class="w-full bg-[#283039] text-white text-2xl text-center px-4 py-4 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none"
+                class="w-full bg-[#283039] text-white text-xl sm:text-2xl text-center px-4 py-3 sm:py-4 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none"
                 >
                 </div>
 
                 <!-- Photo Upload -->
-                <div class="mb-6">
-                <label class="text-sm text-gray-400 mb-2 block">RECEIPT PHOTOS (Optional)</label>
+                <div class="mb-4 sm:mb-6">
+                <label class="text-xs sm:text-sm text-gray-400 mb-2 block">RECEIPT PHOTOS (Optional)</label>
                 <!-- Hidden file inputs - one for camera, one for gallery -->
                 <input 
                 type="file" 
@@ -2039,14 +2040,16 @@
                 const statusColor = statusColors[batch.status] || 'bg-gray-600';
                 
                 // Calculate working hours for pending and validated batches
-                let timerHTML = '';
+                let timerText = '';
+                let timerColor = '';
+                let timerClass = '';
                 if (batch.status === 'pending' || batch.status === 'validated') {
                 const submittedAt = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date(batch.submittedAt);
                 if (submittedAt) {
                 const workingHours = calculateWorkingHours(submittedAt, new Date());
-                const color = getTimerColor(workingHours);
-                const flashClass = getTimerClass(workingHours);
-                timerHTML = `<div class="text-xs ${color} ${flashClass} font-semibold mt-2">${workingHours}h since submission</div>`;
+                timerColor = getTimerColor(workingHours);
+                timerClass = getTimerClass(workingHours);
+                timerText = `${workingHours}h since submission`;
                 }
                 }
                 
@@ -2088,19 +2091,16 @@
                 <div onclick="${hasPendingUploads ? '' : `openBatch('${batch.id}')`}" class="${borderClass} cursor-pointer fade-in ${greyedOut}">
                 <div class="flex items-start justify-between mb-2">
                 <div class="license-plate">${batch.registration}</div>
-                <div class="text-right">
                 <span class="${statusColor} px-3 py-1 rounded-full text-xs font-semibold uppercase">${batch.status}</span>
-                ${batch.status === 'validated' ? '<div class="text-gray-500 text-[10px] mt-1">(yet to be paid)</div>' : ''}
                 </div>
-                </div>
-                <div class="mt-2 text-gray-400 text-sm">${batch.collectionDate ? new Date(batch.collectionDate).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : ''}</div>
-                <div class="flex items-center justify-end mt-3 gap-3">
-                <div class="text-right">
+                <div class="flex items-center justify-between mt-2">
+                <div class="text-gray-400 text-sm">${batch.collectionDate ? new Date(batch.collectionDate).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : ''}</div>
                 <div class="text-green-500 font-semibold text-lg">£${(batch.totalAmount != null ? batch.totalAmount : 0).toFixed(2)}</div>
+                </div>
+                <div class="flex items-center justify-between mt-1">
+                ${timerText ? `<div class="text-xs ${timerColor} ${timerClass} font-semibold">${timerText}</div>` : '<div></div>'}
                 <div class="text-gray-500 text-xs">${(typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLineCount ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(batch) : 0) || 0} expense${((EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.getUsedLineCount ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(batch) : 0) !== 1 ? 's' : '')}</div>
                 </div>
-                </div>
-                ${timerHTML}
                 ${uploadIndicator}
                 ${batch.status === 'returned' ? `
                 <div class="mt-2 text-red-400 text-sm">
