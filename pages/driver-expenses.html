@@ -743,7 +743,7 @@
                 <input 
                 type="text" 
                 id="regInput" 
-                placeholder="AB12 CDE"
+                placeholder=""
                 class="reg-input"
                 maxlength="8"
                 >
@@ -1844,12 +1844,10 @@
                                         batchIdsGreyedUntilUploadDone.delete(payload.batchId);
                                         // All uploads complete for this batch - single reload after brief delay
                                         if (typeof window.loadExpenseBatches === 'function') {
-                                            setTimeout(() => window.loadExpenseBatches().catch(() => {}), 800);
+                                            setTimeout(() => window.loadExpenseBatches().catch(() => {}), 1000);
                                         }
-                                    } else {
-                                        // Use debounced display to prevent flickering during multi-photo uploads
-                                        if (typeof debouncedDisplayBatches === 'function') debouncedDisplayBatches();
                                     }
+                                    // Don't refresh display during upload - prevents flickering of entire list
                                 }
                             });
                         });
@@ -1986,7 +1984,7 @@
             if (displayBatchesTimer) clearTimeout(displayBatchesTimer);
             displayBatchesTimer = setTimeout(() => {
                 displayBatches();
-            }, 300);
+            }, 500);
         }
         
         // Display batches by status
