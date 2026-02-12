@@ -702,10 +702,10 @@
                 >
                 </div>
 
-                <!-- Return Notes (if returned) -->
-                <div id="returnNotesDiv" class="hidden mb-6 bg-red-900 bg-opacity-20 border border-red-500 rounded-lg p-4">
-                <label class="text-sm text-red-400 mb-2 block">REASON FOR RETURN</label>
-                <p id="returnNotes" class="text-white"></p>
+                <!-- Communications Thread (if returned) -->
+                <div id="communicationsSection" class="hidden mb-6">
+                <label class="text-sm text-gray-400 mb-2 block">COMMUNICATIONS</label>
+                <div id="communicationsList" class="space-y-3 rounded-lg border border-gray-700 p-4 bg-[#1a1f24]"></div>
                 </div>
 
                 <!-- Lines (merged: trains, taxis, fuels, etc.) -->
@@ -727,7 +727,7 @@
 
                 <!-- Notes Section -->
                 <div id="notesSection" class="mb-6">
-                <label class="text-sm text-gray-400 mb-2 block">NOTES (Optional)</label>
+                <label id="notesLabel" class="text-sm text-gray-400 mb-2 block">NOTES (Optional)</label>
                 <textarea 
                 id="notesInput" 
                 placeholder="Add any additional notes..."
@@ -908,6 +908,12 @@
         let submissionQueueRetryTimer = null;
         /** Batch IDs that stay greyed out until uploads complete (stops flashing during save/submit). */
         let batchIdsGreyedUntilUploadDone = new Set();
+
+        // Helper function to safely escape HTML for display
+        function escapeHtml(s) {
+            if (s == null) return '';
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
 
         const fallbackDialogs = {
             showAlert({ title, message }) {
@@ -2239,39 +2245,65 @@
             document.getElementById('regInput').value = batch.registration;
             document.getElementById('regInput').disabled = batch.status !== 'draft' && batch.status !== 'returned';
             
+            // Show communications thread for returned batches
+            const commsSection = document.getElementById('communicationsSection');
+            const commsList = document.getElementById('communicationsList');
+            if (batch.status === 'returned' && Array.isArray(batch.communications) && batch.communications.length > 0) {
+                commsSection.classList.remove('hidden');
+                const entries = batch.communications.map(c => ({
+                    from: c.from || 'driver',
+                    authorName: c.authorName || (c.from === 'office' ? 'Office' : (batch.driverName || 'Driver')),
+                    message: c.message || '',
+                    createdAt: c.createdAt
+                }));
+                commsList.innerHTML = entries.map(e => {
+                    const dateStr = e.createdAt && (e.createdAt.toDate ? e.createdAt.toDate() : e.createdAt) ? new Date(e.createdAt.toDate ? e.createdAt.toDate() : e.createdAt).toLocaleString() : '';
+                    const namePart = `<strong>${escapeHtml(e.authorName)}</strong>`;
+                    const label = dateStr ? namePart + ' · ' + escapeHtml(dateStr) : namePart;
+                    return `<div class="border-l-2 pl-3 ${e.from === 'office' ? 'border-red-500' : 'border-blue-500'}"><p class="text-sm font-medium text-gray-300 mb-1">${label}</p><p class="text-white whitespace-pre-wrap text-sm">${escapeHtml(e.message)}</p></div>`;
+                }).join('');
+            } else {
+                commsSection.classList.add('hidden');
+            }
+
             // Show/hide notes section based on status
             const notesSection = document.getElementById('notesSection');
-            if (batch.status === 'draft' || batch.status === 'returned') {
+            const notesLabel = document.getElementById('notesLabel');
+            const notesInput = document.getElementById('notesInput');
+            if (batch.status === 'draft') {
                 notesSection.classList.remove('hidden');
-                const notesInput = document.getElementById('notesInput');
+                notesLabel.textContent = 'NOTES (Optional)';
+                notesInput.placeholder = 'Add any additional notes...';
                 if (batch.notes) {
-                notesInput.value = batch.notes;
+                    notesInput.value = batch.notes;
                 } else {
-                notesInput.value = '';
+                    notesInput.value = '';
                 }
+                notesInput.disabled = false;
+            } else if (batch.status === 'returned') {
+                notesSection.classList.remove('hidden');
+                notesLabel.textContent = 'APPEAL NOTES';
+                notesInput.placeholder = 'Add notes to explain changes or dispute the return...';
+                // Clear the notes field for appeal (don't show old notes)
+                notesInput.value = '';
                 notesInput.disabled = false;
             } else {
                 // Hide notes section for pending, validated, paid
                 notesSection.classList.add('hidden');
             }
 
-            // Show latest return reason from communications when returned
-            const returnNotesDiv = document.getElementById('returnNotesDiv');
-            const returnNotesEl = document.getElementById('returnNotes');
-            if (batch.status === 'returned' && Array.isArray(batch.communications) && batch.communications.length > 0) {
-                const lastOffice = [...batch.communications].reverse().find(c => c.from === 'office');
-                if (lastOffice && lastOffice.message) {
-                    returnNotesDiv.classList.remove('hidden');
-                    returnNotesEl.textContent = lastOffice.message;
-                } else {
-                    returnNotesDiv.classList.add('hidden');
-                }
-            } else {
-                if (returnNotesDiv) returnNotesDiv.classList.add('hidden');
-            }
-
             // Show delete button only for drafts
             document.getElementById('deleteBatchBtn').classList.toggle('hidden', batch.status !== 'draft');
+
+            // Update photo input to allow gallery selection for returned batches (not just camera)
+            const linePhotoInput = document.getElementById('linePhotoInput');
+            if (linePhotoInput) {
+                if (batch.status === 'returned') {
+                    linePhotoInput.removeAttribute('capture');
+                } else {
+                    linePhotoInput.setAttribute('capture', 'environment');
+                }
+            }
 
             const addExpenseBtn = document.getElementById('addExpenseBtn');
             const linesContainerEl = document.getElementById('linesContainer');
@@ -3369,15 +3401,36 @@
             window.isUploadingExpense = true;
 
             // Prepare batch for queueing
+            const isAppeal = currentBatch.status === 'returned';
             currentBatch.registration = registration;
             currentBatch.driverId = currentUser.uid;
             currentBatch.driverEmail = currentUser.email;
             currentBatch.driverName =
                 currentUser.name || `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || 'Unknown Driver';
             currentBatch.officeId = currentUser.officeId;
-            currentBatch.status = 'pending';
             const notes = document.getElementById('notesInput').value.trim();
-            currentBatch.notes = notes || '';
+            
+            // If this is an appeal (resubmitting a returned batch), append appeal notes to communications
+            if (isAppeal) {
+                if (notes) {
+                    if (!Array.isArray(currentBatch.communications)) {
+                        currentBatch.communications = [];
+                    }
+                    currentBatch.communications.push({
+                        from: 'driver',
+                        authorName: currentBatch.driverName,
+                        message: notes,
+                        createdAt: Date.now()
+                    });
+                }
+                // Clear notes field for appeals (communications is the source of truth)
+                currentBatch.notes = '';
+            } else {
+                // For new submissions, store notes normally
+                currentBatch.notes = notes || '';
+            }
+            
+            currentBatch.status = 'pending';
 
             // Update upload status immediately to show banner
             if (window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
@@ -3398,8 +3451,7 @@
 
             // CRITICAL: Add/update batch in local list immediately so it shows greyed out
             // This ensures user sees the expense appear right away (works for both new submissions and appeals)
-            const isAppeal = currentBatch.status === 'returned';
-            const targetStatus = isAppeal ? 'pending' : 'pending';
+            const targetStatus = 'pending';
             
             if (currentBatch && (currentBatch.id || currentBatch.localId)) {
                 const totalAmount = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.getTotalFromLines && currentBatch.lines) ? EXPENSE_BATCH_SCHEMA.getTotalFromLines(currentBatch.lines) : 0;
