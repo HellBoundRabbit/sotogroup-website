@@ -200,14 +200,15 @@
         
         /* Registration input field - matches license-plate display */
         .reg-input {
-            background: #FFD500;
-            color: #000;
+            background: #FFD500 !important;
+            background-color: #FFD500 !important;
+            color: #000 !important;
             font-family: 'Courier New', monospace;
             font-weight: bold;
             letter-spacing: 2px;
             padding: 8px 16px;
             border-radius: 6px;
-            border: 2px solid #000;
+            border: 2px solid #000 !important;
             text-align: center;
             text-transform: uppercase;
             font-size: 1rem;
@@ -215,10 +216,12 @@
             display: inline-block;
         }
         .reg-input::placeholder {
-            color: rgba(0, 0, 0, 0.4);
+            color: rgba(0, 0, 0, 0.4) !important;
         }
         .reg-input:focus {
             outline: none;
+            background: #FFD500 !important;
+            background-color: #FFD500 !important;
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
         }
         
@@ -962,6 +965,8 @@
         let submissionQueueRetryTimer = null;
         /** Batch IDs that stay greyed out until uploads complete (stops flashing during save/submit). */
         let batchIdsGreyedUntilUploadDone = new Set();
+        /** Debounce timer for displayBatches to prevent flickering */
+        let displayBatchesTimer = null;
 
         // Helper function to safely escape HTML for display
         function escapeHtml(s) {
@@ -1832,8 +1837,15 @@
                                 if (batchInList && batchInList.lines && batchInList.lines[payload.lineKey]) {
                                     batchInList.lines[payload.lineKey] = { ...batchInList.lines[payload.lineKey], photos: deduped, photosUploading: false };
                                     batchInList.hasPendingUploads = Object.keys(batchInList.lines).some(function(k) { var l = batchInList.lines[k]; return l && l.photosUploading === true; });
-                                    if (!batchInList.hasPendingUploads && typeof batchIdsGreyedUntilUploadDone !== 'undefined') batchIdsGreyedUntilUploadDone.delete(payload.batchId);
-                                    if (typeof displayBatches === 'function') displayBatches();
+                                    if (!batchInList.hasPendingUploads && typeof batchIdsGreyedUntilUploadDone !== 'undefined') {
+                                        batchIdsGreyedUntilUploadDone.delete(payload.batchId);
+                                        // All uploads complete for this batch - reload to ensure fresh state
+                                        if (typeof window.loadExpenseBatches === 'function') {
+                                            setTimeout(() => window.loadExpenseBatches().catch(() => {}), 500);
+                                        }
+                                    }
+                                    // Use debounced display to prevent flickering during multi-photo uploads
+                                    if (typeof debouncedDisplayBatches === 'function') debouncedDisplayBatches();
                                 }
                             });
                         });
@@ -1963,6 +1975,14 @@
             const dateA = a.collectionDate ? new Date(a.collectionDate) : (a.submittedAt?.toDate ? a.submittedAt.toDate() : new Date(a.submittedAt || 0));
             const dateB = b.collectionDate ? new Date(b.collectionDate) : (b.submittedAt?.toDate ? b.submittedAt.toDate() : new Date(b.submittedAt || 0));
             return dateB - dateA; // descending (newest first)
+        }
+        
+        // Debounced display batches to prevent flickering during uploads
+        function debouncedDisplayBatches() {
+            if (displayBatchesTimer) clearTimeout(displayBatchesTimer);
+            displayBatchesTimer = setTimeout(() => {
+                displayBatches();
+            }, 300);
         }
         
         // Display batches by status
@@ -3651,14 +3671,6 @@
                 }
                 // Refresh display once (stays greyed until upload-complete removes from set)
                 displayBatches();
-
-                // Defer refetch so card stays solid greyed until uploads finish
-                setTimeout(async () => {
-                    if (typeof window.loadExpenseBatches === 'function') await window.loadExpenseBatches().catch(() => {});
-                    if (window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
-                        await window.expenseUploadQueue.updateGlobalUploadStatus();
-                    }
-                }, 2500);
 
                 // No success message - banner is enough
                 // Note: isUploadingExpense will be set to false after all uploads complete
