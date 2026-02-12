@@ -323,6 +323,17 @@
                     <h3 class="text-lg font-semibold text-white">Authorization</h3>
                 </div>
 
+                <!-- Training -->
+                <div id="trainingCard" class="feature-button" onclick="handleFeatureClick('/pages/driver-training.html')">
+                    <div class="spinner-wrapper">
+                        <div class="spinner"></div>
+                        <div class="spinner1">
+                            <span class="material-symbols-outlined spinner-icon">school</span>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold text-white">Training</h3>
+                </div>
+
                 <!-- Help -->
                 <div id="helpCard" class="feature-button" onclick="showHelpComingSoon()">
                     <div class="spinner-wrapper">
@@ -705,6 +716,7 @@
                 const messagesCard = document.getElementById('messagesCard');
                 const availabilityCard = document.getElementById('availabilityCard');
                 const authorizationCard = document.getElementById('authorizationCard');
+                const trainingCard = document.getElementById('trainingCard');
                 const helpCard = document.getElementById('helpCard');
 
                 if (!activeFeatures.expenses && expensesCard) {
@@ -773,6 +785,10 @@
                     // Grey out Authorization
                     if (authorizationCard) {
                         authorizationCard.classList.add('disabled');
+                    }
+                    // Grey out Training
+                    if (trainingCard) {
+                        trainingCard.classList.add('disabled');
                     }
                     // Grey out Help
                     if (helpCard) {
