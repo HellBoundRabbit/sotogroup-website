@@ -2078,10 +2078,14 @@
             document.getElementById('regInput').disabled = false;
             const notesSection = document.getElementById('notesSection');
             notesSection.classList.remove('hidden');
+            const notesLabel = document.getElementById('notesLabel');
+            if (notesLabel) notesLabel.textContent = 'NOTES (Optional)';
             const notesInput = document.getElementById('notesInput');
             notesInput.value = '';
+            notesInput.placeholder = 'Add any additional notes...';
             notesInput.disabled = false;
-            document.getElementById('returnNotesDiv').classList.add('hidden');
+            const commsSection = document.getElementById('communicationsSection');
+            if (commsSection) commsSection.classList.add('hidden');
             document.getElementById('deleteBatchBtn').classList.add('hidden');
             const addExpenseBtn = document.getElementById('addExpenseBtn');
             if (addExpenseBtn) addExpenseBtn.classList.remove('hidden');
@@ -3854,10 +3858,14 @@
                 document.getElementById('regInput').disabled = false;
                 const notesSection = document.getElementById('notesSection');
                 notesSection.classList.remove('hidden');
+                const notesLabel = document.getElementById('notesLabel');
+                if (notesLabel) notesLabel.textContent = 'NOTES (Optional)';
                 const notesInput = document.getElementById('notesInput');
                 notesInput.value = '';
+                notesInput.placeholder = 'Add any additional notes...';
                 notesInput.disabled = false;
-                document.getElementById('returnNotesDiv').classList.add('hidden');
+                const commsSection = document.getElementById('communicationsSection');
+                if (commsSection) commsSection.classList.add('hidden');
                 document.getElementById('deleteBatchBtn').classList.add('hidden');
                 const expensesListEl = document.getElementById('expensesList');
                 if (expensesListEl) { expensesListEl.classList.add('hidden'); expensesListEl.innerHTML = ''; }
