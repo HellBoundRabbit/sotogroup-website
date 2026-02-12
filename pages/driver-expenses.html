@@ -198,6 +198,29 @@
         /* Mobile-optimized touch targets */
         .touch-target { min-height: 44px; min-width: 44px; }
         
+        /* UK Number Plate styling */
+        .uk-number-plate {
+            background: linear-gradient(180deg, #FDB813 0%, #F39C12 100%);
+            border: 3px solid #000;
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-family: 'Courier New', monospace;
+            font-weight: 700;
+            font-size: 2rem;
+            letter-spacing: 0.1em;
+            text-align: center;
+            color: #000;
+            text-transform: uppercase;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+        }
+        .uk-number-plate::placeholder {
+            color: rgba(0, 0, 0, 0.4);
+        }
+        .uk-number-plate:focus {
+            outline: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 0 0 3px rgba(59, 130, 246, 0.5);
+        }
+        
         /* Status badge colors */
         .status-pending { background-color: #f59e0b; }
         .status-validated { background-color: #10b981; }
@@ -353,15 +376,25 @@
             z-index: -1;
         }
         
-        /* Pending/Validated modal: solid glowing orange */
-        .animated-border-modal-pending::before,
-        .animated-border-modal-validated::before {
+        /* Pending modal: solid glowing orange */
+        .animated-border-modal-pending::before {
             content: '';
             position: absolute;
             inset: -2px;
             border-radius: 1rem;
             background: linear-gradient(45deg, rgb(255, 165, 0), rgb(255, 200, 50), rgb(255, 165, 0));
             box-shadow: 0 0 15px rgba(255, 165, 0, 0.6), 0 0 30px rgba(255, 165, 0, 0.4);
+            z-index: -1;
+        }
+        
+        /* Validated modal: solid glowing green */
+        .animated-border-modal-validated::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 1rem;
+            background: linear-gradient(45deg, rgb(34, 197, 94), rgb(74, 222, 128), rgb(34, 197, 94));
+            box-shadow: 0 0 15px rgba(34, 197, 94, 0.6), 0 0 30px rgba(34, 197, 94, 0.4);
             z-index: -1;
         }
         
@@ -679,8 +712,8 @@
 
     <!-- Batch Detail Modal: a few mm below status bar, grey border, only modal scrolls (body locked) -->
     <div id="batchModal" class="hidden fixed inset-0 bg-black z-50 overflow-hidden">
-        <div class="min-h-full min-h-screen px-4 flex items-start justify-center pt-[calc(env(safe-area-inset-top)+10px)] pb-6 sm:pt-[calc(env(safe-area-inset-top)+14px)] sm:pb-8">
-            <div id="batchModalContent" class="bg-[#1a1f24] rounded-2xl w-full max-w-2xl transform transition-all animated-border-modal border border-gray-600 max-h-[calc(100vh-env(safe-area-inset-top)-2rem)] flex flex-col overflow-hidden">
+        <div class="h-full px-4 flex items-center justify-center py-[calc(env(safe-area-inset-top)+10px)]">
+            <div id="batchModalContent" class="bg-[#1a1f24] rounded-2xl w-full max-w-2xl transform transition-all animated-border-modal h-[calc(100%-20px)] flex flex-col overflow-hidden">
                 
                 <!-- Modal Header -->
                 <div class="sticky top-0 bg-[#1a1f24] border-b border-gray-800 rounded-t-2xl z-10">
@@ -701,14 +734,24 @@
                 <div class="p-6 pb-24 flex-1 min-h-0 overflow-y-auto">
                 
                 <!-- Registration Input -->
-                <div class="mb-6">
+                <div class="mb-4">
                 <label class="text-sm text-gray-400 mb-2 block">REGISTRATION</label>
                 <input 
                 type="text" 
                 id="regInput" 
                 placeholder="AB12 CDE"
-                class="w-full bg-[#283039] text-white text-xl font-mono text-center uppercase px-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none"
+                class="w-full uk-number-plate"
                 maxlength="8"
+                >
+                </div>
+                
+                <!-- Collection Date -->
+                <div class="mb-6">
+                <label class="text-sm text-gray-400 mb-2 block">COLLECTION DATE</label>
+                <input 
+                type="date" 
+                id="collectionDateInput" 
+                class="w-full bg-[#283039] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none"
                 >
                 </div>
 
@@ -1249,6 +1292,7 @@
                 status: targetStatus,
                 totalAmount,
                 notes: draft.notes || '',
+                collectionDate: draft.collectionDate || new Date().toISOString().split('T')[0],
                 updatedAt: window.serverTimestamp()
             };
             if (draft.localId) batchData.localId = draft.localId;
@@ -1913,13 +1957,20 @@
             }
         }
 
+        // Sort function: collection date desc (fallback to submittedAt desc)
+        function sortByDate(a, b) {
+            const dateA = a.collectionDate ? new Date(a.collectionDate) : (a.submittedAt?.toDate ? a.submittedAt.toDate() : new Date(a.submittedAt || 0));
+            const dateB = b.collectionDate ? new Date(b.collectionDate) : (b.submittedAt?.toDate ? b.submittedAt.toDate() : new Date(b.submittedAt || 0));
+            return dateB - dateA; // descending (newest first)
+        }
+        
         // Display batches by status
         function displayBatches() {
-            const returned = allBatches.filter(b => b.status === 'returned');
-            const pending = allBatches.filter(b => b.status === 'pending');
-            const draft = allBatches.filter(b => b.status === 'draft');
-            const validated = allBatches.filter(b => b.status === 'validated');
-            const paid = allBatches.filter(b => b.status === 'paid');
+            const returned = allBatches.filter(b => b.status === 'returned').sort(sortByDate);
+            const pending = allBatches.filter(b => b.status === 'pending').sort(sortByDate);
+            const draft = allBatches.filter(b => b.status === 'draft').sort(sortByDate);
+            const validated = allBatches.filter(b => b.status === 'validated').sort(sortByDate);
+            const paid = allBatches.filter(b => b.status === 'paid').sort(sortByDate);
 
             // Show/hide sections - in order: returned, draft, pending, validated, paid
             document.getElementById('returnedSection').classList.toggle('hidden', returned.length === 0);
@@ -2037,11 +2088,17 @@
                 <div onclick="${hasPendingUploads ? '' : `openBatch('${batch.id}')`}" class="${borderClass} cursor-pointer fade-in ${greyedOut}">
                 <div class="flex items-start justify-between mb-2">
                 <div class="license-plate">${batch.registration}</div>
+                <div class="text-right">
                 <span class="${statusColor} px-3 py-1 rounded-full text-xs font-semibold uppercase">${batch.status}</span>
+                ${batch.status === 'validated' ? '<div class="text-gray-500 text-[10px] mt-1">(yet to be paid)</div>' : ''}
                 </div>
-                <div class="flex items-center justify-between mt-3">
-                <span class="text-gray-400 text-sm">${(typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLineCount ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(batch) : 0) || 0} Expense${((EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.getUsedLineCount ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(batch) : 0) !== 1 ? 's' : '')}</span>
-                <span class="text-green-500 font-semibold text-lg">£${(batch.totalAmount != null ? batch.totalAmount : 0).toFixed(2)}</span>
+                </div>
+                <div class="mt-2 text-gray-400 text-sm">${batch.collectionDate ? new Date(batch.collectionDate).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : ''}</div>
+                <div class="flex items-center justify-end mt-3 gap-3">
+                <div class="text-right">
+                <div class="text-green-500 font-semibold text-lg">£${(batch.totalAmount != null ? batch.totalAmount : 0).toFixed(2)}</div>
+                <div class="text-gray-500 text-xs">${(typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLineCount ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(batch) : 0) || 0} expense${((EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.getUsedLineCount ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(batch) : 0) !== 1 ? 's' : '')}</div>
+                </div>
                 </div>
                 ${timerHTML}
                 ${uploadIndicator}
@@ -2074,18 +2131,21 @@
         // Create new batch (merged model: lines only)
         async function createNewBatch() {
             const emptyLines = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.emptyLines) ? EXPENSE_BATCH_SCHEMA.emptyLines() : {};
+            const today = new Date().toISOString().split('T')[0];
             currentBatch = {
                 id: null,
                 localId: null,
                 registration: '',
                 status: 'draft',
                 lines: emptyLines,
-                totalAmount: 0
+                totalAmount: 0,
+                collectionDate: today
             };
             window.currentBatch = currentBatch;
             setStatusTitle('draft');
             document.getElementById('regInput').value = '';
             document.getElementById('regInput').disabled = false;
+            document.getElementById('collectionDateInput').value = today;
             const notesSection = document.getElementById('notesSection');
             notesSection.classList.remove('hidden');
             const notesLabel = document.getElementById('notesLabel');
@@ -2245,8 +2305,10 @@
                 // Add appropriate border class
                 if (batch.status === 'draft') {
                     modalContent.classList.add('animated-border-modal-draft');
-                } else if (batch.status === 'pending' || batch.status === 'validated') {
+                } else if (batch.status === 'pending') {
                     modalContent.classList.add('animated-border-modal-pending');
+                } else if (batch.status === 'validated') {
+                    modalContent.classList.add('animated-border-modal-validated');
                 } else if (batch.status === 'paid') {
                     modalContent.classList.add('animated-border-modal-paid');
                 } else if (batch.status === 'returned') {
@@ -2258,6 +2320,16 @@
             setStatusTitle(batch.status);
             document.getElementById('regInput').value = batch.registration;
             document.getElementById('regInput').disabled = batch.status !== 'draft' && batch.status !== 'returned';
+            
+            // Set collection date (default to today if not set)
+            const collectionDateInput = document.getElementById('collectionDateInput');
+            if (batch.collectionDate) {
+                collectionDateInput.value = batch.collectionDate;
+            } else {
+                const today = new Date().toISOString().split('T')[0];
+                collectionDateInput.value = today;
+                batch.collectionDate = today;
+            }
             
             // Show communications thread for returned batches
             const commsSection = document.getElementById('communicationsSection');
@@ -3217,6 +3289,9 @@
                 return;
             }
             // Allow draft with no expenses (user may add later); submit still requires ≥1 expense
+            
+            // Get collection date
+            const collectionDate = document.getElementById('collectionDateInput').value;
 
             // Confirmation dialog
             const confirmed = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
@@ -3247,6 +3322,7 @@
 
             // Prepare batch details prior to queueing so the offline copy is complete
             currentBatch.registration = registration;
+            currentBatch.collectionDate = collectionDate;
             currentBatch.driverId = currentUser.uid;
             currentBatch.driverEmail = currentUser.email;
             currentBatch.driverName =
@@ -3381,6 +3457,9 @@
                 notifyWarning('Please enter a registration number.', 'Missing Registration');
                 return;
             }
+            
+            // Get collection date
+            const collectionDate = document.getElementById('collectionDateInput').value;
 
             const usedCount = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.getUsedLineCount) ? EXPENSE_BATCH_SCHEMA.getUsedLineCount(currentBatch) : 0;
             if (usedCount === 0) {
@@ -3417,6 +3496,7 @@
             // Prepare batch for queueing
             const isAppeal = currentBatch.status === 'returned';
             currentBatch.registration = registration;
+            currentBatch.collectionDate = collectionDate;
             currentBatch.driverId = currentUser.uid;
             currentBatch.driverEmail = currentUser.email;
             currentBatch.driverName =
