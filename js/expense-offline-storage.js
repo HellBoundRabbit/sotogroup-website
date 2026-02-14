@@ -1141,7 +1141,7 @@ class ExpenseUploadQueue {
             req.onerror = () => resolve(0);
         });
 
-        // Get all tasks to count photos (remaining and total for progress %)
+        // Get all tasks - only count pending/uploading so banner reflects current batch (not old completed tasks)
         const allTasks = await new Promise((resolve) => {
             const req = store.getAll();
             req.onsuccess = () => resolve(req.result || []);
@@ -1152,9 +1152,9 @@ class ExpenseUploadQueue {
         let totalPhotoCount = 0;
         allTasks.forEach(task => {
             const n = (task.photoBlobIds || []).length;
-            totalPhotoCount += n;
             if (task.status === 'pending' || task.status === 'uploading') {
                 photoCount += n;
+                totalPhotoCount += n;
             }
         });
 
@@ -1238,7 +1238,21 @@ class ExpenseUploadQueue {
             }
             
             // Subtitle and progress: show photo count and percentage when we have photo uploads
-            const totalPhotos = typeof totalPhotoCount === 'number' ? totalPhotoCount : 0;
+            // Session total: capture when uploads start so "X of Y" stays correct as tasks complete (we only count pending+uploading in getPendingCount now)
+            if (typeof window !== 'undefined') {
+                if (photoCount > 0 || totalPhotoCount > 0) {
+                    const currentTotal = typeof totalPhotoCount === 'number' ? totalPhotoCount : 0;
+                    window._expenseUploadSessionTotalPhotos = Math.max(
+                        window._expenseUploadSessionTotalPhotos || 0,
+                        currentTotal
+                    );
+                } else {
+                    window._expenseUploadSessionTotalPhotos = 0;
+                }
+            }
+            const totalPhotos = (typeof window !== 'undefined' && window._expenseUploadSessionTotalPhotos > 0)
+                ? window._expenseUploadSessionTotalPhotos
+                : (typeof totalPhotoCount === 'number' ? totalPhotoCount : 0);
             const remainingPhotos = typeof photoCount === 'number' ? photoCount : 0;
             const completedPhotos = totalPhotos > 0 ? Math.max(0, totalPhotos - remainingPhotos) : 0;
             const percent = totalPhotos > 0 ? Math.round((completedPhotos / totalPhotos) * 100) : 0;
@@ -1246,6 +1260,8 @@ class ExpenseUploadQueue {
             if (bannerSubtitle) {
                 if (remainingPhotos > 0 && totalPhotos > 0) {
                     bannerSubtitle.textContent = `${completedPhotos} of ${totalPhotos} photo${totalPhotos === 1 ? '' : 's'} (${percent}%)`;
+                } else if (totalPhotos > 0 && completedPhotos >= totalPhotos) {
+                    bannerSubtitle.textContent = `${totalPhotos} of ${totalPhotos} photo${totalPhotos === 1 ? '' : 's'} (100%)`;
                 } else if (photoCount > 0) {
                     bannerSubtitle.textContent = `Uploading ${photoCount} photo${photoCount === 1 ? '' : 's'}...`;
                 } else if (submissionQueued > 0) {
@@ -1259,6 +1275,9 @@ class ExpenseUploadQueue {
                 progressFill.style.width = totalPhotos > 0 ? percent + '%' : '0%';
             }
         } else {
+            if (typeof window !== 'undefined') {
+                window._expenseUploadSessionTotalPhotos = 0;
+            }
             this.hideUploadBanner();
             if (typeof window !== 'undefined') {
                 window.isUploadingExpense = false;
