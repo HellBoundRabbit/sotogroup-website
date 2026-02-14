@@ -1340,6 +1340,7 @@
                 await window.updateDoc(window.doc(window.db, 'expenseBatches', batchId), batchData);
                 console.log('[syncDraftToFirestore] Updated batch with lines:', batchId);
             }
+            let enqueuedUploadCount = 0;
             const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
             if (!isLocalhost && window.expenseUploadQueue) {
                 const reg = (draft.registration || '').trim();
@@ -1354,6 +1355,7 @@
                     const amount = line && typeof line.amount === 'number' ? line.amount : 0;
                     try {
                         await window.expenseUploadQueue.enqueueExpenseUpload(batchId, k, { amount, registration: reg, targetStatus, submissionDate }, photoBlobs);
+                        enqueuedUploadCount += (photoBlobs.length || 0);
                     } catch (e) {
                         console.error('[syncDraftToFirestore] Failed to enqueue photo upload for line', k, e);
                     }
@@ -1366,6 +1368,7 @@
                     await window.expenseUploadQueue.getAuthTokenAndProcessQueue();
                 }
             }
+            draft.enqueuedUploadCount = enqueuedUploadCount;
 
             draft.status = targetStatus;
             draft.driverId = driverId;
@@ -3418,6 +3421,14 @@
                     const localIndex = allBatches.findIndex(b => b.localId === currentBatch.localId);
                     if (localIndex >= 0) {
                         allBatches[localIndex].id = savedBatch.id;
+                    }
+                    // Draft with no photos: nothing will trigger upload-complete, so un-grey now
+                    if (savedBatch.enqueuedUploadCount === 0) {
+                        batchIdsGreyedUntilUploadDone.delete(savedBatch.id);
+                        if (localIndex >= 0) allBatches[localIndex].hasPendingUploads = false;
+                        if (typeof window.loadExpenseBatches === 'function') {
+                            setTimeout(() => window.loadExpenseBatches().catch(() => {}), 300);
+                        }
                     }
                 }
 
