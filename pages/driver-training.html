@@ -25,24 +25,55 @@
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
-        .back-button {
-            display: inline-flex;
+        /* Nav bar back button (match driver portal pages) */
+        .spinner-wrapper {
+            width: 56px;
+            height: 56px;
+            position: relative;
+        }
+        .spinner {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            filter: blur(1px);
+        }
+        .spinner::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(186, 66, 255) 35%, rgb(0, 225, 255));
+            box-shadow: 0px -5px 20px 0px rgb(186, 66, 255), 0px 5px 20px 0px rgb(0, 225, 255);
+        }
+        .spinner1 {
+            background-color: rgb(36, 36, 36);
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 8px 16px;
-            background: rgba(26, 31, 36, 0.8);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            color: #e5e7eb;
-            text-decoration: none;
-            font-size: 14px;
-            margin-bottom: 24px;
-            transition: background-color 0.2s, border-color 0.2s;
+            justify-content: center;
+            z-index: 2;
         }
-        .back-button:hover {
-            background: rgba(39, 44, 52, 0.9);
-            border-color: rgba(255, 255, 255, 0.15);
+        .spinner-icon {
+            position: relative;
+            z-index: 3;
+            color: white;
+            font-size: 1.875rem;
+            -webkit-font-smoothing: antialiased;
+            filter: none !important;
         }
+        .touch-target { min-height: 44px; min-width: 44px; }
 
         /* Dark theme stepper */
         .stepper-box {
@@ -88,20 +119,20 @@
             display: none;
         }
         .stepper-step.stepper-completed .stepper-circle {
-            background: rgba(34, 197, 94, 0.2);
-            border: 2px solid rgb(34, 197, 94);
-            color: rgb(34, 197, 94);
+            background: rgba(186, 66, 255, 0.2);
+            border: 2px solid rgb(0, 225, 255);
+            color: rgb(0, 225, 255);
         }
-        .stepper-step.stepper-completed .stepper-line {
-            background: linear-gradient(to bottom, rgb(34, 197, 94), rgba(255, 255, 255, 0.12));
+        .stepper-line.line-solid-cyan {
+            background: rgb(0, 225, 255);
+        }
+        .stepper-line.line-gradient {
+            background: linear-gradient(to bottom, rgb(0, 225, 255), rgb(186, 66, 255), rgba(255, 255, 255, 0.12));
         }
         .stepper-step.stepper-active .stepper-circle {
-            background: rgba(249, 115, 22, 0.25);
-            border: 2px solid rgb(249, 115, 22);
-            color: rgb(249, 115, 22);
-        }
-        .stepper-step.stepper-active .stepper-line {
-            background: rgba(255, 255, 255, 0.12);
+            background: rgba(0, 225, 255, 0.2);
+            border: 2px solid rgb(186, 66, 255);
+            color: rgb(186, 66, 255);
         }
         .stepper-step.stepper-pending .stepper-circle {
             background: rgba(255, 255, 255, 0.06);
@@ -126,77 +157,187 @@
             margin-top: 2px;
             color: #9ca3af;
         }
-        .stepper-completed .stepper-status { color: rgb(34, 197, 94); }
-        .stepper-active .stepper-status { color: rgb(249, 115, 22); }
+        .stepper-completed .stepper-status { color: rgb(0, 225, 255); }
+        .stepper-active .stepper-status { color: rgb(186, 66, 255); }
         .stepper-pending .stepper-title { color: rgba(255, 255, 255, 0.6); }
         .stepper-pending .stepper-status { color: #6b7280; }
-        .stepper-controls {
-            display: flex;
-            justify-content: space-between;
-            gap: 12px;
-            margin-top: 24px;
-            padding-top: 20px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        .stepper-button {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 18px;
-            border-radius: 10px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background-color 0.2s, color 0.2s;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            background: rgba(255, 255, 255, 0.06);
-            color: #e5e7eb;
-        }
-        .stepper-button:hover {
-            background: rgba(255, 255, 255, 0.1);
-        }
-        .stepper-button-primary {
-            background: rgb(249, 115, 22);
-            border-color: rgb(249, 115, 22);
-            color: #fff;
-        }
-        .stepper-button-primary:hover {
-            background: rgb(234, 88, 12);
-            border-color: rgb(234, 88, 12);
+
+        /* Gradient colours */
+        :root {
+            --train-cyan: rgb(0, 225, 255);
+            --train-purple: rgb(186, 66, 255);
+            --train-mid: rgb(93, 145, 255);
         }
 
-        /* Training cards grid */
-        .training-section-title {
-            font-size: 20px;
-            font-weight: 700;
-            color: #f3f4f6;
-            margin-bottom: 16px;
-            margin-top: 32px;
+        /* Section: single chunky card per row */
+        .training-section {
+            margin-bottom: 0.75rem;
         }
-        .training-card {
+
+        /* Flip cards – same size as Uiverse card (250x160) */
+        .flip-card-wrap {
+            perspective: 800px;
+            width: 100%;
+            max-width: 250px;
+            margin: 0 auto;
+            padding: 5px;
+        }
+        .flip-card {
+            position: relative;
+            width: 100%;
+            height: 160px;
+            cursor: pointer;
+            transform-style: preserve-3d;
+        }
+        .flip-card.flipped .flip-card-inner {
+            transform: rotateY(180deg);
+        }
+        .flip-card-inner {
+            position: relative;
+            width: 100%;
+            height: 160px;
+            transition: transform 0.5s;
+            transform-style: preserve-3d;
+        }
+        .flip-card-front,
+        .flip-card-back {
+            position: absolute;
+            inset: 0;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            border-radius: 14px;
+        }
+        .flip-card-front {
+            overflow: visible;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2;
+            padding: 6px 12px;
+        }
+        /* Solid border (section colour) */
+        .flip-card-front .flip-border {
+            position: absolute;
+            inset: -2px;
+            border-radius: 16px;
+            z-index: 0;
+            border: 2px solid var(--flip-border-color);
+        }
+        .flip-card-front.standards { --flip-border-color: var(--train-cyan); }
+        .flip-card-front.apps { --flip-border-color: var(--train-mid); }
+        .flip-card-front.payment { --flip-border-color: var(--train-purple); }
+        .flip-card-front .flip-border-inner {
+            position: absolute;
+            inset: 2px;
+            border-radius: 12px;
+            background: rgba(18, 18, 22, 0.98);
+            z-index: 1;
+        }
+        /* Front: icon on top, title below (centered) */
+        .flip-card-front .flip-front-content {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .flip-card-front .flip-icon-wrap .material-symbols-outlined {
+            font-size: 50px;
+            width: 50px;
+            height: 50px;
+        }
+        .flip-card-front .flip-front-title {
+            font-size: 0.8125rem;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+        }
+        .flip-card-front .flip-front-percent {
+            font-size: 0.75rem;
+            font-weight: 600;
+            opacity: 0.9;
+        }
+        .flip-card-front.standards .flip-icon-wrap .material-symbols-outlined,
+        .flip-card-front.standards .flip-front-title,
+        .flip-card-front.standards .flip-front-percent { color: var(--train-cyan); }
+        .flip-card-front.apps .flip-icon-wrap .material-symbols-outlined,
+        .flip-card-front.apps .flip-front-title,
+        .flip-card-front.apps .flip-front-percent { color: var(--train-mid); }
+        .flip-card-front.payment .flip-icon-wrap .material-symbols-outlined,
+        .flip-card-front.payment .flip-front-title,
+        .flip-card-front.payment .flip-front-percent { color: var(--train-purple); }
+
+        /* Back – Uiverse-style .back .back-content */
+        .flip-card-back {
+            transform: rotateY(180deg);
+            background: rgba(22, 22, 28, 0.98);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            z-index: 1;
+            padding: 0;
+            display: flex;
+            align-items: stretch;
+        }
+        .flip-card-back .back-content {
+            width: 100%;
+            height: 100%;
+            padding: 0.75rem 0.9375rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 0.35rem;
+        }
+        .flip-card-back .back-content strong {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            opacity: 0.85;
+            margin-bottom: 4px;
+        }
+        .flip-card-back.standards .back-content strong { color: var(--train-cyan); }
+        .flip-card-back.apps .back-content strong { color: var(--train-mid); }
+        .flip-card-back.payment .back-content strong { color: var(--train-purple); }
+        .flip-card-back .flip-back-link {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 18px 20px;
-            background: rgba(26, 31, 36, 0.8);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            margin-bottom: 12px;
-            cursor: pointer;
-            transition: background 0.2s, border-color 0.2s;
-        }
-        .training-card:hover {
-            background: rgba(39, 44, 52, 0.9);
-            border-color: rgba(255, 255, 255, 0.15);
-        }
-        .training-card-title {
+            padding: 0.5rem 0.6rem;
+            margin: 0;
+            border-radius: 8px;
+            border: none;
             font-weight: 600;
-            font-size: 16px;
-            color: #f3f4f6;
+            font-size: 0.8125rem;
+            text-decoration: none;
+            transition: background 0.2s;
+            background: transparent;
         }
-        .training-card .material-symbols-outlined {
-            color: rgba(255, 255, 255, 0.5);
-            font-size: 22px;
+        .flip-card-back.standards .flip-back-link { color: var(--train-cyan); }
+        .flip-card-back.standards .flip-back-link:hover { background: rgba(0, 225, 255, 0.12); }
+        .flip-card-back.apps .flip-back-link { color: var(--train-mid); }
+        .flip-card-back.apps .flip-back-link:hover { background: rgba(93, 145, 255, 0.12); }
+        .flip-card-back.payment .flip-back-link { color: var(--train-purple); }
+        .flip-card-back.payment .flip-back-link:hover { background: rgba(186, 66, 255, 0.12); }
+        .flip-back-percent {
+            font-size: 0.625rem;
+            opacity: 0.85;
+        }
+        .training-list {
+            padding-top: 0.25rem;
+        }
+        /* In-modal link to Apps (glowing, clickable) */
+        .training-modal-body .training-link-apps {
+            color: var(--train-mid);
+            font-weight: 600;
+            text-decoration: none;
+            box-shadow: 0 0 12px rgba(93, 145, 255, 0.5);
+            padding: 0 4px;
+            border-radius: 4px;
+            transition: box-shadow 0.2s, color 0.2s;
+        }
+        .training-modal-body .training-link-apps:hover {
+            color: var(--train-cyan);
+            box-shadow: 0 0 16px rgba(0, 225, 255, 0.6);
         }
 
         /* Full-screen modal */
@@ -218,19 +359,14 @@
         .training-modal-header {
             display: flex;
             align-items: center;
-            justify-content: space-between;
             padding: 16px 20px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             flex-shrink: 0;
         }
-        .training-modal-title {
-            font-size: 20px;
-            font-weight: 700;
-            color: #fff;
-        }
         .training-modal-close {
             width: 44px;
             height: 44px;
+            min-width: 44px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -244,12 +380,185 @@
         .training-modal-close:hover {
             background: rgba(255, 255, 255, 0.12);
         }
+        .training-modal-title {
+            flex: 1;
+            font-size: 20px;
+            font-weight: 700;
+            color: #fff;
+            text-align: center;
+            margin: 0;
+        }
+        .training-modal-header-spacer {
+            width: 44px;
+            min-width: 44px;
+        }
         .training-modal-body {
             flex: 1;
             overflow-y: auto;
-            padding: 24px;
+            padding: 20px 16px 28px;
             color: #d1d5db;
             line-height: 1.6;
+            text-align: center;
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+        .training-modal-body .training-modal-section {
+            text-align: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1.25rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .training-modal-body .training-modal-section:last-child { border-bottom: none; }
+        .training-modal-section-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #e5e7eb;
+            margin: 0 0 0.75rem 0;
+        }
+        .training-modal-section-body {
+            text-align: center;
+            margin: 0 auto 1rem;
+            max-width: 360px;
+        }
+        .training-modal-section-body p,
+        .training-modal-section-body ul { text-align: left; margin-left: auto; margin-right: auto; }
+        .training-video-wrap {
+            position: relative;
+            width: 100%;
+            max-width: 360px;
+            margin: 1rem auto;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #000;
+            aspect-ratio: 16 / 9;
+        }
+        .training-video-wrap .training-video,
+        .training-video-wrap iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        .training-video-intro { margin-bottom: 0.5rem; }
+        .training-video-note { font-size: 0.75rem; color: #9ca3af; margin-top: 0.75rem; }
+        .training-modal-understood-wrap {
+            display: flex;
+            justify-content: center;
+            margin-top: 0.5rem;
+        }
+        .training-understood-btn {
+            min-width: 140px;
+            min-height: 44px;
+            padding: 10px 20px;
+            font-size: 0.9375rem;
+            font-weight: 600;
+            color: rgb(0, 225, 255);
+            background: rgba(0, 225, 255, 0.15);
+            border: 1px solid rgba(0, 225, 255, 0.4);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .training-understood-btn:hover {
+            background: rgba(0, 225, 255, 0.25);
+            border-color: rgb(0, 225, 255);
+        }
+        .training-modal-overlay.category-standards .training-understood-btn { color: var(--train-cyan); background: rgba(0, 225, 255, 0.15); border-color: rgba(0, 225, 255, 0.4); }
+        .training-modal-overlay.category-standards .training-understood-btn:hover { background: rgba(0, 225, 255, 0.25); border-color: var(--train-cyan); }
+        .training-modal-overlay.category-standards .training-understood-done { color: var(--train-cyan); }
+        .training-modal-overlay.category-apps .training-understood-btn { color: var(--train-mid); background: rgba(93, 145, 255, 0.15); border-color: rgba(93, 145, 255, 0.4); }
+        .training-modal-overlay.category-apps .training-understood-btn:hover { background: rgba(93, 145, 255, 0.25); border-color: var(--train-mid); }
+        .training-modal-overlay.category-apps .training-understood-done { color: var(--train-mid); }
+        .training-modal-overlay.category-payment .training-understood-btn { color: var(--train-purple); background: rgba(186, 66, 255, 0.15); border-color: rgba(186, 66, 255, 0.4); }
+        .training-modal-overlay.category-payment .training-understood-btn:hover { background: rgba(186, 66, 255, 0.25); border-color: var(--train-purple); }
+        .training-modal-overlay.category-payment .training-understood-done { color: var(--train-purple); }
+        .training-understood-done {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.9375rem;
+            font-weight: 600;
+        }
+        .training-understood-done .material-symbols-outlined { font-size: 1.25rem; }
+        .training-modal-body h4 { font-size: 1rem; font-weight: 600; color: #e5e7eb; margin-top: 1rem; margin-bottom: 0.5rem; }
+        .training-modal-body ul:not(.training-category-subs) { margin: 0.5rem auto 1rem; padding-left: 1.25rem; max-width: 360px; }
+        .training-modal-body li { margin-bottom: 0.35rem; text-align: left; }
+        .training-modal-body .highlight { background: rgba(0, 225, 255, 0.12); border-left: 3px solid rgb(0, 225, 255); padding: 0.5rem 0.75rem; margin: 0.75rem 0; border-radius: 0 6px 6px 0; }
+        .training-modal-body .quiz-option { display: block; width: 100%; text-align: left; padding: 12px 16px; margin-bottom: 8px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); color: #e5e7eb; cursor: pointer; transition: background 0.2s; }
+        .training-modal-body .quiz-option:hover { background: rgba(255,255,255,0.1); }
+        .training-modal-body .quiz-option.correct { border-color: rgb(0, 225, 255); background: rgba(0, 225, 255, 0.15); }
+        .training-modal-body .quiz-option.incorrect { border-color: rgb(239, 68, 68); background: rgba(239, 68, 68, 0.15); }
+        .training-modal-body .quiz-result { font-weight: 600; margin-top: 1rem; padding: 1rem; border-radius: 10px; text-align: center; }
+        .training-modal-body .quiz-result.pass { background: rgba(0, 225, 255, 0.15); color: rgb(0, 225, 255); }
+        .training-modal-body .quiz-result.fail { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+
+        /* Training complete confirmation (cyan–purple theme) */
+        .training-complete-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 110;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.25s, visibility 0.25s;
+        }
+        .training-complete-overlay.is-open {
+            opacity: 1;
+            visibility: visible;
+        }
+        .training-complete-card {
+            max-width: 360px;
+            width: 100%;
+            padding: 28px 24px;
+            background: linear-gradient(145deg, rgba(18, 18, 28, 0.98), rgba(26, 22, 36, 0.98));
+            border: 1px solid rgba(0, 225, 255, 0.25);
+            box-shadow: 0 0 40px rgba(0, 225, 255, 0.15), 0 0 80px rgba(186, 66, 255, 0.1);
+            border-radius: 16px;
+        }
+        .training-complete-message {
+            color: #e5e7eb;
+            font-size: 1.0625rem;
+            line-height: 1.5;
+            margin: 0 0 24px 0;
+            text-align: center;
+        }
+        .training-complete-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .training-complete-btn {
+            min-width: 100px;
+            min-height: 44px;
+            padding: 10px 24px;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s, transform 0.15s;
+        }
+        .training-complete-yes {
+            color: #000;
+            background: linear-gradient(135deg, rgb(0, 225, 255), rgb(186, 66, 255));
+            border: none;
+        }
+        .training-complete-yes:hover {
+            filter: brightness(1.1);
+            transform: scale(1.02);
+        }
+        .training-complete-no {
+            color: #e5e7eb;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .training-complete-no:hover {
+            background: rgba(255, 255, 255, 0.12);
         }
 
         /* Tabs */
@@ -269,15 +578,24 @@
             border: none;
             border-bottom: 3px solid transparent;
             cursor: pointer;
-            transition: color 0.2s, border-color 0.2s;
+            transition: color 0.2s;
             margin-bottom: -1px;
+            position: relative;
         }
         .training-tab:hover {
             color: #d1d5db;
         }
         .training-tab.active {
-            color: #f97316;
-            border-bottom-color: #f97316;
+            color: rgb(0, 225, 255);
+        }
+        .training-tab.active::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: -1px;
+            height: 3px;
+            background: linear-gradient(90deg, rgb(0, 225, 255), rgb(186, 66, 255));
         }
         .training-tab-panel {
             display: none;
@@ -294,31 +612,44 @@
         </div>
     </div>
 
-    <div class="min-h-screen px-6 py-8 max-w-lg mx-auto">
-        <a href="/pages/driver-portal.html" class="back-button">
-            <span class="material-symbols-outlined" style="font-size: 18px;">arrow_back</span>
-            Back to Portal
-        </a>
+    <!-- Top Navigation (match driver portal pages) -->
+    <div class="bg-black border-b border-gray-800 sticky top-0 z-40">
+        <div class="flex items-center justify-between px-4 py-3">
+            <button onclick="window.location.href='/pages/driver-portal.html'" class="touch-target">
+                <div class="spinner-wrapper">
+                    <div class="spinner"></div>
+                    <div class="spinner1">
+                        <span class="material-symbols-outlined spinner-icon">arrow_back</span>
+                    </div>
+                </div>
+            </button>
+            <h1 class="text-xl font-semibold text-white">Training</h1>
+            <div class="w-10"></div>
+        </div>
+    </div>
 
-        <h1 class="text-2xl font-bold text-white mb-2">Training</h1>
-        <p class="text-gray-400 text-sm mb-4">Complete your onboarding and access training materials.</p>
-
+    <div class="min-h-screen px-6 py-6 max-w-lg mx-auto">
         <div class="training-tabs" role="tablist" aria-label="Training sections">
-            <button type="button" class="training-tab active" role="tab" aria-selected="true" aria-controls="tab-progression" id="tab-btn-progression" onclick="switchTrainingTab('progression')">Progression</button>
             <button type="button" class="training-tab" role="tab" aria-selected="false" aria-controls="tab-training" id="tab-btn-training" onclick="switchTrainingTab('training')">Training</button>
+            <button type="button" class="training-tab active" role="tab" aria-selected="true" aria-controls="tab-progression" id="tab-btn-progression" onclick="switchTrainingTab('progression')">Progression</button>
+        </div>
+
+        <!-- Training tab panel (default) -->
+        <div id="tab-training" class="training-tab-panel" role="tabpanel" aria-labelledby="tab-btn-training">
+        <div id="trainingCategoriesList" class="training-list" aria-label="Training"></div>
         </div>
 
         <!-- Progression tab panel -->
         <div id="tab-progression" class="training-tab-panel is-active" role="tabpanel" aria-labelledby="tab-btn-progression">
         <section class="mb-8" aria-label="Your progression">
             <div class="stepper-box">
-                <div class="stepper-step stepper-completed">
+                <div id="stepper-step-1" class="stepper-step stepper-completed">
                     <div class="stepper-circle">
                         <svg viewBox="0 0 16 16" class="bi bi-check-lg" fill="currentColor" height="16" width="16" xmlns="http://www.w3.org/2000/svg">
                             <path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.4-6.425z"></path>
                         </svg>
                     </div>
-                    <div class="stepper-line"></div>
+                    <div class="stepper-line" id="stepper-line-0"></div>
                     <div class="stepper-content">
                         <div class="stepper-title">Meet the team & Set up your account</div>
                         <div class="stepper-status">Completed</div>
@@ -326,9 +657,9 @@
                     </div>
                 </div>
 
-                <div class="stepper-step stepper-active">
+                <div id="stepper-step-2" class="stepper-step stepper-active">
                     <div class="stepper-circle">2</div>
-                    <div class="stepper-line"></div>
+                    <div class="stepper-line" id="stepper-line-1"></div>
                     <div class="stepper-content">
                         <div class="stepper-title">Complete the lessons and quizzes</div>
                         <div class="stepper-status">In progress</div>
@@ -336,68 +667,26 @@
                     </div>
                 </div>
 
-                <div class="stepper-step stepper-pending">
+                <div id="stepper-step-3" class="stepper-step stepper-pending">
                     <div class="stepper-circle">3</div>
-                    <div class="stepper-line"></div>
+                    <div class="stepper-line" id="stepper-line-2"></div>
                     <div class="stepper-content">
                         <div class="stepper-title">Go out for your training day</div>
                         <div class="stepper-status">Pending</div>
-                        <div class="stepper-time">After completing lessons</div>
+                        <div class="stepper-time">Marked complete by office</div>
                     </div>
                 </div>
 
-                <div class="stepper-step stepper-pending">
+                <div id="stepper-step-4" class="stepper-step stepper-pending">
                     <div class="stepper-circle">4</div>
                     <div class="stepper-content">
                         <div class="stepper-title">Collect your equipment and get login credentials</div>
                         <div class="stepper-status">Pending</div>
-                        <div class="stepper-time">Final step</div>
+                        <div class="stepper-time">Final step (office)</div>
                     </div>
-                </div>
-
-                <div class="stepper-controls">
-                    <button type="button" class="stepper-button" onclick="stepperPrevious()">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                            <path fill-rule="evenodd" d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8"></path>
-                        </svg>
-                        Previous
-                    </button>
-                    <button type="button" class="stepper-button stepper-button-primary" onclick="stepperNext()">
-                        Next
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                            <path fill-rule="evenodd" d="M1 8a.5.5 0 0 1 .5-.5h11.793l-3.147-3.146a.5.5 0 0 1 .708-.708l4 4a.5.5 0 0 1 0 .708l-4 4a.5.5 0 0 1-.708-.708L13.293 8.5H1.5A.5.5 0 0 1 1 8"></path>
-                        </svg>
-                    </button>
                 </div>
             </div>
         </section>
-        </div>
-
-        <!-- Training tab panel -->
-        <div id="tab-training" class="training-tab-panel" role="tabpanel" aria-labelledby="tab-btn-training">
-        <p class="text-gray-400 text-sm mb-6">Open a topic to view its content.</p>
-        <div class="training-cards">
-            <div class="training-card" onclick="openTrainingModal('rules')" role="button" tabindex="0">
-                <span class="training-card-title">Rules and standards</span>
-                <span class="material-symbols-outlined">chevron_right</span>
-            </div>
-            <div class="training-card" onclick="openTrainingModal('app')" role="button" tabindex="0">
-                <span class="training-card-title">App literacy</span>
-                <span class="material-symbols-outlined">chevron_right</span>
-            </div>
-            <div class="training-card" onclick="openTrainingModal('payment')" role="button" tabindex="0">
-                <span class="training-card-title">Payment and responsibilities</span>
-                <span class="material-symbols-outlined">chevron_right</span>
-            </div>
-            <div class="training-card" onclick="openTrainingModal('processes')" role="button" tabindex="0">
-                <span class="training-card-title">Day to day processes</span>
-                <span class="material-symbols-outlined">chevron_right</span>
-            </div>
-            <div class="training-card" onclick="openTrainingModal('faq')" role="button" tabindex="0">
-                <span class="training-card-title">FAQ</span>
-                <span class="material-symbols-outlined">chevron_right</span>
-            </div>
-        </div>
         </div>
 
         <div class="mt-12 text-center text-gray-500 text-xs">
@@ -408,17 +697,29 @@
     <!-- Full-screen modals (one per topic, placeholder content) -->
     <div id="trainingModalOverlay" class="training-modal-overlay" aria-hidden="true">
         <div class="training-modal-header">
-            <h3 id="trainingModalTitle" class="training-modal-title"></h3>
             <button type="button" class="training-modal-close" onclick="closeTrainingModal()" aria-label="Close">
                 <span class="material-symbols-outlined">close</span>
             </button>
+            <h3 id="trainingModalTitle" class="training-modal-title"></h3>
+            <div class="training-modal-header-spacer"></div>
         </div>
         <div id="trainingModalBody" class="training-modal-body"></div>
     </div>
 
+    <!-- Training complete confirmation (cyan/purple theme) -->
+    <div id="trainingCompleteOverlay" class="training-complete-overlay" aria-hidden="true">
+        <div class="training-complete-card">
+            <p class="training-complete-message">Are you comfortable with the information you've received and ready to start your in-person training?</p>
+            <div class="training-complete-actions">
+                <button type="button" class="training-complete-btn training-complete-yes" onclick="confirmTrainingComplete()">Yes</button>
+                <button type="button" class="training-complete-btn training-complete-no" onclick="closeTrainingCompleteDialog()">No</button>
+            </div>
+        </div>
+    </div>
+
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, doc, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 
@@ -441,42 +742,370 @@
         };
         window.getDoc = getDoc;
         window.doc = doc;
+        window.updateDoc = updateDoc;
     </script>
     <script>
-        const TRAINING_MODALS = {
-            rules: {
-                title: 'Rules and standards',
-                body: '<p>Content for <strong>Rules and standards</strong> will go here. This modal is a placeholder — you can replace this with your full training content, videos, or links.</p>'
+        var TRAINING_SECTIONS = [
+            { id: 'standards', title: 'Standards', colorClass: 'standards', icon: 'rule' },
+            { id: 'apps', title: 'Apps', colorClass: 'apps', icon: 'apps' },
+            { id: 'payment', title: 'Payment and invoicing', colorClass: 'payment', icon: 'payments' }
+        ];
+
+        var TRAINING_CATEGORIES = [
+            { key: 'all-jobs', title: 'All Jobs', sectionId: 'standards', subs: [{ title: 'Collection' }, { title: 'On the drive' }, { title: 'Delivery' }] },
+            { key: 'johnsons', title: 'Johnsons Fleet Services', sectionId: 'standards', subs: [{ title: 'Collection' }] },
+            { key: 'motorway', title: 'Motorway', sectionId: 'standards', subs: [{ title: 'Standards' }] },
+            { key: 'apps-model', title: 'MoDel', sectionId: 'apps', subs: [{ title: 'Section' }] },
+            { key: 'apps-google-maps', title: 'Google Maps', sectionId: 'apps', subs: [{ title: 'Tutorial' }] },
+            { key: 'apps-whatsapp', title: 'WhatsApp', sectionId: 'apps', subs: [{ title: 'General group' }] },
+            { key: 'payment-placeholder', title: 'Coming soon', sectionId: 'payment', subs: [{ title: 'Content' }] }
+        ];
+
+        // Google Maps tutorial: set one of these so the Training → Apps → Google Maps video appears.
+        // Option A – direct video URL (MP4/WebM): set TRAINING_GOOGLE_MAPS_VIDEO_URL to the full URL.
+        // Option B – YouTube: set TRAINING_GOOGLE_MAPS_VIDEO_EMBED to the iframe HTML from YouTube Share → Embed.
+        var TRAINING_GOOGLE_MAPS_VIDEO_URL = '';
+        var TRAINING_GOOGLE_MAPS_VIDEO_EMBED = '';
+
+        var TRAINING_MODALS = {
+            'all-jobs': {
+                title: 'All Jobs',
+                sections: [
+                    { title: 'Collection', body: '<ul><li>1 hour before collection: courtesy call to confirm the vehicle is ready and the address is correct.</li><li>The office should be updated when arriving at the collection address.</li><li>The office should also be notified if there are any problems when collecting the vehicle.</li><li>Ensure the dash camera and trade plates are in place before moving the vehicle.</li><li>Complete a clear and complete collection report and ensure a customer signs it off.</li></ul>' },
+                    { title: 'On the drive', body: '<ul><li>No eating, drinking, smoking or vaping allowed in any cars.</li><li>All speed limits should be adhered to.</li><li>A safe manner of driving should be performed throughout the drive.</li><li>The delivery customer should receive a courtesy call 1 hour before arrival and the address should be confirmed.</li></ul>' },
+                    { title: 'Delivery', body: '<ul><li>Once arrived the office should be informed.</li><li>A clear and complete delivery report should be filled in.</li><li>A customer\'s signature should be asked for to get the job signed off.</li><li>Update Asana by marking the job off as complete.</li></ul>' }
+                ]
             },
-            app: {
-                title: 'App literacy',
-                body: '<p>Content for <strong>App literacy</strong> will go here. Cover how to use the driver app, submit expenses, log wait times, and access messages.</p>'
+            'johnsons': {
+                title: 'Johnsons Fleet Services',
+                body: '<p>All collection, driving, and delivery standards (under <strong>All Jobs</strong>) should be adhered to. In addition, the following standards are specific to Johnsons Fleet Services.</p><h4>Collection</h4><ul>' +
+                    '<li>Johnsons Fleet Services is open from <strong>7:30am – 3:30pm</strong>.</li>' +
+                    '<li>When collecting keys, you will be required to give them the <strong>make and model</strong> of the car and the <strong>last 6 digits of the chassis</strong>. See the <a href="javascript:void(0)" class="training-link-apps" onclick="closeTrainingModal(); openTrainingModal(\'apps-model\')">MoDel</a> section of the Apps category in Training to see where this is located.</li>' +
+                    '<li>When collecting the keys you will be told if the car is located at the <strong>compound</strong> or <strong>on site</strong>. If the car is at the compound, Johnsons will supply a lift to the location (a few minutes’ drive).</li>' +
+                    '<li>Any damage found on the car, any missing accessories or cables, or if the car doesn’t have any fuel (it should be supplied with 25% – not including electric cars) should be reported <strong>immediately</strong> to the office on the <a href="javascript:void(0)" class="training-link-apps" onclick="closeTrainingModal(); openTrainingModal(\'apps-whatsapp\')">General Group Chat</a> and to the key office, who will remedy it.</li></ul>'
             },
-            payment: {
-                title: 'Payment and responsibilities',
-                body: '<p>Content for <strong>Payment and responsibilities</strong> will go here. Explain pay cycles, expense reimbursement, and driver responsibilities.</p>'
+            'motorway': { title: 'Motorway', sections: [ { title: 'Standards', body: '<p><em>Motorway standards content to be added.</em></p>' } ] },
+            'apps-model': { title: 'MoDel', sections: [ { title: 'Section', body: '<p><em>MoDel section content will appear here. This links from the Johnsons Collection standards.</em></p>' } ] },
+            'apps-google-maps': {
+                title: 'Google Maps',
+                sections: [{
+                    title: 'Tutorial video',
+                    body: '<p class="training-video-intro">Watch the tutorial below to learn how to use Google Maps for your journey planning.</p>' +
+                        '<div class="training-video-wrap">__GOOGLE_MAPS_VIDEO__</div>'
+                }]
             },
-            processes: {
-                title: 'Day to day processes',
-                body: '<p>Content for <strong>Day to day processes</strong> will go here. Describe daily routines, check-in, routes, and reporting.</p>'
-            },
-            faq: {
-                title: 'FAQ',
-                body: '<p>Content for <strong>FAQ</strong> will go here. Add common questions and answers for new drivers.</p>'
-            }
+            'apps-whatsapp': { title: 'WhatsApp', sections: [ { title: 'General group', body: '<p><em>WhatsApp / General Group Chat section content will appear here. This links from the Johnsons Collection standards.</em></p>' } ] },
+            'payment-placeholder': { title: 'Payment and invoicing', sections: [ { title: 'Content', body: '<p><em>Content to be added.</em></p>' } ] }
         };
 
+        var QUIZ_STANDARDS = [
+            { q: 'Where do you meet for the start of the day?', options: ['Johnsons Fleet Services, Tamworth', 'The delivery address', 'The office'], correctIndex: 0 },
+            { q: 'How should you plan your journey to the meeting point?', options: ['Drive', 'Google Maps and public transport', 'You don\'t need to plan'], correctIndex: 1 },
+            { q: 'Which app do you get your jobs from?', options: ['MoDel', 'Asana', 'WhatsApp'], correctIndex: 1 },
+            { q: 'What does the PIN on an Asana job get used for?', options: ['Nothing', 'MoDel – to add the job', 'Key office'], correctIndex: 1 },
+            { q: 'Where do you get the keys at Johnsons?', options: ['From the car', 'Key office – using last 6 digits of chassis', 'Reception'], correctIndex: 1 },
+            { q: 'Who do you CC the collection form to?', options: ['The customer', 'team@ec-logistics.co.uk', 'Your personal email'], correctIndex: 1 },
+            { q: 'What percentage of the job price do drivers get?', options: ['25%', '50%', '100%'], correctIndex: 1 },
+            { q: 'Travel to get to your first job is taken off which job?', options: ['The second job', 'Your day rate', 'The first job'], correctIndex: 2 },
+            { q: 'If a job has "fuel recharge", what happens to fuel/charging cost?', options: ['It comes off your pay', 'It is charged back to the customer', 'You pay nothing'], correctIndex: 1 },
+            { q: 'What is the day rate when you first start?', options: ['£80', '£90', '£100'], correctIndex: 1 },
+            { q: 'Within how long are expenses paid back?', options: ['48 hours', '24 working hours', 'End of the week'], correctIndex: 1 },
+            { q: 'For taxis over £10 or other expenses over £20, what should you do?', options: ['Just submit them', 'Get authorisation in the authorisation group first', 'Pay yourself'], correctIndex: 1 }
+        ];
+        var QUIZ_APPS = [
+            { q: 'In Asana, where do you see today\'s jobs?', options: ['Inbox', 'My Tasks', 'Calendar'], correctIndex: 1 },
+            { q: 'In MoDel, how do you add a new job?', options: ['Scan a barcode', 'Tap + and enter Reg and PIN', 'It appears automatically'], correctIndex: 1 },
+            { q: 'Before downloading a job in MoDel, you should confirm what?', options: ['The price', 'The addresses match Asana', 'The customer name'], correctIndex: 1 },
+            { q: 'Where is the expense sheet for a job in MoDel?', options: ['Home tab', 'Expense tab', 'Settings'], correctIndex: 1 },
+            { q: 'Which part of the chassis number do you give to the key office?', options: ['First 6 digits', 'Last 6 digits', 'The full number'], correctIndex: 1 },
+            { q: 'What do you do first at the car before filling the collection form?', options: ['Get the keys', 'Take beauty shots', 'Drive away'], correctIndex: 1 },
+            { q: 'Beauty shots help with what?', options: ['Fuel level', 'Recording condition and damage', 'Finding the car'], correctIndex: 1 },
+            { q: 'Where do you update the office at every step of the day?', options: ['Email', 'General WhatsApp group', 'Phone call only'], correctIndex: 1 }
+        ];
+
+        var TRAINING_PROGRESS_KEY = 'driver_training_progress';
+
+        function getTrainingProgress() {
+            try {
+                var raw = localStorage.getItem(TRAINING_PROGRESS_KEY);
+                return raw ? JSON.parse(raw) : {};
+            } catch (e) {
+                return {};
+            }
+        }
+
+        function setTrainingProgress(progress) {
+            try {
+                localStorage.setItem(TRAINING_PROGRESS_KEY, JSON.stringify(progress));
+            } catch (e) {}
+        }
+
+        function getCategoryCompleted(progress, categoryKey) {
+            var arr = progress[categoryKey];
+            if (!Array.isArray(arr)) return 0;
+            return arr.filter(Boolean).length;
+        }
+
+        function getSectionProgressPercent(progress, sectionId) {
+            var cats = TRAINING_CATEGORIES.filter(function (c) { return c.sectionId === sectionId; });
+            var total = 0, completed = 0;
+            cats.forEach(function (cat) {
+                var n = (cat.subs && cat.subs.length) ? cat.subs.length : 0;
+                total += n;
+                completed += getCategoryCompleted(progress, cat.key);
+            });
+            return total ? Math.round((completed / total) * 100) : 0;
+        }
+
+        function isAllTrainingComplete(progress) {
+            for (var i = 0; i < TRAINING_SECTIONS.length; i++) {
+                if (getSectionProgressPercent(progress, TRAINING_SECTIONS[i].id) !== 100) return false;
+            }
+            return true;
+        }
+
+        var currentUserUid = null;
+        var userTrainingComplete = 0;
+        var userInPersonTrainingComplete = 0;
+        var userEquipmentCollected = 0;
+
+        function setCategorySubCompleted(categoryKey, subIndex, completed) {
+            var progress = getTrainingProgress();
+            if (!progress[categoryKey]) progress[categoryKey] = [];
+            var cat = TRAINING_CATEGORIES.find(function (c) { return c.key === categoryKey; });
+            if (!cat || subIndex < 0 || subIndex >= cat.subs.length) return;
+            while (progress[categoryKey].length <= subIndex) progress[categoryKey].push(false);
+            progress[categoryKey][subIndex] = !!completed;
+            setTrainingProgress(progress);
+            renderTrainingCategories();
+            maybeShowTrainingCompleteDialog();
+        }
+
+        var STEPPER_CHECK_SVG = '<svg viewBox="0 0 16 16" class="bi bi-check-lg" fill="currentColor" height="16" width="16" xmlns="http://www.w3.org/2000/svg"><path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.4-6.425z"></path></svg>';
+
+        function renderProgressionStepper() {
+            var s1 = document.getElementById('stepper-step-1');
+            var s2 = document.getElementById('stepper-step-2');
+            var s3 = document.getElementById('stepper-step-3');
+            var s4 = document.getElementById('stepper-step-4');
+            var l0 = document.getElementById('stepper-line-0');
+            var l1 = document.getElementById('stepper-line-1');
+            var l2 = document.getElementById('stepper-line-2');
+            if (!s2 || !s3 || !s4) return;
+            function setStep(el, state, stepNum, timeText) {
+                el.className = 'stepper-step stepper-' + state;
+                var circle = el.querySelector('.stepper-circle');
+                var status = el.querySelector('.stepper-content .stepper-status');
+                var time = el.querySelector('.stepper-content .stepper-time');
+                if (circle) { if (state === 'completed') circle.innerHTML = STEPPER_CHECK_SVG; else circle.textContent = stepNum; }
+                if (status) status.textContent = state === 'completed' ? 'Completed' : (state === 'active' ? 'In progress' : 'Pending');
+                if (time && timeText) time.textContent = timeText;
+            }
+            setStep(s2, userTrainingComplete ? 'completed' : 'active', '2', 'Use the materials below');
+            setStep(s3, userInPersonTrainingComplete ? 'completed' : (userTrainingComplete ? 'active' : 'pending'), '3', userTrainingComplete ? 'Marked complete by office' : 'After completing lessons');
+            setStep(s4, userEquipmentCollected ? 'completed' : (userInPersonTrainingComplete ? 'active' : 'pending'), '4', userInPersonTrainingComplete ? 'Final step (office)' : 'Final step');
+            function setLine(lineEl, cls) {
+                if (!lineEl) return;
+                lineEl.classList.remove('line-solid-cyan', 'line-gradient');
+                if (cls) lineEl.classList.add(cls);
+            }
+            var s2comp = userTrainingComplete, s2act = !s2comp;
+            var s3comp = userInPersonTrainingComplete, s3act = !s3comp && userTrainingComplete;
+            var s4comp = userEquipmentCollected, s4act = !s4comp && userInPersonTrainingComplete;
+            setLine(l0, s2comp ? 'line-solid-cyan' : (s2act ? 'line-gradient' : null));
+            setLine(l1, (s2comp && s3comp) ? 'line-solid-cyan' : (s3act ? 'line-gradient' : null));
+            setLine(l2, (s3comp && s4comp) ? 'line-solid-cyan' : (s4act ? 'line-gradient' : null));
+        }
+
+        function toggleFlipCard(wrapEl) {
+            if (!wrapEl) return;
+            var card = wrapEl.querySelector ? wrapEl.querySelector('.flip-card') : (wrapEl.closest && wrapEl.closest('.flip-card-wrap'));
+            if (card && card.classList) card.classList.toggle('flipped');
+            else if (wrapEl.classList && wrapEl.classList.contains('flip-card-wrap')) wrapEl.querySelector('.flip-card').classList.toggle('flipped');
+        }
+        window.toggleFlipCard = toggleFlipCard;
+
+        function renderTrainingCategories() {
+            var container = document.getElementById('trainingCategoriesList');
+            if (!container) return;
+            var progress = getTrainingProgress();
+            var html = '';
+            var useServerComplete = (userTrainingComplete === 1);
+            TRAINING_SECTIONS.forEach(function (section) {
+                var cats = TRAINING_CATEGORIES.filter(function (c) { return c.sectionId === section.id; });
+                if (!cats.length) return;
+                var colorClass = section.colorClass || 'standards';
+                var icon = section.icon || 'folder';
+                html += '<div class="training-section">';
+                html += '<div class="flip-card-wrap" onclick="toggleFlipCard(this)">';
+                html += '<div class="flip-card">';
+                html += '<div class="flip-card-inner">';
+                var sectionPercent = useServerComplete ? 100 : getSectionProgressPercent(progress, section.id);
+                html += '<div class="flip-card-front ' + colorClass + '">';
+                html += '<div class="flip-border"><div class="flip-border-inner"></div></div>';
+                html += '<div class="flip-front-content"><div class="flip-icon-wrap"><span class="material-symbols-outlined">' + escapeHtml(icon) + '</span></div><div class="flip-front-title">' + escapeHtml(section.title) + '</div><div class="flip-front-percent">' + sectionPercent + '%</div></div>';
+                html += '</div>';
+                html += '<div class="flip-card-back ' + colorClass + '">';
+                html += '<div class="back-content">';
+                html += '<strong>Topics</strong>';
+                cats.forEach(function (cat) {
+                    var completedCount = getCategoryCompleted(progress, cat.key);
+                    var total = cat.subs.length;
+                    var percent = useServerComplete ? 100 : (total ? Math.round((completedCount / total) * 100) : 0);
+                    html += '<a class="flip-back-link" href="javascript:void(0)" onclick="event.stopPropagation(); openTrainingModal(\'' + cat.key + '\')">' + escapeHtml(cat.title) + '<span class="flip-back-percent">' + percent + '%</span></a>';
+                });
+                html += '</div></div></div></div></div>';
+                html += '</div>';
+            });
+            container.innerHTML = html;
+        }
+
+        function escapeHtml(s) {
+            var div = document.createElement('div');
+            div.textContent = s;
+            return div.innerHTML;
+        }
+
+        var currentQuizKey = null;
+        var currentQuizQuestions = [];
+        var currentQuizIndex = 0;
+        var currentQuizScore = 0;
+        var currentQuizAnswered = false;
+
         function openTrainingModal(key) {
-            const data = TRAINING_MODALS[key];
+            var data = TRAINING_MODALS[key];
             if (!data) return;
-            const overlay = document.getElementById('trainingModalOverlay');
-            const titleEl = document.getElementById('trainingModalTitle');
-            const bodyEl = document.getElementById('trainingModalBody');
+            var overlay = document.getElementById('trainingModalOverlay');
+            var titleEl = document.getElementById('trainingModalTitle');
+            var bodyEl = document.getElementById('trainingModalBody');
             titleEl.textContent = data.title;
-            bodyEl.innerHTML = data.body;
+
+            if (data.isQuiz && (key === 'quiz-standards' || key === 'quiz-apps')) {
+                currentQuizKey = key;
+                currentQuizQuestions = key === 'quiz-standards' ? QUIZ_STANDARDS : QUIZ_APPS;
+                currentQuizIndex = 0;
+                currentQuizScore = 0;
+                currentQuizAnswered = false;
+                renderQuizQuestion();
+                overlay.classList.add('is-open');
+                overlay.setAttribute('aria-hidden', 'false');
+                document.body.style.overflow = 'hidden';
+                return;
+            }
+
+            var cat = TRAINING_CATEGORIES.find(function (c) { return c.key === key; });
+            var section = cat ? TRAINING_SECTIONS.find(function (s) { return s.id === cat.sectionId; }) : null;
+            var colorClass = section ? section.colorClass : 'standards';
+            overlay.classList.remove('category-standards', 'category-apps', 'category-payment');
+            overlay.classList.add('category-' + colorClass);
+            bodyEl.innerHTML = buildModalBodyHtml(key);
             overlay.classList.add('is-open');
             overlay.setAttribute('aria-hidden', 'false');
             document.body.style.overflow = 'hidden';
+        }
+
+        function renderQuizQuestion() {
+            var bodyEl = document.getElementById('trainingModalBody');
+            if (!bodyEl || !currentQuizQuestions.length) return;
+            if (currentQuizIndex >= currentQuizQuestions.length) {
+                var pct = Math.round((currentQuizScore / currentQuizQuestions.length) * 100);
+                var pass = pct >= 70;
+                bodyEl.innerHTML = '<div class="quiz-result ' + (pass ? 'pass' : 'fail') + '">' +
+                    '<p>You got <strong>' + currentQuizScore + '</strong> out of <strong>' + currentQuizQuestions.length + '</strong> (' + pct + '%)</p>' +
+                    (pass ? '<p>Well done. You can mark this quiz complete below.</p>' : '<p>Review the training materials and try again.</p>') +
+                    '</div>' +
+                    (currentQuizKey && TRAINING_CATEGORIES.find(function(c){ return c.key === currentQuizKey; }) && TRAINING_CATEGORIES.find(function(c){ return c.key === currentQuizKey; }).subs.length ?
+                        '<div class="mt-6 pt-4 border-t border-white/10"><p class="font-semibold text-white mb-3">Mark complete</p><ul class="space-y-2">' +
+                        '<li class="flex items-center justify-between gap-3 py-2"><span class="text-gray-400">Take the quiz</span>' +
+                        (pass ? '<button type="button" onclick="setCategorySubCompleted(\'' + currentQuizKey + '\',0,true); renderTrainingCategories(); closeTrainingModal();" class="px-3 py-1.5 rounded-lg text-sm font-medium bg-cyan-500/20 text-cyan-400 border border-cyan-500/50">Mark complete</button>' : '<span class="text-gray-500 text-sm">Pass the quiz to mark complete</span>') +
+                        '</li></ul></div>' : '');
+                return;
+            }
+            var q = currentQuizQuestions[currentQuizIndex];
+            var html = '<p class="text-white font-medium mb-4">Question ' + (currentQuizIndex + 1) + ' of ' + currentQuizQuestions.length + '</p>';
+            html += '<p class="text-gray-200 mb-4">' + escapeHtml(q.q) + '</p>';
+            html += '<div class="space-y-2">';
+            q.options.forEach(function (opt, i) {
+                html += '<button type="button" class="quiz-option" data-idx="' + i + '" onclick="submitQuizAnswer(' + i + ')">' + escapeHtml(opt) + '</button>';
+            });
+            html += '</div>';
+            bodyEl.innerHTML = html;
+        }
+
+        function submitQuizAnswer(selectedIndex) {
+            if (currentQuizAnswered) return;
+            currentQuizAnswered = true;
+            var q = currentQuizQuestions[currentQuizIndex];
+            var correct = selectedIndex === q.correctIndex;
+            if (correct) currentQuizScore++;
+            var bodyEl = document.getElementById('trainingModalBody');
+            if (!bodyEl) return;
+            var opts = bodyEl.querySelectorAll('.quiz-option');
+            opts.forEach(function (btn, i) {
+                btn.disabled = true;
+                if (i === q.correctIndex) btn.classList.add('correct');
+                else if (i === selectedIndex && !correct) btn.classList.add('incorrect');
+            });
+            setTimeout(function () {
+                currentQuizIndex++;
+                currentQuizAnswered = false;
+                renderQuizQuestion();
+            }, 1200);
+        }
+
+        function buildModalBodyHtml(key) {
+            var data = TRAINING_MODALS[key];
+            if (!data) return '';
+            var cat = TRAINING_CATEGORIES.find(function (c) { return c.key === key; });
+            var progress = getTrainingProgress();
+            var completed = progress[key];
+            if (!Array.isArray(completed)) completed = [];
+            var sections = data.sections;
+            if (!sections && data.body) {
+                var raw = data.body;
+                var parts = raw.split(/<h4>([^<]*)<\/h4>/i);
+                sections = [];
+                for (var i = 1; i < parts.length; i += 2) {
+                    sections.push({ title: parts[i].trim(), body: parts[i + 1] || '' });
+                }
+                if (sections.length === 0) sections = [{ title: '', body: raw }];
+            }
+            var body = '';
+            if (sections && sections.length) {
+                sections.forEach(function (sec, i) {
+                    body += '<div class="training-modal-section">';
+                    if (sec.title) body += '<h4 class="training-modal-section-title">' + escapeHtml(sec.title) + '</h4>';
+                    body += '<div class="training-modal-section-body">' + (sec.body || '') + '</div>';
+                    var done = (userTrainingComplete === 1) || (cat && cat.subs && i < cat.subs.length && completed[i]);
+                    body += '<div class="training-modal-understood-wrap">';
+                    if (done) {
+                        body += '<span class="training-understood-done"><span class="material-symbols-outlined">check_circle</span> Understood</span>';
+                    } else {
+                        body += '<button type="button" class="training-understood-btn" onclick="setCategorySubCompleted(\'' + key + '\',' + i + ',true); updateModalBody(\'' + key + '\')">Understood</button>';
+                    }
+                    body += '</div></div>';
+                });
+            }
+            if (key === 'apps-google-maps') {
+                var videoHtml = '';
+                if (typeof TRAINING_GOOGLE_MAPS_VIDEO_EMBED === 'string' && TRAINING_GOOGLE_MAPS_VIDEO_EMBED.trim()) {
+                    videoHtml = TRAINING_GOOGLE_MAPS_VIDEO_EMBED.trim();
+                } else if (typeof TRAINING_GOOGLE_MAPS_VIDEO_URL === 'string' && TRAINING_GOOGLE_MAPS_VIDEO_URL.trim()) {
+                    videoHtml = '<video class="training-video" controls playsinline preload="metadata" src="' + escapeHtml(TRAINING_GOOGLE_MAPS_VIDEO_URL.trim()) + '"></video>';
+                } else {
+                    videoHtml = '<p class="training-video-note">Set <code>TRAINING_GOOGLE_MAPS_VIDEO_URL</code> or <code>TRAINING_GOOGLE_MAPS_VIDEO_EMBED</code> at the top of this page to show your tutorial video.</p>';
+                }
+                body = body.replace('__GOOGLE_MAPS_VIDEO__', videoHtml);
+            }
+            return body;
+        }
+
+        function updateModalBody(categoryKey) {
+            var bodyEl = document.getElementById('trainingModalBody');
+            if (!bodyEl) return;
+            bodyEl.innerHTML = buildModalBodyHtml(categoryKey);
+            renderTrainingCategories();
+            maybeShowTrainingCompleteDialog();
         }
 
         function closeTrainingModal() {
@@ -486,8 +1115,47 @@
             document.body.style.overflow = '';
         }
 
+        function maybeShowTrainingCompleteDialog() {
+            if (userTrainingComplete === 1) return;
+            var progress = getTrainingProgress();
+            if (!isAllTrainingComplete(progress)) return;
+            var el = document.getElementById('trainingCompleteOverlay');
+            if (el && !el.classList.contains('is-open')) {
+                el.classList.add('is-open');
+                el.setAttribute('aria-hidden', 'false');
+                document.body.style.overflow = 'hidden';
+            }
+        }
+
+        function closeTrainingCompleteDialog() {
+            var el = document.getElementById('trainingCompleteOverlay');
+            if (el) {
+                el.classList.remove('is-open');
+                el.setAttribute('aria-hidden', 'true');
+                var topicOpen = document.getElementById('trainingModalOverlay') && document.getElementById('trainingModalOverlay').classList.contains('is-open');
+                if (!topicOpen) document.body.style.overflow = '';
+            }
+        }
+
+        async function confirmTrainingComplete() {
+            if (!currentUserUid || !window.updateDoc || !window.doc || !window.db) return;
+            try {
+                await window.updateDoc(window.doc(window.db, 'users', currentUserUid), { trainingComplete: 1 });
+                userTrainingComplete = 1;
+                closeTrainingCompleteDialog();
+                renderTrainingCategories();
+                renderProgressionStepper();
+                switchTrainingTab('progression');
+            } catch (err) {
+                console.error('Failed to set training complete:', err);
+            }
+        }
+
         window.openTrainingModal = openTrainingModal;
         window.closeTrainingModal = closeTrainingModal;
+        window.submitQuizAnswer = submitQuizAnswer;
+        window.closeTrainingCompleteDialog = closeTrainingCompleteDialog;
+        window.confirmTrainingComplete = confirmTrainingComplete;
 
         (function () {
             const overlayEl = document.getElementById('trainingModalOverlay');
@@ -524,15 +1192,8 @@
             }
         }
         window.switchTrainingTab = switchTrainingTab;
-
-        function stepperPrevious() {
-            // Placeholder: could move to previous step or scroll
-        }
-        function stepperNext() {
-            // Placeholder: could move to next step or scroll
-        }
-        window.stepperPrevious = stepperPrevious;
-        window.stepperNext = stepperNext;
+        window.setCategorySubCompleted = setCategorySubCompleted;
+        window.updateModalBody = updateModalBody;
 
         async function waitForFirebase(maxAttempts, delayMs) {
             maxAttempts = maxAttempts || 40;
@@ -563,12 +1224,23 @@
                     window.location.href = '/pages/soto-routes-login.html';
                     return;
                 }
+                currentUserUid = session.uid;
+                var d = userDoc.data();
+                var tc = d.trainingComplete;
+                userTrainingComplete = (tc === 1 || tc === '1') ? 1 : 0;
+                var ip = d.inPersonTrainingComplete;
+                userInPersonTrainingComplete = (ip === 1 || ip === '1') ? 1 : 0;
+                var eq = d.equipmentCollected;
+                userEquipmentCollected = (eq === 1 || eq === '1') ? 1 : 0;
             } catch (err) {
                 console.error(err);
                 window.location.href = '/pages/soto-routes-login.html';
                 return;
             }
             document.getElementById('loadingOverlay').style.display = 'none';
+            renderTrainingCategories();
+            renderProgressionStepper();
+            maybeShowTrainingCompleteDialog();
         }
         initTrainingPage();
     </script>
