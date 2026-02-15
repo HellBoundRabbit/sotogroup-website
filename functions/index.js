@@ -417,6 +417,7 @@ exports.listDrivers = onCall(CALLABLE_OPTIONS, async (request) => {
       homePostcode: data.homePostcode || "",
       officeId: data.officeId || null,
       createdAt: data.createdAt || null,
+      photoURL: data.photoURL || data.photoUrl || null,
     };
   });
 
@@ -558,16 +559,16 @@ exports.sendDriverLoginEmail = onCall(
     // Use verified domain (sotogroup.uk). Override with RESEND_FROM_EMAIL secret if needed.
     const fromEmail =
       process.env.RESEND_FROM_EMAIL ||
-      "SOTO Routes <noreply@sotogroup.uk>";
+      "SOTOGroup <noreply@sotogroup.uk>";
     const name = [firstName, lastName].filter(Boolean).join(" ") || "Driver";
     const html = `
     <p>Hi ${name},</p>
-    <p>Your SOTO Routes driver account has been created. Use the details below to sign in:</p>
+    <p>Your SOTOGroup driver account has been created. Use the details below to sign in:</p>
     <p><strong>Login page:</strong> <a href="${loginUrl}">${loginUrl}</a></p>
     <p><strong>Email:</strong> ${toEmail}</p>
     <p><strong>Temporary password:</strong> <code>${temporaryPassword}</code></p>
     <p>Please change your password after your first login if the app allows.</p>
-    <p>— SOTO Routes</p>
+    <p>— SOTOGroup</p>
   `;
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -578,7 +579,7 @@ exports.sendDriverLoginEmail = onCall(
       body: JSON.stringify({
         from: fromEmail,
         to: [toEmail],
-        subject: "Your SOTO Routes driver login details",
+        subject: "Your SOTOGroup driver login details",
         html,
       }),
     });
