@@ -1403,6 +1403,13 @@ async function openDriverDetailModal(driverId) {
         try {
             var userDoc = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'users', uid));
             var d = userDoc.exists() ? userDoc.data() : {};
+            var userPhoto = d.photoURL || d.photoUrl;
+            if (!photoUrl && userPhoto) {
+                photoUrl = userPhoto;
+                var refreshAvatarContent = '<img src="' + escapeHtml(photoUrl) + '" alt="" class="w-full h-full object-cover" onerror="(function(e){ e.parentElement.innerHTML=' + JSON.stringify(fallbackHtml) + '; })(this)">';
+                if (miniAvatar) miniAvatar.innerHTML = refreshAvatarContent;
+                if (headerAvatar) headerAvatar.innerHTML = refreshAvatarContent;
+            }
             var trainingComplete = (d.trainingComplete === 1 || d.trainingComplete === '1' || d.Training === 1 || d.Training === '1');
             var inPersonComplete = (d.inPersonTrainingComplete === 1 || d.inPersonTrainingComplete === '1');
             var equipmentComplete = (d.equipmentCollected === 1 || d.equipmentCollected === '1');
@@ -1448,6 +1455,13 @@ async function openDriverDetailModal(driverId) {
     try {
         var userDoc = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'users', uid));
         var d = userDoc.exists() ? userDoc.data() : {};
+        var userPhoto = d.photoURL || d.photoUrl;
+        if (!photoUrl && userPhoto) {
+            photoUrl = userPhoto;
+            var laterAvatarContent = '<img src="' + escapeHtml(photoUrl) + '" alt="" class="w-full h-full object-cover" onerror="(function(e){ e.parentElement.innerHTML=' + JSON.stringify(fallbackHtml) + '; })(this)">';
+            if (miniAvatar) miniAvatar.innerHTML = laterAvatarContent;
+            if (headerAvatar) headerAvatar.innerHTML = laterAvatarContent;
+        }
         var trainingComplete = (d.trainingComplete === 1 || d.trainingComplete === '1' || d.Training === 1 || d.Training === '1');
         var inPersonComplete = (d.inPersonTrainingComplete === 1 || d.inPersonTrainingComplete === '1');
         var equipmentComplete = (d.equipmentCollected === 1 || d.equipmentCollected === '1');

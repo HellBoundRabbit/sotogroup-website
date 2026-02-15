@@ -919,11 +919,14 @@
 
                 if (Object.keys(updates).length > 0) {
                     await window.updateDoc(window.doc(window.db, 'users', currentUser.uid), updates);
-                    if (updates.homePostcode !== undefined) {
-                        try {
-                            await window.updateDoc(window.doc(window.db, 'drivers', currentUser.uid), { homePostcode: updates.homePostcode });
-                        } catch (e) { console.warn('Could not sync postcode to drivers doc:', e); }
-                    }
+                    try {
+                        const driverUpdates = {};
+                        if (updates.homePostcode !== undefined) driverUpdates.homePostcode = updates.homePostcode;
+                        if (updates.photoURL !== undefined) driverUpdates.photoURL = updates.photoURL;
+                        if (Object.keys(driverUpdates).length > 0) {
+                            await window.updateDoc(window.doc(window.db, 'drivers', currentUser.uid), driverUpdates);
+                        }
+                    } catch (e) { console.warn('Could not sync to drivers doc:', e); }
                     currentUser = { ...currentUser, ...updates };
                 }
 
@@ -970,11 +973,14 @@
                     updates.photoURL = await window.getDownloadURL(storageRef);
                 }
                 await window.updateDoc(window.doc(window.db, 'users', currentUser.uid), updates);
-                if (updates.homePostcode !== undefined) {
-                    try {
-                        await window.updateDoc(window.doc(window.db, 'drivers', currentUser.uid), { homePostcode: updates.homePostcode });
-                    } catch (e) { console.warn('Could not sync postcode to drivers doc:', e); }
-                }
+                try {
+                    const driverUpdates = {};
+                    if (updates.homePostcode !== undefined) driverUpdates.homePostcode = updates.homePostcode;
+                    if (updates.photoURL !== undefined) driverUpdates.photoURL = updates.photoURL;
+                    if (Object.keys(driverUpdates).length > 0) {
+                        await window.updateDoc(window.doc(window.db, 'drivers', currentUser.uid), driverUpdates);
+                    }
+                } catch (e) { console.warn('Could not sync to drivers doc:', e); }
                 currentUser = { ...currentUser, ...updates };
                 const preview = document.getElementById('profileSettingsPhotoPreview');
                 if (updates.photoURL) preview.src = updates.photoURL;
