@@ -25,6 +25,12 @@
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
+        .profile-complete-modal-border {
+            background: linear-gradient(135deg, rgb(0, 225, 255), rgb(186, 66, 255));
+            border: 2px solid transparent;
+            border-radius: 14px;
+            box-shadow: 0 0 0 2px rgb(0, 225, 255), 0 0 0 4px rgb(186, 66, 255), 0 0 20px rgba(0, 225, 255, 0.25), 0 0 20px rgba(186, 66, 255, 0.2);
+        }
         .spinner-wrapper {
             width: 56px;
             height: 56px;
@@ -246,6 +252,49 @@
         </div>
     </div>
 
+    <!-- Complete profile modal (postcode / display picture – variable, with Edit) -->
+    <div id="driverProfileCompleteModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[60] hidden">
+        <div class="profile-complete-modal-border rounded-xl p-[2px] w-full max-w-sm mx-4">
+            <div class="bg-[#1a1f24] rounded-[10px] p-6">
+                <h2 class="text-xl font-bold text-white mb-2">Complete your profile</h2>
+                <p id="profileCompleteIntro" class="text-sm text-gray-400 mb-4">Please add the following before using the portal.</p>
+                <form id="driverProfileCompleteForm" class="space-y-4">
+                    <!-- Postcode: display when set, else input -->
+                    <div id="profileCompletePostcodeDisplayWrap" class="hidden">
+                        <p class="text-sm font-medium text-gray-300 mb-1">Home postcode</p>
+                        <div class="flex items-center justify-between gap-2 py-2">
+                            <span id="profileCompletePostcodeValue" class="text-white font-medium">—</span>
+                            <button type="button" onclick="profileCompleteEditPostcode()" class="text-sm text-[#9cabba] hover:text-white flex items-center gap-1">
+                                <span class="material-symbols-outlined text-sm">edit</span> Edit
+                            </button>
+                        </div>
+                    </div>
+                    <div id="profileCompletePostcodeInputWrap" class="hidden">
+                        <label for="profileCompletePostcode" class="block text-sm font-medium text-gray-300 mb-1">Home postcode</label>
+                        <input type="text" id="profileCompletePostcode" class="w-full px-3 py-2 bg-[#283039] border border-[#3a444e] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#3a444e] focus:border-[#3a444e]" placeholder="e.g. SW1A 1AA" maxlength="12">
+                    </div>
+                    <!-- Photo: display when set, else file input -->
+                    <div id="profileCompletePhotoDisplayWrap" class="hidden">
+                        <p class="text-sm font-medium text-gray-300 mb-2">Display picture</p>
+                        <div class="flex items-center gap-3">
+                            <img id="profileCompleteExistingPhoto" src="" alt="Your photo" class="w-16 h-16 rounded-full object-cover border-2 border-[#3a444e]">
+                            <button type="button" onclick="profileCompleteEditPhoto()" class="text-sm text-[#9cabba] hover:text-white flex items-center gap-1">
+                                <span class="material-symbols-outlined text-sm">edit</span> Edit
+                            </button>
+                        </div>
+                    </div>
+                    <div id="profileCompletePhotoInputWrap" class="hidden">
+                        <label for="profileCompletePhoto" class="block text-sm font-medium text-gray-300 mb-1">Display picture</label>
+                        <input type="file" id="profileCompletePhoto" accept="image/*" class="w-full text-sm text-gray-400 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border file:border-[#3a444e] file:bg-[#283039] file:text-white file:font-medium file:hover:bg-[#3a444e]">
+                    </div>
+                    <button type="submit" id="profileCompleteSubmit" class="w-full py-3 bg-[#283039] hover:bg-[#3a444e] text-white font-semibold rounded-lg transition-colors border border-[#3a444e]">
+                        Save and continue
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Main Content -->
     <div class="min-h-screen flex flex-col px-6 py-8 portal-view">
         <!-- Header -->
@@ -348,6 +397,19 @@
 
             <!-- Account Buttons (hidden by default) -->
             <div class="account-buttons space-y-8" style="display: none;">
+                <!-- Profile (postcode & display picture) -->
+                <div class="features-grid-single">
+                    <div class="feature-button" onclick="showProfileSettings()">
+                        <div class="spinner-wrapper">
+                            <div class="spinner-orange"></div>
+                            <div class="spinner1">
+                                <span class="material-symbols-outlined spinner-icon">person</span>
+                            </div>
+                        </div>
+                        <h3 class="text-lg font-semibold text-white">Profile</h3>
+                        <p class="text-gray-400 text-xs mt-1">Postcode &amp; display picture</p>
+                    </div>
+                </div>
                 <!-- Change Password -->
                 <div class="features-grid-single">
                     <div class="feature-button" onclick="showChangePassword()">
@@ -479,9 +541,39 @@
         </div>
     </div>
 
+    <!-- Profile settings modal (postcode & display picture from Account) -->
+    <div id="profileSettingsModal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div class="profile-complete-modal-border rounded-xl p-[2px] w-full max-w-sm">
+            <div class="bg-[#1a1f24] rounded-[10px] p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-white">Profile</h2>
+                    <button type="button" onclick="hideProfileSettings()" class="text-gray-400 hover:text-white">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+                <form id="profileSettingsForm" class="space-y-4">
+                    <div>
+                        <label for="profileSettingsPostcode" class="block text-sm font-medium text-gray-300 mb-1">Home postcode</label>
+                        <input type="text" id="profileSettingsPostcode" class="w-full px-3 py-2 bg-[#283039] border border-[#3a444e] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#3a444e] focus:border-[#3a444e]" placeholder="e.g. SW1A 1AA" maxlength="12">
+                    </div>
+                    <div>
+                        <p class="text-sm font-medium text-gray-300 mb-2">Display picture</p>
+                        <div class="flex items-center gap-3 mb-2">
+                            <img id="profileSettingsPhotoPreview" src="" alt="" class="w-16 h-16 rounded-full object-cover border-2 border-[#3a444e] bg-[#283039]">
+                            <input type="file" id="profileSettingsPhoto" accept="image/*" class="text-sm text-gray-400 file:py-2 file:px-4 file:rounded-lg file:border file:border-[#3a444e] file:bg-[#283039] file:text-white file:font-medium file:hover:bg-[#3a444e]">
+                        </div>
+                    </div>
+                    <button type="submit" id="profileSettingsSubmit" class="w-full py-3 bg-[#283039] hover:bg-[#3a444e] text-white font-semibold rounded-lg border border-[#3a444e]">
+                        Save
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, getDocs, query, where, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, getDocs, query, where, doc, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, signOut, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
@@ -515,6 +607,7 @@
         };
         window.getDoc = getDoc;
         window.doc = doc;
+        window.updateDoc = updateDoc;
         window.signOut = signOut;
         window.updatePassword = updatePassword;
         window.reauthenticateWithCredential = reauthenticateWithCredential;
@@ -666,19 +759,234 @@
                         return;
                     }
 
-                    // Display user email
-                    document.getElementById('userEmail').textContent = currentUser.email;
-                    
-                    // Check for unread messages and grey out features if needed
-                    await checkAndDisableFeatures();
-                    
+                    // Merge homePostcode from drivers doc if missing in users (office sets it when adding driver)
+                    const userPostcode = currentUser.homePostcode || currentUser.postcode || '';
+                    if (!(userPostcode && String(userPostcode).trim())) {
+                        try {
+                            const driverDoc = await window.getDoc(window.doc(window.db, 'drivers', currentUser.uid));
+                            if (driverDoc.exists()) {
+                                const driverData = driverDoc.data();
+                                const driverPostcode = driverData.homePostcode || driverData.postcode || '';
+                                if (driverPostcode && String(driverPostcode).trim()) {
+                                    currentUser.homePostcode = String(driverPostcode).trim();
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('Could not load driver doc for postcode:', e);
+                        }
+                    }
+
                     document.getElementById('loadingOverlay').style.display = 'none';
-                    console.log('Loading complete!');
+
+                    const postcodeVal = currentUser.homePostcode || currentUser.postcode || '';
+                    const needPostcode = !(postcodeVal && String(postcodeVal).trim());
+                    const existingPhotoUrl = currentUser.photoURL || currentUser.photoUrl || currentUser.avatarUrl || null;
+                    const needPhoto = !existingPhotoUrl;
+
+                    if (needPostcode || needPhoto) {
+                        showProfileCompleteModal(needPostcode, needPhoto, existingPhotoUrl, postcodeVal.trim());
+                        return;
+                    }
+
+                    await finishDriverPortalInit();
                 } catch (error) {
                     console.error('Error loading user data:', error);
                     notifyError('Error loading user data. Please try again.');
                 }
         }
+
+        function showProfileCompleteModal(needPostcode, needPhoto, existingPhotoUrl, existingPostcode) {
+            const modal = document.getElementById('driverProfileCompleteModal');
+            const postcodeDisplayWrap = document.getElementById('profileCompletePostcodeDisplayWrap');
+            const postcodeInputWrap = document.getElementById('profileCompletePostcodeInputWrap');
+            const postcodeValueEl = document.getElementById('profileCompletePostcodeValue');
+            const postcodeInput = document.getElementById('profileCompletePostcode');
+            const photoDisplayWrap = document.getElementById('profileCompletePhotoDisplayWrap');
+            const photoInputWrap = document.getElementById('profileCompletePhotoInputWrap');
+            const existingPhotoEl = document.getElementById('profileCompleteExistingPhoto');
+            const photoInput = document.getElementById('profileCompletePhoto');
+            const introEl = document.getElementById('profileCompleteIntro');
+
+            if (modal) {
+                modal.dataset.needPostcode = needPostcode ? 'true' : 'false';
+                modal.dataset.needPhoto = needPhoto ? 'true' : 'false';
+            }
+
+            const hasPostcode = !!(existingPostcode && String(existingPostcode).trim());
+            const hasPhoto = !!existingPhotoUrl;
+
+            if (postcodeDisplayWrap) postcodeDisplayWrap.classList.toggle('hidden', !hasPostcode);
+            if (postcodeInputWrap) postcodeInputWrap.classList.toggle('hidden', hasPostcode && !needPostcode);
+            if (postcodeValueEl) postcodeValueEl.textContent = hasPostcode ? existingPostcode : '—';
+            if (postcodeInput) {
+                postcodeInput.value = existingPostcode || '';
+                if (!hasPostcode) postcodeInputWrap.classList.remove('hidden');
+            }
+
+            if (photoDisplayWrap) photoDisplayWrap.classList.toggle('hidden', !hasPhoto);
+            if (photoInputWrap) photoInputWrap.classList.toggle('hidden', hasPhoto && !needPhoto);
+            if (existingPhotoEl && existingPhotoUrl) {
+                existingPhotoEl.src = existingPhotoUrl;
+                existingPhotoEl.onerror = function () { photoDisplayWrap.classList.add('hidden'); };
+            }
+            if (photoInput) photoInput.value = '';
+
+            if (introEl) {
+                if (needPostcode && needPhoto) introEl.textContent = 'Please add the following before using the portal.';
+                else if (needPostcode) introEl.textContent = 'Add your home postcode to continue. You can change it later in Account.';
+                else if (needPhoto) introEl.textContent = 'Add your display picture to continue. You can change it later in Account.';
+                else introEl.textContent = 'Review your profile below. Use Edit to change postcode or display picture.';
+            }
+
+            if (modal) modal.classList.remove('hidden');
+        }
+
+        function profileCompleteEditPostcode() {
+            document.getElementById('profileCompletePostcodeDisplayWrap').classList.add('hidden');
+            const wrap = document.getElementById('profileCompletePostcodeInputWrap');
+            const input = document.getElementById('profileCompletePostcode');
+            wrap.classList.remove('hidden');
+            input.value = (currentUser && (currentUser.homePostcode || currentUser.postcode)) || '';
+            input.focus();
+        }
+
+        function profileCompleteEditPhoto() {
+            document.getElementById('profileCompletePhotoDisplayWrap').classList.add('hidden');
+            document.getElementById('profileCompletePhotoInputWrap').classList.remove('hidden');
+            document.getElementById('profileCompletePhoto').value = '';
+        }
+
+        async function finishDriverPortalInit() {
+            document.getElementById('userEmail').textContent = currentUser.email;
+            await checkAndDisableFeatures();
+            console.log('Loading complete!');
+        }
+
+        async function getDriverPhotoStoragePath(file) {
+            const officeId = getCurrentOfficeId();
+            let officeName = 'Office';
+            if (officeId) {
+                try {
+                    const officeDoc = await window.getDoc(window.doc(window.db, 'offices', officeId));
+                    if (officeDoc.exists()) officeName = (officeDoc.data().name || officeName).trim();
+                } catch (e) { console.warn('Could not fetch office name for photo path:', e); }
+            }
+            const safe = (s) => String(s || '').replace(/[/\\]/g, '').trim() || 'driver';
+            const firstName = safe(currentUser.firstName);
+            const lastName = safe(currentUser.lastName);
+            const ext = (file && file.name && file.name.split('.').pop()) ? file.name.split('.').pop().toLowerCase() : 'jpg';
+            const fileName = (firstName && lastName) ? firstName + ' ' + lastName + '.' + ext : (currentUser.uid + '.' + ext);
+            return (officeName + ' - Drivers') + '/' + fileName;
+        }
+
+        document.getElementById('driverProfileCompleteForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const modal = document.getElementById('driverProfileCompleteModal');
+            const needPostcode = modal && modal.dataset.needPostcode === 'true';
+            const needPhoto = modal && modal.dataset.needPhoto === 'true';
+            const postcodeInput = document.getElementById('profileCompletePostcode');
+            const photoInput = document.getElementById('profileCompletePhoto');
+            const postcodeInputWrap = document.getElementById('profileCompletePostcodeInputWrap');
+            const photoInputWrap = document.getElementById('profileCompletePhotoInputWrap');
+            const submitBtn = document.getElementById('profileCompleteSubmit');
+
+            const postcode = postcodeInput ? postcodeInput.value.trim() : '';
+            const showingPostcodeInput = postcodeInputWrap && !postcodeInputWrap.classList.contains('hidden');
+            const hasNewPhoto = photoInput && photoInput.files && photoInput.files[0];
+
+            if (needPostcode && showingPostcodeInput && !postcode) {
+                notifyWarning('Please enter your home postcode.', 'Required');
+                return;
+            }
+            if (needPhoto && photoInputWrap && !photoInputWrap.classList.contains('hidden') && !hasNewPhoto && !(currentUser.photoURL || currentUser.photoUrl || currentUser.avatarUrl)) {
+                notifyWarning('Please add a display picture to continue.', 'Required');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            try {
+                const updates = {};
+                if (showingPostcodeInput && postcode) updates.homePostcode = postcode;
+
+                if (hasNewPhoto) {
+                    const file = photoInput.files[0];
+                    const path = await getDriverPhotoStoragePath(file);
+                    const storageRef = window.ref(window.storage, path);
+                    await window.uploadBytes(storageRef, file);
+                    const photoURL = await window.getDownloadURL(storageRef);
+                    updates.photoURL = photoURL;
+                }
+
+                if (Object.keys(updates).length > 0) {
+                    await window.updateDoc(window.doc(window.db, 'users', currentUser.uid), updates);
+                    if (updates.homePostcode !== undefined) {
+                        try {
+                            await window.updateDoc(window.doc(window.db, 'drivers', currentUser.uid), { homePostcode: updates.homePostcode });
+                        } catch (e) { console.warn('Could not sync postcode to drivers doc:', e); }
+                    }
+                    currentUser = { ...currentUser, ...updates };
+                }
+
+                document.getElementById('driverProfileCompleteModal').classList.add('hidden');
+                await finishDriverPortalInit();
+            } catch (err) {
+                console.error('Profile complete error:', err);
+                notifyError(err.message || 'Could not save. Please try again.');
+            } finally {
+                submitBtn.disabled = false;
+            }
+        });
+
+        function showProfileSettings() {
+            const postcodeVal = (currentUser && (currentUser.homePostcode || currentUser.postcode)) || '';
+            const photoUrl = (currentUser && (currentUser.photoURL || currentUser.photoUrl || currentUser.avatarUrl)) || '';
+            document.getElementById('profileSettingsPostcode').value = postcodeVal;
+            const preview = document.getElementById('profileSettingsPhotoPreview');
+            preview.src = photoUrl || '';
+            preview.onerror = function () { preview.src = ''; };
+            document.getElementById('profileSettingsPhoto').value = '';
+            document.getElementById('profileSettingsModal').classList.remove('hidden');
+        }
+
+        function hideProfileSettings() {
+            document.getElementById('profileSettingsModal').classList.add('hidden');
+        }
+
+        document.getElementById('profileSettingsForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const postcode = document.getElementById('profileSettingsPostcode').value.trim();
+            const photoInput = document.getElementById('profileSettingsPhoto');
+            const submitBtn = document.getElementById('profileSettingsSubmit');
+            const hasNewPhoto = photoInput.files && photoInput.files[0];
+            submitBtn.disabled = true;
+            try {
+                const updates = {};
+                updates.homePostcode = postcode || '';
+                if (hasNewPhoto) {
+                    const file = photoInput.files[0];
+                    const path = await getDriverPhotoStoragePath(file);
+                    const storageRef = window.ref(window.storage, path);
+                    await window.uploadBytes(storageRef, file);
+                    updates.photoURL = await window.getDownloadURL(storageRef);
+                }
+                await window.updateDoc(window.doc(window.db, 'users', currentUser.uid), updates);
+                if (updates.homePostcode !== undefined) {
+                    try {
+                        await window.updateDoc(window.doc(window.db, 'drivers', currentUser.uid), { homePostcode: updates.homePostcode });
+                    } catch (e) { console.warn('Could not sync postcode to drivers doc:', e); }
+                }
+                currentUser = { ...currentUser, ...updates };
+                const preview = document.getElementById('profileSettingsPhotoPreview');
+                if (updates.photoURL) preview.src = updates.photoURL;
+                notifySuccess('Profile updated.');
+                hideProfileSettings();
+            } catch (err) {
+                console.error('Profile settings save error:', err);
+                notifyError(err.message || 'Could not save.');
+            } finally {
+                submitBtn.disabled = false;
+            }
+        });
 
         // Check for unread messages and disable/grey out features
         async function checkAndDisableFeatures() {
@@ -718,6 +1026,20 @@
                 const authorizationCard = document.getElementById('authorizationCard');
                 const trainingCard = document.getElementById('trainingCard');
                 const helpCard = document.getElementById('helpCard');
+
+                // Progression gate: only Training clickable until equipment collected (induction → training → in-person → equipment)
+                const equipmentCollected = (currentUser.equipmentCollected === 1 || currentUser.equipmentCollected === '1');
+                if (!equipmentCollected) {
+                    const progressionMessage = 'Complete your progression (Training, in-person training day, and equipment) to unlock the portal. Only Training is available until then.';
+                    if (expensesCard) { expensesCard.classList.add('disabled'); expensesCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    if (waitTimesCard) { waitTimesCard.classList.add('disabled'); waitTimesCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    if (messagesCard) { messagesCard.classList.add('disabled'); messagesCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    if (availabilityCard) { availabilityCard.classList.add('disabled'); availabilityCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    if (authorizationCard) { authorizationCard.classList.add('disabled'); authorizationCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    if (helpCard) { helpCard.classList.add('disabled'); helpCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    // Training stays enabled; Account is not in this list
+                    return;
+                }
 
                 if (!activeFeatures.expenses && expensesCard) {
                     expensesCard.classList.add('disabled');
@@ -809,8 +1131,12 @@
                 notifyInfo(alertMessage);
                 return;
             }
-            
-            // Check for unread messages immediately (no navigation)
+            // Training is always allowed (progression gate is handled in checkAndDisableFeatures)
+            if (url && url.indexOf('driver-training') !== -1) {
+                window.location.href = url;
+                return;
+            }
+            // Check for unread messages before other features (only after progression complete)
             try {
                 const officeId = getCurrentOfficeId();
                 if (!officeId || !currentUser?.uid) {
