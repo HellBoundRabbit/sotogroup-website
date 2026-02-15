@@ -685,21 +685,27 @@
     </div>
 
     <script>
-        // CloudKit configuration
-        CloudKit.configure({
-            containers: [{
-                containerIdentifier: 'iCloud.com.soto.SOTO',
-                apiTokenAuth: {
-                    apiToken: '712aded6feaa40243f5ba7da1232737bbf3e01b9a487797ee7e24286498037f8',
-                    persist: true
-                },
-                environment: 'production'
-            }]
-        });
-
-        // Initialize CloudKit
-        const container = CloudKit.getDefaultContainer();
-        const database = container.publicCloudDatabase;
+        // CloudKit configuration (optional – script may not be loaded)
+        let container = null;
+        let database = null;
+        if (typeof CloudKit !== 'undefined') {
+            try {
+                CloudKit.configure({
+                    containers: [{
+                        containerIdentifier: 'iCloud.com.soto.SOTO',
+                        apiTokenAuth: {
+                            apiToken: '712aded6feaa40243f5ba7da1232737bbf3e01b9a487797ee7e24286498037f8',
+                            persist: true
+                        },
+                        environment: 'production'
+                    }]
+                });
+                container = CloudKit.getDefaultContainer();
+                database = container.publicCloudDatabase;
+            } catch (e) {
+                console.warn('CloudKit init failed:', e);
+            }
+        }
 
         // Navigation function
         function showPage(pageId) {
@@ -964,6 +970,10 @@
                 
                 console.log('Creating booking record:', bookingRecord);
                 
+                if (!database) {
+                    alert('Booking service is not available. Please contact EC Logistics directly.');
+                    return;
+                }
                 // Save the booking to CloudKit
                 const saveResponse = await database.saveRecords([bookingRecord]);
                 
