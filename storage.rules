@@ -1,0 +1,29 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow authenticated users to upload/read expense photos
+    // Also allow read for signed download URLs (they include auth tokens)
+    match /expenses/{expenseId}/{allPaths=**} {
+      allow read: if request.auth != null || request.method == 'GET';
+      allow write: if request.auth != null;
+    }
+    
+    // Allow authenticated users to upload/read office logos
+    // Also allow read for signed download URLs
+    match /offices/{allPaths=**} {
+      allow read: if request.auth != null || request.method == 'GET';
+      allow write: if request.auth != null;
+    }
+    
+    // Training assets (e.g. tutorial videos): public read so drivers can watch, upload requires auth
+    match /training/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    
+    // Default: deny all other access
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
