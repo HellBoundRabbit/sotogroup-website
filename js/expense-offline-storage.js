@@ -955,10 +955,13 @@ function sanitizeRegForStoragePath(reg) {
 class ExpenseUploadQueue {
     constructor() {
         this.db = null;
+        /** Set to true after first failed init so we don't retry or log again (e.g. user cleared site data). */
+        this._indexedDBUnavailable = false;
     }
 
     async init() {
         if (this.db) return;
+        if (this._indexedDBUnavailable) return;
         try {
             if (!window.expenseDraftDB) {
                 window.expenseDraftDB = new ExpenseDraftDB();
@@ -975,8 +978,9 @@ class ExpenseUploadQueue {
                 this.db = null;
             }
         } catch (err) {
-            console.warn('[ExpenseUploadQueue] IndexedDB unavailable, upload queue disabled:', err?.message || err);
+            this._indexedDBUnavailable = true;
             this.db = null;
+            console.warn('[ExpenseUploadQueue] IndexedDB unavailable (e.g. after clearing browser data). Offline expense queue disabled for this session:', err?.message || err);
         }
     }
 
@@ -1321,6 +1325,7 @@ class ExpenseUploadQueue {
         if (!navigator.onLine || !('serviceWorker' in navigator)) {
             return;
         }
+        if (this._indexedDBUnavailable) return;
 
         try {
             const registration = await navigator.serviceWorker.ready;
