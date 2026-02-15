@@ -764,7 +764,7 @@
         // Google Maps tutorial: set one of these so the Training → Apps → Google Maps video appears.
         // Option A – direct video URL (MP4/WebM): set TRAINING_GOOGLE_MAPS_VIDEO_URL to the full URL.
         // Option B – YouTube: set TRAINING_GOOGLE_MAPS_VIDEO_EMBED to the iframe HTML from YouTube Share → Embed.
-        var TRAINING_GOOGLE_MAPS_VIDEO_URL = '';
+        var TRAINING_GOOGLE_MAPS_VIDEO_URL = 'https://firebasestorage.googleapis.com/v0/b/soto-routes.firebasestorage.app/o/training%2FGoogleMapsTutorial.mov?alt=media';
         var TRAINING_GOOGLE_MAPS_VIDEO_EMBED = '';
 
         var TRAINING_MODALS = {
@@ -1088,12 +1088,15 @@
             }
             if (key === 'apps-google-maps') {
                 var videoHtml = '';
+                var videoUrl = (typeof TRAINING_GOOGLE_MAPS_VIDEO_URL === 'string' && TRAINING_GOOGLE_MAPS_VIDEO_URL.trim()) ? TRAINING_GOOGLE_MAPS_VIDEO_URL.trim() : '';
                 if (typeof TRAINING_GOOGLE_MAPS_VIDEO_EMBED === 'string' && TRAINING_GOOGLE_MAPS_VIDEO_EMBED.trim()) {
                     videoHtml = TRAINING_GOOGLE_MAPS_VIDEO_EMBED.trim();
-                } else if (typeof TRAINING_GOOGLE_MAPS_VIDEO_URL === 'string' && TRAINING_GOOGLE_MAPS_VIDEO_URL.trim()) {
-                    videoHtml = '<video class="training-video" controls playsinline preload="metadata" src="' + escapeHtml(TRAINING_GOOGLE_MAPS_VIDEO_URL.trim()) + '"></video>';
+                } else if (videoUrl) {
+                    videoHtml = '<video class="training-video" controls playsinline preload="metadata" src="' + escapeHtml(videoUrl) + '"></video>';
                 } else {
-                    videoHtml = '<p class="training-video-note">Set <code>TRAINING_GOOGLE_MAPS_VIDEO_URL</code> or <code>TRAINING_GOOGLE_MAPS_VIDEO_EMBED</code> at the top of this page to show your tutorial video.</p>';
+                    // Fallback: use Firebase Storage URL for training/GoogleMapsTutorial.mov if config not set (e.g. old deploy)
+                    var fallbackUrl = 'https://firebasestorage.googleapis.com/v0/b/soto-routes.firebasestorage.app/o/training%2FGoogleMapsTutorial.mov?alt=media';
+                    videoHtml = '<video class="training-video" controls playsinline preload="metadata" src="' + escapeHtml(fallbackUrl) + '"></video>';
                 }
                 body = body.replace('__GOOGLE_MAPS_VIDEO__', videoHtml);
             }
