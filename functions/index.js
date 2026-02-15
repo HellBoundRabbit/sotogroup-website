@@ -3,9 +3,12 @@
 /* eslint-disable valid-jsdoc */
 const functions = require("firebase-functions");
 const {onRequest, onCall, HttpsError} = require("firebase-functions/https");
+const {defineSecret} = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 const crypto = require("crypto");
+
+const resendApiKey = defineSecret("RESEND_API_KEY");
 
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -512,6 +515,86 @@ exports.createDriver = onCall(CALLABLE_OPTIONS, async (request) => {
     throw new HttpsError("internal", `Failed to create driver: ${error.message}`);
   }
 });
+
+/**
+ * Send driver login credentials by email (Resend API).
+ * Uses Secret Manager: create secret RESEND_API_KEY with your Resend API key.
+ * gcloud secrets create RESEND_API_KEY --data-file=- (paste key, Ctrl+D)
+ * Or: Firebase Console > Project Settings > Service accounts > Secret Manager
+ */
+exports.sendDriverLoginEmail = onCall(
+  {...CALLABLE_OPTIONS, secrets: [resendApiKey]},
+  async (request) => {
+    requireRole(request, ["office", "admin"]);
+    const {toEmail, temporaryPassword, firstName, lastName, loginBaseUrl} =
+      request.data || {};
+    if (!toEmail || !temporaryPassword) {
+      throw new HttpsError(
+        "invalid-argument",
+        "toEmail and temporaryPassword are required."
+      );
+    }
+    let apiKey;
+    try {
+      apiKey = resendApiKey.value();
+    } catch (e) {
+      logger.error("Resend secret not available", e);
+      throw new HttpsError(
+        "failed-precondition",
+        "Email not configured. Add RESEND_API_KEY in Secret Manager."
+      );
+    }
+    if (!apiKey || !apiKey.trim()) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Email not configured. Add RESEND_API_KEY in Secret Manager."
+      );
+    }
+    const baseUrl =
+      loginBaseUrl ||
+      process.env.LOGIN_BASE_URL ||
+      "https://soto-routes.web.app";
+    const loginUrl = `${baseUrl.replace(/\/$/, "")}/pages/soto-routes-login.html`;
+    // Use verified domain (sotogroup.uk). Override with RESEND_FROM_EMAIL secret if needed.
+    const fromEmail =
+      process.env.RESEND_FROM_EMAIL ||
+      "SOTO Routes <noreply@sotogroup.uk>";
+    const name = [firstName, lastName].filter(Boolean).join(" ") || "Driver";
+    const html = `
+    <p>Hi ${name},</p>
+    <p>Your SOTO Routes driver account has been created. Use the details below to sign in:</p>
+    <p><strong>Login page:</strong> <a href="${loginUrl}">${loginUrl}</a></p>
+    <p><strong>Email:</strong> ${toEmail}</p>
+    <p><strong>Temporary password:</strong> <code>${temporaryPassword}</code></p>
+    <p>Please change your password after your first login if the app allows.</p>
+    <p>— SOTO Routes</p>
+  `;
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [toEmail],
+        subject: "Your SOTO Routes driver login details",
+        html,
+      }),
+    });
+    if (!res.ok) {
+      const errBody = await res.text();
+      logger.error("Resend API error", {status: res.status, body: errBody});
+      let msg = "Failed to send email.";
+      try {
+        const j = JSON.parse(errBody);
+        if (j && j.message) msg = j.message;
+      } catch (_) {}
+      throw new HttpsError("internal", msg);
+    }
+    return {success: true};
+  }
+);
 
 exports.deleteDriver = onCall(CALLABLE_OPTIONS, async (request) => {
   const auth = requireAuth(request);
