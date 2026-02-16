@@ -169,11 +169,11 @@
             }
 
             .ui-dialogs-modal {
-                background: #111827;
-                border: 1px solid #1f2937;
+                background: #1a1f24;
+                border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 1rem;
                 width: min(420px, 100%);
-                box-shadow: 0 28px 60px rgba(2, 6, 23, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04);
+                box-shadow: 0 28px 60px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04);
                 transform: translateY(20px);
                 opacity: 0;
                 transition: transform 0.25s ease, opacity 0.25s ease;
@@ -251,7 +251,7 @@
             }
 
             .ui-dialogs-button:focus-visible {
-                box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.35);
+                box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.4);
             }
 
             .ui-dialogs-button[data-variant="secondary"] {
@@ -435,15 +435,16 @@
         state.iconWrapper.replaceChildren(buildIcon(tone.icon));
 
         if (state.primaryButton) {
-            state.primaryButton.style.background = 'rgba(10, 14, 23, 0.95)';
-            state.primaryButton.style.color = tone.accentHighlight || '#f9fafb';
-            state.primaryButton.style.border = `1px solid ${tone.accent}`;
-            state.primaryButton.style.boxShadow = `0 6px 24px ${tone.glow || 'rgba(99, 102, 241, 0.28)'}`;
+            const isWarning = toneKey === 'warning';
+            state.primaryButton.style.background = isWarning ? 'rgba(234, 88, 12, 0.9)' : 'rgba(10, 14, 23, 0.95)';
+            state.primaryButton.style.color = isWarning ? '#fff' : (tone.accentHighlight || '#f9fafb');
+            state.primaryButton.style.border = isWarning ? '1px solid rgba(251, 146, 60, 0.4)' : `1px solid ${tone.accent}`;
+            state.primaryButton.style.boxShadow = tone.glow ? `0 6px 24px ${tone.glow}` : 'none';
             state.primaryButton.onmouseenter = () => {
-                state.primaryButton.style.background = 'rgba(17, 23, 36, 0.97)';
+                state.primaryButton.style.background = isWarning ? 'rgba(194, 65, 12, 0.95)' : 'rgba(17, 23, 36, 0.97)';
             };
             state.primaryButton.onmouseleave = () => {
-                state.primaryButton.style.background = 'rgba(10, 14, 23, 0.95)';
+                state.primaryButton.style.background = isWarning ? 'rgba(234, 88, 12, 0.9)' : 'rgba(10, 14, 23, 0.95)';
             };
         }
     }
