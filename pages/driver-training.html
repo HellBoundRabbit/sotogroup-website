@@ -829,7 +829,7 @@
             { key: 'all-jobs', title: 'All Jobs', sectionId: 'standards', subs: [{ title: 'Collection' }, { title: 'On the drive' }, { title: 'Delivery' }] },
             { key: 'johnsons', title: 'Johnsons Fleet Services', sectionId: 'standards', subs: [{ title: 'Collection' }] },
             { key: 'motorway', title: 'Motorway', sectionId: 'standards', subs: [{ title: 'Standards' }] },
-            { key: 'apps-model', title: 'MoDel', sectionId: 'apps', subs: [{ title: 'Section' }] },
+            { key: 'apps-model', title: 'MoDel', sectionId: 'apps', subs: [{ title: 'Tutorial' }] },
             { key: 'apps-google-maps', title: 'Google Maps', sectionId: 'apps', subs: [{ title: 'Tutorial' }] },
             { key: 'apps-whatsapp', title: 'WhatsApp', sectionId: 'apps', subs: [{ title: 'General group' }] },
             { key: 'payment-placeholder', title: 'Coming soon', sectionId: 'payment', subs: [{ title: 'Content' }] }
@@ -840,6 +840,10 @@
         // Option B – YouTube: set TRAINING_GOOGLE_MAPS_VIDEO_EMBED to the iframe HTML from YouTube Share → Embed.
         var TRAINING_GOOGLE_MAPS_VIDEO_URL = 'https://firebasestorage.googleapis.com/v0/b/soto-routes.firebasestorage.app/o/training%2FGoogleMapsTutorial.mov?alt=media';
         var TRAINING_GOOGLE_MAPS_VIDEO_EMBED = '';
+
+        // MoDel tutorial: same pattern. Upload MoDelTutorial.mov to Firebase Storage under training/MoDelTutorial.mov (or set URL/embed here).
+        var TRAINING_MODEL_VIDEO_URL = 'https://firebasestorage.googleapis.com/v0/b/soto-routes.firebasestorage.app/o/training%2FMoDelTutorial.mov?alt=media';
+        var TRAINING_MODEL_VIDEO_EMBED = '';
 
         var TRAINING_MODALS = {
             'all-jobs': {
@@ -859,7 +863,14 @@
                     '<li>Any damage found on the car, any missing accessories or cables, or if the car doesn’t have any fuel (it should be supplied with 25% – not including electric cars) should be reported <strong>immediately</strong> to the office on the <a href="javascript:void(0)" class="training-link-apps" onclick="closeTrainingModal(); openTrainingModal(\'apps-whatsapp\')">General Group Chat</a> and to the key office, who will remedy it.</li></ul>'
             },
             'motorway': { title: 'Motorway', sections: [ { title: 'Standards', body: '<p><em>Motorway standards content to be added.</em></p>' } ] },
-            'apps-model': { title: 'MoDel', sections: [ { title: 'Section', body: '<p><em>MoDel section content will appear here. This links from the Johnsons Collection standards.</em></p>' } ] },
+            'apps-model': {
+                title: 'MoDel',
+                sections: [{
+                    title: 'Tutorial video',
+                    body: '<p class="training-video-intro">Watch the tutorial below to learn how to use MoDel for your jobs.</p>' +
+                        '<div class="training-video-wrap">__MODEL_VIDEO__</div>'
+                }]
+            },
             'apps-google-maps': {
                 title: 'Google Maps',
                 sections: [{
@@ -1159,6 +1170,19 @@
                     }
                     body += '</div></div>';
                 });
+            }
+            if (key === 'apps-model') {
+                var modelVideoHtml = '';
+                var modelVideoUrl = (typeof TRAINING_MODEL_VIDEO_URL === 'string' && TRAINING_MODEL_VIDEO_URL.trim()) ? TRAINING_MODEL_VIDEO_URL.trim() : '';
+                if (typeof TRAINING_MODEL_VIDEO_EMBED === 'string' && TRAINING_MODEL_VIDEO_EMBED.trim()) {
+                    modelVideoHtml = TRAINING_MODEL_VIDEO_EMBED.trim();
+                } else if (modelVideoUrl) {
+                    modelVideoHtml = '<video class="training-video" controls playsinline preload="metadata" src="' + escapeHtml(modelVideoUrl) + '"></video>';
+                } else {
+                    var modelFallbackUrl = 'https://firebasestorage.googleapis.com/v0/b/soto-routes.firebasestorage.app/o/training%2FMoDelTutorial.mov?alt=media';
+                    modelVideoHtml = '<video class="training-video" controls playsinline preload="metadata" src="' + escapeHtml(modelFallbackUrl) + '"></video>';
+                }
+                body = body.replace('__MODEL_VIDEO__', modelVideoHtml);
             }
             if (key === 'apps-google-maps') {
                 var videoHtml = '';
