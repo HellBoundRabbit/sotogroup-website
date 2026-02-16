@@ -121,6 +121,9 @@ async function initializeDriversApp() {
 
     await loadOfficeLogo(userIdentity.officeId);
 
+    // Keep full-screen loading until drivers list is loaded (no flash of empty/loading list)
+    await fetchAndDisplayDrivers();
+
     const loadingOverlay = document.getElementById('loading-overlay');
     if (loadingOverlay) {
         loadingOverlay.style.opacity = '0';
@@ -131,9 +134,6 @@ async function initializeDriversApp() {
     }
 
     console.log('Firebase initialization complete');
-
-    initializeDrivers();
-    // Defer notifications so driver list shows as soon as listDrivers returns
     initializeNotifications().catch(function (err) { console.warn('Notifications init failed', err); });
 }
 
@@ -143,11 +143,6 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
     document.addEventListener('DOMContentLoaded', initializeDriversApp);
 }
 
-// Initialize drivers functionality
-function initializeDrivers() {
-    // Load drivers when page is ready
-    fetchAndDisplayDrivers();
-}
 </script>
 <style type="tailwindcss">
       :root {

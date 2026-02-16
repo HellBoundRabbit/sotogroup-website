@@ -268,6 +268,21 @@
                         <!-- Parsed job results will appear here -->
                     </div>
                 </div>
+
+                <!-- Review parsed jobs: reliability + edit before save -->
+                <div id="reviewManualJobsScreen" class="hidden">
+                    <div class="text-center mb-4">
+                        <h2 class="text-xl font-bold text-white mb-1">Review parsed jobs</h2>
+                        <p class="text-gray-400 text-sm">Check reliability and edit REG/postcodes before saving. Low scores may indicate the AI misidentified a value (e.g. REG as postcode).</p>
+                    </div>
+                    <div id="reviewParsedJobsContent" class="space-y-4 mb-6 max-h-[50vh] overflow-y-auto">
+                        <!-- Filled by JS -->
+                    </div>
+                    <div class="flex gap-3">
+                        <button type="button" onclick="showManualEntry()" class="flex-1 px-4 py-3 bg-[#283039] hover:bg-[#3a444e] text-white rounded-lg font-medium">Back</button>
+                        <button type="button" id="confirmSaveParsedJobsBtn" onclick="confirmAndSaveParsedJobs()" class="flex-1 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">Confirm &amp; Save</button>
+                    </div>
+                </div>
                 
                 <!-- Asana Connection Screen -->
                 <div id="asanaConnectionScreen" class="hidden">
@@ -801,7 +816,7 @@
         }
 
         function showScreen(screenId) {
-            const screens = ['asanaConnectionScreen', 'manualEntryScreen', 'projectPickerScreen', 'dayPickerScreen', 'tasksCountScreen', 'routeGroupingInstructionsScreen', 'routeGroupingScreen', 'loadingScreen'];
+            const screens = ['asanaConnectionScreen', 'manualEntryScreen', 'reviewManualJobsScreen', 'projectPickerScreen', 'dayPickerScreen', 'tasksCountScreen', 'routeGroupingInstructionsScreen', 'routeGroupingScreen', 'loadingScreen'];
             screens.forEach(id => {
                 const screen = document.getElementById(id);
                 if (screen) {
@@ -901,7 +916,7 @@
                             if (!saveButton) {
                                 const saveBtn = document.createElement('button');
                                 saveBtn.id = 'saveManualJobsBtn';
-                                saveBtn.onclick = saveManualJobs;
+                                saveBtn.onclick = showReviewParsedJobsScreen;
                                 saveBtn.className = 'w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors font-medium flex items-center justify-center gap-2';
                                 saveBtn.innerHTML = `
                                     <span class="material-symbols-outlined">save</span>
@@ -930,6 +945,87 @@
                 }
                 alert('Error parsing job: ' + error.message);
             }
+        }
+
+        function showReviewParsedJobsScreen() {
+            if (manualJobs.length === 0) {
+                alert('No jobs to save');
+                return;
+            }
+            const container = document.getElementById('reviewParsedJobsContent');
+            if (!container) return;
+            const scores = (job) => (job.parsedData && job.parsedData.confidence_scores) ? job.parsedData.confidence_scores : {};
+            const pct = (v) => (v != null && typeof v === 'number') ? Math.round(v * 100) + '%' : '—';
+            let html = '';
+            manualJobs.forEach((job, i) => {
+                const s = scores(job);
+                const overall = (job.parsedData && job.parsedData.overall_confidence != null) ? Math.round(job.parsedData.overall_confidence * 100) + '%' : '—';
+                const coll = (job.parsedData && job.parsedData.collection_address) ? String(job.parsedData.collection_address) : '';
+                const del = (job.parsedData && job.parsedData.postcode_delivery) ? String(job.parsedData.postcode_delivery) : '';
+                const reg = (job.parsedData && job.parsedData.reg_number) ? String(job.parsedData.reg_number) : '';
+                const price = (job.parsedData && job.parsedData.price != null) ? String(job.parsedData.price) : '';
+                html += `
+                    <div class="review-job-card bg-[#1e252d] rounded-lg p-4 border border-[#3a444e]" data-job-index="${i}">
+                        <div class="text-sm font-medium text-gray-300 mb-3">Job ${i + 1} ${overall !== '—' ? '· overall ' + overall : ''}</div>
+                        <div class="grid gap-3 text-sm">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <label class="text-gray-400 w-20 shrink-0">Collection</label>
+                                <input type="text" class="review-input flex-1 min-w-0 bg-[#283039] border border-[#3a444e] rounded px-2 py-1.5 text-white" data-field="collection_address" value="${escapeHtml(coll)}" />
+                                <span class="text-xs text-gray-500 shrink-0">${pct(s.collection)}</span>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <label class="text-gray-400 w-20 shrink-0">Postcode</label>
+                                <input type="text" class="review-input flex-1 min-w-0 bg-[#283039] border border-[#3a444e] rounded px-2 py-1.5 text-white" data-field="postcode_delivery" value="${escapeHtml(del)}" />
+                                <span class="text-xs text-gray-500 shrink-0">${pct(s.delivery)}</span>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <label class="text-gray-400 w-20 shrink-0">REG</label>
+                                <input type="text" class="review-input flex-1 min-w-0 bg-[#283039] border border-[#3a444e] rounded px-2 py-1.5 text-white" data-field="reg_number" value="${escapeHtml(reg)}" />
+                                <span class="text-xs text-gray-500 shrink-0">${pct(s.reg)}</span>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <label class="text-gray-400 w-20 shrink-0">Price</label>
+                                <input type="text" class="review-input flex-1 min-w-0 bg-[#283039] border border-[#3a444e] rounded px-2 py-1.5 text-white" data-field="price" value="${escapeHtml(price)}" />
+                                <span class="text-xs text-gray-500 shrink-0">${pct(s.price)}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+            showScreen('reviewManualJobsScreen');
+        }
+
+        function escapeHtml(str) {
+            if (str == null) return '';
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function confirmAndSaveParsedJobs() {
+            const container = document.getElementById('reviewParsedJobsContent');
+            if (!container) return;
+            const cards = container.querySelectorAll('.review-job-card');
+            cards.forEach((card, i) => {
+                const idx = parseInt(card.getAttribute('data-job-index'), 10);
+                if (isNaN(idx) || idx < 0 || idx >= manualJobs.length) return;
+                const job = manualJobs[idx];
+                if (!job.parsedData) job.parsedData = {};
+                card.querySelectorAll('.review-input').forEach(input => {
+                    const field = input.getAttribute('data-field');
+                    const value = input.value.trim();
+                    if (field === 'price') {
+                        const num = parseFloat(value);
+                        job.parsedData[field] = isNaN(num) ? (value || null) : num;
+                    } else {
+                        job.parsedData[field] = value || null;
+                    }
+                });
+            });
+            document.getElementById('reviewManualJobsScreen').classList.add('hidden');
+            showScreen('manualEntryScreen');
+            saveManualJobs();
         }
 
         async function saveManualJobs() {

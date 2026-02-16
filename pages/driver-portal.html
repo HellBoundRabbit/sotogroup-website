@@ -773,6 +773,12 @@
                     const needPhoto = !existingPhotoUrl;
 
                     if (needPostcode || needPhoto) {
+                        // If PWA install prompt is visible (user opened portal NOT in PWA), show profile modal only after they dismiss it
+                        const pwaOverlay = document.getElementById('pwa-install-overlay');
+                        if (pwaOverlay) {
+                            window._pendingProfileCompleteModal = { needPostcode, needPhoto, existingPhotoUrl, postcodeVal: postcodeVal.trim() };
+                            return;
+                        }
                         showProfileCompleteModal(needPostcode, needPhoto, existingPhotoUrl, postcodeVal.trim());
                         return;
                     }
@@ -860,11 +866,23 @@
                     if (officeDoc.exists()) officeName = (officeDoc.data().name || officeName).trim();
                 } catch (e) { console.warn('Could not fetch office name for photo path:', e); }
             }
-            const safe = (s) => String(s || '').replace(/[/\\]/g, '').trim() || 'driver';
-            const firstName = safe(currentUser.firstName);
-            const lastName = safe(currentUser.lastName);
+            const safe = (s) => String(s || '').replace(/[/\\]/g, '').trim();
+            let firstName = safe(currentUser.firstName);
+            let lastName = safe(currentUser.lastName);
+            if (!firstName || !lastName) {
+                try {
+                    const driverDoc = await window.getDoc(window.doc(window.db, 'drivers', currentUser.uid));
+                    if (driverDoc.exists()) {
+                        const d = driverDoc.data();
+                        if (!firstName) firstName = safe(d.firstName);
+                        if (!lastName) lastName = safe(d.lastName);
+                    }
+                } catch (e) { console.warn('Could not fetch driver name for photo path:', e); }
+            }
+            const displayName = safe(currentUser.displayName);
             const ext = (file && file.name && file.name.split('.').pop()) ? file.name.split('.').pop().toLowerCase() : 'jpg';
-            const fileName = (firstName && lastName) ? firstName + ' ' + lastName + '.' + ext : (currentUser.uid + '.' + ext);
+            const namePart = (firstName && lastName) ? (firstName + ' ' + lastName) : (firstName || lastName || displayName || '');
+            const fileName = namePart ? (namePart + '.' + ext) : (currentUser.uid + '.' + ext);
             return (officeName + ' - Drivers') + '/' + fileName;
         }
 
@@ -1314,6 +1332,12 @@
             const overlay = document.getElementById('pwa-install-overlay');
             if (overlay) {
                 overlay.remove();
+            }
+            // If we deferred the profile-complete modal (postcode/display picture) until after this prompt, show it now
+            const pending = window._pendingProfileCompleteModal;
+            if (pending) {
+                window._pendingProfileCompleteModal = null;
+                showProfileCompleteModal(pending.needPostcode, pending.needPhoto, pending.existingPhotoUrl, pending.postcodeVal);
             }
             // Always show again next time - prompt will appear every time driver portal opens
         }
