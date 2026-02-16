@@ -1314,9 +1314,10 @@ if (scrollWrapper) scrollWrapper.classList.remove('hidden');
 var avatarFallback = '<span class="material-symbols-outlined text-[#9cabba]">person</span>';
 driversContainer.innerHTML = driversToRender.map(driver => {
 const name = [driver.firstName, driver.lastName].filter(Boolean).join(' ').trim() || 'Driver';
-const photoUrl = driver.photoURL || driver.photoUrl || driver.avatarUrl || '';
+const rawPhoto = driver.photoURL || driver.photoUrl || driver.avatarUrl || '';
+const photoUrl = isValidPhotoUrl(rawPhoto) ? (typeof rawPhoto === 'string' ? rawPhoto.trim() : '') : '';
 const avatarHtml = photoUrl
-? '<img src="' + escapeHtml(photoUrl) + '" alt="" onerror="(function(e){ e.parentElement.innerHTML=' + JSON.stringify(avatarFallback) + '; })(this)">'
+? '<img src="' + escapeHtml(photoUrl) + '" alt="" onerror="driverAvatarOnError(this)">'
 : avatarFallback;
 var did = (driver.id || driver.uid || '');
 return `
@@ -1335,10 +1336,23 @@ if (scrollRightBtn) scrollRightBtn.onclick = () => { driversContainer.scrollBy({
 }
 
 function escapeHtml(text) {
-const div = document.createElement('div');
-div.textContent = text;
-return div.innerHTML;
+    if (text == null) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
+
+function isValidPhotoUrl(value) {
+    if (value == null || typeof value !== 'string') return false;
+    var trimmed = value.trim();
+    return trimmed.length > 0 && (trimmed.indexOf('http://') === 0 || trimmed.indexOf('https://') === 0);
+}
+
+var driverAvatarFallbackHtml = '<span class="material-symbols-outlined text-[#9cabba]">person</span>';
+function driverAvatarOnError(imgEl) {
+    if (imgEl && imgEl.parentElement) imgEl.parentElement.innerHTML = driverAvatarFallbackHtml;
+}
+window.driverAvatarOnError = driverAvatarOnError;
 
 // Filter drivers by first or last name (auto-filters the horizontal list)
 function filterDrivers(searchTerm) {
@@ -1383,10 +1397,11 @@ async function openDriverDetailModal(driverId) {
     if (btnInperson) { btnInperson.disabled = true; btnInperson.textContent = 'Completed'; btnInperson.classList.add('driver-profile-step-btn--locked'); }
     if (btnEquipment) { btnEquipment.disabled = true; btnEquipment.textContent = 'Completed'; btnEquipment.classList.add('driver-profile-step-btn--locked'); }
 
-    var photoUrl = driver && (driver.photoURL || driver.photoUrl || driver.avatarUrl);
+    var rawPhoto = driver && (driver.photoURL || driver.photoUrl || driver.avatarUrl);
+    var photoUrl = isValidPhotoUrl(rawPhoto) ? String(rawPhoto).trim() : '';
     var fallbackHtml = '<span class="material-symbols-outlined text-[#9cabba]">person</span>';
     var avatarContent = photoUrl
-        ? '<img src="' + escapeHtml(photoUrl) + '" alt="" class="w-full h-full object-cover" onerror="(function(e){ e.parentElement.innerHTML=' + JSON.stringify(fallbackHtml) + '; })(this)">'
+        ? '<img src="' + escapeHtml(photoUrl) + '" alt="" class="w-full h-full object-cover" onerror="driverAvatarOnError(this)">'
         : fallbackHtml;
     if (miniAvatar) miniAvatar.innerHTML = avatarContent;
     if (headerAvatar) headerAvatar.innerHTML = avatarContent;
@@ -1399,9 +1414,9 @@ async function openDriverDetailModal(driverId) {
             var userDoc = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'users', uid));
             var d = userDoc.exists() ? userDoc.data() : {};
             var userPhoto = d.photoURL || d.photoUrl;
-            if (!photoUrl && userPhoto) {
-                photoUrl = userPhoto;
-                var refreshAvatarContent = '<img src="' + escapeHtml(photoUrl) + '" alt="" class="w-full h-full object-cover" onerror="(function(e){ e.parentElement.innerHTML=' + JSON.stringify(fallbackHtml) + '; })(this)">';
+            if (!photoUrl && userPhoto && isValidPhotoUrl(userPhoto)) {
+                photoUrl = String(userPhoto).trim();
+                var refreshAvatarContent = '<img src="' + escapeHtml(photoUrl) + '" alt="" class="w-full h-full object-cover" onerror="driverAvatarOnError(this)">';
                 if (miniAvatar) miniAvatar.innerHTML = refreshAvatarContent;
                 if (headerAvatar) headerAvatar.innerHTML = refreshAvatarContent;
             }
@@ -1451,9 +1466,9 @@ async function openDriverDetailModal(driverId) {
         var userDoc = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'users', uid));
         var d = userDoc.exists() ? userDoc.data() : {};
         var userPhoto = d.photoURL || d.photoUrl;
-        if (!photoUrl && userPhoto) {
-            photoUrl = userPhoto;
-            var laterAvatarContent = '<img src="' + escapeHtml(photoUrl) + '" alt="" class="w-full h-full object-cover" onerror="(function(e){ e.parentElement.innerHTML=' + JSON.stringify(fallbackHtml) + '; })(this)">';
+        if (!photoUrl && userPhoto && isValidPhotoUrl(userPhoto)) {
+            photoUrl = String(userPhoto).trim();
+            var laterAvatarContent = '<img src="' + escapeHtml(photoUrl) + '" alt="" class="w-full h-full object-cover" onerror="driverAvatarOnError(this)">';
             if (miniAvatar) miniAvatar.innerHTML = laterAvatarContent;
             if (headerAvatar) headerAvatar.innerHTML = laterAvatarContent;
         }
