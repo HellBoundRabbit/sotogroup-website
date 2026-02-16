@@ -25,11 +25,12 @@
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
-        /* Nav bar back button (match driver portal pages) */
+        /* Nav bar back button + loading overlay (match driver portal) */
         .spinner-wrapper {
             width: 56px;
             height: 56px;
             position: relative;
+            margin: 0 auto;
         }
         .spinner {
             width: 56px;
@@ -38,6 +39,7 @@
             position: absolute;
             top: 0;
             left: 0;
+            animation: spinning82341 1.7s linear infinite;
             filter: blur(1px);
         }
         .spinner::before {
@@ -72,6 +74,9 @@
             font-size: 1.875rem;
             -webkit-font-smoothing: antialiased;
             filter: none !important;
+        }
+        @keyframes spinning82341 {
+            to { transform: rotate(360deg); }
         }
         .touch-target { min-height: 44px; min-width: 44px; }
 
@@ -664,6 +669,10 @@
 <body class="bg-black text-white">
     <div id="loadingOverlay" class="fixed inset-0 bg-black flex items-center justify-center z-50">
         <div class="text-center">
+            <div class="spinner-wrapper mx-auto mb-4">
+                <div class="spinner"></div>
+                <div class="spinner1"></div>
+            </div>
             <p class="text-gray-400">Loading...</p>
         </div>
     </div>
@@ -709,7 +718,6 @@
                     <div class="stepper-content">
                         <div class="stepper-title">Meet the team & Set up your account</div>
                         <div class="stepper-status">Completed</div>
-                        <div class="stepper-time">You’re in the portal</div>
                     </div>
                 </div>
 
@@ -719,7 +727,7 @@
                     <div class="stepper-content">
                         <div class="stepper-title">Complete the lessons and quizzes</div>
                         <div class="stepper-status">In progress</div>
-                        <div class="stepper-time">Use the materials below</div>
+                        <div class="stepper-time">Use the materials on the Training tab.</div>
                     </div>
                 </div>
 
@@ -738,7 +746,7 @@
                     <div class="stepper-content">
                         <div class="stepper-title">Collect your equipment and get login credentials</div>
                         <div class="stepper-status">Pending</div>
-                        <div class="stepper-time">Final step (office)</div>
+                        <div class="stepper-time">Your final step. Good luck on the road.</div>
                     </div>
                 </div>
             </div>
@@ -967,9 +975,9 @@
                 if (status) status.textContent = state === 'completed' ? 'Completed' : (state === 'active' ? 'In progress' : 'Pending');
                 if (time && timeText) time.textContent = timeText;
             }
-            setStep(s2, userTrainingComplete ? 'completed' : 'active', '2', 'Use the materials below');
+            setStep(s2, userTrainingComplete ? 'completed' : 'active', '2', 'Use the materials on the Training tab.');
             setStep(s3, userInPersonTrainingComplete ? 'completed' : (userTrainingComplete ? 'active' : 'pending'), '3', userTrainingComplete ? 'Marked complete by office' : 'After completing lessons');
-            setStep(s4, userEquipmentCollected ? 'completed' : (userInPersonTrainingComplete ? 'active' : 'pending'), '4', userInPersonTrainingComplete ? 'Final step (office)' : 'Final step');
+            setStep(s4, userEquipmentCollected ? 'completed' : (userInPersonTrainingComplete ? 'active' : 'pending'), '4', userInPersonTrainingComplete ? 'Your final step. Good luck on the road.' : 'Final step');
             function setLine(lineEl, cls) {
                 if (!lineEl) return;
                 lineEl.classList.remove('line-solid-cyan', 'line-gradient');
