@@ -621,6 +621,7 @@
     window.uiDialogs = {
         showAlert,
         showConfirm,
+        showConfirmation: showConfirm,
         showToast,
         hideActiveModal: () => resolveModal(false),
     };
