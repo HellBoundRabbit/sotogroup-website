@@ -9,6 +9,11 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#000000">
     <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16.png">
+    <link rel="icon" type="image/svg+xml" href="/assets/logos/favicon.svg">
+    <link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png">
     <title>My Expenses - SOTO Routes</title>
     <script src="/assets/js/tailwind-runtime.js"></script>
     <script src="/js/session-manager.js"></script>
@@ -198,7 +203,7 @@
         /* Mobile-optimized touch targets */
         .touch-target { min-height: 44px; min-width: 44px; }
         
-        /* Registration input field - matches license-plate display */
+        /* Registration input field - matches license-plate display (short, reg-plate width) */
         .reg-input {
             background: #FFD500 !important;
             background-color: #FFD500 !important;
@@ -206,13 +211,16 @@
             font-family: 'Courier New', monospace;
             font-weight: bold;
             letter-spacing: 2px;
-            padding: 8px 16px;
+            padding: 8px 12px;
             border-radius: 6px;
             border: 2px solid #000 !important;
             text-align: center;
             text-transform: uppercase;
             font-size: 1rem;
-            width: auto;
+            width: 9ch;
+            min-width: 9ch;
+            max-width: 9ch;
+            box-sizing: content-box;
             display: inline-block;
         }
         .reg-input::placeholder {
@@ -743,9 +751,9 @@
                 <input 
                 type="text" 
                 id="regInput" 
-                placeholder=""
+                placeholder="AB12 ABC"
                 class="reg-input"
-                maxlength="8"
+                maxlength="9"
                 >
                 </div>
                 

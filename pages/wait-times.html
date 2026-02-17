@@ -160,7 +160,7 @@
 <h2 class="text-xl font-bold">SOTO Routes</h2>
 </div>
             <nav class="flex flex-1 justify-center gap-2" data-soto-nav-links>
-<a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/soto-lp.html">Routes</a>
+<a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/dashboard.html">Dashboard</a>
 <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/optimisation.html">Optimisation</a>
 <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/drivers.html">Drivers</a>
 <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/availability.html">Availability</a>
@@ -193,7 +193,7 @@
     <button onclick="toggleProfileDropdown()" class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
         <img id="officeLogoImg" src="/assets/logos/favicon.svg" alt="Office Logo" class="w-full h-full object-cover" onerror="this.src='/assets/logos/favicon.svg'">
     </button>
-    <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50">
+    <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50 py-2 flex flex-col gap-2">
         <button onclick="showSettings()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors rounded-t-lg">
             <span class="material-symbols-outlined inline-block align-middle text-base mr-2">settings</span>
             Settings
@@ -2090,9 +2090,9 @@
             });
 
             const sortedDrivers = Object.values(driverChanges).sort((a, b) => b.latestDate - a.latestDate);
-        const oldExpenseCount = await checkOldExpenses(officeId);
+        const oldExpenseResult = await checkOldExpenses(officeId);
 
-        return { sortedDrivers, oldExpenseCount };
+        return { sortedDrivers, oldExpenseResult };
     }
 
     async function updateNotificationCount() {
@@ -2100,8 +2100,8 @@
             const officeId = getCurrentOfficeId();
             if (!officeId) return;
 
-            const { sortedDrivers, oldExpenseCount } = await getAggregatedNotifications(officeId);
-            const unreadCount = sortedDrivers.length + (oldExpenseCount > 0 ? 1 : 0);
+            const { sortedDrivers, oldExpenseResult } = await getAggregatedNotifications(officeId);
+            const unreadCount = sortedDrivers.length + (oldExpenseResult.total > 0 ? 1 : 0);
             updateNotificationBadge(unreadCount);
         } catch (error) {
             console.error('Error updating notification count:', error);
@@ -2127,12 +2127,13 @@
             const notificationsList = document.getElementById('notificationsList');
             if (!notificationsList) return;
 
-            const { sortedDrivers, oldExpenseCount } = await getAggregatedNotifications(officeId);
+            const { sortedDrivers, oldExpenseResult } = await getAggregatedNotifications(officeId);
+            const overdueTab = getOverdueExpensesTab(oldExpenseResult);
 
             notificationsList.innerHTML = '';
 
-            if (oldExpenseCount > 0) {
-                const expenseNotification = createOldExpenseNotificationElement(oldExpenseCount);
+            if (oldExpenseResult.total > 0) {
+                const expenseNotification = createOldExpenseNotificationElement(oldExpenseResult.total, overdueTab);
                 notificationsList.appendChild(expenseNotification);
             }
 
@@ -2141,7 +2142,7 @@
                 notificationsList.appendChild(notificationElement);
             });
 
-            if (oldExpenseCount === 0 && sortedDrivers.length === 0) {
+            if (oldExpenseResult.total === 0 && sortedDrivers.length === 0) {
                 notificationsList.innerHTML = `
                     <div class="px-4 py-3 text-gray-400 text-sm text-center">
                         No notifications yet
@@ -2153,19 +2154,21 @@
         }
     }
 
-    function createOldExpenseNotificationElement(count) {
+    function createOldExpenseNotificationElement(count, tab) {
+        const openTab = (tab === 'validated' || tab === 'pending') ? tab : 'pending';
+        const url = '/pages/expenses.html?tab=' + openTab;
         const element = document.createElement('div');
         element.className = 'px-4 py-3 border-b border-[#283039] cursor-pointer hover:bg-[#283039] transition-colors bg-[#283039]';
         element.onclick = () => {
             document.getElementById('notificationDropdown').classList.add('hidden');
-            window.location.href = '/pages/expenses.html';
+            window.location.href = url;
         };
 
         element.innerHTML = `
             <div class="flex items-start justify-between">
                 <div class="flex-1">
-                    <div class="text-white text-sm font-medium">There ${count === 1 ? 'is' : 'are'} ${count} pending expense${count === 1 ? '' : 's'} over 24 working hours old</div>
-                    <div class="text-[#9cabba] text-xs mt-1">Click to review in expenses</div>
+                    <div class="text-white text-sm font-medium">There ${count === 1 ? 'is' : 'are'} ${count} expense${count === 1 ? '' : 's'} over 24 working hours old</div>
+                    <div class="text-[#9cabba] text-xs mt-1">Click to view in ${openTab === 'validated' ? 'Validated' : 'Pending'} tab</div>
                 </div>
                 <div class="w-2 h-2 bg-red-500 rounded-full ml-2 mt-1"></div>
             </div>
@@ -2216,29 +2219,38 @@
         }
     }
 
+    // Returns { total, pendingCount, validatedCount } for expenses over 24 working hours
     async function checkOldExpenses(officeId) {
         try {
             const expensesQuery = window.query(
                 window.collection(window.db, 'expenseBatches'),
-                window.where('officeId', '==', officeId),
-                window.where('status', '==', 'pending')
+                window.where('officeId', '==', officeId)
             );
             const snapshot = await window.getDocs(expensesQuery);
             const now = new Date();
-            let count = 0;
+            let pendingCount = 0;
+            let validatedCount = 0;
             snapshot.forEach(doc => {
                 const data = doc.data();
+                if (data.status !== 'pending' && data.status !== 'validated') return;
                 const submittedAt = data.submittedAt?.toDate ? data.submittedAt.toDate() : (data.submittedAt ? new Date(data.submittedAt) : null);
                 if (!submittedAt) return;
-                if (calculateWorkingHours(submittedAt, now) >= 24) {
-                    count++;
+                if (calculateWorkingHours(submittedAt, now) > 24) {
+                    if (data.status === 'pending') pendingCount++;
+                    else validatedCount++;
                 }
             });
-            return count;
+            return { total: pendingCount + validatedCount, pendingCount, validatedCount };
         } catch (error) {
             console.error('Error checking old expenses:', error);
-            return 0;
+            return { total: 0, pendingCount: 0, validatedCount: 0 };
         }
+    }
+
+    function getOverdueExpensesTab(result) {
+        if (!result || result.total === 0) return 'pending';
+        if (result.pendingCount > 0) return 'pending';
+        return 'validated';
     }
 
     function calculateWorkingHours(startDate, endDate) {

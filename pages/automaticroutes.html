@@ -144,7 +144,7 @@
 <h2 class="text-xl font-bold">SOTO Routes</h2>
 </div>
 <nav class="flex flex-1 justify-center gap-2" data-soto-nav-links>
-<a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/soto-lp.html">Routes</a>
+<a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/dashboard.html">Dashboard</a>
 <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/optimisation.html">Optimisation</a>
 <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/drivers.html">Drivers</a>
 <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/availability.html">Availability</a>
@@ -182,7 +182,7 @@
         <img id="officeLogoImg" src="/assets/logos/favicon.svg" alt="Office Logo" class="w-full h-full object-cover" onerror="this.src='/assets/logos/favicon.svg'">
     </button>
     <!-- Profile Dropdown -->
-    <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50">
+    <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50 py-2 flex flex-col gap-2">
         <button onclick="showSettings()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors rounded-t-lg">
             <span class="material-symbols-outlined inline-block align-middle text-base mr-2">settings</span>
             Settings
@@ -1994,23 +1994,23 @@
                 
                 // If we didn't find "Price - £X" pattern, try other formats but be more selective
                 if (!priceFound) {
-                    const priceFormats = [
-                        `£${parsedData.price.toFixed(2)}`,
+                const priceFormats = [
+                    `£${parsedData.price.toFixed(2)}`,
                         `£${parsedData.price}`,
                         `${parsedData.price.toFixed(2)}`,
                         `${parsedData.price}`
-                    ];
-                    
+                ];
+                
                     // Only highlight if the price is in a reasonable range (avoid highlighting random numbers)
                     const reasonablePrice = parsedData.price >= 10 && parsedData.price <= 1000;
                     
                     if (reasonablePrice) {
-                        priceFormats.forEach(priceStr => {
-                            const priceEscaped = escapeRegex(priceStr);
+                priceFormats.forEach(priceStr => {
+                    const priceEscaped = escapeRegex(priceStr);
                             // Look for price that's not part of another word or context
                             // Avoid matching prices that are part of phrases like "£22 uber auth"
                             const priceRegex = new RegExp(`(?:^|[^\\w£])${priceEscaped}(?![\\w])`, 'gi');
-                            const matches = [...highlightedText.matchAll(priceRegex)];
+                    const matches = [...highlightedText.matchAll(priceRegex)];
                             
                             // Prefer matches that are on their own line or after common price indicators
                             const preferredMatches = matches.filter(match => {
@@ -2029,17 +2029,17 @@
                             const matchesToUse = preferredMatches.length > 0 ? preferredMatches : matches;
                             
                             matchesToUse.forEach(match => {
-                                if (!usedPositions.has(match.index)) {
-                                    highlights.push({
-                                        start: match.index,
-                                        end: match.index + match[0].length,
-                                        text: match[0],
-                                        score: priceScore
-                                    });
-                                    usedPositions.add(match.index);
-                                }
+                        if (!usedPositions.has(match.index)) {
+                            highlights.push({
+                                start: match.index,
+                                end: match.index + match[0].length,
+                                text: match[0],
+                                score: priceScore
                             });
-                        });
+                            usedPositions.add(match.index);
+                        }
+                    });
+                });
                     }
                 }
             }
@@ -2334,7 +2334,7 @@
             
             // Success - redirect to routes page
             alert(`Successfully saved ${routeReviewData.length} routes!`);
-            window.location.href = '/pages/soto-lp.html';
+            window.location.href = '/pages/dashboard.html';
             
         } catch (error) {
             console.error('Error saving routes:', error);
@@ -2394,26 +2394,26 @@
                         const jobData = jobDoc.data();
                         
                         // Verify this job belongs to this office
-                        if (jobData.officeId && jobData.officeId !== officeId) {
+                if (jobData.officeId && jobData.officeId !== officeId) {
                             console.warn(`Skipping job ${jobId} due to mismatched officeId.`);
-                            continue;
-                        }
+                    continue;
+                }
                         
                         // Backfill officeId if missing
-                        if (!jobData.officeId) {
-                            try {
+                if (!jobData.officeId) {
+                    try {
                                 await window.firebaseUpdateDoc(jobDocRef, { officeId });
-                                jobData.officeId = officeId;
+                        jobData.officeId = officeId;
                                 console.log(`Backfilled officeId for job ${jobId}`);
-                            } catch (error) {
+                    } catch (error) {
                                 console.warn(`Failed to backfill officeId for job ${jobId}:`, error);
-                            }
-                        }
+                    }
+                }
                         
-                        jobs.push({
+                jobs.push({
                             firebaseId: jobDoc.id,
-                            ...jobData
-                        });
+                    ...jobData
+                });
                     } else {
                         console.warn(`Job ${jobId} not found in Firebase`);
                     }

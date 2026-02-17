@@ -252,7 +252,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 <h2 class="text-xl font-bold">SOTO Routes</h2>
 </div>
 <nav class="flex flex-1 justify-center gap-2" data-soto-nav-links>
-<a id="routesNavLink" class="bg-[#283039] text-white text-xs font-medium rounded-md px-3 py-2" href="#" onclick="handleRoutesClick(event)">Routes</a>
+<a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/dashboard.html">Dashboard</a>
 <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/optimisation.html">Optimisation</a>
 <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/drivers.html">Drivers</a>
 <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/availability.html">Availability</a>
@@ -286,7 +286,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
         <img id="officeLogoImg" src="/assets/logos/favicon.svg" alt="Office Logo" class="w-full h-full object-cover" onerror="this.src='/assets/logos/favicon.svg'">
     </button>
     <!-- Profile Dropdown -->
-    <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50">
+    <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50 py-2 flex flex-col gap-2">
         <button onclick="showSettings()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors rounded-t-lg">
             <span class="material-symbols-outlined inline-block align-middle text-base mr-2">settings</span>
             Settings
@@ -1376,10 +1376,9 @@ function calculateWorkingHours(startDate, endDate) {
     return workingHours;
 }
 
-// Check for expenses over 24 working hours old
+// Check for expenses over 24 working hours old; returns { total, pendingCount, validatedCount }
 async function checkOldExpenses(officeId) {
     try {
-        // Get all expense batches that are pending or validated (not paid/transferred)
         const batchesQuery = window.firebaseQuery(
             window.firebaseCollection(window.firestore, 'expenseBatches'),
             window.firebaseWhere('officeId', '==', officeId)
@@ -1387,27 +1386,32 @@ async function checkOldExpenses(officeId) {
         
         const batchesSnapshot = await window.firebaseGetDocs(batchesQuery);
         const now = new Date();
-        let oldExpenseCount = 0;
+        let pendingCount = 0;
+        let validatedCount = 0;
         
         batchesSnapshot.docs.forEach(doc => {
             const batch = doc.data();
-            // Only check pending and validated expenses (not paid or transferred)
-            if (batch.status === 'pending' || batch.status === 'validated') {
-                const submittedAt = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date(batch.submittedAt);
-                if (submittedAt) {
-                    const workingHours = calculateWorkingHours(submittedAt, now);
-                    if (workingHours > 24) {
-                        oldExpenseCount++;
-                    }
-                }
+            if (batch.status !== 'pending' && batch.status !== 'validated') return;
+            const submittedAt = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date(batch.submittedAt);
+            if (!submittedAt) return;
+            const workingHours = calculateWorkingHours(submittedAt, now);
+            if (workingHours > 24) {
+                if (batch.status === 'pending') pendingCount++;
+                else validatedCount++;
             }
         });
         
-        return oldExpenseCount;
+        return { total: pendingCount + validatedCount, pendingCount, validatedCount };
     } catch (error) {
         console.error('Error checking old expenses:', error);
-        return 0;
+        return { total: 0, pendingCount: 0, validatedCount: 0 };
     }
+}
+
+function getOverdueExpensesTab(result) {
+    if (!result || result.total === 0) return 'pending';
+    if (result.pendingCount > 0) return 'pending';
+    return 'validated';
 }
 
 async function updateNotificationCount() {
@@ -1491,10 +1495,10 @@ async function updateNotificationCount() {
         const availabilityCount = Object.keys(driverChanges).length;
         
         // Check for old expenses (>24 working hours)
-        const oldExpenseCount = await checkOldExpenses(officeId);
+        const oldExpenseResult = await checkOldExpenses(officeId);
         
         // Total notification count (availability changes + old expenses)
-        const unreadCount = availabilityCount + (oldExpenseCount > 0 ? 1 : 0);
+        const unreadCount = availabilityCount + (oldExpenseResult.total > 0 ? 1 : 0);
         
         // Update notification badge on all pages
         updateNotificationBadge(unreadCount);
@@ -1547,7 +1551,8 @@ async function loadNotifications() {
         const notificationsList = document.getElementById('notificationsList');
         
         // Check for old expenses
-        const oldExpenseCount = await checkOldExpenses(officeId);
+        const oldExpenseResult = await checkOldExpenses(officeId);
+        const overdueTab = getOverdueExpensesTab(oldExpenseResult);
         
         // Aggregate notifications by driver
         const driverChanges = {};
@@ -1617,8 +1622,8 @@ async function loadNotifications() {
         notificationsList.innerHTML = '';
         
         // Add old expenses notification at the top if there are any
-        if (oldExpenseCount > 0) {
-            const expenseNotification = createOldExpenseNotificationElement(oldExpenseCount);
+        if (oldExpenseResult.total > 0) {
+            const expenseNotification = createOldExpenseNotificationElement(oldExpenseResult.total, overdueTab);
             notificationsList.appendChild(expenseNotification);
         }
         
@@ -1629,7 +1634,7 @@ async function loadNotifications() {
         });
         
         // Show empty state if no notifications
-        if (oldExpenseCount === 0 && sortedDrivers.length === 0) {
+        if (oldExpenseResult.total === 0 && sortedDrivers.length === 0) {
             notificationsList.innerHTML = `
                 <div class="px-4 py-3 text-gray-400 text-sm text-center">
                     No notifications yet
@@ -1642,20 +1647,22 @@ async function loadNotifications() {
     }
 }
 
-// Create old expense notification element
-function createOldExpenseNotificationElement(count) {
+// Create old expense notification element; tab = which tab to open (pending or validated)
+function createOldExpenseNotificationElement(count, tab) {
+    const openTab = (tab === 'validated' || tab === 'pending') ? tab : 'pending';
+    const url = '/pages/expenses.html?tab=' + openTab;
     const element = document.createElement('div');
     element.className = 'px-4 py-3 border-b border-[#283039] cursor-pointer hover:bg-[#283039] transition-colors bg-[#283039]';
     element.onclick = () => {
         document.getElementById('notificationDropdown').classList.add('hidden');
-        window.location.href = '/pages/expenses.html';
+        window.location.href = url;
     };
     
     element.innerHTML = `
         <div class="flex items-start justify-between">
             <div class="flex-1">
-                <div class="text-white text-sm font-medium">There are ${count} ${count === 1 ? 'expense' : 'expenses'} that are 24 working hours old</div>
-                <div class="text-[#9cabba] text-xs mt-1">Click to view expenses</div>
+                <div class="text-white text-sm font-medium">There ${count === 1 ? 'is' : 'are'} ${count} expense${count === 1 ? '' : 's'} over 24 working hours old</div>
+                <div class="text-[#9cabba] text-xs mt-1">Click to view in ${openTab === 'validated' ? 'Validated' : 'Pending'} tab</div>
             </div>
             <div class="w-2 h-2 bg-red-500 rounded-full ml-2 mt-1"></div>
         </div>

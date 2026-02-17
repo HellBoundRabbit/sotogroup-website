@@ -136,7 +136,7 @@
                     <h2 class="text-xl font-bold">Office Usage Calendar</h2>
                 </div>
                 <nav class="flex flex-1 justify-center gap-2" data-soto-nav-links>
-                    <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/soto-lp.html">Routes</a>
+                    <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/dashboard.html">Dashboard</a>
                     <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/optimisation.html">Optimisation</a>
                     <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/drivers.html">Drivers</a>
                     <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/availability.html">Availability</a>
@@ -385,7 +385,7 @@
                 return;
             }
             if (currentUser?.role === 'office') {
-                    window.location.href = '/pages/soto-lp.html';
+                    window.location.href = '/pages/dashboard.html';
                 return;
             }
             window.location.href = '/pages/soto-routes-login.html';

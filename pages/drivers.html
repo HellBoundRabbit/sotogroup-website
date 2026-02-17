@@ -401,6 +401,46 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
         .driver-detail-modal-overlay.driver-detail-modal-visible {
             opacity: 1;
         }
+        .driver-avatar-click-wrap {
+            cursor: pointer;
+            width: 100%;
+            height: 100%;
+            display: block;
+            border-radius: 50%;
+            overflow: hidden;
+        }
+        .driver-avatar-click-wrap img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .driver-avatar-fullscreen {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 60;
+            cursor: pointer;
+        }
+        .driver-avatar-fullscreen.hidden {
+            display: none;
+        }
+        .driver-avatar-fullscreen-circle {
+            width: min(85vmin, 420px);
+            height: min(85vmin, 420px);
+            border-radius: 50%;
+            overflow: hidden;
+            box-shadow: 0 0 0 4px rgba(255,255,255,0.15);
+            cursor: default;
+            pointer-events: none;
+        }
+        .driver-avatar-fullscreen-circle img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
         .driver-detail-modal-panel {
             transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
@@ -442,7 +482,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 <h2 class="text-xl font-bold">SOTO Routes</h2>
 </div>
 <nav class="flex flex-1 justify-center gap-2" data-soto-nav-links>
-<a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/soto-lp.html">Routes</a>
+<a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/dashboard.html">Dashboard</a>
 <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/optimisation.html">Optimisation</a>
 <a class="bg-[#283039] text-white text-xs font-medium rounded-md px-3 py-2" href="#">Drivers</a>
 <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/availability.html">Availability</a>
@@ -476,7 +516,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
                         <img id="officeLogoImg" src="/assets/logos/favicon.svg" alt="Office Logo" class="w-full h-full object-cover" onerror="this.src='/assets/logos/favicon.svg'">
                     </button>
                     <!-- Profile Dropdown -->
-                    <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50">
+                    <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50 py-2 flex flex-col gap-2">
                         <button onclick="showSettings()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors rounded-t-lg">
                             <span class="material-symbols-outlined inline-block align-middle text-base mr-2">settings</span>
                             Settings
@@ -726,6 +766,16 @@ Close
 </div>
 </div>
 </div>
+</div>
+
+<!-- Driver avatar fullscreen (circular, click backdrop to close) -->
+<div id="driver-avatar-fullscreen" class="driver-avatar-fullscreen hidden" onclick="if (event.target === this) closeDriverAvatarFullscreen()">
+    <div class="driver-avatar-fullscreen-circle" onclick="event.stopPropagation()">
+        <img id="driver-avatar-fullscreen-img" src="" alt="Driver photo">
+    </div>
+    <button type="button" onclick="closeDriverAvatarFullscreen()" class="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors" aria-label="Close">
+        <span class="material-symbols-outlined">close</span>
+    </button>
 </div>
 
 <script>
@@ -1354,6 +1404,26 @@ function driverAvatarOnError(imgEl) {
 }
 window.driverAvatarOnError = driverAvatarOnError;
 
+function openDriverAvatarFullscreen(src) {
+    if (!src) return;
+    var overlay = document.getElementById('driver-avatar-fullscreen');
+    var img = document.getElementById('driver-avatar-fullscreen-img');
+    if (overlay && img) {
+        img.src = src;
+        overlay.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+    }
+}
+function closeDriverAvatarFullscreen() {
+    var overlay = document.getElementById('driver-avatar-fullscreen');
+    var img = document.getElementById('driver-avatar-fullscreen-img');
+    if (overlay) overlay.classList.add('hidden');
+    if (img) img.removeAttribute('src');
+    document.body.style.overflow = '';
+}
+window.openDriverAvatarFullscreen = openDriverAvatarFullscreen;
+window.closeDriverAvatarFullscreen = closeDriverAvatarFullscreen;
+
 // Filter drivers by first or last name (auto-filters the horizontal list)
 function filterDrivers(searchTerm) {
 if (!searchTerm.trim()) {
@@ -1401,7 +1471,7 @@ async function openDriverDetailModal(driverId) {
     var photoUrl = isValidPhotoUrl(rawPhoto) ? String(rawPhoto).trim() : '';
     var fallbackHtml = '<span class="material-symbols-outlined text-[#9cabba]">person</span>';
     var avatarContent = photoUrl
-        ? '<img src="' + escapeHtml(photoUrl) + '" alt="" class="w-full h-full object-cover" onerror="driverAvatarOnError(this)">'
+        ? '<div class="driver-avatar-click-wrap" onclick="var img=this.querySelector(\'img\'); if(img) openDriverAvatarFullscreen(img.src)"><img src="' + escapeHtml(photoUrl) + '" alt="" class="w-full h-full object-cover" onerror="driverAvatarOnError(this)"></div>'
         : fallbackHtml;
     if (miniAvatar) miniAvatar.innerHTML = avatarContent;
     if (headerAvatar) headerAvatar.innerHTML = avatarContent;
@@ -1416,7 +1486,7 @@ async function openDriverDetailModal(driverId) {
             var userPhoto = d.photoURL || d.photoUrl;
             if (!photoUrl && userPhoto && isValidPhotoUrl(userPhoto)) {
                 photoUrl = String(userPhoto).trim();
-                var refreshAvatarContent = '<img src="' + escapeHtml(photoUrl) + '" alt="" class="w-full h-full object-cover" onerror="driverAvatarOnError(this)">';
+                var refreshAvatarContent = '<div class="driver-avatar-click-wrap" onclick="var img=this.querySelector(\'img\'); if(img) openDriverAvatarFullscreen(img.src)"><img src="' + escapeHtml(photoUrl) + '" alt="" class="w-full h-full object-cover" onerror="driverAvatarOnError(this)"></div>';
                 if (miniAvatar) miniAvatar.innerHTML = refreshAvatarContent;
                 if (headerAvatar) headerAvatar.innerHTML = refreshAvatarContent;
             }
@@ -1468,7 +1538,7 @@ async function openDriverDetailModal(driverId) {
         var userPhoto = d.photoURL || d.photoUrl;
         if (!photoUrl && userPhoto && isValidPhotoUrl(userPhoto)) {
             photoUrl = String(userPhoto).trim();
-            var laterAvatarContent = '<img src="' + escapeHtml(photoUrl) + '" alt="" class="w-full h-full object-cover" onerror="driverAvatarOnError(this)">';
+            var laterAvatarContent = '<div class="driver-avatar-click-wrap" onclick="var img=this.querySelector(\'img\'); if(img) openDriverAvatarFullscreen(img.src)"><img src="' + escapeHtml(photoUrl) + '" alt="" class="w-full h-full object-cover" onerror="driverAvatarOnError(this)"></div>';
             if (miniAvatar) miniAvatar.innerHTML = laterAvatarContent;
             if (headerAvatar) headerAvatar.innerHTML = laterAvatarContent;
         }
@@ -1618,7 +1688,7 @@ async function markEquipmentCollected() {
 }
 
 // Navigation functions
-// Check for expenses over 24 working hours old
+// Check for expenses over 24 working hours old; returns { total, pendingCount, validatedCount }
 async function checkOldExpenses(officeId) {
     try {
         const batchesQuery = window.firebaseQuery(
@@ -1628,26 +1698,32 @@ async function checkOldExpenses(officeId) {
         
         const batchesSnapshot = await window.firebaseGetDocs(batchesQuery);
         const now = new Date();
-        let oldExpenseCount = 0;
+        let pendingCount = 0;
+        let validatedCount = 0;
         
         batchesSnapshot.docs.forEach(doc => {
             const batch = doc.data();
-            if (batch.status === 'pending' || batch.status === 'validated') {
-                const submittedAt = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date(batch.submittedAt);
-                if (submittedAt) {
-                    const workingHours = calculateWorkingHours(submittedAt, now);
-                    if (workingHours > 24) {
-                        oldExpenseCount++;
-                    }
-                }
+            if (batch.status !== 'pending' && batch.status !== 'validated') return;
+            const submittedAt = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date(batch.submittedAt);
+            if (!submittedAt) return;
+            const workingHours = calculateWorkingHours(submittedAt, now);
+            if (workingHours > 24) {
+                if (batch.status === 'pending') pendingCount++;
+                else validatedCount++;
             }
         });
         
-        return oldExpenseCount;
+        return { total: pendingCount + validatedCount, pendingCount, validatedCount };
     } catch (error) {
         console.error('Error checking old expenses:', error);
-        return 0;
+        return { total: 0, pendingCount: 0, validatedCount: 0 };
     }
+}
+
+function getOverdueExpensesTab(result) {
+    if (!result || result.total === 0) return 'pending';
+    if (result.pendingCount > 0) return 'pending';
+    return 'validated';
 }
 
 // Calculate working hours between two dates (8am-5pm Mon-Fri only)
@@ -1754,10 +1830,10 @@ async function updateNotificationCount() {
         const availabilityCount = Object.keys(driverChanges).length;
         
         // Check for old expenses (>24 working hours)
-        const oldExpenseCount = await checkOldExpenses(officeId);
-        
-        // Total notification count (availability changes + old expenses)
-        const unreadCount = availabilityCount + (oldExpenseCount > 0 ? 1 : 0);
+                const oldExpenseResult = await checkOldExpenses(officeId);
+                
+                // Total notification count (availability changes + old expenses)
+                const unreadCount = availabilityCount + (oldExpenseResult.total > 0 ? 1 : 0);
         
         // Update notification badge on all pages
         updateNotificationBadge(unreadCount);
@@ -1810,7 +1886,8 @@ async function loadNotifications() {
         const notificationsSnapshot = await window.firebaseGetDocs(notificationsQuery);
         const notificationsList = document.getElementById('notificationsList');
         
-        const oldExpenseCount = await checkOldExpenses(officeId);
+        const oldExpenseResult = await checkOldExpenses(officeId);
+        const overdueTab = getOverdueExpensesTab(oldExpenseResult);
         
         const driverChanges = {};
         // Filter to only unseen notifications and convert dates
@@ -1875,17 +1952,17 @@ async function loadNotifications() {
         const sortedDrivers = Object.values(driverChanges).sort((a, b) => b.latestDate - a.latestDate);
         notificationsList.innerHTML = '';
         
-        if (oldExpenseCount > 0) {
-            const expenseNotification = createOldExpenseNotificationElement(oldExpenseCount);
-            notificationsList.appendChild(expenseNotification);
-        }
-        
-        sortedDrivers.forEach(driverData => {
-            const notificationElement = createAggregatedNotificationElement(driverData);
-            notificationsList.appendChild(notificationElement);
-        });
-        
-        if (oldExpenseCount === 0 && sortedDrivers.length === 0) {
+                if (oldExpenseResult.total > 0) {
+                    const expenseNotification = createOldExpenseNotificationElement(oldExpenseResult.total, overdueTab);
+                    notificationsList.appendChild(expenseNotification);
+                }
+                
+                sortedDrivers.forEach(driverData => {
+                    const notificationElement = createAggregatedNotificationElement(driverData);
+                    notificationsList.appendChild(notificationElement);
+                });
+                
+                if (oldExpenseResult.total === 0 && sortedDrivers.length === 0) {
             notificationsList.innerHTML = '<div class="px-4 py-3 text-gray-400 text-sm text-center">No notifications yet</div>';
         }
     } catch (error) {
@@ -1893,27 +1970,29 @@ async function loadNotifications() {
     }
 }
 
-// Create old expense notification element
-function createOldExpenseNotificationElement(count) {
-    const element = document.createElement('div');
-    element.className = 'px-4 py-3 border-b border-[#283039] cursor-pointer hover:bg-[#283039] transition-colors bg-[#283039]';
-    element.onclick = () => {
-        document.getElementById('notificationDropdown').classList.add('hidden');
-        window.location.href = '/pages/expenses.html';
-    };
-    
-    element.innerHTML = `
-        <div class="flex items-start justify-between">
-            <div class="flex-1">
-                <div class="text-white text-sm font-medium">There are ${count} ${count === 1 ? 'expense' : 'expenses'} that are 24 working hours old</div>
-                <div class="text-[#9cabba] text-xs mt-1">Click to view expenses</div>
-            </div>
-            <div class="w-2 h-2 bg-red-500 rounded-full ml-2 mt-1"></div>
-        </div>
-    `;
-    
-    return element;
-}
+// Create old expense notification element; tab = which tab to open (pending or validated)
+        function createOldExpenseNotificationElement(count, tab) {
+            const openTab = (tab === 'validated' || tab === 'pending') ? tab : 'pending';
+            const url = '/pages/expenses.html?tab=' + openTab;
+            const element = document.createElement('div');
+            element.className = 'px-4 py-3 border-b border-[#283039] cursor-pointer hover:bg-[#283039] transition-colors bg-[#283039]';
+            element.onclick = () => {
+                document.getElementById('notificationDropdown').classList.add('hidden');
+                window.location.href = url;
+            };
+            
+            element.innerHTML = `
+                <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                        <div class="text-white text-sm font-medium">There ${count === 1 ? 'is' : 'are'} ${count} expense${count === 1 ? '' : 's'} over 24 working hours old</div>
+                        <div class="text-[#9cabba] text-xs mt-1">Click to view in ${openTab === 'validated' ? 'Validated' : 'Pending'} tab</div>
+                    </div>
+                    <div class="w-2 h-2 bg-red-500 rounded-full ml-2 mt-1"></div>
+                </div>
+            `;
+            
+            return element;
+        }
 
 // Create aggregated notification element
 function createAggregatedNotificationElement(driverData) {

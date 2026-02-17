@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <link crossorigin="" href="https://fonts.gstatic.com/" rel="preconnect"/>
+    <link as="style" href="https://fonts.googleapis.com/css2?display=swap&amp;family=Inter%3Awght%40400%3B500%3B700%3B900&amp;family=Noto+Sans%3Awght%40400%3B500%3B700%3B900" onload="this.rel='stylesheet'" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16.png">
+    <link rel="icon" type="image/svg+xml" href="/assets/logos/favicon.svg">
+    <link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png">
+    <link rel="stylesheet" href="/assets/css/responsive-nav.css">
+    <title>Dashboard - SOTO Routes</title>
+    <script src="/assets/js/tailwind-runtime.js"></script>
+    <script src="/js/mobile-nav.js"></script>
+    <script src="/js/session-manager.js"></script>
+    <script src="/js/settings.js"></script>
+    <script src="../js/ui-dialogs.js"></script>
+    <script>
+        tailwind.config = { plugins: { forms: {}, containerQueries: {} } };
+    </script>
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, getDocs, getDoc, doc, query, where } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getAuth, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+        const firebaseConfig = {
+            apiKey: "AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA",
+            authDomain: "soto-routes.firebaseapp.com",
+            projectId: "soto-routes",
+            storageBucket: "soto-routes.firebasestorage.app",
+            messagingSenderId: "440989695549",
+            appId: "1:440989695549:web:0bce8b92a46f7f79953454",
+            measurementId: "G-4E3G40QQ9L"
+        };
+        const app = initializeApp(firebaseConfig);
+        window.firestore = getFirestore(app);
+        window.auth = getAuth(app);
+        window.firebase = { functions: getFunctions(app), httpsCallable };
+        window.firebaseGetDoc = getDoc;
+        window.firebaseGetDocs = getDocs;
+        window.firebaseDoc = doc;
+        window.firebaseCollection = collection;
+        window.firebaseQuery = query;
+        window.firebaseWhere = where;
+        window.signOut = signOut;
+    </script>
+    <style type="text/tailwindcss">
+        :root { --primary-color: #0d7ff2; --success-color: #22c55e; }
+    </style>
+    <style>
+        .spinner-wrapper { width: 64px; height: 64px; position: relative; }
+        .spinner { width: 64px; height: 64px; border-radius: 50%; position: absolute; top: 0; left: 0; animation: spin 1.7s linear infinite; filter: blur(1px); }
+        .spinner::before { content: ''; position: absolute; inset: 0; border-radius: 50%; background-image: linear-gradient(rgb(186, 66, 255) 35%, rgb(0, 225, 255)); box-shadow: 0px -5px 20px 0px rgb(186, 66, 255), 0px 5px 20px 0px rgb(0, 225, 255); }
+        .spinner1 { background-color: rgb(36, 36, 36); width: 52px; height: 52px; border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-[#111418] text-white" style="font-family: Inter, 'Noto Sans', sans-serif;">
+    <div class="relative flex h-auto min-h-screen w-full flex-col dark group/design-root overflow-x-hidden">
+        <div class="flex h-full grow flex-col">
+            <header class="relative flex items-center justify-between whitespace-nowrap border-b border-solid border-b-[#283039] px-6 py-3" data-soto-nav>
+                <div class="flex items-center gap-4">
+                    <div class="size-8 text-[var(--primary-color)]">
+                        <svg fill="none" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M13.8261 17.4264C16.7203 18.1174 20.2244 18.5217 24 18.5217C27.7756 18.5217 31.2797 18.1174 34.1739 17.4264C36.9144 16.7722 39.9967 15.2331 41.3563 14.1648L24.8486 40.6391C24.4571 41.267 23.5429 41.267 23.1514 40.6391L6.64374 14.1648C8.00331 15.2331 11.0856 16.7722 13.8261 17.4264Z" fill="currentColor"></path>
+                            <path clip-rule="evenodd" d="M39.998 12.236C39.9944 12.2537 39.9875 12.2845 39.9748 12.3294C39.9436 12.4399 39.8949 12.5741 39.8346 12.7175C39.8168 12.7597 39.7989 12.8007 39.7813 12.8398C38.5103 13.7113 35.9788 14.9393 33.7095 15.4811C30.9875 16.131 27.6413 16.5217 24 16.5217C20.3587 16.5217 17.0125 16.131 14.2905 15.4811C12.0012 14.9346 9.44505 13.6897 8.18538 12.8168C8.17384 12.7925 8.16216 12.767 8.15052 12.7408C8.09919 12.6249 8.05721 12.5114 8.02977 12.411C8.00356 12.3152 8.00039 12.2667 8.00004 12.2612C8.00004 12.261 8 12.2607 8.00004 12.2612C8.00004 12.2359 8.0104 11.9233 8.68485 11.3686C9.34546 10.8254 10.4222 10.2469 11.9291 9.72276C14.9242 8.68098 19.1919 8 24 8C28.8081 8 33.0758 8.68098 36.0709 9.72276C37.5778 10.2469 38.6545 10.8254 39.3151 11.3686C39.9006 11.8501 39.9857 12.1489 39.998 12.236ZM4.95178 15.2312L21.4543 41.6973C22.6288 43.5809 25.3712 43.5809 26.5457 41.6973L43.0534 15.223C43.0709 15.1948 43.0878 15.1662 43.104 15.1371L41.3563 14.1648C43.104 15.1371 43.1038 15.1374 43.104 15.1371L43.1051 15.135L43.1065 15.1325L43.1101 15.1261L43.1199 15.1082C43.1276 15.094 43.1377 15.0754 43.1497 15.0527C43.1738 15.0075 43.2062 14.9455 43.244 14.8701C43.319 14.7208 43.4196 14.511 43.5217 14.2683C43.6901 13.8679 44 13.0689 44 12.2609C44 10.5573 43.003 9.22254 41.8558 8.2791C40.6947 7.32427 39.1354 6.55361 37.385 5.94477C33.8654 4.72057 29.133 4 24 4C18.867 4 14.1346 4.72057 10.615 5.94478C8.86463 6.55361 7.30529 7.32428 6.14419 8.27911C4.99695 9.22255 3.99999 10.5573 3.99999 12.2609C3.99999 13.1275 4.29264 13.9078 4.49321 14.3607C4.60375 14.6102 4.71348 14.8196 4.79687 14.9689C4.83898 15.0444 4.87547 15.1065 4.9035 15.1529C4.91754 15.1762 4.92954 15.1957 4.93916 15.2111L4.94662 15.223L4.95178 15.2312ZM35.9868 18.996L24 38.22L12.0131 18.996C12.4661 19.1391 12.9179 19.2658 13.3617 19.3718C16.4281 20.1039 20.0901 20.5217 24 20.5217C27.9099 20.5217 31.5719 20.1039 34.6383 19.3718C35.082 19.2658 35.5339 19.1391 35.9868 18.996Z" fill="currentColor" fill-rule="evenodd"></path>
+                        </svg>
+                    </div>
+                    <h2 class="text-xl font-bold">SOTO Routes</h2>
+                </div>
+                <nav class="flex flex-1 justify-center gap-2" data-soto-nav-links>
+                    <a class="bg-[#283039] text-white text-xs font-medium rounded-md px-3 py-2" href="/pages/dashboard.html">Dashboard</a>
+                    <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/optimisation.html">Optimisation</a>
+                    <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/drivers.html">Drivers</a>
+                    <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/availability.html">Availability</a>
+                    <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/expenses.html">Expenses</a>
+                    <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/wait-times.html">Wait Times</a>
+                    <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/messages.html">Messages</a>
+                    <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="#">Authorization</a>
+                </nav>
+                <div class="flex items-center gap-4">
+                    <button type="button" class="mobile-nav-toggle" data-soto-nav-toggle aria-label="Toggle navigation" aria-expanded="false">
+                        <span class="material-symbols-outlined text-xl">menu</span>
+                    </button>
+                    <div class="relative">
+                        <button class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors relative" onclick="showNotifications()">
+                            <span class="material-symbols-outlined text-xl">notifications</span>
+                            <span class="notification-badge absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold hidden">0</span>
+                        </button>
+                        <div id="notificationDropdown" class="hidden absolute right-0 mt-2 w-96 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50 max-h-[28rem] overflow-y-auto">
+                            <div class="px-4 py-3 border-b border-[#283039]"><h3 class="text-white font-semibold text-sm">Notifications</h3></div>
+                            <div id="notificationsList" class="max-h-64 overflow-y-auto"></div>
+                        </div>
+                    </div>
+                    <div class="relative">
+                        <button onclick="toggleProfileDropdown()" class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
+                            <img id="officeLogoImg" src="/assets/logos/favicon.svg" alt="Office Logo" class="w-full h-full object-cover" onerror="this.src='/assets/logos/favicon.svg'">
+                        </button>
+                        <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50 py-2 flex flex-col gap-2">
+                            <button onclick="showSettings()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors rounded-t-lg"><span class="material-symbols-outlined inline-block align-middle text-base mr-2">settings</span>Settings</button>
+                            <button onclick="showChangePassword()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors"><span class="material-symbols-outlined inline-block align-middle text-base mr-2">lock</span>Change Password</button>
+                            <button onclick="viewUsage()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors"><span class="material-symbols-outlined inline-block align-middle text-base mr-2">calendar_month</span>View Usage</button>
+                            <button onclick="logout()" class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-[#283039] transition-colors rounded-b-lg"><span class="material-symbols-outlined inline-block align-middle text-base mr-2">logout</span>Logout</button>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <div id="loading-overlay" class="fixed inset-0 bg-[#0f1419] bg-opacity-95 flex items-center justify-center z-50">
+                <div class="text-center">
+                    <div class="spinner-wrapper mx-auto mb-4"><div class="spinner"></div><div class="spinner1"></div></div>
+                    <p class="text-white text-lg font-semibold">Loading dashboard...</p>
+                </div>
+            </div>
+
+            <main class="flex-1 px-6 py-4">
+                <div class="max-w-7xl mx-auto">
+                    <!-- Today + date -->
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h1 class="text-2xl font-bold tracking-tight mb-1">Today</h1>
+                            <p class="text-[#9cabba] text-sm" id="dashboard-date">—</p>
+                        </div>
+                    </div>
+
+                    <!-- Stats grid -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        <a href="/pages/expenses.html?tab=pending" class="bg-[#1a1f24] border border-[#283039] rounded-lg p-4 hover:bg-[#283039] transition-colors">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-2xl text-amber-500">receipt</span>
+                                <div>
+                                    <div class="text-[#9cabba] text-sm">Pending Expenses</div>
+                                    <div class="text-xl font-bold text-white" id="stat-pending-expenses">0</div>
+                                </div>
+                            </div>
+                        </a>
+                        <a href="/pages/expenses.html?tab=validated" class="bg-[#1a1f24] border border-[#283039] rounded-lg p-4 hover:bg-[#283039] transition-colors">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-2xl text-green-500">check_circle</span>
+                                <div>
+                                    <div class="text-[#9cabba] text-sm">Validated Expenses</div>
+                                    <div class="text-xl font-bold text-white" id="stat-validated-expenses">0</div>
+                                </div>
+                            </div>
+                        </a>
+                        <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-4">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-2xl text-[var(--primary-color)]">groups</span>
+                                <div>
+                                    <div class="text-[#9cabba] text-sm">Drivers working today</div>
+                                    <div class="text-xl font-bold text-white" id="stat-drivers-working">0</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-4">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-2xl text-[#9cabba]">location_on</span>
+                                <div>
+                                    <div class="text-[#9cabba] text-sm">Active drivers</div>
+                                    <div class="text-xl font-bold text-[#6b7280]" id="stat-active-drivers">—</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Map placeholder -->
+                    <div class="bg-[#1a1f24] border border-[#283039] rounded-lg overflow-hidden">
+                        <div class="px-4 py-2 border-b border-[#283039] flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[#9cabba]">map</span>
+                            <span class="text-sm font-medium text-[#9cabba]">Driver locations (coming soon)</span>
+                        </div>
+                        <div class="relative w-full" style="height: 400px;">
+                            <iframe
+                                src="https://www.openstreetmap.org/export/embed.html?bbox=-8.5%2C49.5%2C2.5%2C61.5&layer=mapnik&marker=54.5,-2"
+                                class="absolute inset-0 w-full h-full border-0"
+                                loading="lazy"
+                                referrerpolicy="no-referrer-when-downgrade"
+                                title="UK map placeholder"
+                            ></iframe>
+                            <div class="absolute bottom-2 left-2 right-2 text-center">
+                                <span class="inline-block bg-[#1a1f24]/90 text-[#9cabba] text-xs px-2 py-1 rounded">UK — driver last ping will appear here when available</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        let currentSession = null;
+        const notifyWarning = (m, t) => window.uiDialogs && window.uiDialogs.showAlert({ title: t || 'Heads Up', message: m, tone: 'warning' });
+        const notifyError = (m, t) => window.uiDialogs && window.uiDialogs.showAlert({ title: t || 'Error', message: m, tone: 'danger' });
+
+        function getCurrentOfficeId() { return currentSession?.officeId || null; }
+
+        async function loadOfficeLogo(officeId) {
+            if (!officeId || !document.getElementById('officeLogoImg')) return;
+            try {
+                const officeDocRef = window.firebaseDoc(window.firestore, 'offices', officeId);
+                const officeDoc = await window.firebaseGetDoc(officeDocRef);
+                if (officeDoc.exists() && officeDoc.data().logoUrl) {
+                    const logoImg = document.getElementById('officeLogoImg');
+                    logoImg.src = officeDoc.data().logoUrl;
+                    logoImg.onerror = () => { logoImg.src = '/assets/logos/favicon.svg'; };
+                }
+            } catch (e) { console.warn('[Dashboard] Logo load failed', e); }
+        }
+
+        // Expense counts for dashboard (pending and validated batches)
+        async function loadExpenseCounts(officeId) {
+            try {
+                const q = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'expenseBatches'),
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                const snap = await window.firebaseGetDocs(q);
+                let pending = 0, validated = 0;
+                snap.docs.forEach(doc => {
+                    const s = doc.data().status;
+                    if (s === 'pending') pending++;
+                    else if (s === 'validated') validated++;
+                });
+                return { pending, validated };
+            } catch (e) {
+                console.error('[Dashboard] Expense counts failed', e);
+                return { pending: 0, validated: 0 };
+            }
+        }
+
+        async function loadDriversCount(officeId) {
+            try {
+                const q = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'drivers'),
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                const snap = await window.firebaseGetDocs(q);
+                return snap.docs.length;
+            } catch (e) {
+                console.error('[Dashboard] Drivers count failed', e);
+                return 0;
+            }
+        }
+
+        async function loadDriversWorkingToday(officeId) {
+            try {
+                const total = await loadDriversCount(officeId);
+                const now = new Date();
+                const dateString = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+                const calendarRef = window.firebaseDoc(window.firestore, 'calendar', dateString);
+                const calendarDoc = await window.firebaseGetDoc(calendarRef);
+                const driversOff = calendarDoc.exists() ? (calendarDoc.data().driversOff || []) : [];
+                return Math.max(0, total - driversOff.length);
+            } catch (e) {
+                console.error('[Dashboard] Drivers working today failed', e);
+                return 0;
+            }
+        }
+
+        // Notifications (same pattern as other office pages)
+        async function checkOldExpenses(officeId) {
+            try {
+                const batchesQuery = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'expenseBatches'),
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                const batchesSnapshot = await window.firebaseGetDocs(batchesQuery);
+                const now = new Date();
+                let pendingCount = 0, validatedCount = 0;
+                const addHour = (d) => { const x = new Date(d); x.setHours(x.getHours() + 1); return x; };
+                batchesSnapshot.docs.forEach(doc => {
+                    const batch = doc.data();
+                    if (batch.status !== 'pending' && batch.status !== 'validated') return;
+                    const submittedAt = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date(batch.submittedAt);
+                    if (!submittedAt) return;
+                    let workingHours = 0, currentDate = new Date(submittedAt);
+                    while (currentDate < now) {
+                        const day = currentDate.getDay(), hour = currentDate.getHours();
+                        if (day >= 1 && day <= 5 && hour >= 8 && hour < 17) workingHours += 1;
+                        currentDate = addHour(currentDate);
+                    }
+                    if (workingHours > 24) {
+                        if (batch.status === 'pending') pendingCount++;
+                        else validatedCount++;
+                    }
+                });
+                return { total: pendingCount + validatedCount, pendingCount, validatedCount };
+            } catch (e) {
+                console.error('[Dashboard] checkOldExpenses failed', e);
+                return { total: 0, pendingCount: 0, validatedCount: 0 };
+            }
+        }
+        function getOverdueExpensesTab(result) {
+            if (!result || result.total === 0) return 'pending';
+            if (result.pendingCount > 0) return 'pending';
+            return 'validated';
+        }
+        function createOldExpenseNotificationElement(count, tab) {
+            const openTab = (tab === 'validated' || tab === 'pending') ? tab : 'pending';
+            const url = '/pages/expenses.html?tab=' + openTab;
+            const el = document.createElement('div');
+            el.className = 'px-4 py-3 border-b border-[#283039] cursor-pointer hover:bg-[#283039] transition-colors bg-[#283039]';
+            el.onclick = () => { document.getElementById('notificationDropdown').classList.add('hidden'); window.location.href = url; };
+            el.innerHTML = '<div class="flex items-start justify-between"><div class="flex-1"><div class="text-white text-sm font-medium">There ' + (count === 1 ? 'is' : 'are') + ' ' + count + ' expense' + (count === 1 ? '' : 's') + ' over 24 working hours old</div><div class="text-[#9cabba] text-xs mt-1">Click to view in ' + (openTab === 'validated' ? 'Validated' : 'Pending') + ' tab</div></div><div class="w-2 h-2 bg-red-500 rounded-full ml-2 mt-1"></div></div>';
+            return el;
+        }
+        async function updateNotificationCount() {
+            try {
+                const officeId = getCurrentOfficeId();
+                if (!officeId) return;
+                const notifQuery = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'availabilityNotifications'),
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                const notifSnap = await window.firebaseGetDocs(notifQuery);
+                const unseen = notifSnap.docs.filter(d => d.data().seen !== true);
+                const driverIds = new Set(unseen.map(d => d.data().driverId).filter(Boolean));
+                const availabilityCount = driverIds.size;
+                const oldResult = await checkOldExpenses(officeId);
+                const unreadCount = availabilityCount + (oldResult.total > 0 ? 1 : 0);
+                document.querySelectorAll('.notification-badge').forEach(badge => {
+                    if (unreadCount > 0) { badge.textContent = unreadCount > 99 ? '99+' : unreadCount; badge.classList.remove('hidden'); }
+                    else { badge.classList.add('hidden'); }
+                });
+            } catch (e) { console.error('[Dashboard] updateNotificationCount failed', e); }
+        }
+        async function loadNotifications() {
+            try {
+                const officeId = getCurrentOfficeId();
+                if (!officeId) return;
+                const list = document.getElementById('notificationsList');
+                if (!list) return;
+                const notifQuery = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'availabilityNotifications'),
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                const notifSnap = await window.firebaseGetDocs(notifQuery);
+                const oldResult = await checkOldExpenses(officeId);
+                const overdueTab = getOverdueExpensesTab(oldResult);
+                list.innerHTML = '';
+                if (oldResult.total > 0) list.appendChild(createOldExpenseNotificationElement(oldResult.total, overdueTab));
+                const unseen = notifSnap.docs.filter(d => d.data().seen !== true).map(d => ({ id: d.id, ...d.data() }));
+                if (oldResult.total === 0 && unseen.length === 0) list.innerHTML = '<div class="px-4 py-3 text-gray-400 text-sm text-center">No notifications yet</div>';
+            } catch (e) { console.error('[Dashboard] loadNotifications failed', e); }
+        }
+
+        async function loadDashboardData() {
+            const officeId = getCurrentOfficeId();
+            if (!officeId) return;
+            const [expenseCounts, driversWorking] = await Promise.all([
+                loadExpenseCounts(officeId),
+                loadDriversWorkingToday(officeId)
+            ]);
+            const totalDrivers = await loadDriversCount(officeId);
+            document.getElementById('stat-pending-expenses').textContent = expenseCounts.pending;
+            document.getElementById('stat-validated-expenses').textContent = expenseCounts.validated;
+            document.getElementById('stat-drivers-working').textContent = driversWorking;
+            document.getElementById('stat-active-drivers').textContent = '—';
+        }
+
+        function setDashboardDate() {
+            const el = document.getElementById('dashboard-date');
+            if (!el) return;
+            const d = new Date();
+            el.textContent = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        }
+
+        async function init() {
+            try {
+                currentSession = await window.sotoSession.bootstrap(['office', 'admin']);
+                if (!currentSession) return;
+                if (currentSession.officeId) {
+                    await loadOfficeLogo(currentSession.officeId);
+                    setDashboardDate();
+                    await loadDashboardData();
+                    await updateNotificationCount();
+                }
+            } catch (e) {
+                console.error('[Dashboard] Bootstrap failed', e);
+                return;
+            }
+            const el = document.getElementById('loading-overlay');
+            if (el) { el.style.opacity = '0'; el.style.transition = 'opacity 0.3s ease-out'; setTimeout(() => { el.style.display = 'none'; }, 300); }
+        }
+
+        async function logout() {
+            try { await window.signOut(window.auth); } catch (e) {}
+            window.sotoSession?.clearSession();
+            window.location.href = '/pages/soto-routes-login.html';
+        }
+        function toggleProfileDropdown() { document.getElementById('profileDropdown').classList.toggle('hidden'); }
+        document.addEventListener('click', function(e) {
+            const d = document.getElementById('profileDropdown');
+            if (!e.target.closest('button[onclick="toggleProfileDropdown()"]') && d && !d.contains(e.target)) d.classList.add('hidden');
+        });
+        async function showNotifications() {
+            const dropdown = document.getElementById('notificationDropdown');
+            if (!dropdown) return;
+            dropdown.classList.toggle('hidden');
+            if (!dropdown.classList.contains('hidden')) await loadNotifications();
+        }
+        function showChangePassword() {
+            notifyWarning('Change password is available on other office pages (e.g. Availability or Expenses).', 'Dashboard');
+            document.getElementById('profileDropdown').classList.add('hidden');
+        }
+        function showSettings() {
+            document.getElementById('profileDropdown').classList.add('hidden');
+            notifyWarning('Settings are available on other office pages (e.g. Availability or Expenses).', 'Dashboard');
+        }
+        function viewUsage() {
+            if (currentSession && currentSession.officeId) window.location.href = '/pages/office-calendar.html?officeId=' + currentSession.officeId;
+        }
+
+        if (document.readyState === 'complete' || document.readyState === 'interactive') init();
+        else document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
