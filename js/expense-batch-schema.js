@@ -76,6 +76,17 @@
         return LINE_KEYS.filter(k => hasLineContent(batch.lines[k]));
     }
 
+    /** Returns used line keys in the order they were added (lineOrder). Falls back to getUsedLines for batches without lineOrder or with partial/stale lineOrder. */
+    function getUsedLinesInOrder(batch) {
+        if (!batch || !batch.lines) return [];
+        const used = getUsedLines(batch);
+        const order = batch.lineOrder && Array.isArray(batch.lineOrder) ? batch.lineOrder : null;
+        if (!order || order.length === 0) return used;
+        const fromOrder = order.filter(k => hasLineContent(batch.lines[k]));
+        if (fromOrder.length === used.length && used.every(k => fromOrder.includes(k))) return fromOrder;
+        return used;
+    }
+
     function getUsedLineCount(batch) {
         return getUsedLines(batch).length;
     }
@@ -108,6 +119,7 @@
         getTotalFromLines,
         hasLineContent,
         getUsedLines,
+        getUsedLinesInOrder,
         getUsedLineCount,
         normalizeLines
     };
