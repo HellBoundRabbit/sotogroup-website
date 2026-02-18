@@ -570,17 +570,29 @@
         }
 
         // Settings functions
-        function showSettings() {
+        async function showSettings() {
             const modal = document.getElementById('settingsModal');
             const dropdown = document.getElementById('profileDropdown');
             dropdown.classList.add('hidden');
             modal.classList.remove('hidden');
             
-            // Load current setting value
             const useAsanaApi = window.sotoSettings?.getUseAsanaApiForRoutes() || false;
             const toggle = document.getElementById('useAsanaApiToggle');
-            if (toggle) {
-                toggle.checked = useAsanaApi;
+            if (toggle) toggle.checked = useAsanaApi;
+
+            const officeId = getCurrentOfficeId();
+            if (officeId) {
+                try {
+                    const officeRef = window.doc(window.db, 'offices', officeId);
+                    const officeSnap = await window.getDoc(officeRef);
+                    const data = officeSnap.exists() ? officeSnap.data() : {};
+                    const overdueToggle = document.getElementById('overdueNotificationToggle');
+                    const overdueEmail = document.getElementById('overdueNotificationEmail');
+                    if (overdueToggle) overdueToggle.checked = !!data.overdueNotificationEnabled;
+                    if (overdueEmail) overdueEmail.value = data.overdueNotificationEmail || '';
+                } catch (e) {
+                    console.warn('Could not load office settings for overdue notification', e);
+                }
             }
         }
 
@@ -592,6 +604,40 @@
             if (window.sotoSettings) {
                 window.sotoSettings.setUseAsanaApiForRoutes(checked);
                 console.log('Asana API for routes setting updated:', checked);
+            }
+        }
+
+        async function handleOverdueNotificationToggle(checked) {
+            const officeId = getCurrentOfficeId();
+            if (!officeId) return;
+            const emailEl = document.getElementById('overdueNotificationEmail');
+            const email = (emailEl && emailEl.value) ? emailEl.value.trim() : '';
+            try {
+                await window.updateDoc(window.doc(window.db, 'offices', officeId), {
+                    overdueNotificationEnabled: !!checked,
+                    overdueNotificationEmail: email || ''
+                });
+            } catch (e) {
+                console.error('Failed to save overdue notification setting', e);
+                if (window.uiDialogs) window.uiDialogs.showAlert({ title: 'Settings', message: 'Could not save. You may not have permission to update office settings.', tone: 'danger' });
+            }
+        }
+
+        async function saveOverdueNotificationEmail() {
+            const officeId = getCurrentOfficeId();
+            if (!officeId) return;
+            const toggle = document.getElementById('overdueNotificationToggle');
+            const emailEl = document.getElementById('overdueNotificationEmail');
+            const enabled = toggle ? toggle.checked : false;
+            const email = (emailEl && emailEl.value) ? emailEl.value.trim() : '';
+            try {
+                await window.updateDoc(window.doc(window.db, 'offices', officeId), {
+                    overdueNotificationEnabled: !!enabled,
+                    overdueNotificationEmail: email
+                });
+            } catch (e) {
+                console.error('Failed to save overdue notification email', e);
+                if (window.uiDialogs) window.uiDialogs.showAlert({ title: 'Settings', message: 'Could not save. You may not have permission to update office settings.', tone: 'danger' });
             }
         }
 
@@ -924,6 +970,21 @@
                     >
                     <div class="w-11 h-6 bg-[#283039] peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                 </label>
+            </div>
+            <div class="py-3 border-b border-[#283039]">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex-1">
+                        <label for="overdueNotificationToggle" class="block text-sm font-medium text-white mb-1">
+                            Receive an email notification when expenses are overdue
+                        </label>
+                        <p class="text-xs text-gray-400">One email when expense batches first pass 24 working hours</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                        <input type="checkbox" id="overdueNotificationToggle" class="sr-only peer" onchange="handleOverdueNotificationToggle(this.checked)">
+                        <div class="w-11 h-6 bg-[#283039] peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+                <input type="email" id="overdueNotificationEmail" placeholder="Email address for notifications" class="w-full mt-2 px-3 py-2 bg-[#111418] border border-[#283039] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500" onblur="saveOverdueNotificationEmail()">
             </div>
         </div>
         
