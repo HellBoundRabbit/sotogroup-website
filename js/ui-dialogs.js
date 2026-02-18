@@ -40,10 +40,30 @@
             iconBackground: 'rgba(15, 23, 42, 0.94)',
             glow: 'rgba(239, 68, 68, 0.36)',
         },
+        draft: {
+            accent: '#6b7280',
+            accentSoft: 'rgba(107, 114, 128, 0.2)',
+            accentHighlight: '#9ca3af',
+            icon: 'draft',
+            iconColor: '#9ca3af',
+            iconBackground: 'rgba(15, 23, 42, 0.94)',
+            glow: 'rgba(107, 114, 128, 0.35)',
+        },
+        saveDraftOrDiscard: {
+            accent: '#6b7280',
+            accentSoft: 'rgba(107, 114, 128, 0.2)',
+            accentHighlight: '#9ca3af',
+            icon: 'draft',
+            iconColor: '#9ca3af',
+            iconBackground: 'rgba(15, 23, 42, 0.94)',
+            glow: 'rgba(107, 114, 128, 0.35)',
+            secondaryDanger: true,
+        },
     };
 
     const ICON_PATHS = {
         info: 'M12 2C6.485 2 2 6.485 2 12s4.485 10 10 10 10-4.485 10-10S17.515 2 12 2zm0 3a1.25 1.25 0 110 2.5A1.25 1.25 0 0112 5zm1.5 13h-3a1 1 0 010-2h1v-4h-1a1 1 0 010-2h2a1 1 0 011 1v5h1a1 1 0 010 2z',
+        draft: 'M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z',
         check: 'M12 2C6.486 2 2 6.486 2 12s4.486 10 10 10 10-4.486 10-10S17.514 2 12 2zm4.707 8.707l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L11 13.586l4.293-4.293a1 1 0 011.414 1.414z',
         warning: 'M11.05 3.464c.513-.889 1.887-.889 2.4 0l8.254 14.31c.513.888-.128 2-1.2 2H3.996c-1.072 0-1.713-1.112-1.2-2zM12 9a1 1 0 00-1 1v4a1 1 0 002 0v-4a1 1 0 00-1-1zm0 8a1.25 1.25 0 111.25-1.25A1.25 1.25 0 0112 17z',
         error: 'M12 2a10 10 0 1010 10A10.014 10.014 0 0012 2zm2.707 12.707a1 1 0 01-1.414 0L12 13.414l-1.293 1.293a1 1 0 11-1.414-1.414L10.586 12 9.293 10.707a1 1 0 111.414-1.414L12 10.586l1.293-1.293a1 1 0 011.414 1.414L13.414 12l1.293 1.293a1 1 0 010 1.414z',
@@ -436,16 +456,58 @@
 
         if (state.primaryButton) {
             const isWarning = toneKey === 'warning';
-            state.primaryButton.style.background = isWarning ? 'rgba(234, 88, 12, 0.9)' : 'rgba(10, 14, 23, 0.95)';
-            state.primaryButton.style.color = isWarning ? '#fff' : (tone.accentHighlight || '#f9fafb');
-            state.primaryButton.style.border = isWarning ? '1px solid rgba(251, 146, 60, 0.4)' : `1px solid ${tone.accent}`;
-            state.primaryButton.style.boxShadow = tone.glow ? `0 6px 24px ${tone.glow}` : 'none';
-            state.primaryButton.onmouseenter = () => {
-                state.primaryButton.style.background = isWarning ? 'rgba(194, 65, 12, 0.95)' : 'rgba(17, 23, 36, 0.97)';
+            const isDraft = toneKey === 'draft' || toneKey === 'saveDraftOrDiscard';
+            if (isDraft) {
+                state.primaryButton.style.background = 'rgba(107, 114, 128, 0.85)';
+                state.primaryButton.style.color = '#fff';
+                state.primaryButton.style.border = '1px solid rgba(156, 163, 175, 0.4)';
+                state.primaryButton.style.boxShadow = tone.glow ? `0 6px 24px ${tone.glow}` : 'none';
+                state.primaryButton.onmouseenter = () => {
+                    state.primaryButton.style.background = 'rgba(75, 85, 99, 0.95)';
+                };
+                state.primaryButton.onmouseleave = () => {
+                    state.primaryButton.style.background = 'rgba(107, 114, 128, 0.85)';
+                };
+            } else if (isWarning) {
+                state.primaryButton.style.background = 'rgba(234, 88, 12, 0.9)';
+                state.primaryButton.style.color = '#fff';
+                state.primaryButton.style.border = '1px solid rgba(251, 146, 60, 0.4)';
+                state.primaryButton.style.boxShadow = tone.glow ? `0 6px 24px ${tone.glow}` : 'none';
+                state.primaryButton.onmouseenter = () => {
+                    state.primaryButton.style.background = 'rgba(194, 65, 12, 0.95)';
+                };
+                state.primaryButton.onmouseleave = () => {
+                    state.primaryButton.style.background = 'rgba(234, 88, 12, 0.9)';
+                };
+            } else {
+                state.primaryButton.style.background = 'rgba(10, 14, 23, 0.95)';
+                state.primaryButton.style.color = tone.accentHighlight || '#f9fafb';
+                state.primaryButton.style.border = `1px solid ${tone.accent}`;
+                state.primaryButton.style.boxShadow = tone.glow ? `0 6px 24px ${tone.glow}` : 'none';
+                state.primaryButton.onmouseenter = () => {
+                    state.primaryButton.style.background = 'rgba(17, 23, 36, 0.97)';
+                };
+                state.primaryButton.onmouseleave = () => {
+                    state.primaryButton.style.background = 'rgba(10, 14, 23, 0.95)';
+                };
+            }
+        }
+        if (state.secondaryButton && tone.secondaryDanger) {
+            state.secondaryButton.style.background = 'rgba(185, 28, 28, 0.9)';
+            state.secondaryButton.style.color = '#fff';
+            state.secondaryButton.style.border = '1px solid rgba(248, 113, 113, 0.4)';
+            state.secondaryButton.onmouseenter = () => {
+                state.secondaryButton.style.background = 'rgba(153, 27, 27, 0.95)';
             };
-            state.primaryButton.onmouseleave = () => {
-                state.primaryButton.style.background = isWarning ? 'rgba(234, 88, 12, 0.9)' : 'rgba(10, 14, 23, 0.95)';
+            state.secondaryButton.onmouseleave = () => {
+                state.secondaryButton.style.background = 'rgba(185, 28, 28, 0.9)';
             };
+        } else if (state.secondaryButton) {
+            state.secondaryButton.style.background = '';
+            state.secondaryButton.style.color = '';
+            state.secondaryButton.style.border = '';
+            state.secondaryButton.onmouseenter = null;
+            state.secondaryButton.onmouseleave = null;
         }
     }
 
