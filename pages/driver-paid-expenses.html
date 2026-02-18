@@ -568,7 +568,7 @@
                 
                 let totalPhotos = 0;
                 if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined') {
-                    const used = EXPENSE_BATCH_SCHEMA.getUsedLines ? EXPENSE_BATCH_SCHEMA.getUsedLines(batch) : [];
+                    const used = (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines) ? (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)(batch) : [];
                     totalPhotos = used.reduce((sum, k) => sum + ((batch.lines[k] && batch.lines[k].photos && batch.lines[k].photos.length) || 0), 0);
                 } else {
                     totalPhotos = 0;
@@ -733,9 +733,9 @@
             const categories = ['Fuel', 'Charge', 'Train', 'Bus', 'Taxi', 'Car Wash', 'Tolls', 'Other'];
             
             const expensesByCategory = {};
-            if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) {
+            if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)) {
                 const prefixToCat = { train: 'Train', taxi: 'Taxi', fuel: 'Fuel', charge: 'Charge', bus: 'Bus', carWash: 'Car Wash', toll: 'Tolls', other: 'Other' };
-                (EXPENSE_BATCH_SCHEMA.getUsedLines(batch) || []).forEach(lineKey => {
+                ((EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)(batch) || []).forEach(lineKey => {
                     const line = batch.lines[lineKey];
                     if (!line || !EXPENSE_BATCH_SCHEMA.hasLineContent(line)) return;
                     const prefix = (EXPENSE_BATCH_SCHEMA.getCategoryGroup && EXPENSE_BATCH_SCHEMA.getCategoryGroup(lineKey)) || 'other';
@@ -949,7 +949,7 @@
                 await pdfWritable.write(pdfBlob);
                 await pdfWritable.close();
                 
-                const usedLineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) ? EXPENSE_BATCH_SCHEMA.getUsedLines(batch) : [];
+                const usedLineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)) ? (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)(batch) : [];
                 const expensesForPhotos = usedLineKeys.map(k => (batch.lines || {})[k]).filter(Boolean);
                 let photoIndex = 1;
                 for (const line of expensesForPhotos) {
@@ -1017,7 +1017,7 @@
                 const pdfFileName = `${cleanedReg}_${driverNameForFile}.pdf`;
                 zip.file(folderPath + pdfFileName, pdfBlob);
                 
-                const usedLineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) ? EXPENSE_BATCH_SCHEMA.getUsedLines(batch) : [];
+                const usedLineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)) ? (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)(batch) : [];
                 const expensesForPhotos = usedLineKeys.map(k => (batch.lines || {})[k]).filter(Boolean);
                 let photoIndex = 1;
                 for (const line of expensesForPhotos) {
@@ -1068,8 +1068,8 @@
             const batch = allPaidBatches.find(b => b.id === batchId);
             if (!batch) return;
             const allPhotos = [];
-            if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) {
-                EXPENSE_BATCH_SCHEMA.getUsedLines(batch).forEach(k => {
+            if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)) {
+                (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)(batch).forEach(k => {
                     const line = batch.lines[k];
                     if (line && line.photos) line.photos.forEach(url => { if (typeof url === 'string' && url.startsWith('http')) allPhotos.push(url); });
                 });

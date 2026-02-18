@@ -1134,7 +1134,7 @@
         function renderBatchDetailExpenses() {
             if (!currentBatch) return;
             var categoryEmojis = { 'Fuel': '⛽', 'Charge': '🔌', 'Train': '🚂', 'Bus': '🚌', 'Taxi': '🚕', 'Car Wash': '🧼', 'Tolls': '🛣️', 'Other': '📝', 'fuel': '⛽', 'charge': '🔌', 'train': '🚂', 'bus': '🚌', 'taxi': '🚕', 'car wash': '🧼', 'tolls': '🛣️', 'other': '📝' };
-            var usedKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) ? EXPENSE_BATCH_SCHEMA.getUsedLines(currentBatch) : [];
+            var usedKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)) ? (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines).call(null, currentBatch) : [];
             var getCategoryLabel = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getCategoryLabel) ? EXPENSE_BATCH_SCHEMA.getCategoryLabel : (function(k) { return k; });
             var getCategoryGroup = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getCategoryGroup) ? EXPENSE_BATCH_SCHEMA.getCategoryGroup : (function(k) { return (k || '').replace(/\d+$/, ''); });
             var lineEmojis = { train: '🚂', taxi: '🚕', fuel: '⛽', charge: '🔌', bus: '🚌', carWash: '🧼', toll: '🛣️', other: '📝' };
@@ -1899,7 +1899,7 @@
             await pdfWritable.write(pdfBlob);
             await pdfWritable.close();
             
-            const usedLineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) ? EXPENSE_BATCH_SCHEMA.getUsedLines(batch) : [];
+            const usedLineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)) ? (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines).call(null, batch) : [];
             const expensesForPhotos = usedLineKeys.map(k => (batch.lines || {})[k]).filter(Boolean);
             let photoIndex = 1;
             for (const expense of expensesForPhotos) {
@@ -1975,7 +1975,7 @@
                     const pdfFileName = `${cleanedReg}_${driverNameForFile}.pdf`;
                     zip.file(folderPath + pdfFileName, pdfBlob);
                     
-                    const usedLineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) ? EXPENSE_BATCH_SCHEMA.getUsedLines(batch) : [];
+                    const usedLineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)) ? (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines).call(null, batch) : [];
                     const expensesForPhotos = usedLineKeys.map(k => (batch.lines || {})[k]).filter(Boolean);
                     let photoIndex = 1;
                     for (const expense of expensesForPhotos) {
@@ -2147,9 +2147,9 @@
             
             const categories = ['Fuel', 'Charge', 'Train', 'Bus', 'Taxi', 'Car Wash', 'Tolls', 'Other'];
             const expensesByCategory = {};
-            if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) {
+            if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)) {
                 const prefixToCat = { train: 'Train', taxi: 'Taxi', fuel: 'Fuel', charge: 'Charge', bus: 'Bus', carWash: 'Car Wash', toll: 'Tolls', other: 'Other' };
-                EXPENSE_BATCH_SCHEMA.getUsedLines(batch).forEach(lineKey => {
+                (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines).call(null, batch).forEach(lineKey => {
                     const line = batch.lines[lineKey];
                     if (!line || !EXPENSE_BATCH_SCHEMA.hasLineContent(line)) return;
                     const prefix = (EXPENSE_BATCH_SCHEMA.getCategoryGroup && EXPENSE_BATCH_SCHEMA.getCategoryGroup(lineKey)) || 'other';
@@ -2696,8 +2696,9 @@
             const searchResults = document.getElementById('searchResults');
             const results = [];
             
-            // Search through all batches
+            // Search through all batches (exclude drafts)
             allBatches.forEach(batch => {
+                if (batch.status === 'draft') return;
                 const driverName = (batch.driverName || '').toLowerCase();
                 const driverEmail = (batch.driverEmail || '').toLowerCase();
                 const registration = (batch.registration || '').toLowerCase();

@@ -1085,6 +1085,7 @@
                     updatedAt: batch.updatedAt ? (typeof batch.updatedAt.toDate === 'function' ? batch.updatedAt.toDate().getTime() : batch.updatedAt) : Date.now(),
                     submittedAt: batch.submittedAt ? (typeof batch.submittedAt.toDate === 'function' ? batch.submittedAt.toDate().getTime() : batch.submittedAt) : null
                 };
+                if (batch.lineOrder && Array.isArray(batch.lineOrder)) snapshot.lineOrder = batch.lineOrder.slice();
                 if (hasLines && lineKeys.length) {
                     snapshot.lines = {};
                     lineKeys.forEach(k => {
@@ -1338,6 +1339,7 @@
                 linesForFirestore[k] = { amount: typeof line.amount === 'number' ? line.amount : 0, photos: urls, photosUploading: hasBlobsPending };
             });
             batchData.lines = linesForFirestore;
+            if (draft.lineOrder && Array.isArray(draft.lineOrder)) batchData.lineOrder = draft.lineOrder;
             if (!batchId) {
                 batchData.createdAt = window.serverTimestamp();
                 const batchRef = await window.addDoc(window.collection(window.db, 'expenseBatches'), batchData);
@@ -2171,6 +2173,7 @@
                 registration: '',
                 status: 'draft',
                 lines: emptyLines,
+                lineOrder: [],
                 totalAmount: 0,
                 collectionDate: today
             };
@@ -2532,6 +2535,7 @@
                 : window.confirm('Remove "' + label + '" and its photos from this batch?');
             if (!confirmed) return;
             currentBatch.lines[lineKey] = { amount: 0, photos: [] };
+            if (currentBatch.lineOrder) currentBatch.lineOrder = currentBatch.lineOrder.filter(k => k !== lineKey);
             renderLines();
             if (window.scheduleAutoSave) window.scheduleAutoSave();
         }
@@ -2582,8 +2586,8 @@
             if (!currentBatch || !currentBatch.lines || typeof EXPENSE_BATCH_SCHEMA === 'undefined') return;
             var container = document.getElementById('linesContainer');
             if (!container) return;
-            var getUsedLines = EXPENSE_BATCH_SCHEMA.getUsedLines || (function() { return []; });
-            var usedKeys = getUsedLines(currentBatch);
+            var getUsedLinesInOrder = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder) ? EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder : (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.getUsedLines) ? EXPENSE_BATCH_SCHEMA.getUsedLines : function() { return []; };
+            var usedKeys = getUsedLinesInOrder(currentBatch);
             var getCategoryLabel = EXPENSE_BATCH_SCHEMA.getCategoryLabel || (function(k) { return k; });
             var getCategoryGroup = EXPENSE_BATCH_SCHEMA.getCategoryGroup || (function(k) { return (k || '').replace(/\d+$/, ''); });
             var canEdit = currentBatch.status === 'draft' || currentBatch.status === 'returned';
@@ -3200,6 +3204,8 @@
                     amount: currentExpense.amount,
                     photos: (currentExpense.photos && currentExpense.photos.length) ? currentExpense.photos.slice() : []
                 };
+                if (!currentBatch.lineOrder) currentBatch.lineOrder = [];
+                if (!currentBatch.lineOrder.includes(lineKey)) currentBatch.lineOrder.push(lineKey);
                 window.currentBatch = currentBatch;
                 window.isUserTyping = false;
                 closeExpenseModal();
@@ -4318,7 +4324,7 @@
             const categories = ['Fuel', 'Charge', 'Train', 'Bus', 'Taxi', 'Car Wash', 'Tolls', 'Other'];
             
             const expensesByCategory = {};
-            const usedLines = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getUsedLines) ? EXPENSE_BATCH_SCHEMA.getUsedLines(batch) : [];
+            const usedLines = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)) ? (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)(batch) : [];
             const getCategoryLabel = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getCategoryLabel) ? EXPENSE_BATCH_SCHEMA.getCategoryLabel : (k) => k;
             usedLines.forEach(lineKey => {
                 const line = batch.lines && batch.lines[lineKey];
