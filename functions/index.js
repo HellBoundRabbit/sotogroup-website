@@ -9,6 +9,7 @@
  */
 
 const functions = require("firebase-functions");
+const { onSchedule } = require("firebase-functions/scheduler");
 const admin = require("firebase-admin");
 
 admin.initializeApp();
@@ -86,10 +87,9 @@ async function sendOverdueEmail(toEmail, officeId, overdueCount) {
  * - If count >= 1 and we have not yet sent an email for this "cycle", send one and mark sent.
  * - If count === 0, reset the sent flag so the next time count hits 1 we send again.
  */
-exports.checkOverdueExpenses = functions.pubsub
-  .schedule("every 1 hours")
-  .timeZone("Europe/London")
-  .onRun(async (context) => {
+exports.checkOverdueExpenses = onSchedule(
+  { schedule: "every 1 hours", timeZone: "Europe/London" },
+  async () => {
     const stateCol = db.collection("overdueExpenseNotification");
     const officesSnap = await db.collection("offices").get();
     const now = admin.firestore.FieldValue.serverTimestamp();
