@@ -526,6 +526,8 @@
         let activeTab = 'pending';
         let groupByDriver = false; // Toggle for grouping validated expenses by driver
         let groupByDriverPending = false; // Toggle for grouping pending expenses by driver
+        const BATCH_PAGE_SIZE = 10;
+        const displayedBatchCount = { pending: BATCH_PAGE_SIZE, validated: BATCH_PAGE_SIZE, paid: BATCH_PAGE_SIZE, returned: BATCH_PAGE_SIZE };
         const notifyError = (message, title = 'Error') => uiDialogs.showAlert({ title, message, tone: 'danger' });
         const notifyWarning = (message, title = 'Heads Up') => uiDialogs.showAlert({ title, message, tone: 'warning' });
         const notifySuccess = (message, title = 'Success') => uiDialogs.showAlert({ title, message, tone: 'success' });
@@ -857,15 +859,34 @@
             displayBatches();
         }
 
+        function loadMoreBatches() {
+            displayedBatchCount[activeTab] += BATCH_PAGE_SIZE;
+            displayBatches();
+        }
+
+        function sortByOldestFirst(batches, tab) {
+            return batches.slice().sort((a, b) => {
+                const aTime = (a.submittedAt?.toDate ? a.submittedAt.toDate() : (a.updatedAt?.toDate ? a.updatedAt.toDate() : new Date(a.submittedAt || a.updatedAt || 0))).getTime();
+                const bTime = (b.submittedAt?.toDate ? b.submittedAt.toDate() : (b.updatedAt?.toDate ? b.updatedAt.toDate() : new Date(b.submittedAt || b.updatedAt || 0))).getTime();
+                return aTime - bTime;
+            });
+        }
+
         // Display batches
         function displayBatches() {
             let filtered = allBatches.filter(b => b.status === activeTab);
+            if (activeTab === 'paid') filtered = filtered.filter(b => b.status === 'paid');
+            filtered = sortByOldestFirst(filtered, activeTab);
+            const totalCount = filtered.length;
+            const limit = displayedBatchCount[activeTab];
+            const toDisplay = filtered.slice(0, limit);
+            const hasMore = totalCount > limit;
             
             // Handle grouping by driver for validated expenses
             if (activeTab === 'validated' && groupByDriver) {
-                // Group by driver
+                // Group by driver (using paginated toDisplay)
                 const driverGroups = {};
-                filtered.forEach(batch => {
+                toDisplay.forEach(batch => {
                     const driverId = batch.driverId || batch.driverEmail || 'unknown';
                     if (!driverGroups[driverId]) {
                         driverGroups[driverId] = {
@@ -946,15 +967,23 @@
                             </div>
                         `;
                     }).join('');
+                    if (hasMore) {
+                        list.innerHTML += `<div class="flex justify-center mt-4">
+                            <button onclick="loadMoreBatches()" class="flex items-center gap-2 px-4 py-2 bg-[#283039] hover:bg-[#3a4552] text-white rounded-lg border border-gray-700 transition-colors">
+                                <span class="material-symbols-outlined">expand_more</span>
+                                Load 10 more
+                            </button>
+                        </div>`;
+                    }
                 }
                 return;
             }
             
             // Handle grouping by driver for pending expenses
             if (activeTab === 'pending' && groupByDriverPending) {
-                // Group by driver
+                // Group by driver (using paginated toDisplay)
                 const driverGroups = {};
-                filtered.forEach(batch => {
+                toDisplay.forEach(batch => {
                     const driverId = batch.driverId || batch.driverEmail || 'unknown';
                     if (!driverGroups[driverId]) {
                         driverGroups[driverId] = {
@@ -1035,24 +1064,23 @@
                             </div>
                         `;
                     }).join('');
+                    if (hasMore) {
+                        list.innerHTML += `<div class="flex justify-center mt-4">
+                            <button onclick="loadMoreBatches()" class="flex items-center gap-2 px-4 py-2 bg-[#283039] hover:bg-[#3a4552] text-white rounded-lg border border-gray-700 transition-colors">
+                                <span class="material-symbols-outlined">expand_more</span>
+                                Load 10 more
+                            </button>
+                        </div>`;
+                    }
                 }
                 return;
             }
             
             // Regular display (not grouped)
-            // Sort pending by oldest to newest
-            if (activeTab === 'pending') {
-                filtered.sort((a, b) => {
-                    const aTime = a.submittedAt?.toDate ? a.submittedAt.toDate().getTime() : 0;
-                    const bTime = b.submittedAt?.toDate ? b.submittedAt.toDate().getTime() : 0;
-                    return aTime - bTime; // Ascending order (oldest first)
-                });
-            }
-            
             const list = document.getElementById(`${activeTab}-list`);
             const empty = document.getElementById(`${activeTab}-empty`);
 
-            if (filtered.length === 0) {
+            if (toDisplay.length === 0) {
                 list.innerHTML = '';
                 empty.classList.remove('hidden');
             } else {
@@ -1064,13 +1092,8 @@
                 } else {
                     document.getElementById('paid-header').classList.add('hidden');
                 }
-                
-                // Filter out transferred from paid tab (only show 'paid', not 'transferred')
-            if (activeTab === 'paid') {
-                filtered = filtered.filter(b => b.status === 'paid');
-            }
             
-            list.innerHTML = filtered.map(batch => {
+            list.innerHTML = toDisplay.map(batch => {
                     const date = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
                     
                     // Calculate working hours for pending and validated expenses
@@ -1099,6 +1122,14 @@
                         </div>
                     `;
                 }).join('');
+            if (hasMore) {
+                list.innerHTML += `<div class="flex justify-center mt-4">
+                    <button onclick="loadMoreBatches()" class="flex items-center gap-2 px-4 py-2 bg-[#283039] hover:bg-[#3a4552] text-white rounded-lg border border-gray-700 transition-colors">
+                        <span class="material-symbols-outlined">expand_more</span>
+                        Load 10 more
+                    </button>
+                </div>`;
+            }
             }
         }
 

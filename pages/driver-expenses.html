@@ -2266,6 +2266,7 @@
                         if (draft) {
                             if (draft.notes != null) batch.notes = draft.notes;
                             if (draft.lines && typeof draft.lines === 'object' && (!batch.lines || Object.keys(batch.lines).length === 0)) batch.lines = draft.lines;
+                            if (draft.lineOrder && Array.isArray(draft.lineOrder)) batch.lineOrder = draft.lineOrder.slice();
                         }
                     } catch (dbError) {
                         console.warn('Failed to load draft from IndexedDB:', dbError);
@@ -2286,6 +2287,7 @@
                         var draft = await window.expenseDraftDB.getDraft(batch.localId);
                         if (draft && draft.lines && typeof draft.lines === 'object') {
                             batch.lines = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.normalizeLines) ? EXPENSE_BATCH_SCHEMA.normalizeLines(draft.lines) : draft.lines;
+                            if (draft.lineOrder && Array.isArray(draft.lineOrder)) batch.lineOrder = draft.lineOrder.slice();
                         }
                     } catch (e) {
                         console.warn('Failed to rehydrate draft from IndexedDB:', e);
@@ -2312,6 +2314,7 @@
                             var refetchData = refetchSnap.data();
                             if (refetchData.lines && typeof refetchData.lines === 'object') {
                                 batch.lines = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.normalizeLines) ? EXPENSE_BATCH_SCHEMA.normalizeLines(refetchData.lines) : refetchData.lines;
+                                if (refetchData.lineOrder && Array.isArray(refetchData.lineOrder)) batch.lineOrder = refetchData.lineOrder.slice();
                                 if (typeof console !== 'undefined' && console.log) console.log('[openBatch] Refetched batch from server (some lines were missing photos):', batch.id);
                             }
                         }
