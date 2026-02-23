@@ -433,34 +433,18 @@
         .training-modal-section-body p,
         .training-modal-section-body ul { text-align: left; margin-left: auto; margin-right: auto; }
         .training-video-wrap {
-            position: relative;
             width: 100%;
             max-width: 360px;
             margin: 1rem auto;
             border-radius: 12px;
             overflow: hidden;
             background: #000;
-            aspect-ratio: 16 / 9;
         }
         .training-video-wrap .training-video,
         .training-video-wrap iframe {
-            position: absolute;
-            top: 0;
-            left: 0;
+            display: block;
             width: 100%;
-            height: 100%;
-        }
-        .training-video-wrap { cursor: pointer; }
-        .training-video-wrap::after {
-            content: 'Tap to expand';
-            position: absolute;
-            bottom: 6px;
-            left: 0;
-            right: 0;
-            text-align: center;
-            font-size: 0.7rem;
-            color: rgba(255,255,255,0.8);
-            pointer-events: none;
+            height: auto;
         }
         /* Fullscreen video overlay – fills viewport so video is full size without zoom */
         .training-video-fullscreen {
@@ -669,6 +653,115 @@
         .training-tab-panel.is-active {
             display: block;
         }
+
+        /* Category zoom modal – flip zoom from card (like drivers page) */
+        .category-zoom-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transition: opacity 0.3s ease-out;
+            perspective: 1200px;
+        }
+        .category-zoom-overlay.category-zoom-overlay-visible {
+            visibility: visible;
+        }
+        .category-zoom-overlay-hidden {
+            display: none !important;
+        }
+        .category-zoom-overlay.is-visible {
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+        }
+        .category-zoom-panel {
+            position: relative;
+            width: 100%;
+            max-width: 340px;
+            min-height: 280px;
+            transform-origin: center center;
+            transform-style: preserve-3d;
+            backface-visibility: hidden;
+            transition: transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+            background: rgba(22, 22, 28, 0.98);
+            border: 2px solid rgba(255, 255, 255, 0.15);
+            border-radius: 14px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+        }
+        .category-zoom-panel.standards { border-color: rgba(0, 225, 255, 0.4); }
+        .category-zoom-panel.apps { border-color: rgba(93, 145, 255, 0.4); }
+        .category-zoom-panel.payment { border-color: rgba(186, 66, 255, 0.4); }
+        .category-zoom-panel .category-zoom-close {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 10;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #e5e7eb;
+            border: none;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+        }
+        .category-zoom-panel .category-zoom-close:hover {
+            background: rgba(255, 255, 255, 0.18);
+            color: #fff;
+        }
+        .category-zoom-panel .category-zoom-content {
+            flex: 1;
+            padding: 2rem 1.25rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+        }
+        .category-zoom-panel .category-zoom-content strong {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            opacity: 0.85;
+            margin-bottom: 4px;
+        }
+        .category-zoom-panel.standards .category-zoom-content strong { color: var(--train-cyan); }
+        .category-zoom-panel.apps .category-zoom-content strong { color: var(--train-mid); }
+        .category-zoom-panel.payment .category-zoom-content strong { color: var(--train-purple); }
+        .category-zoom-panel .category-zoom-link {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.6rem 0.75rem;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            font-size: 0.9375rem;
+            text-decoration: none;
+            transition: background 0.2s;
+            background: transparent;
+            cursor: pointer;
+            text-align: left;
+            width: 100%;
+        }
+        .category-zoom-panel.standards .category-zoom-link { color: var(--train-cyan); }
+        .category-zoom-panel.standards .category-zoom-link:hover { background: rgba(0, 225, 255, 0.12); }
+        .category-zoom-panel.apps .category-zoom-link { color: var(--train-mid); }
+        .category-zoom-panel.apps .category-zoom-link:hover { background: rgba(93, 145, 255, 0.12); }
+        .category-zoom-panel.payment .category-zoom-link { color: var(--train-purple); }
+        .category-zoom-panel.payment .category-zoom-link:hover { background: rgba(186, 66, 255, 0.12); }
+        .category-zoom-panel .category-zoom-percent {
+            font-size: 0.75rem;
+            opacity: 0.85;
+        }
     </style>
 </head>
 <body class="bg-black text-white">
@@ -763,6 +856,16 @@
         </div>
     </div>
 
+    <!-- Category flip-zoom modal (larger view of section card) -->
+    <div id="categoryZoomOverlay" class="category-zoom-overlay category-zoom-overlay-hidden" aria-hidden="true" onclick="if (event.target === this) closeTrainingCategoryZoom()">
+        <div id="categoryZoomPanel" class="category-zoom-panel standards" onclick="event.stopPropagation()">
+            <button type="button" class="category-zoom-close" onclick="closeTrainingCategoryZoom()" aria-label="Close">
+                <span class="material-symbols-outlined" style="font-size: 20px;">close</span>
+            </button>
+            <div id="categoryZoomContent" class="category-zoom-content"></div>
+        </div>
+    </div>
+
     <!-- Full-screen modals (one per topic, placeholder content) -->
     <div id="trainingModalOverlay" class="training-modal-overlay" aria-hidden="true">
         <div class="training-modal-header">
@@ -834,9 +937,11 @@
             { key: 'all-jobs', title: 'All Jobs', sectionId: 'standards', subs: [{ title: 'Collection' }, { title: 'On the drive' }, { title: 'Delivery' }] },
             { key: 'johnsons', title: 'Johnsons Fleet Services', sectionId: 'standards', subs: [{ title: 'Collection' }] },
             { key: 'motorway', title: 'Motorway', sectionId: 'standards', subs: [{ title: 'Standards' }] },
+            { key: 'quiz-standards', title: 'Standards quiz', sectionId: 'standards', subs: [{ title: 'Quiz' }] },
             { key: 'apps-model', title: 'MoDel', sectionId: 'apps', subs: [{ title: 'Tutorial' }] },
             { key: 'apps-google-maps', title: 'Google Maps', sectionId: 'apps', subs: [{ title: 'Tutorial' }] },
             { key: 'apps-whatsapp', title: 'WhatsApp', sectionId: 'apps', subs: [{ title: 'General group' }] },
+            { key: 'quiz-apps', title: 'Apps quiz', sectionId: 'apps', subs: [{ title: 'Quiz' }] },
             { key: 'payment-placeholder', title: 'Coming soon', sectionId: 'payment', subs: [{ title: 'Content' }] }
         ];
 
@@ -885,7 +990,9 @@
                 }]
             },
             'apps-whatsapp': { title: 'WhatsApp', sections: [ { title: 'General group', body: '<p><em>WhatsApp / General Group Chat section content will appear here. This links from the Johnsons Collection standards.</em></p>' } ] },
-            'payment-placeholder': { title: 'Payment and invoicing', sections: [ { title: 'Content', body: '<p><em>Content to be added.</em></p>' } ] }
+            'payment-placeholder': { title: 'Payment and invoicing', sections: [ { title: 'Content', body: '<p><em>Content to be added.</em></p>' } ] },
+            'quiz-standards': { title: 'Standards quiz', isQuiz: true },
+            'quiz-apps': { title: 'Apps quiz', isQuiz: true }
         };
 
         var QUIZ_STANDARDS = [
@@ -1015,6 +1122,101 @@
         }
         window.toggleFlipCard = toggleFlipCard;
 
+        var currentCategoryZoomWrap = null;
+
+        function openTrainingCategoryZoom(wrapEl) {
+            if (!wrapEl) return;
+            var sectionId = wrapEl.getAttribute && wrapEl.getAttribute('data-section-id');
+            if (!sectionId) return;
+            var section = TRAINING_SECTIONS.find(function (s) { return s.id === sectionId; });
+            var cats = TRAINING_CATEGORIES.filter(function (c) { return c.sectionId === sectionId; });
+            if (!section || !cats.length) return;
+
+            var overlay = document.getElementById('categoryZoomOverlay');
+            var panel = document.getElementById('categoryZoomPanel');
+            var contentEl = document.getElementById('categoryZoomContent');
+            if (!overlay || !panel || !contentEl) return;
+
+            currentCategoryZoomWrap = wrapEl;
+
+            var progress = getTrainingProgress();
+            var useServerComplete = (userTrainingComplete === 1);
+            var colorClass = section.colorClass || 'standards';
+            panel.className = 'category-zoom-panel ' + colorClass;
+
+            var html = '<strong>Topics</strong>';
+            cats.forEach(function (cat) {
+                var completedCount = getCategoryCompleted(progress, cat.key);
+                var total = cat.subs.length;
+                var percent = useServerComplete ? 100 : (total ? Math.round((completedCount / total) * 100) : 0);
+                html += '<a class="category-zoom-link" href="javascript:void(0)" onclick="closeTrainingCategoryZoom(); openTrainingModal(\'' + cat.key + '\')">' + escapeHtml(cat.title) + '<span class="category-zoom-percent">' + percent + '%</span></a>';
+            });
+            contentEl.innerHTML = html;
+
+            overlay.classList.remove('is-visible', 'category-zoom-overlay-hidden');
+            overlay.classList.add('category-zoom-overlay-visible');
+            panel.style.transform = '';
+
+            var wrapRect = wrapEl.getBoundingClientRect();
+            var panelRect = panel.getBoundingClientRect();
+            var panelCenterX = panelRect.left + panelRect.width / 2;
+            var panelCenterY = panelRect.top + panelRect.height / 2;
+            var wrapCenterX = wrapRect.left + wrapRect.width / 2;
+            var wrapCenterY = wrapRect.top + wrapRect.height / 2;
+            var scaleX = (panelRect.width > 0) ? wrapRect.width / panelRect.width : 0.25;
+            var scaleY = (panelRect.height > 0) ? wrapRect.height / panelRect.height : 0.25;
+
+            panel.style.transform = 'translate(' + (wrapCenterX - panelCenterX) + 'px, ' + (wrapCenterY - panelCenterY) + 'px) scale(' + scaleX + ', ' + scaleY + ') rotateY(-25deg)';
+
+            requestAnimationFrame(function () {
+                overlay.classList.add('is-visible');
+                requestAnimationFrame(function () {
+                    panel.offsetHeight;
+                    panel.style.transform = 'translate(0, 0) scale(1, 1) rotateY(0deg)';
+                });
+            });
+        }
+        window.openTrainingCategoryZoom = openTrainingCategoryZoom;
+
+        function closeTrainingCategoryZoom() {
+            var overlay = document.getElementById('categoryZoomOverlay');
+            var panel = document.getElementById('categoryZoomPanel');
+            if (!overlay || !panel) {
+                currentCategoryZoomWrap = null;
+                return;
+            }
+
+            var wrapEl = currentCategoryZoomWrap;
+            if (wrapEl && wrapEl.getBoundingClientRect) {
+                var wrapRect = wrapEl.getBoundingClientRect();
+                var panelRect = panel.getBoundingClientRect();
+                var panelCenterX = panelRect.left + panelRect.width / 2;
+                var panelCenterY = panelRect.top + panelRect.height / 2;
+                var wrapCenterX = wrapRect.left + wrapRect.width / 2;
+                var wrapCenterY = wrapRect.top + wrapRect.height / 2;
+                var scaleX = wrapRect.width / panelRect.width;
+                var scaleY = wrapRect.height / panelRect.height;
+
+                panel.style.transform = 'translate(' + (wrapCenterX - panelCenterX) + 'px, ' + (wrapCenterY - panelCenterY) + 'px) scale(' + scaleX + ', ' + scaleY + ') rotateY(-25deg)';
+                overlay.classList.remove('is-visible');
+
+                var onEnd = function () {
+                    panel.removeEventListener('transitionend', onEnd);
+                    panel.style.transform = '';
+                    overlay.classList.remove('category-zoom-overlay-visible', 'is-visible');
+                    overlay.classList.add('category-zoom-overlay-hidden');
+                    currentCategoryZoomWrap = null;
+                };
+                panel.addEventListener('transitionend', onEnd, { once: true });
+            } else {
+                overlay.classList.remove('is-visible', 'category-zoom-overlay-visible');
+                overlay.classList.add('category-zoom-overlay-hidden');
+                panel.style.transform = '';
+                currentCategoryZoomWrap = null;
+            }
+        }
+        window.closeTrainingCategoryZoom = closeTrainingCategoryZoom;
+
         function renderTrainingCategories() {
             var container = document.getElementById('trainingCategoriesList');
             if (!container) return;
@@ -1027,7 +1229,7 @@
                 var colorClass = section.colorClass || 'standards';
                 var icon = section.icon || 'folder';
                 html += '<div class="training-section">';
-                html += '<div class="flip-card-wrap" onclick="toggleFlipCard(this)">';
+                html += '<div class="flip-card-wrap" data-section-id="' + section.id + '" onclick="openTrainingCategoryZoom(this)">';
                 html += '<div class="flip-card">';
                 html += '<div class="flip-card-inner">';
                 var sectionPercent = useServerComplete ? 100 : getSectionProgressPercent(progress, section.id);
@@ -1203,6 +1405,14 @@
                 }
                 body = body.replace('__GOOGLE_MAPS_VIDEO__', videoHtml);
             }
+            var sectionId = cat ? cat.sectionId : '';
+            if (sectionId === 'standards') {
+                body += '<div class="training-modal-section mt-6 pt-4 border-t border-white/10"><h4 class="training-modal-section-title">Quiz</h4><p class="training-modal-section-body mb-3">Test your knowledge of the standards.</p><button type="button" class="training-understood-btn" onclick="openTrainingModal(\'quiz-standards\')">Take Standards quiz</button></div>';
+            } else if (sectionId === 'apps') {
+                body += '<div class="training-modal-section mt-6 pt-4 border-t border-white/10"><h4 class="training-modal-section-title">Quiz</h4><p class="training-modal-section-body mb-3">Test your knowledge of the apps.</p><button type="button" class="training-understood-btn" onclick="openTrainingModal(\'quiz-apps\')">Take Apps quiz</button></div>';
+            } else if (sectionId === 'payment') {
+                body += '<div class="training-modal-section mt-6 pt-4 border-t border-white/10"><h4 class="training-modal-section-title">Quiz</h4><p class="training-modal-section-body text-gray-500">Quiz coming soon.</p></div>';
+            }
             return body;
         }
 
@@ -1288,18 +1498,6 @@
             if (overlayEl) {
                 overlayEl.addEventListener('click', function (e) {
                     if (e.target === overlayEl) closeTrainingModal();
-                    var wrap = e.target.closest('.training-video-wrap');
-                    if (wrap) {
-                        e.preventDefault();
-                        var vid = wrap.querySelector('video');
-                        var iframe = wrap.querySelector('iframe');
-                        if (vid && vid.src) {
-                            vid.pause();
-                            openTrainingVideoFullscreen(vid.src);
-                        } else if (iframe && iframe.src) {
-                            openTrainingVideoFullscreen(iframe.src);
-                        }
-                    }
                 });
             }
             var fullscreenOverlay = document.getElementById('trainingVideoFullscreen');

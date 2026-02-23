@@ -693,22 +693,44 @@
             return driverNameCache.get(driverId);
         }
 
-        // Try to fetch from Firestore
+        const officeId = getCurrentOfficeId();
+        if (!officeId) return null;
+
+        // Try drivers collection first (office users have read access)
         try {
-            const userDoc = await window.getDoc(window.doc(window.db, 'users', driverId));
-            if (userDoc.exists()) {
-                const userData = userDoc.data();
-                const firstName = userData.firstName || '';
-                const lastName = userData.lastName || '';
+            const driversQuery = window.query(
+                window.collection(window.db, 'drivers'),
+                window.where('officeId', '==', officeId),
+                window.where('uid', '==', driverId)
+            );
+            const driversSnap = await window.getDocs(driversQuery);
+            if (!driversSnap.empty) {
+                const driverData = driversSnap.docs[0].data();
+                const firstName = driverData.firstName || '';
+                const lastName = driverData.lastName || '';
                 const name = { firstName, lastName };
                 driverNameCache.set(driverId, name);
                 return name;
             }
         } catch (error) {
-            console.warn('[DRIVER_NAME] Error fetching driver name:', error);
+            console.warn('[DRIVER_NAME] Error fetching driver name from drivers:', error);
         }
 
-        // Return null if not found
+        // Fallback: try users (admins only; office users may not have access)
+        try {
+            const userDoc = await window.getDoc(window.doc(window.db, 'users', driverId));
+            if (userDoc.exists()) {
+                const userData = userDoc.data();
+                const firstName = userData.firstName || (userData.name ? userData.name.split(' ')[0] : '') || '';
+                const lastName = userData.lastName || (userData.name ? userData.name.split(' ').slice(1).join(' ') : '') || '';
+                const name = { firstName, lastName };
+                driverNameCache.set(driverId, name);
+                return name;
+            }
+        } catch (error) {
+            console.warn('[DRIVER_NAME] Error fetching driver name from users:', error);
+        }
+
         return null;
     }
 
