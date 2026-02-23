@@ -10,7 +10,10 @@
 
 const functions = require("firebase-functions");
 const { onSchedule } = require("firebase-functions/scheduler");
+const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
+
+const RESEND_API_KEY = defineSecret("RESEND_API_KEY");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -33,8 +36,8 @@ function calculateWorkingHours(startDate, endDate) {
 /** Count batches for one office that are over 24 working hours (pending or validated). */
 async function getOverdueCount(officeId) {
   const snap = await db.collection("expenseBatches")
-    .where("officeId", "==", officeId)
-    .get();
+      .where("officeId", "==", officeId)
+      .get();
   const now = new Date();
   let count = 0;
   snap.docs.forEach((doc) => {
@@ -47,34 +50,33 @@ async function getOverdueCount(officeId) {
   return count;
 }
 
-/** Send one email via Resend. Uses same config as driver-creation (resend.key, resend.from_email). */
-async function sendOverdueEmail(toEmail, officeId, overdueCount) {
-  const apiKey = process.env.RESEND_API_KEY || functions.config().resend?.key;
+/** Send one email via Resend. Uses same from address as driver login emails. */
+async function sendOverdueEmail(apiKey, toEmail, officeId, overdueCount) {
   if (!apiKey) {
-    functions.logger.warn("Resend API key not set (functions.config().resend.key); skipping email.");
+    functions.logger.warn("Resend API key not set; skipping email.");
     return;
   }
-  const fromEmail = process.env.OVERDUE_FROM_EMAIL || functions.config().resend?.from_email || functions.config().resend?.from || "onboarding@resend.dev";
+  const fromEmail = process.env.OVERDUE_FROM_EMAIL || "SOTOGroup <noreply@sotogroup.uk>";
   const subject = "SOTO Routes: Expense(s) over 24 working hours";
-  const html = `
+    const html = `
     <p>This office has <strong>${overdueCount}</strong> expense batch(es) that have been over 24 working hours (pending or validated).</p>
     <p>Please log in to the Expenses page to review and process them.</p>
     <p>— SOTO Routes</p>
   `;
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: fromEmail,
-      to: [toEmail],
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [toEmail],
       subject,
-      html,
-    }),
-  });
-  if (!res.ok) {
+        html,
+      }),
+    });
+    if (!res.ok) {
     const err = await res.text();
     throw new Error(`Resend API error: ${res.status} ${err}`);
   }
@@ -88,8 +90,9 @@ async function sendOverdueEmail(toEmail, officeId, overdueCount) {
  * - If count === 0, reset the sent flag so the next time count hits 1 we send again.
  */
 exports.checkOverdueExpenses = onSchedule(
-  { schedule: "every 1 hours", timeZone: "Europe/London" },
+  { schedule: "every 1 hours", timeZone: "Europe/London", secrets: [RESEND_API_KEY] },
   async () => {
+    const apiKey = RESEND_API_KEY.value();
     const stateCol = db.collection("overdueExpenseNotification");
     const officesSnap = await db.collection("offices").get();
     const now = admin.firestore.FieldValue.serverTimestamp();
@@ -111,7 +114,7 @@ exports.checkOverdueExpenses = onSchedule(
       if (count >= 1) {
         if (!state.emailSentAt) {
           try {
-            await sendOverdueEmail(toEmail, officeId, count);
+            await sendOverdueEmail(apiKey, toEmail, officeId, count);
             await stateRef.set({
               emailSentAt: now,
               lastOverdueCount: count,
@@ -125,8 +128,8 @@ exports.checkOverdueExpenses = onSchedule(
             lastOverdueCount: count,
             lastCheckedAt: now,
           }, { merge: true });
-        }
-      } else {
+          }
+        } else {
         if (state.emailSentAt) {
           await stateRef.set({
             emailSentAt: null,
@@ -138,4 +141,4 @@ exports.checkOverdueExpenses = onSchedule(
     }
 
     return null;
-  });
+});
