@@ -609,11 +609,11 @@ class="form-input w-full rounded-md bg-[#283039] border border-[#3a444e] focus:r
 </div>
 <p class="text-sm text-[#9cabba] mb-6">Would you like to add a single driver or multiple drivers at once?</p>
 <div class="flex gap-4">
-<button onclick="openSingleDriverModal()" class="flex-1 h-12 px-4 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold transition-colors">
+<button onclick="openSingleDriverModal()" class="flex-1 h-12 px-4 rounded-md bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-600/30 hover:border-blue-600/50 text-sm font-bold transition-all">
 <span class="material-symbols-outlined text-sm align-middle">person</span>
 Single Driver
 </button>
-<button onclick="openMultipleDriverModal()" class="flex-1 h-12 px-4 rounded-md bg-green-600 hover:bg-green-700 text-white text-sm font-bold transition-colors">
+<button onclick="openMultipleDriverModal()" class="flex-1 h-12 px-4 rounded-md bg-green-600/20 hover:bg-green-600/30 text-green-400 border border-green-600/30 hover:border-green-600/50 text-sm font-bold transition-all">
 <span class="material-symbols-outlined text-sm align-middle">group</span>
 Multiple Drivers
 </button>
@@ -623,10 +623,15 @@ Multiple Drivers
 
 <!-- Add Single Driver Modal -->
 <div id="add-driver-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-<div class="bg-[#1a1f24] rounded-lg p-6 w-full max-w-md mx-4 border border-[#283039]">
+<div class="bg-[#1a1f24] rounded-lg p-6 w-full max-w-md mx-4 border border-[#283039] relative">
+<!-- Loading Overlay -->
+<div id="single-driver-loading" class="absolute inset-0 bg-[#1a1f24]/95 rounded-lg flex flex-col items-center justify-center z-10 hidden">
+<span class="material-symbols-outlined text-4xl text-[var(--success-color)] mb-2 animate-spin">progress_activity</span>
+<p class="text-sm text-[#9cabba]">Creating driver...</p>
+</div>
 <div class="flex justify-between items-center mb-4">
 <h2 class="text-xl font-bold">Add New Driver</h2>
-<button onclick="closeAddDriverModal()" class="text-[#9cabba] hover:text-white transition-colors">
+<button id="close-single-driver-btn" onclick="closeAddDriverModal()" class="text-[#9cabba] hover:text-white transition-colors">
 <span class="material-symbols-outlined">close</span>
 </button>
 </div>
@@ -650,7 +655,7 @@ class="form-input w-full rounded-md bg-[#283039] border border-[#3a444e] focus:r
 <input type="checkbox" id="emailCredentialsSingle" name="emailCredentials" class="rounded border-[#3a444e] bg-[#283039] text-[var(--success-color)] focus:ring-[var(--success-color)]">
 <label for="emailCredentialsSingle" class="text-sm text-[#9cabba]">Email login details to this driver</label>
 </div>
-<button type="submit" class="w-full h-10 px-4 rounded-md bg-[var(--success-color)] text-white text-sm font-bold hover:opacity-90 transition-opacity">
+<button id="single-driver-submit-btn" type="submit" class="w-full h-10 px-4 rounded-md bg-[var(--success-color)] text-white text-sm font-bold hover:opacity-90 transition-opacity">
 Add Driver
 </button>
 </form>
@@ -659,10 +664,16 @@ Add Driver
 
 <!-- Add Multiple Drivers Modal -->
 <div id="add-multiple-drivers-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden overflow-y-auto">
-<div class="bg-[#1a1f24] rounded-lg p-6 w-full max-w-4xl mx-4 my-8 border border-[#283039]">
+<div class="bg-[#1a1f24] rounded-lg p-6 w-full max-w-4xl mx-4 my-8 border border-[#283039] relative">
+<!-- Loading Overlay -->
+<div id="multiple-drivers-loading" class="absolute inset-0 bg-[#1a1f24]/95 rounded-lg flex flex-col items-center justify-center z-10 hidden">
+<span class="material-symbols-outlined text-4xl text-[var(--success-color)] mb-2 animate-spin">progress_activity</span>
+<p class="text-sm text-[#9cabba]">Creating drivers...</p>
+<p id="multiple-drivers-progress" class="text-xs text-[#6b7f99] mt-1"></p>
+</div>
 <div class="flex justify-between items-center mb-4">
 <h2 class="text-xl font-bold">Add Multiple Drivers</h2>
-<button onclick="closeMultipleDriverModal()" class="text-[#9cabba] hover:text-white transition-colors">
+<button id="close-multiple-drivers-btn" onclick="closeMultipleDriverModal()" class="text-[#9cabba] hover:text-white transition-colors">
 <span class="material-symbols-outlined">close</span>
 </button>
 </div>
@@ -673,13 +684,13 @@ Add Driver
 </div>
 
 <!-- Add Another Driver Button -->
-<button onclick="addAnotherDriverForm()" class="w-full h-10 px-4 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold transition-colors mb-4">
+<button id="add-another-driver-btn" onclick="addAnotherDriverForm()" class="w-full h-10 px-4 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold transition-colors mb-4">
 <span class="material-symbols-outlined text-sm align-middle">add</span>
 Add Another Driver
 </button>
 
 <!-- Submit All Drivers -->
-<button onclick="submitMultipleDrivers()" class="w-full h-10 px-4 rounded-md bg-green-600 hover:bg-green-700 text-white text-sm font-bold transition-colors">
+<button id="multiple-drivers-submit-btn" onclick="submitMultipleDrivers()" class="w-full h-10 px-4 rounded-md bg-green-600 hover:bg-green-700 text-white text-sm font-bold transition-colors">
 Create All Drivers
 </button>
 </div>
@@ -925,6 +936,17 @@ if (!firstName || !lastName || !email) {
 return;
 }
 
+// Show loading state and disable interactions
+const loadingOverlay = document.getElementById('single-driver-loading');
+const submitBtn = document.getElementById('single-driver-submit-btn');
+const closeBtn = document.getElementById('close-single-driver-btn');
+const formInputs = document.querySelectorAll('#add-driver-form input');
+
+loadingOverlay.classList.remove('hidden');
+submitBtn.disabled = true;
+closeBtn.disabled = true;
+formInputs.forEach(input => input.disabled = true);
+
 try {
 const createDriverFn = getCallable('createDriver');
 const response = await createDriverFn({
@@ -971,6 +993,12 @@ if (error.code === 'already-exists' ||
 } else {
         notifyError('Error adding driver: ' + error.message);
 }
+} finally {
+// Hide loading state and re-enable interactions
+loadingOverlay.classList.add('hidden');
+submitBtn.disabled = false;
+closeBtn.disabled = false;
+formInputs.forEach(input => input.disabled = false);
 }
 }
 
@@ -1184,12 +1212,31 @@ homePostcode: ''
 });
 }
 
+// Show loading state and disable interactions
+const loadingOverlay = document.getElementById('multiple-drivers-loading');
+const progressText = document.getElementById('multiple-drivers-progress');
+const submitBtn = document.getElementById('multiple-drivers-submit-btn');
+const addAnotherBtn = document.getElementById('add-another-driver-btn');
+const closeBtn = document.getElementById('close-multiple-drivers-btn');
+const allInputs = container.querySelectorAll('input');
+const allDeleteBtns = container.querySelectorAll('button');
+
+loadingOverlay.classList.remove('hidden');
+submitBtn.disabled = true;
+addAnotherBtn.disabled = true;
+closeBtn.disabled = true;
+allInputs.forEach(input => input.disabled = true);
+allDeleteBtns.forEach(btn => btn.disabled = true);
+
 const createdDrivers = [];
 let hasErrors = false;
 
 const createDriverFn = getCallable('createDriver');
 
-for (const driver of driversToAdd) {
+for (let i = 0; i < driversToAdd.length; i++) {
+const driver = driversToAdd[i];
+progressText.textContent = `Creating driver ${i + 1} of ${driversToAdd.length}...`;
+
 try {
 const response = await createDriverFn({
 firstName: driver.firstName,
@@ -1219,6 +1266,10 @@ if (error.code === 'already-exists') {
 }
 }
 }
+
+// Hide loading state
+loadingOverlay.classList.add('hidden');
+progressText.textContent = '';
 
 // Close the multiple drivers modal
 closeMultipleDriverModal();
