@@ -17,6 +17,7 @@
     <title>My Availability - SOTO Routes</title>
     <script src="/assets/js/tailwind-runtime.js"></script>
     <script src="/js/session-manager.js"></script>
+    <script src="/js/availability-model.js"></script>
     <script src="../js/ui-dialogs.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
     <!-- Firebase SDK -->
@@ -100,15 +101,14 @@
             position: relative;
         }
         
-        /* Available (on) days - green and green animated border */
+        /* Available (on) days - green solid glowing border */
         .day-card.available:not(.pending-on)::before {
             content: '';
             position: absolute;
-            inset: -3px;
+            inset: -2px;
             border-radius: 0.5rem;
-            background: linear-gradient(45deg, #10b981, #059669, #10b981);
-            background-size: 200% 200%;
-            animation: borderGradient 3s ease infinite;
+            background: #10b981;
+            box-shadow: 0 0 12px #10b981, 0 0 4px #10b981;
             z-index: -1;
         }
         .day-card.available:not(.pending-on)::after {
@@ -119,16 +119,15 @@
             background: rgb(0, 0, 0);
             z-index: -1;
         }
-        
-        /* Unavailable (off) days - red and red animated border */
+
+        /* Unavailable (off) days - red solid glowing border (same thickness as green) */
         .day-card.unavailable:not(.pending-off)::before {
             content: '';
             position: absolute;
-            inset: -3px;
+            inset: -2px;
             border-radius: 0.5rem;
-            background: linear-gradient(45deg, #ef4444, #dc2626, #ef4444);
-            background-size: 200% 200%;
-            animation: borderGradient 3s ease infinite;
+            background: #ef4444;
+            box-shadow: 0 0 12px #ef4444, 0 0 4px #ef4444;
             z-index: -1;
         }
         .day-card.unavailable:not(.pending-off)::after {
@@ -139,16 +138,15 @@
             background: rgb(0, 0, 0);
             z-index: -1;
         }
-        
-        /* Pending change: newly selected off (red and black animated border) */
+
+        /* Pending change: newly selected off (red solid glowing) */
         .day-card.unavailable.pending-off::before {
             content: '';
             position: absolute;
-            inset: -3px;
+            inset: -2px;
             border-radius: 0.5rem;
-            background: linear-gradient(45deg, #ef4444, #000000, #ef4444);
-            background-size: 200% 200%;
-            animation: borderGradient 3s ease infinite;
+            background: #ef4444;
+            box-shadow: 0 0 12px #ef4444, 0 0 4px #ef4444;
             z-index: -1;
         }
         .day-card.unavailable.pending-off::after {
@@ -159,16 +157,50 @@
             background: rgb(0, 0, 0);
             z-index: -1;
         }
-        
-        /* Pending change: changed from off to on (green and black animated border) */
+
+        /* Standby days - amber solid glowing border */
+        .day-card.standby:not(.pending-standby)::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 0.5rem;
+            background: #f59e0b;
+            box-shadow: 0 0 12px #f59e0b, 0 0 4px #f59e0b;
+            z-index: -1;
+        }
+        .day-card.standby:not(.pending-standby)::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 0.5rem;
+            background: rgb(0, 0, 0);
+            z-index: -1;
+        }
+        .day-card.standby.pending-standby::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 0.5rem;
+            background: #f59e0b;
+            box-shadow: 0 0 12px #f59e0b, 0 0 4px #f59e0b;
+            z-index: -1;
+        }
+        .day-card.standby.pending-standby::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 0.5rem;
+            background: rgb(0, 0, 0);
+            z-index: -1;
+        }
+        /* Pending change: changed to on (green solid glowing) */
         .day-card.available.pending-on::before {
             content: '';
             position: absolute;
-            inset: -3px;
+            inset: -2px;
             border-radius: 0.5rem;
-            background: linear-gradient(45deg, #10b981, #000000, #10b981);
-            background-size: 200% 200%;
-            animation: borderGradient 3s ease infinite;
+            background: #10b981;
+            box-shadow: 0 0 12px #10b981, 0 0 4px #10b981;
             z-index: -1;
         }
         .day-card.available.pending-on::after {
@@ -180,25 +212,42 @@
             z-index: -1;
         }
         
-        /* Past days - black background with red line through */
-        .day-card.opacity-50 {
-            background: rgb(0, 0, 0) !important;
-            position: relative;
+        /* Legend icons - glowing border only (no solid fill) */
+        .legend-icon {
+            background: transparent;
+            border-width: 2px;
         }
-        .day-card.opacity-50::before {
-            display: none; /* Hide animated border */
+        .legend-working {
+            border-color: #10b981;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
         }
-        .day-card.opacity-50::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: #ef4444; /* Red line through */
-            transform: translateY(-50%);
-            z-index: 10;
-            display: block;
+        .legend-standby {
+            border-color: #f59e0b;
+            box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+        }
+        .legend-off {
+            border-color: #ef4444;
+            box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+        }
+
+        /* Current day only - darker blue border + soft glow (blue + status color) */
+        .day-card.today.available::before {
+            background: linear-gradient(45deg, #1e40af, #10b981, #1e40af) !important;
+            background-size: 200% 200% !important;
+            animation: borderGradient 3s ease infinite !important;
+            box-shadow: 0 0 14px rgba(59, 130, 246, 0.35), 0 0 6px rgba(59, 130, 246, 0.25) !important;
+        }
+        .day-card.today.standby::before {
+            background: linear-gradient(45deg, #1e40af, #f59e0b, #1e40af) !important;
+            background-size: 200% 200% !important;
+            animation: borderGradient 3s ease infinite !important;
+            box-shadow: 0 0 14px rgba(59, 130, 246, 0.35), 0 0 6px rgba(59, 130, 246, 0.25) !important;
+        }
+        .day-card.today.unavailable::before {
+            background: linear-gradient(45deg, #1e40af, #ef4444, #1e40af) !important;
+            background-size: 200% 200% !important;
+            animation: borderGradient 3s ease infinite !important;
+            box-shadow: 0 0 14px rgba(59, 130, 246, 0.35), 0 0 6px rgba(59, 130, 246, 0.25) !important;
         }
         
         @keyframes borderGradient {
@@ -234,7 +283,8 @@
             background: rgb(36, 36, 36); /* Darker grey background */
             z-index: 1;
         }
-        /* Calendar grid content - on top */
+        /* Month title and grid - on top of calendar background */
+        .calendar-container > #monthYear,
         .calendar-container > .grid {
             position: relative;
             z-index: 2;
@@ -365,8 +415,8 @@
 
     <!-- Top Navigation -->
     <div id="topNav" class="bg-black border-b border-gray-800 sticky top-0 z-50">
-        <div class="flex items-center justify-between px-4 py-3">
-            <button onclick="window.location.href='/pages/driver-portal.html'" class="touch-target">
+        <div class="relative flex items-center justify-between px-4 py-3">
+            <button onclick="window.location.href='/pages/driver-portal.html'" class="touch-target w-14 shrink-0">
                 <div class="spinner-wrapper">
                     <div class="spinner"></div>
                     <div class="spinner1">
@@ -374,8 +424,8 @@
                     </div>
                 </div>
             </button>
-            <h1 class="text-xl font-semibold flex-1 text-center">My Availability</h1>
-            <div class="flex items-center gap-2">
+            <h1 class="absolute left-1/2 -translate-x-1/2 text-xl font-semibold">My Availability</h1>
+            <div class="flex items-center gap-2 w-14 shrink-0 justify-end">
                 <div id="availabilityUploadStatusIndicator" class="hidden flex items-center gap-2 text-sm">
                     <span class="material-symbols-outlined animate-spin text-blue-400" style="font-size: 18px;">sync</span>
                     <span class="text-blue-400 text-xs" id="uploadStatusText">Syncing...</span>
@@ -389,70 +439,48 @@
     </div>
 
     <!-- Main Content -->
-    <div id="mainContent" class="container max-w-2xl mx-auto px-4 py-6">
-        
-        <!-- Instructions -->
-        <div class="bg-blue-900 bg-opacity-20 border border-blue-500 rounded-lg p-4 mb-6">
-            <div class="flex gap-3">
-                <span class="material-symbols-outlined text-blue-400">info</span>
-                <div class="flex-1">
-                    <p class="text-sm text-blue-200">Tap a day to mark yourself as unavailable. Green days mean you're working, red days mean you're off.</p>
+    <div id="mainContent" class="container max-w-2xl mx-auto px-4 py-4">
+        <!-- Legend - above calendar, in a line -->
+        <div class="flex flex-col items-center gap-3 mb-4">
+            <div class="flex flex-wrap items-center justify-center gap-6">
+                <div class="flex items-center gap-2">
+                    <div class="legend-icon legend-working w-7 h-7 rounded-lg"></div>
+                    <span class="text-sm text-gray-300">Working</span>
                 </div>
+                <div class="flex items-center gap-2">
+                    <div class="legend-icon legend-standby w-7 h-7 rounded-lg"></div>
+                    <span class="text-sm text-gray-300">Standby</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="legend-icon legend-off w-7 h-7 rounded-lg"></div>
+                    <span class="text-sm text-gray-300">Off</span>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="material-symbols-outlined text-yellow-500 text-lg">lock</span>
+                <span class="text-xs text-gray-500">Next 7 days are locked (contact the office)</span>
             </div>
         </div>
 
-        <!-- Month Selector -->
-        <div class="bg-[#1a1f24] rounded-lg p-4 mb-6">
-            <div class="flex items-center justify-between">
-                <button onclick="previousMonth()" class="touch-target p-2 hover:bg-[#283039] rounded-lg transition-colors">
-                    <span class="material-symbols-outlined">chevron_left</span>
-                </button>
-                <h2 id="monthYear" class="text-xl font-semibold"></h2>
-                <button onclick="nextMonth()" class="touch-target p-2 hover:bg-[#283039] rounded-lg transition-colors">
-                    <span class="material-symbols-outlined">chevron_right</span>
-                </button>
-            </div>
-        </div>
-
-        <!-- Calendar -->
-        <div class="calendar-container mb-6">
-            <div class="grid grid-cols-5 gap-2">
-                <!-- Day headers -->
-                <div class="text-center text-sm text-gray-400 font-semibold py-2">Mon</div>
-                <div class="text-center text-sm text-gray-400 font-semibold py-2">Tue</div>
-                <div class="text-center text-sm text-gray-400 font-semibold py-2">Wed</div>
-                <div class="text-center text-sm text-gray-400 font-semibold py-2">Thu</div>
-                <div class="text-center text-sm text-gray-400 font-semibold py-2">Fri</div>
-                
-                <!-- Calendar days will be inserted here by renderCalendar() -->
-            </div>
-        </div>
-
-        <!-- Legend -->
-        <div class="bg-[#1a1f24] rounded-lg p-4">
-            <h3 class="text-sm font-semibold mb-3 text-gray-400">LEGEND</h3>
-            <div class="space-y-2">
-                <div class="flex items-center gap-3">
-                    <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-green-500 to-green-600 border-2 border-green-500"></div>
-                    <span class="text-sm">Available / Working (Saved)</span>
-                </div>
-                <div class="flex items-center gap-3">
-                    <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-green-500 to-green-600 border-2 border-black"></div>
-                    <span class="text-sm">Changed to Available (Not Saved)</span>
-                </div>
-                <div class="flex items-center gap-3">
-                    <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 to-red-600 border-2 border-red-500"></div>
-                    <span class="text-sm">Unavailable / Day Off (Saved)</span>
-                </div>
-                <div class="flex items-center gap-3">
-                    <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 to-red-600 border-2 border-black"></div>
-                    <span class="text-sm">Changed to Off (Not Saved)</span>
-                </div>
-                <div class="flex items-center gap-3">
-                    <div class="w-8 h-8 rounded-lg bg-[#283039] border-2 border-gray-700"></div>
-                    <span class="text-sm">Past Day</span>
+        <!-- Calendar with arrows -->
+        <div class="flex items-center gap-2">
+            <button onclick="previousMonth()" class="touch-target p-3 hover:bg-[#283039] rounded-lg transition-colors shrink-0">
+                <span class="material-symbols-outlined text-3xl font-bold" style="font-variation-settings: 'FILL' 1, 'wght' 700;">chevron_left</span>
+            </button>
+            <div class="calendar-container flex-1 min-w-0">
+                <h2 id="monthYear" class="text-center text-lg font-semibold text-white mb-3"></h2>
+                <div class="grid grid-cols-5 gap-4">
+                    <div class="text-center text-xs text-gray-500 font-medium py-1">Mon</div>
+                    <div class="text-center text-xs text-gray-500 font-medium py-1">Tue</div>
+                    <div class="text-center text-xs text-gray-500 font-medium py-1">Wed</div>
+                    <div class="text-center text-xs text-gray-500 font-medium py-1">Thu</div>
+                    <div class="text-center text-xs text-gray-500 font-medium py-1">Fri</div>
+                    <div id="calendarDays" class="contents"></div>
                 </div>
             </div>
+            <button onclick="nextMonth()" class="touch-target p-3 hover:bg-[#283039] rounded-lg transition-colors shrink-0">
+                <span class="material-symbols-outlined text-3xl font-bold" style="font-variation-settings: 'FILL' 1, 'wght' 700;">chevron_right</span>
+            </button>
         </div>
 
     </div>
@@ -462,10 +490,13 @@
         let currentUser = null;
         let currentMonth = new Date().getMonth();
         let currentYear = new Date().getFullYear();
-        let availability = {}; // { 'YYYY-MM-DD': true/false }
-        let pendingChanges = {}; // Track unsaved changes: { 'YYYY-MM-DD': true/false }
+        let driverTemplate = null; // { availabilityType, availabilityWorkingDays, availabilityStandbyDays }
+        let statusByDate = {}; // { 'YYYY-MM-DD': 'working'|'standby'|'off' }
+        let calendarEntries = {}; // { 'YYYY-MM-DD': { status?, editedByDriver?, editedByOffice?, seenByOffice?, seenByDriver? } }
+        let pendingChanges = {}; // { 'YYYY-MM-DD': 'working'|'standby'|'off' }
         let unseenChanges = {}; // Notifications currently unseen, keyed by date/driver
         let isSaving = false;
+        const STATUS = window.AvailabilityModel ? window.AvailabilityModel.STATUS : { WORKING: 'working', STANDBY: 'standby', OFF: 'off' };
         const AVAILABILITY_QUEUE_KEY = 'driver_availability_queue_v1';
         const notifyError = (message, title = 'Error') => uiDialogs.showAlert({ title, message, tone: 'danger' });
         const notifyWarning = (message, title = 'Heads Up') => uiDialogs.showAlert({ title, message, tone: 'warning' });
@@ -509,17 +540,16 @@
                 timestamp: Date.now()
             };
 
-            Object.entries(changes).forEach(([dateString, newAvailability]) => {
+            Object.entries(changes).forEach(([dateString, newStatus]) => {
                 const existingIndex = queue.findIndex(
                     item => item.date === dateString && item.driverId === driverContext.driverId
                 );
-
                 const entry = {
                     ...driverContext,
                     date: dateString,
-                    newAvailability
+                    newAvailability: newStatus === STATUS.WORKING || newStatus === STATUS.STANDBY,
+                    newStatus: newStatus
                 };
-
                 if (existingIndex >= 0) {
                     queue[existingIndex] = entry;
                 } else {
@@ -531,7 +561,7 @@
             console.log('Queued availability changes for offline sync:', changes);
         }
 
-        async function applyAvailabilityChange(dateString, newAvailability, context = {}) {
+        async function applyAvailabilityChange(dateString, newStatus, context = {}) {
             const driverId = context.driverId || getCurrentDriverId();
             const driverName =
                 context.driverName ||
@@ -545,30 +575,29 @@
 
             const calendarRef = window.firebaseDoc(window.firestore, 'calendar', dateString);
             const calendarDoc = await window.firebaseGetDoc(calendarRef);
+            const existing = calendarDoc.exists() ? calendarDoc.data() : {};
+            const drivers = existing.drivers && typeof existing.drivers === 'object' ? { ...existing.drivers } : {};
 
-            let driversOff = [];
-            if (calendarDoc.exists()) {
-                driversOff = calendarDoc.data().driversOff || [];
-            }
+            drivers[driverId] = {
+                ...(drivers[driverId] || {}),
+                status: newStatus,
+                editedByDriver: window.serverTimestamp()
+            };
 
-            if (newAvailability) {
-                driversOff = driversOff.filter(id => id !== driverId);
-            } else if (!driversOff.includes(driverId)) {
-                driversOff.push(driverId);
-            }
-
+            // Driver only writes their own drivers[uid] entry (do not send driversOff; office keeps that in sync)
             await window.setDoc(
                 calendarRef,
                 {
                     date: dateString,
-                    driversOff,
+                    officeId,
                     updatedAt: window.serverTimestamp(),
-                    officeId: officeId
+                    drivers
                 },
                 { merge: true }
             );
 
-            await createAvailabilityChangeNotification(dateString, newAvailability, {
+            const isNowAvailable = newStatus === STATUS.WORKING || newStatus === STATUS.STANDBY;
+            await createAvailabilityChangeNotification(dateString, isNowAvailable, {
                 driverId,
                 driverName,
                 officeId
@@ -593,7 +622,8 @@
 
             for (const change of queue) {
                 try {
-                    await applyAvailabilityChange(change.date, change.newAvailability, change);
+                    const newStatus = change.newStatus || (change.newAvailability ? STATUS.WORKING : STATUS.OFF);
+                    await applyAvailabilityChange(change.date, newStatus, change);
                     processed++;
                 } catch (error) {
                     console.error('Error syncing queued availability change:', change, error);
@@ -736,45 +766,56 @@
             }
         }
 
-        // Load availability from Firebase
+        // Load availability from Firebase (template + calendar drivers map, with legacy driversOff)
         async function loadAvailability() {
             try {
-                pendingChanges = {}; // Clear any pending changes when loading
-                updateSaveButtonVisibility(); // Hide save button
-                
-                // Load availability for this month and next month
-                const startDate = new Date(currentYear, currentMonth, 1);
-                const endDate = new Date(currentYear, currentMonth + 2, 0); // Last day of next month
+                pendingChanges = {};
+                updateSaveButtonVisibility();
 
-                // Get all dates in range
-            const dateStrings = [];
-            for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-                dateStrings.push(d.toISOString().split('T')[0]); // YYYY-MM-DD
+                driverTemplate = window.AvailabilityModel ? window.AvailabilityModel.getDriverTemplate(currentUser) : null;
+                if (!driverTemplate) {
+                    driverTemplate = { availabilityType: 'full', availabilityWorkingDays: [], availabilityStandbyDays: [] };
                 }
 
-                // Batch read all documents at once
-                const docPromises = dateStrings.map(dateStr => 
+                const startDate = new Date(currentYear, currentMonth, 1);
+                const endDate = new Date(currentYear, currentMonth + 2, 0);
+                const dateStrings = [];
+                for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+                    dateStrings.push(d.toISOString().split('T')[0]);
+                }
+
+                const docPromises = dateStrings.map(dateStr =>
                     window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'calendar', dateStr))
                 );
                 const docSnapshots = await Promise.all(docPromises);
+                const uid = currentUser.uid;
 
-                // Process results
                 dateStrings.forEach((dateString, index) => {
                     const doc = docSnapshots[index];
-                    
+                    const dateObj = new Date(dateString + 'T12:00:00');
+                    let entry = null;
                     if (doc.exists()) {
                         const data = doc.data();
-                        const driversOff = data.driversOff || [];
-                        
-                        // Check if this driver is in the driversOff array
-                        availability[dateString] = !driversOff.includes(currentUser.uid);
+                        entry = (data.drivers && data.drivers[uid]) ? { ...data.drivers[uid] } : null;
+                    }
+                    
+                    const fromTemplate = window.AvailabilityModel
+                        ? window.AvailabilityModel.statusFromTemplate(driverTemplate, dateObj)
+                        : 'working';
+                    
+                    if (entry) {
+                        statusByDate[dateString] = window.AvailabilityModel
+                            ? window.AvailabilityModel.getEffectiveStatus(driverTemplate, entry, dateObj)
+                            : (entry.status || 'working');
+                        calendarEntries[dateString] = entry;
                     } else {
-                        // No record means driver is available by default
-                        availability[dateString] = true;
+                        // No override: use template only. (Legacy driversOff is ignored — template is source of truth.)
+                        statusByDate[dateString] = fromTemplate;
+                        calendarEntries[dateString] = {};
                     }
                 });
 
-                console.log('Loaded availability:', Object.keys(availability).length, 'dates');
+                console.log('Loaded availability:', Object.keys(statusByDate).length, 'dates');
             } catch (error) {
                 console.error('Error loading availability:', error);
             }
@@ -812,141 +853,134 @@
         }
         window.loadUnseenChanges = loadUnseenChanges;
 
-        // Render calendar
+        // Render calendar (working / standby / off, 7-day lock, edited-by-office + mark as seen)
         function renderCalendar() {
             const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
                 'July', 'August', 'September', 'October', 'November', 'December'];
-            
             document.getElementById('monthYear').textContent = `${monthNames[currentMonth]} ${currentYear}`;
 
             const firstDay = new Date(currentYear, currentMonth, 1);
             const lastDay = new Date(currentYear, currentMonth + 1, 0);
             const today = new Date();
             today.setHours(0, 0, 0, 0);
+            const isInLockWindow = window.AvailabilityModel ? window.AvailabilityModel.isInLockWindow.bind(window.AvailabilityModel) : function () { return false; };
 
             const calendarHTML = [];
-            
-            // Get the day of week for the first day (0=Sunday, 1=Monday, etc.)
-            let firstDayOfWeek = firstDay.getDay();
-            // Convert to Monday=0 format (Mon=0, Tue=1, Wed=2, Thu=3, Fri=4)
-            firstDayOfWeek = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
-            // Ensure it's a weekday (0-4)
-            firstDayOfWeek = firstDayOfWeek > 4 ? 0 : firstDayOfWeek;
-            
-            // Add empty cells for days before the first weekday
-            for (let i = 0; i < firstDayOfWeek; i++) {
-                calendarHTML.push('<div></div>'); // Empty cell
-            }
-            
-            // Generate calendar days (weekdays only)
+            let needLeadingOffset = true;
+
             for (let day = 1; day <= lastDay.getDate(); day++) {
                 const cellDate = new Date(currentYear, currentMonth, day);
                 const dayOfWeek = cellDate.getDay();
-                
-                // Skip weekends (Saturday = 6, Sunday = 0)
-                if (dayOfWeek === 0 || dayOfWeek === 6) {
-                    continue;
-                }
-                
-                const dateString = cellDate.toISOString().split('T')[0];
-                const isPast = cellDate < today;
-                const hasPendingChange = pendingChanges.hasOwnProperty(dateString);
-                
-                // Get the current display state
-                // If there's a pending change, use that value; otherwise use the saved availability
-                const isAvailable = hasPendingChange 
-                    ? pendingChanges[dateString] 
-                    : (availability[dateString] !== false);
-                
-                // Check if date is within 7 days (locked)
-                const daysFromToday = Math.floor((cellDate - today) / (1000 * 60 * 60 * 24));
-                const isLocked = daysFromToday <= 7 && daysFromToday >= 0;
+                if (dayOfWeek === 0 || dayOfWeek === 6) continue;
 
-                let className = 'day-card aspect-square rounded-lg flex flex-col items-center justify-center cursor-pointer transition-all relative';
-                
-                if (isPast) {
-                    className += ' cursor-not-allowed opacity-50';
+                // CRITICAL: Use local date formatting to avoid timezone issues
+                const dateString = cellDate.getFullYear() + '-' + 
+                    String(cellDate.getMonth() + 1).padStart(2, '0') + '-' + 
+                    String(cellDate.getDate()).padStart(2, '0');
+                const isPast = cellDate < today;
+                if (isPast) continue;
+
+                if (needLeadingOffset) {
+                    const weekdayCol = dayOfWeek === 0 ? 4 : dayOfWeek - 1;
+                    for (let i = 0; i < weekdayCol; i++) calendarHTML.push('<div></div>');
+                    needLeadingOffset = false;
+                }
+
+                const hasPending = pendingChanges.hasOwnProperty(dateString);
+                const effectiveStatus = hasPending ? pendingChanges[dateString] : (statusByDate[dateString] || STATUS.WORKING);
+                const isLocked = isInLockWindow(cellDate);
+                const entry = calendarEntries[dateString] || {};
+                const editedByOffice = entry.editedByOffice && !entry.seenByDriver;
+
+                const isToday = cellDate.getTime() === today.getTime();
+                let className = 'day-card aspect-square rounded-lg flex flex-col items-center justify-center transition-all relative';
+                if (isToday) {
+                    className += ' today cursor-pointer';
+                    if (effectiveStatus === STATUS.WORKING) className += hasPending ? ' available pending-on' : ' available';
+                    else if (effectiveStatus === STATUS.STANDBY) className += hasPending ? ' standby pending-standby' : ' standby';
+                    else className += hasPending ? ' unavailable pending-off' : ' unavailable';
                 } else if (isLocked) {
-                    className += isAvailable ? ' available locked' : ' unavailable locked';
-                } else if (hasPendingChange) {
-                    // Pending changes: show different border colors
-                    if (isAvailable) {
-                        // Changed to available (on) - green and black
-                        className += ' available pending-on';
-                    } else {
-                        // Changed to unavailable (off) - red and black
-                        className += ' unavailable pending-off';
-                    }
-                } else if (isAvailable) {
-                    // Saved available (on) - green and green
-                    className += ' available';
+                    className += ' cursor-not-allowed';
+                    if (effectiveStatus === STATUS.WORKING) className += ' available locked';
+                    else if (effectiveStatus === STATUS.STANDBY) className += ' standby locked';
+                    else className += ' unavailable locked';
                 } else {
-                    // Saved unavailable (off) - red and red
-                    className += ' unavailable';
+                    className += ' cursor-pointer';
+                    if (effectiveStatus === STATUS.WORKING) className += hasPending ? ' available pending-on' : ' available';
+                    else if (effectiveStatus === STATUS.STANDBY) className += hasPending ? ' standby pending-standby' : ' standby';
+                    else className += hasPending ? ' unavailable pending-off' : ' unavailable';
                 }
 
                 const dayNumber = cellDate.getDate();
-                const clickHandler = isPast || isLocked ? '' : `onclick="toggleAvailability('${dateString}')"`;
+                const clickHandler = isLocked ? '' : `onclick="toggleAvailability('${dateString}')"`;
+                const markSeenBtn = editedByOffice ? ` <button type="button" onclick="event.stopPropagation(); markDayAsSeenByDriver('${dateString}')" class="text-xs text-blue-400 hover:underline mt-1">Mark as seen</button>` : '';
+                const lockIcon = isLocked
+                    ? '<span class="material-symbols-outlined text-sm text-yellow-500 flex items-center justify-center mt-0.5">lock</span>'
+                    : '';
 
                 calendarHTML.push(`
                     <div class="${className}" ${clickHandler}>
-                        <span class="text-lg font-semibold text-white">${dayNumber}</span>
-                        ${isLocked ? '<span class="material-symbols-outlined text-xs text-yellow-500 absolute top-1 right-1 z-10">lock</span>' : ''}
+                        <div class="flex flex-col items-center justify-center">
+                            <span class="text-lg font-semibold text-white">${dayNumber}</span>
+                            ${lockIcon}
+                            ${editedByOffice ? '<span class="text-xs text-amber-400 mt-0.5">Office updated</span>' : ''}
+                            ${markSeenBtn}
+                        </div>
                     </div>
                 `);
             }
 
-            // Get the calendar grid container
-            const calendarContainer = document.querySelector('.grid-cols-5');
-            if (!calendarContainer) return;
-            
-            // Remove the old calendar days div if it exists
-            const oldCalendarDays = document.getElementById('calendarDays');
-            if (oldCalendarDays) {
-                oldCalendarDays.remove();
-            }
-            
-            // Create a new div for calendar days
-            const calendarDaysDiv = document.createElement('div');
-            calendarDaysDiv.id = 'calendarDays';
-            calendarDaysDiv.className = 'contents'; // Use CSS Grid contents to make children participate in parent grid
-            calendarDaysDiv.innerHTML = calendarHTML.join('');
-            
-            // Find where to insert it (after the day headers)
-            const dayHeaders = calendarContainer.querySelectorAll('.text-center.text-sm.text-gray-400.font-semibold');
-            if (dayHeaders.length > 0) {
-                // Insert after the last day header
-                dayHeaders[dayHeaders.length - 1].after(calendarDaysDiv);
+            const calendarDaysEl = document.getElementById('calendarDays');
+            if (calendarDaysEl) {
+                calendarDaysEl.innerHTML = calendarHTML.join('');
             }
         }
 
-        // Toggle availability for a specific day
+        // Cycle status: standby drivers = off ↔ standby only; part/full = off ↔ working only
         function toggleAvailability(dateString) {
-            if (isSaving) return; // Don't allow changes while saving
-            
-            // Get the current saved state (not including pending changes)
-            const savedAvailability = availability[dateString] !== false;
-            
-            // If there's already a pending change, toggle from the pending state
-            // Otherwise, toggle from the saved state
-            const currentDisplayState = pendingChanges.hasOwnProperty(dateString) 
-                ? pendingChanges[dateString] 
-                : savedAvailability;
-            
-            const newAvailability = !currentDisplayState;
-
-            // Only update pendingChanges, don't update availability until saved
-            pendingChanges[dateString] = newAvailability;
-            
-            // If toggling back to the saved state, remove from pending changes
-            if (newAvailability === savedAvailability) {
-                delete pendingChanges[dateString];
+            if (isSaving) return;
+            const type = (driverTemplate && driverTemplate.availabilityType) || 'full';
+            const isStandbyDriver = type === 'standby';
+            const defaultStatus = isStandbyDriver ? STATUS.STANDBY : STATUS.WORKING;
+            const savedStatus = statusByDate[dateString] || defaultStatus;
+            const current = pendingChanges.hasOwnProperty(dateString) ? pendingChanges[dateString] : savedStatus;
+            let next;
+            if (isStandbyDriver) {
+                next = current === STATUS.STANDBY ? STATUS.OFF : STATUS.STANDBY;
+            } else {
+                next = current === STATUS.WORKING ? STATUS.OFF : STATUS.WORKING;
             }
-            
-            console.log('Toggle:', dateString, 'Saved:', savedAvailability, 'New:', newAvailability, 'Pending:', pendingChanges);
+            pendingChanges[dateString] = next;
+            if (next === savedStatus) delete pendingChanges[dateString];
             renderCalendar();
             updateSaveButtonVisibility();
         }
+
+        async function markDayAsSeenByDriver(dateString) {
+            const uid = getCurrentDriverId();
+            const officeId = getCurrentOfficeId();
+            if (!uid || !officeId) return;
+            try {
+                const calendarRef = window.firebaseDoc(window.firestore, 'calendar', dateString);
+                const snap = await window.firebaseGetDoc(calendarRef);
+                const data = snap.exists() ? snap.data() : {};
+                const drivers = data.drivers && typeof data.drivers === 'object' ? { ...data.drivers } : {};
+                drivers[uid] = { ...(drivers[uid] || {}), seenByDriver: true };
+                await window.setDoc(calendarRef, {
+                    date: dateString,
+                    officeId,
+                    updatedAt: window.serverTimestamp(),
+                    drivers
+                }, { merge: true });
+                if (calendarEntries[dateString]) calendarEntries[dateString].seenByDriver = true;
+                renderCalendar();
+                notifySuccess('Marked as seen.');
+            } catch (e) {
+                console.error('Mark as seen failed:', e);
+                notifyError('Could not mark as seen.');
+            }
+        }
+        window.markDayAsSeenByDriver = markDayAsSeenByDriver;
 
         // Update save button visibility based on pending changes
         function updateSaveButtonVisibility() {
@@ -996,13 +1030,13 @@
                 const failedChanges = {};
                 let savedCount = 0;
 
-                for (const [dateString, newAvailability] of Object.entries(changesToSave)) {
+                for (const [dateString, newStatus] of Object.entries(changesToSave)) {
                     try {
-                        await applyAvailabilityChange(dateString, newAvailability);
+                        await applyAvailabilityChange(dateString, newStatus);
                         savedCount++;
                     } catch (error) {
                         console.error('Error saving availability change for', dateString, error);
-                        failedChanges[dateString] = newAvailability;
+                        failedChanges[dateString] = newStatus;
                     }
                 }
 
@@ -1016,23 +1050,16 @@
                     setTimeout(() => statusIndicator && statusIndicator.classList.add('hidden'), 1500);
                     
                     // Count changes for notification
-                    let availableCount = 0;
-                    let unavailableCount = 0;
-                    Object.values(changesToSave).forEach(newAvailability => {
-                        if (newAvailability) {
-                            availableCount++;
-                        } else {
-                            unavailableCount++;
-                        }
+                    let workingCount = 0, standbyCount = 0, offCount = 0;
+                    Object.values(changesToSave).forEach(newStatus => {
+                        if (newStatus === STATUS.WORKING) workingCount++;
+                        else if (newStatus === STATUS.STANDBY) standbyCount++;
+                        else offCount++;
                     });
-                    
                     const parts = [];
-                    if (availableCount > 0) {
-                        parts.push(`${availableCount} day${availableCount === 1 ? '' : 's'} marked as available`);
-                    }
-                    if (unavailableCount > 0) {
-                        parts.push(`${unavailableCount} day${unavailableCount === 1 ? '' : 's'} marked as off`);
-                    }
+                    if (workingCount > 0) parts.push(`${workingCount} working`);
+                    if (standbyCount > 0) parts.push(`${standbyCount} standby`);
+                    if (offCount > 0) parts.push(`${offCount} off`);
                     
                     const message = parts.length > 0 
                         ? `Availability updated: ${parts.join(' and ')}.`
@@ -1041,9 +1068,9 @@
                     notifySuccess(message, 'Changes Saved');
                 }
                 
-                // Update availability with saved changes
-                Object.entries(changesToSave).forEach(([dateString, newAvailability]) => {
-                    availability[dateString] = newAvailability;
+                // Update status with saved changes
+                Object.entries(changesToSave).forEach(([dateString, newStatus]) => {
+                    statusByDate[dateString] = newStatus;
                 });
                 
                 // Reload availability to ensure sync

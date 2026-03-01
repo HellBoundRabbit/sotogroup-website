@@ -16,6 +16,7 @@
     <script src="/assets/js/tailwind-runtime.js"></script>
     <script src="/js/mobile-nav.js"></script>
     <script src="/js/session-manager.js"></script>
+    <script src="/js/availability-model.js"></script>
     <script src="../js/ui-dialogs.js"></script>
     <script src="/js/settings.js"></script>
     <script>
@@ -30,7 +31,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, addDoc, getDocs, getDoc, doc, query, orderBy, limit, where, setDoc, deleteDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, addDoc, getDocs, getDoc, doc, query, orderBy, limit, where, setDoc, deleteDoc, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         
@@ -68,6 +69,7 @@
         window.firebaseWhere = where;
         window.firebaseDeleteDoc = deleteDoc;
         window.firebaseUpdateDoc = updateDoc;
+        window.serverTimestamp = serverTimestamp;
         
         console.log('Firebase initialized successfully!');
     </script>
@@ -274,18 +276,26 @@
             </div>
 
             <!-- Summary Stats -->
-            <div class="grid grid-cols-3 gap-4 mb-6">
+            <div class="grid grid-cols-5 gap-2 mb-6">
                 <div class="bg-[#283039] rounded-lg p-4">
-                    <div class="text-[#9cabba] text-sm mb-1">Total Drivers</div>
-                    <div class="text-2xl font-bold text-white" id="modal-total-drivers">0</div>
+                    <div class="text-[#9cabba] text-sm mb-1">Total</div>
+                    <div class="text-xl font-bold text-white" id="modal-total-drivers">0</div>
                 </div>
                 <div class="bg-[#283039] rounded-lg p-4">
                     <div class="text-[#9cabba] text-sm mb-1">Working</div>
-                    <div class="text-2xl font-bold text-green-500" id="modal-working-count">0</div>
+                    <div class="text-xl font-bold text-green-500" id="modal-working-count">0</div>
+                </div>
+                <div class="bg-[#283039] rounded-lg p-4">
+                    <div class="text-[#9cabba] text-sm mb-1">Standby</div>
+                    <div class="text-xl font-bold text-amber-500" id="modal-standby-count">0</div>
                 </div>
                 <div class="bg-[#283039] rounded-lg p-4">
                     <div class="text-[#9cabba] text-sm mb-1">Off</div>
-                    <div class="text-2xl font-bold text-red-500" id="modal-off-count">0</div>
+                    <div class="text-xl font-bold text-red-500" id="modal-off-count">0</div>
+                </div>
+                <div class="bg-[#283039] rounded-lg p-4">
+                    <div class="text-[#9cabba] text-sm mb-1">Not set</div>
+                    <div class="text-xl font-bold text-[#9cabba]" id="modal-unset-count">0</div>
                 </div>
             </div>
 
@@ -295,20 +305,34 @@
                     <span class="material-symbols-outlined text-red-500">event_busy</span>
                     Drivers Off
                 </h3>
-                <div id="drivers-off-list" class="space-y-2">
-                    <!-- Will be populated dynamically -->
-                </div>
+                <div id="drivers-off-list" class="space-y-2"></div>
+            </div>
+
+            <!-- Drivers Standby Section -->
+            <div class="mb-6">
+                <h3 class="text-lg font-bold mb-3 flex items-center gap-2">
+                    <span class="material-symbols-outlined text-amber-500">schedule</span>
+                    Standby
+                </h3>
+                <div id="drivers-standby-list" class="space-y-2"></div>
             </div>
 
             <!-- Drivers Working Section -->
-            <div>
+            <div class="mb-6">
                 <h3 class="text-lg font-bold mb-3 flex items-center gap-2">
                     <span class="material-symbols-outlined text-green-500">event_available</span>
                     Drivers Working
                 </h3>
-                <div id="drivers-working-list" class="space-y-2">
-                    <!-- Will be populated dynamically -->
-                </div>
+                <div id="drivers-working-list" class="space-y-2"></div>
+            </div>
+
+            <!-- Availability not set (no template yet) -->
+            <div id="drivers-unset-section">
+                <h3 class="text-lg font-bold mb-3 flex items-center gap-2">
+                    <span class="material-symbols-outlined text-[#9cabba]">help_outline</span>
+                    Availability not set
+                </h3>
+                <div id="drivers-unset-list" class="space-y-2"></div>
             </div>
         </div>
     </div>
@@ -319,8 +343,12 @@
 
         // Global variables
         let allDrivers = [];
-        let driverAvailability = {}; // Format: { 'YYYY-MM-DD': ['driverId1', 'driverId2'] } - stores IDs of drivers who are OFF
+        let driverAvailability = {}; // { 'YYYY-MM-DD': ['driverId1', ...] } - drivers with status OFF (for grid counts)
+        let driverStatusByDate = {};  // { 'YYYY-MM-DD': { driverId: 'working'|'standby'|'off' } }
+        let driverCalendarEntry = {}; // { 'YYYY-MM-DD': { driverId: { editedByDriver?, editedByOffice?, seenByOffice?, seenByDriver? } } }
         let currentDate = new Date();
+        const STATUS = window.AvailabilityModel ? window.AvailabilityModel.STATUS : { WORKING: 'working', STANDBY: 'standby', OFF: 'off' };
+        const STATUS_UNSET = 'unset'; // driver has not set availability template yet
         let unseenChanges = {}; // Format: { 'YYYY-MM-DD': { 'driverId': { id, changeType } } } - tracks unseen notifications by date and driver
         let highlightedDriverId = null; // Driver ID from URL parameter to highlight
 
@@ -429,15 +457,19 @@
                 const driversSnapshot = await window.firebaseGetDocs(driversQuery);
                 
                 allDrivers = [];
-                driversSnapshot.forEach((doc) => {
-                    const data = doc.data();
+                driversSnapshot.forEach((docSnap) => {
+                    const data = docSnap.data();
+                    const driverId = docSnap.id || data.uid || '';
                     allDrivers.push({
-                        id: doc.id,
+                        id: docSnap.id,
+                        uid: data.uid || driverId,
                         firstName: data.firstName || data.name || '',
                         lastName: data.lastName || '',
                         email: data.email || '',
                         homePostcode: data.homePostcode || data.postcode || '',
-                        uid: data.uid || ''
+                        availabilityType: data.availabilityType || 'full',
+                        availabilityWorkingDays: Array.isArray(data.availabilityWorkingDays) ? data.availabilityWorkingDays : [],
+                        availabilityStandbyDays: Array.isArray(data.availabilityStandbyDays) ? data.availabilityStandbyDays : []
                     });
                 });
 
@@ -448,7 +480,7 @@
             }
         }
 
-        // Load availability data from Firebase (calendar collection)
+        // Load availability data from Firebase (calendar: drivers map + legacy driversOff)
         async function loadAvailabilityData() {
             try {
                 if (!currentSession || !currentSession.officeId) return;
@@ -457,29 +489,64 @@
                     window.firebaseWhere('officeId', '==', currentSession.officeId)
                 );
                 const calendarSnapshot = await window.firebaseGetDocs(calendarQueryRef);
-                
                 driverAvailability = {};
-                calendarSnapshot.forEach((doc) => {
-                    const data = doc.data();
-                    // Support both 'driversOff' array (new format) and 'driverIdString' single driver (old format)
-                    if (data.driversOff && Array.isArray(data.driversOff)) {
-                        // Check if array contains objects or strings
-                        const firstItem = data.driversOff[0];
-                        if (firstItem && typeof firstItem === 'object' && firstItem.driverId) {
-                            // Array of objects: extract driverId strings
-                            driverAvailability[doc.id] = data.driversOff.map(item => item.driverId);
-                        } else {
-                            // Array of strings: use as-is
-                            driverAvailability[doc.id] = data.driversOff;
+                driverStatusByDate = {};
+                driverCalendarEntry = {};
+                const Model = window.AvailabilityModel;
+                calendarSnapshot.forEach((docSnap) => {
+                    const dateString = docSnap.id;
+                    const data = docSnap.data();
+                    const driversMap = data.drivers && typeof data.drivers === 'object' ? data.drivers : {};
+                    const driversOffLegacy = data.driversOff && Array.isArray(data.driversOff)
+                        ? (data.driversOff[0] && typeof data.driversOff[0] === 'object' && data.driversOff[0].driverId
+                            ? data.driversOff.map(item => item.driverId) : data.driversOff)
+                        : (data.driverIdString ? [data.driverIdString] : []);
+                    driverStatusByDate[dateString] = {};
+                    driverCalendarEntry[dateString] = {};
+                    const offIds = [];
+                    allDrivers.forEach((driver) => {
+                        const driverId = driver.uid || driver.id;
+                        const hasTemplate = Model && Model.hasDriverTypeSet(driver);
+                        if (!hasTemplate) {
+                            driverStatusByDate[dateString][driverId] = STATUS_UNSET;
+                            return;
                         }
-                    } else if (data.driverIdString) {
-                        // Old format: single driver off
-                        driverAvailability[doc.id] = [data.driverIdString];
-                    } else {
-                        driverAvailability[doc.id] = [];
-                    }
+                        const template = Model.getDriverTemplate(driver);
+                        const entry = driversMap[driverId] || null;
+                        const dateObj = new Date(dateString + 'T12:00:00');
+                        let status = Model.getEffectiveStatus(template, entry, dateObj);
+                        if (entry && entry.status) status = entry.status;
+                        else if (driversOffLegacy.includes(driverId) && !entry) status = STATUS.OFF;
+                        driverStatusByDate[dateString][driverId] = status;
+                        if (entry) driverCalendarEntry[dateString][driverId] = entry;
+                        if (status === STATUS.OFF) offIds.push(driverId);
+                    });
+                    driverAvailability[dateString] = offIds;
                 });
-
+                // Fill status for weekdays in current month that have no calendar doc (template-only)
+                const year = currentDate.getFullYear(), month = currentDate.getMonth();
+                const firstDay = new Date(year, month, 1), lastDay = new Date(year, month + 1, 0);
+                for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
+                    if (d.getDay() === 0 || d.getDay() === 6) continue;
+                    const ds = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                    if (driverStatusByDate[ds]) continue;
+                    driverStatusByDate[ds] = {};
+                    driverCalendarEntry[ds] = {};
+                    const offIds = [];
+                    const dateObj = new Date(ds + 'T12:00:00');
+                    allDrivers.forEach((driver) => {
+                        const driverId = driver.uid || driver.id;
+                        if (!Model || !Model.hasDriverTypeSet(driver)) {
+                            driverStatusByDate[ds][driverId] = STATUS_UNSET;
+                            return;
+                        }
+                        const template = Model.getDriverTemplate(driver);
+                        const status = Model.statusFromTemplate(template, dateObj);
+                        driverStatusByDate[ds][driverId] = status;
+                        if (status === STATUS.OFF) offIds.push(driverId);
+                    });
+                    driverAvailability[ds] = offIds;
+                }
                 console.log('Loaded availability data from calendar:', driverAvailability);
             } catch (error) {
                 console.error('Error loading availability:', error);
@@ -569,8 +636,9 @@
                 }
                 
                 const dateString = formatDateString(cellDate);
-                const driversOff = driverAvailability[dateString] || [];
-                const driversWorking = allDrivers.length - driversOff.length;
+                const statusByDriver = driverStatusByDate[dateString] || {};
+                const driversWorking = Object.values(statusByDriver).filter(s => s === STATUS.WORKING).length;
+                const driversOff = (driverAvailability[dateString] || []).length;
                 
                 const isToday = cellDate.getTime() === today.getTime();
                 const isPast = cellDate < today;
@@ -604,10 +672,10 @@
                                 <span class="material-symbols-outlined text-green-400 text-base">groups</span>
                                 <span class="text-green-400 font-semibold text-base tracking-tight">${driversWorking}</span>
                             </div>
-                            ${driversOff.length > 0 ? `
+                            ${driversOff > 0 ? `
                                 <div class="flex items-center gap-1.5 mt-0.5">
                                     <span class="material-symbols-outlined text-red-400 text-sm">person_off</span>
-                                    <span class="text-red-400 font-medium text-sm tracking-tight">${driversOff.length}</span>
+                                    <span class="text-red-400 font-medium text-sm tracking-tight">${driversOff}</span>
                                 </div>
                             ` : ''}
                         </div>
@@ -638,152 +706,149 @@
             renderCalendar();
         }
 
+        function renderDriverRow(driver, dateString, status, listType) {
+            const driverId = driver.uid || driver.id;
+            const entry = (driverCalendarEntry[dateString] || {})[driverId] || {};
+            const editedByDriver = entry.editedByDriver && !entry.seenByOffice;
+            const notificationMeta = unseenChanges[dateString] && unseenChanges[dateString][driverId];
+            const notifId = notificationMeta ? notificationMeta.id : null;
+            const borderClass = editedByDriver ? ' border-l-4 border-orange-500' : '';
+            const name = [driver.firstName, driver.lastName].filter(Boolean).join(' ') || driver.email || 'Driver';
+            const markSeenBtn = editedByDriver
+                ? `<button onclick="markDriverEditAsSeen('${dateString}', '${driverId}', event)" class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-sm">Mark as seen</button>`
+                : '';
+            const notifSeenBtn = notifId
+                ? `<button onclick="markChangeAsSeen('${notifId}', '${dateString}', '${driverId}', event)" class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-sm">Seen</button>`
+                : '';
+            const cycleBtn = `<button onclick="toggleDriverAvailability('${driverId}', '${dateString}', event)" class="bg-[#3a444e] hover:bg-[#4a5460] text-white px-3 py-1 rounded text-sm">Change</button>`;
+            return `<div class="bg-[#283039] rounded-lg p-3 flex items-center justify-between${borderClass}">
+                <div class="flex items-center gap-3">
+                    <div class="flex items-center justify-center rounded-full h-10 w-10 ${listType === 'off' ? 'bg-red-600' : listType === 'standby' ? 'bg-amber-600' : 'bg-green-600'}">
+                        <span class="material-symbols-outlined text-white">person</span>
+                    </div>
+                    <div>
+                        <div class="font-semibold">${name}</div>
+                        <div class="text-[#9cabba] text-sm">${driver.homePostcode || ''}</div>
+                        ${editedByDriver ? '<div class="text-amber-400 text-xs mt-1">Driver updated</div>' : ''}
+                    </div>
+                </div>
+                <div class="flex gap-2 flex-wrap justify-end">${markSeenBtn} ${notifSeenBtn} ${cycleBtn}</div>
+            </div>`;
+        }
+
+        async function markDriverEditAsSeen(dateString, driverId, event) {
+            if (event) event.stopPropagation();
+            try {
+                const calendarRef = window.firebaseDoc(window.firestore, 'calendar', dateString);
+                const snap = await window.firebaseGetDoc(calendarRef);
+                const data = snap.exists() ? snap.data() : {};
+                const drivers = data.drivers && typeof data.drivers === 'object' ? { ...data.drivers } : {};
+                drivers[driverId] = { ...(drivers[driverId] || {}), seenByOffice: true };
+                await window.firebaseSetDoc(calendarRef, {
+                    date: dateString,
+                    officeId: currentSession?.officeId || null,
+                    updatedAt: window.serverTimestamp(),
+                    drivers
+                }, { merge: true });
+                driverCalendarEntry[dateString] = driverCalendarEntry[dateString] || {};
+                driverCalendarEntry[dateString][driverId] = drivers[driverId];
+                const d = new Date(dateString);
+                openDayModal(d);
+            } catch (e) {
+                console.error('Mark as seen failed:', e);
+            }
+        }
+        window.markDriverEditAsSeen = markDriverEditAsSeen;
+
         // Open day detail modal
         async function openDayModal(date) {
-            // Reload unseen changes to ensure we have the latest data
             await loadUnseenChanges();
-            
             const dateString = formatDateString(date);
-            const driversOffIds = driverAvailability[dateString] || [];
-            
-            // Filter by both id (Firestore doc ID) and uid (Firebase Auth ID)
-            const driversOff = allDrivers.filter(d => 
-                driversOffIds.includes(d.id) || driversOffIds.includes(d.uid)
-            );
-            const driversWorking = allDrivers.filter(d => 
-                !driversOffIds.includes(d.id) && !driversOffIds.includes(d.uid)
-            );
+            const statusByDriver = driverStatusByDate[dateString] || {};
+            const driversWorking = allDrivers.filter(d => statusByDriver[d.uid || d.id] === STATUS.WORKING);
+            const driversStandby = allDrivers.filter(d => statusByDriver[d.uid || d.id] === STATUS.STANDBY);
+            const driversOff = allDrivers.filter(d => statusByDriver[d.uid || d.id] === STATUS.OFF);
+            const driversUnset = allDrivers.filter(d => statusByDriver[d.uid || d.id] === STATUS_UNSET);
 
-            // Update modal title
             const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-                'July', 'August', 'September', 'October', 'November', 'December'];
-            const dayName = dayNames[date.getDay()];
-            const monthName = monthNames[date.getMonth()];
-            
-            document.getElementById('modal-date-title').textContent = `${dayName}, ${monthName} ${date.getDate()}, ${date.getFullYear()}`;
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+            document.getElementById('modal-date-title').textContent = `${dayNames[date.getDay()]}, ${monthNames[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
             document.getElementById('modal-date-subtitle').textContent = dateString;
 
-            // Update stats
             document.getElementById('modal-total-drivers').textContent = allDrivers.length;
             document.getElementById('modal-working-count').textContent = driversWorking.length;
+            document.getElementById('modal-standby-count').textContent = driversStandby.length;
             document.getElementById('modal-off-count').textContent = driversOff.length;
+            document.getElementById('modal-unset-count').textContent = driversUnset.length;
 
-            // Render drivers off list
             const driversOffList = document.getElementById('drivers-off-list');
-            if (driversOff.length === 0) {
-                driversOffList.innerHTML = '<div class="text-[#9cabba] text-sm italic p-4 bg-[#283039] rounded-lg">No drivers off on this day</div>';
-            } else {
-                driversOffList.innerHTML = driversOff.map(driver => {
-                    const driverId = driver.uid || driver.id;
-                    const notificationMeta = unseenChanges[dateString] && unseenChanges[dateString][driverId];
-                    const hasUnseenNotification = notificationMeta && notificationMeta.changeType === 'unavailable';
-                    const notificationId = hasUnseenNotification ? notificationMeta.id : null;
-                    
-                    return `
-                    <div class="bg-[#283039] rounded-lg p-3 flex items-center justify-between ${hasUnseenNotification ? 'border-l-4 border-orange-500' : ''}">
-                        <div class="flex items-center gap-3">
-                            <div class="flex items-center justify-center rounded-full h-10 w-10 bg-red-600">
-                                <span class="material-symbols-outlined text-white">person</span>
-                            </div>
-                            <div>
-                                <div class="font-semibold flex items-center gap-2">
-                                    ${driver.firstName} ${driver.lastName}
-                                </div>
-                                <div class="text-[#9cabba] text-sm">${driver.homePostcode}</div>
-                            </div>
-                        </div>
-                        <div class="flex gap-2">
-                            ${hasUnseenNotification ? `
-                                <button onclick="markChangeAsSeen('${notificationId}', '${dateString}', '${driverId}', event)" class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-sm transition-colors">
-                                    Mark as Seen
-                                </button>
-                            ` : ''}
-                            <button onclick="toggleDriverAvailability('${driverId}', '${dateString}', event)" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm transition-colors">
-                                Mark Available
-                            </button>
-                        </div>
-                    </div>
-                `;
-                }).join('');
-            }
+            driversOffList.innerHTML = driversOff.length === 0
+                ? '<div class="text-[#9cabba] text-sm italic p-4 bg-[#283039] rounded-lg">No drivers off</div>'
+                : driversOff.map(d => renderDriverRow(d, dateString, STATUS.OFF, 'off')).join('');
 
-            // Render drivers working list
+            const driversStandbyList = document.getElementById('drivers-standby-list');
+            driversStandbyList.innerHTML = driversStandby.length === 0
+                ? '<div class="text-[#9cabba] text-sm italic p-4 bg-[#283039] rounded-lg">No standby</div>'
+                : driversStandby.map(d => renderDriverRow(d, dateString, STATUS.STANDBY, 'standby')).join('');
+
             const driversWorkingList = document.getElementById('drivers-working-list');
-            if (driversWorking.length === 0) {
-                driversWorkingList.innerHTML = '<div class="text-[#9cabba] text-sm italic p-4 bg-[#283039] rounded-lg">No drivers working on this day</div>';
+            driversWorkingList.innerHTML = driversWorking.length === 0
+                ? '<div class="text-[#9cabba] text-sm italic p-4 bg-[#283039] rounded-lg">No drivers working</div>'
+                : driversWorking.map(d => renderDriverRow(d, dateString, STATUS.WORKING, 'working')).join('');
+
+            const driversUnsetList = document.getElementById('drivers-unset-list');
+            const driversUnsetSection = document.getElementById('drivers-unset-section');
+            if (driversUnset.length === 0) {
+                driversUnsetSection.style.display = 'none';
             } else {
-                driversWorkingList.innerHTML = driversWorking.map(driver => {
-                    const driverId = driver.uid || driver.id;
-                    const notificationMeta = unseenChanges[dateString] && unseenChanges[dateString][driverId];
-                    const hasNowWorkingNotification = notificationMeta && notificationMeta.changeType === 'available';
-                    const notificationId = hasNowWorkingNotification ? notificationMeta.id : null;
-                    
-                    return `
-                    <div class="bg-[#283039] rounded-lg p-3 flex items-center justify-between ${hasNowWorkingNotification ? 'border-l-4 border-red-500' : ''}">
-                        <div class="flex items-center gap-3">
-                            <div class="flex items-center justify-center rounded-full h-10 w-10 bg-green-600">
-                                <span class="material-symbols-outlined text-white">person</span>
-                            </div>
-                            <div>
-                                <div class="font-semibold flex items-center gap-2">
-                                    ${driver.firstName} ${driver.lastName}
-                                    ${hasNowWorkingNotification ? '<span class="text-red-400 text-xs font-semibold">(Now working)</span>' : ''}
-                                </div>
-                                <div class="text-[#9cabba] text-sm">${driver.homePostcode}</div>
-                            </div>
+                driversUnsetSection.style.display = 'block';
+                driversUnsetList.innerHTML = driversUnset.map(d => {
+                    const name = [d.firstName, d.lastName].filter(Boolean).join(' ') || d.email || 'Driver';
+                    return `<div class="bg-[#283039] rounded-lg p-3 flex items-center gap-3">
+                        <div class="flex items-center justify-center rounded-full h-10 w-10 bg-[#3a444e]">
+                            <span class="material-symbols-outlined text-[#9cabba]">person</span>
                         </div>
-                        <div class="flex gap-2">
-                            ${hasNowWorkingNotification ? `
-                                <button onclick="markChangeAsSeen('${notificationId}', '${dateString}', '${driverId}', event)" class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-sm transition-colors">
-                                    Mark as Seen
-                                </button>
-                            ` : ''}
-                            <button onclick="toggleDriverAvailability('${driverId}', '${dateString}', event)" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm transition-colors">
-                                Mark Off
-                            </button>
+                        <div>
+                            <div class="font-semibold text-white">${name}</div>
+                            <div class="text-[#9cabba] text-sm">Has not set availability in the app yet</div>
                         </div>
-                    </div>
-                `;
+                    </div>`;
                 }).join('');
             }
 
-            // Show modal
             document.getElementById('day-detail-modal').classList.remove('hidden');
             document.getElementById('day-detail-modal').classList.add('flex');
         }
 
-        // Toggle driver availability for a specific date
+        // Toggle driver availability for a specific date (office sets status: working | standby | off)
         async function toggleDriverAvailability(driverId, dateString, event) {
             event.stopPropagation();
-            
             try {
-                const driversOffIds = driverAvailability[dateString] || [];
-                const isCurrentlyOff = driversOffIds.includes(driverId);
-                
-                let updatedDriversOff;
-                let isAddingDayOff = false;
-                
-                if (isCurrentlyOff) {
-                    // Mark as available (remove from off list)
-                    updatedDriversOff = driversOffIds.filter(id => id !== driverId);
-                } else {
-                    // Mark as off (add to off list)
-                    updatedDriversOff = [...driversOffIds, driverId];
-                    isAddingDayOff = true;
-                }
-                
-                // Update local state
-                driverAvailability[dateString] = updatedDriversOff;
-                
-                // Save to Firebase (calendar collection)
+                const currentStatus = (driverStatusByDate[dateString] || {})[driverId] || STATUS.WORKING;
+                const nextStatus = currentStatus === STATUS.OFF ? STATUS.WORKING : currentStatus === STATUS.WORKING ? STATUS.STANDBY : STATUS.OFF;
+
                 const calendarDocRef = window.firebaseDoc(window.firestore, 'calendar', dateString);
+                const snap = await window.firebaseGetDoc(calendarDocRef);
+                const existing = snap.exists() ? snap.data() : {};
+                const drivers = existing.drivers && typeof existing.drivers === 'object' ? { ...existing.drivers } : {};
+                const existingOff = existing.driversOff || [];
+                drivers[driverId] = { ...(drivers[driverId] || {}), status: nextStatus, editedByOffice: window.serverTimestamp() };
+                let updatedDriversOff = existingOff.filter(id => id !== driverId);
+                if (nextStatus === STATUS.OFF) updatedDriversOff.push(driverId);
+
                 await window.firebaseSetDoc(calendarDocRef, {
                     date: dateString,
-                    driversOff: updatedDriversOff,
-                    updatedAt: new Date().toISOString(),
-                    officeId: currentSession?.officeId || null
+                    officeId: currentSession?.officeId || null,
+                    updatedAt: window.serverTimestamp(),
+                    drivers,
+                    driversOff: updatedDriversOff
                 }, { merge: true });
+
+                driverStatusByDate[dateString] = driverStatusByDate[dateString] || {};
+                driverStatusByDate[dateString][driverId] = nextStatus;
+                driverCalendarEntry[dateString] = driverCalendarEntry[dateString] || {};
+                driverCalendarEntry[dateString][driverId] = drivers[driverId];
+                driverAvailability[dateString] = Object.entries(driverStatusByDate[dateString]).filter(([, s]) => s === STATUS.OFF).map(([id]) => id);
                 
                 console.log('Updated availability for', dateString);
                 

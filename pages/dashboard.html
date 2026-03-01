@@ -11,10 +11,12 @@
     <link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
     <link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png">
     <link rel="stylesheet" href="/assets/css/responsive-nav.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
     <title>Dashboard - SOTO Routes</title>
     <script src="/assets/js/tailwind-runtime.js"></script>
     <script src="/js/mobile-nav.js"></script>
     <script src="/js/session-manager.js"></script>
+    <script src="/js/availability-model.js"></script>
     <script src="/js/settings.js"></script>
     <script src="../js/ui-dialogs.js"></script>
     <script>
@@ -23,7 +25,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, getDocs, getDoc, doc, query, where } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, getDocs, getDoc, doc, query, where, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         const firebaseConfig = {
@@ -45,6 +47,7 @@
         window.firebaseCollection = collection;
         window.firebaseQuery = query;
         window.firebaseWhere = where;
+        window.firebaseOnSnapshot = onSnapshot;
         window.signOut = signOut;
     </script>
     <style type="text/tailwindcss">
@@ -56,6 +59,15 @@
         .spinner::before { content: ''; position: absolute; inset: 0; border-radius: 50%; background-image: linear-gradient(rgb(186, 66, 255) 35%, rgb(0, 225, 255)); box-shadow: 0px -5px 20px 0px rgb(186, 66, 255), 0px 5px 20px 0px rgb(0, 225, 255); }
         .spinner1 { background-color: rgb(36, 36, 36); width: 52px; height: 52px; border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2; }
         @keyframes spin { to { transform: rotate(360deg); } }
+        #dashboard-map-inner .leaflet-container { background: #0f1419; }
+        .driver-marker-bubble { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 4px 8px; background: rgba(26,31,36,0.95); border-radius: 999px; box-shadow: 0 2px 8px rgba(0,0,0,0.4); flex-wrap: wrap; max-width: 120px; }
+        .driver-marker-single { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 3px solid; box-sizing: border-box; }
+        .driver-marker-single.green { border-color: #22c55e; }
+        .driver-marker-single.red { border-color: #ef4444; }
+        .driver-marker-status { font-size: 11px; font-weight: 700; line-height: 1; }
+        .driver-marker-status.green { color: #22c55e; }
+        .driver-marker-status.red { color: #ef4444; }
+        .driver-div-icon { background: none !important; border: none !important; }
     </style>
 </head>
 <body class="bg-[#111418] text-white" style="font-family: Inter, 'Noto Sans', sans-serif;">
@@ -167,29 +179,39 @@
                     </div>
 
                     <!-- Map placeholder -->
-                    <div class="bg-[#1a1f24] border border-[#283039] rounded-lg overflow-hidden">
-                        <div class="px-4 py-2 border-b border-[#283039] flex items-center gap-2">
-                            <span class="material-symbols-outlined text-[#9cabba]">map</span>
-                            <span class="text-sm font-medium text-[#9cabba]">Driver locations (coming soon)</span>
+                    <div id="dashboard-map-container" class="bg-[#1a1f24] border border-[#283039] rounded-lg overflow-hidden">
+                        <div class="px-4 py-2 border-b border-[#283039] flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2">
+                                <span class="material-symbols-outlined text-[#9cabba]">map</span>
+                                <span class="text-sm font-medium text-[#9cabba]">Driver locations</span>
+                            </div>
+                            <button type="button" onclick="toggleDashboardMapFullscreen()" class="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-[#283039] transition-colors text-[#9cabba] hover:text-white" aria-label="Full screen map">
+                                <span class="material-symbols-outlined text-xl">fullscreen</span>
+                            </button>
                         </div>
-                        <div class="relative w-full" style="height: 400px;">
-                            <iframe
-                                src="https://www.openstreetmap.org/export/embed.html?bbox=-8.5%2C49.5%2C2.5%2C61.5&layer=mapnik&marker=54.5,-2"
-                                class="absolute inset-0 w-full h-full border-0"
-                                loading="lazy"
-                                referrerpolicy="no-referrer-when-downgrade"
-                                title="UK map placeholder"
-                            ></iframe>
-                            <div class="absolute bottom-2 left-2 right-2 text-center">
-                                <span class="inline-block bg-[#1a1f24]/90 text-[#9cabba] text-xs px-2 py-1 rounded">UK — driver last ping will appear here when available</span>
+                        <div id="dashboard-map-inner" class="relative w-full" style="height: 400px;">
+                            <div id="dashboard-map-leaflet" class="absolute inset-0 w-full h-full"></div>
+                            <div id="dashboard-map-placeholder" class="absolute inset-0 flex items-center justify-center bg-[#0f1419] text-[#9cabba] text-sm">
+                                <span>Loading map…</span>
                             </div>
                         </div>
                     </div>
+    <!-- Map fullscreen overlay -->
+    <div id="dashboard-map-fullscreen" class="fixed inset-0 z-[9999] bg-black flex flex-col" style="display: none;">
+        <div class="flex items-center justify-between px-4 py-2 border-b border-[#283039] bg-[#1a1f24] shrink-0">
+            <span class="text-sm font-medium text-[#9cabba]">Driver locations — Full screen</span>
+            <button type="button" onclick="toggleDashboardMapFullscreen()" class="flex items-center justify-center w-10 h-10 rounded-lg hover:bg-[#283039] transition-colors text-white" aria-label="Exit full screen">
+                <span class="material-symbols-outlined text-2xl">fullscreen_exit</span>
+            </button>
+        </div>
+        <div id="dashboard-map-fullscreen-leaflet" class="flex-1 relative min-h-0"></div>
+    </div>
                 </div>
             </main>
         </div>
     </div>
 
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script>
         let currentSession = null;
         const notifyWarning = (m, t) => window.uiDialogs && window.uiDialogs.showAlert({ title: t || 'Heads Up', message: m, tone: 'warning' });
@@ -247,13 +269,33 @@
 
         async function loadDriversWorkingToday(officeId) {
             try {
-                const total = await loadDriversCount(officeId);
+                const Model = window.AvailabilityModel;
+                const q = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'drivers'),
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                const driversSnap = await window.firebaseGetDocs(q);
                 const now = new Date();
                 const dateString = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
                 const calendarRef = window.firebaseDoc(window.firestore, 'calendar', dateString);
                 const calendarDoc = await window.firebaseGetDoc(calendarRef);
-                const driversOff = calendarDoc.exists() ? (calendarDoc.data().driversOff || []) : [];
-                return Math.max(0, total - driversOff.length);
+                const driversMap = (calendarDoc.exists() && calendarDoc.data().drivers) ? calendarDoc.data().drivers : {};
+                const driversOffLegacy = calendarDoc.exists() ? (calendarDoc.data().driversOff || []) : [];
+                const dateObj = new Date(dateString + 'T12:00:00');
+                let workingCount = 0;
+                driversSnap.docs.forEach((d) => {
+                    const data = d.data();
+                    const driverId = d.id || data.uid;
+                    const driver = { ...data, uid: driverId };
+                    if (!Model || !Model.hasDriverTypeSet(driver)) return; // only count drivers who have set availability
+                    const template = Model.getDriverTemplate(driver);
+                    const entry = driversMap[driverId] || null;
+                    let status = Model.getEffectiveStatus(template, entry, dateObj);
+                    if (entry && entry.status) status = entry.status;
+                    else if (driversOffLegacy.includes(driverId) && !entry) status = 'off';
+                    if (status === 'working') workingCount++;
+                });
+                return workingCount;
             } catch (e) {
                 console.error('[Dashboard] Drivers working today failed', e);
                 return 0;
@@ -347,6 +389,203 @@
             } catch (e) { console.error('[Dashboard] loadNotifications failed', e); }
         }
 
+        let dashboardMap = null;
+        let dashboardMapFullscreen = null;
+        let driverMarkerLayer = null;
+        let driverMarkerLayerFullscreen = null;
+
+        function getTodayDateString() {
+            const d = new Date();
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+
+        function haversineMeters(lat1, lon1, lat2, lon2) {
+            const R = 6371000;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+            return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        function getDriverLastCoordinateAndStatus(session) {
+            const coord = (c) => (c && typeof c.lat === 'number' && typeof c.lng === 'number') ? { lat: c.lat, lng: c.lng } : null;
+            if (session.endDayCoordinate) return { ...coord(session.endDayCoordinate), status: 'ended' };
+            for (let j = 10; j >= 1; j--) {
+                const dc = session['job' + j + 'DeliverCoordinate'];
+                if (coord(dc)) return { ...coord(dc), status: 'deliver', job: j };
+                const cc = session['job' + j + 'CollectCoordinate'];
+                if (coord(cc)) return { ...coord(cc), status: 'collect', job: j };
+            }
+            if (session.carryoverDeliverCoordinate && coord(session.carryoverDeliverCoordinate))
+                return { ...coord(session.carryoverDeliverCoordinate), status: 'carryover' };
+            if (session.startDayCoordinate && coord(session.startDayCoordinate))
+                return { ...coord(session.startDayCoordinate), status: 'startday' };
+            return null;
+        }
+
+        function clusterDriversWithin50m(drivers) {
+            const CLUSTER_M = 50;
+            const clusters = [];
+            const used = new Set();
+            for (let i = 0; i < drivers.length; i++) {
+                if (used.has(i)) continue;
+                const group = [drivers[i]];
+                used.add(i);
+                for (let j = i + 1; j < drivers.length; j++) {
+                    if (used.has(j)) continue;
+                    const d = haversineMeters(drivers[i].lat, drivers[i].lng, drivers[j].lat, drivers[j].lng);
+                    if (d <= CLUSTER_M) { group.push(drivers[j]); used.add(j); }
+                }
+                clusters.push(group);
+            }
+            return clusters;
+        }
+
+        function toPhotoUrl(val) {
+            if (typeof val === 'string' && (val.startsWith('http') || val.startsWith('/'))) return val;
+            return '/assets/logos/favicon.svg';
+        }
+        function createDriverMarkerHtml(driver, isCluster) {
+            const borderClass = driver.statusColor === 'green' ? 'green' : 'red';
+            if (isCluster && driver.drivers) {
+                const imgs = driver.drivers.slice(0, 4).map(d =>
+                    '<img src="' + toPhotoUrl(d.photoUrl) + '" alt="" class="driver-marker-single ' + (d.statusColor === 'green' ? 'green' : 'red') + '" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">'
+                ).join('');
+                return '<div class="driver-marker-bubble">' + imgs + '<span class="driver-marker-status ' + borderClass + '">' + driver.drivers.length + '</span></div>';
+            }
+            const statusText = driver.status === 'startday' ? '⌂' : (driver.status === 'carryover' ? 'C/O' : (driver.status === 'collect' ? '▲' + (driver.job || '') : '▼' + (driver.job || '')));
+            return '<div class="driver-marker-bubble"><img src="' + toPhotoUrl(driver.photoUrl) + '" alt="" class="driver-marker-single ' + borderClass + '" style="border-radius:50%;object-fit:cover;"><span class="driver-marker-status ' + borderClass + '">' + statusText + '</span></div>';
+        }
+
+        function renderDriverMarkers(map, drivers) {
+            if (!map || !L) return;
+            const layer = map === dashboardMapFullscreen ? driverMarkerLayerFullscreen : driverMarkerLayer;
+            if (layer) map.removeLayer(layer);
+            const newLayer = L.layerGroup();
+            const active = drivers.filter(d => d.status !== 'ended');
+            if (active.length === 0) {
+                if (map === dashboardMap) {
+                    const ph = document.getElementById('dashboard-map-placeholder');
+                    if (ph) { ph.style.display = 'flex'; ph.innerHTML = '<span>No active drivers on map today</span>'; }
+                }
+                if (map === dashboardMap) map.addLayer(newLayer);
+                return;
+            }
+            const placeholder = document.getElementById('dashboard-map-placeholder');
+            if (placeholder) placeholder.style.display = 'none';
+
+            const clusters = clusterDriversWithin50m(active);
+            const bounds = [];
+            clusters.forEach(cluster => {
+                if (cluster.length === 1) {
+                    const d = cluster[0];
+                    const icon = L.divIcon({
+                        html: createDriverMarkerHtml(d, false),
+                        className: 'driver-div-icon',
+                        iconSize: [60, 50],
+                        iconAnchor: [30, 45]
+                    });
+                    const m = L.marker([d.lat, d.lng], { icon }).addTo(newLayer);
+                    m.bindTooltip(d.name || 'Driver', { direction: 'top', offset: [0, -10] });
+                    bounds.push([d.lat, d.lng]);
+                } else {
+                    const avgLat = cluster.reduce((s, c) => s + c.lat, 0) / cluster.length;
+                    const avgLng = cluster.reduce((s, c) => s + c.lng, 0) / cluster.length;
+                    const icon = L.divIcon({
+                        html: createDriverMarkerHtml({ drivers: cluster, statusColor: cluster[0].statusColor }, true),
+                        className: 'driver-div-icon',
+                        iconSize: [100, 50],
+                        iconAnchor: [50, 45]
+                    });
+                    const m = L.marker([avgLat, avgLng], { icon }).addTo(newLayer);
+                    m.bindTooltip(cluster.map(c => c.name).join(', '), { direction: 'top' });
+                    bounds.push([avgLat, avgLng]);
+                }
+            });
+            if (bounds.length > 0 && bounds.length <= 20) {
+                try { map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 }); } catch (e) {}
+            }
+            if (map === dashboardMap) driverMarkerLayer = newLayer; else driverMarkerLayerFullscreen = newLayer;
+            map.addLayer(newLayer);
+        }
+
+        function initDashboardMap() {
+            const el = document.getElementById('dashboard-map-leaflet');
+            if (!el || !L) return;
+            if (dashboardMap) return;
+            dashboardMap = L.map('dashboard-map-leaflet', { center: [54.5, -2], zoom: 6, zoomControl: true });
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap'
+            }).addTo(dashboardMap);
+            dashboardMap.setMaxBounds([[49.5, -8.5], [61.5, 2.5]]);
+        }
+
+        function initDashboardMapFullscreen() {
+            const el = document.getElementById('dashboard-map-fullscreen-leaflet');
+            if (!el || !L || !dashboardMap) return;
+            if (dashboardMapFullscreen) {
+                dashboardMapFullscreen.invalidateSize();
+                return;
+            }
+            dashboardMapFullscreen = L.map('dashboard-map-fullscreen-leaflet', {
+                center: dashboardMap.getCenter(),
+                zoom: dashboardMap.getZoom()
+            });
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap'
+            }).addTo(dashboardMapFullscreen);
+            dashboardMapFullscreen.setMaxBounds([[49.5, -8.5], [61.5, 2.5]]);
+            setTimeout(() => { if (dashboardMapFullscreen) dashboardMapFullscreen.invalidateSize(); }, 150);
+        }
+
+        async function fetchDriverSessionsWithPhotos(officeId, dateStr) {
+            const drivers = [];
+            const q = window.firebaseQuery(
+                window.firebaseCollection(window.firestore, 'driverDaySessions'),
+                window.firebaseWhere('officeId', '==', officeId),
+                window.firebaseWhere('date', '==', dateStr)
+            );
+            const snap = await window.firebaseGetDocs(q);
+            for (const d of snap.docs) {
+                const data = d.data();
+                if (!data.dayStartedAt || data.dayEndedAt) continue;
+                const info = getDriverLastCoordinateAndStatus(data);
+                if (!info || info.status === 'ended') continue;
+                let photoUrl = null;
+                try {
+                    const userSnap = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'users', data.driverId));
+                    if (userSnap.exists()) photoUrl = userSnap.data().photoURL || userSnap.data().photoUrl;
+                    if (!photoUrl) {
+                        const drSnap = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'drivers', data.driverId));
+                        if (drSnap.exists()) photoUrl = drSnap.data().photoURL || drSnap.data().photoUrl;
+                    }
+                } catch (e) {}
+                const statusColor = (info.status === 'startday' || info.status === 'collect') ? 'green' : 'red';
+                drivers.push({
+                    driverId: data.driverId,
+                    name: data.name || 'Driver',
+                    lat: info.lat,
+                    lng: info.lng,
+                    status: info.status,
+                    job: info.job,
+                    statusColor,
+                    photoUrl
+                });
+            }
+            return drivers;
+        }
+
+        async function refreshDriverMap() {
+            const officeId = getCurrentOfficeId();
+            if (!officeId || !dashboardMap) return;
+            const dateStr = getTodayDateString();
+            const drivers = await fetchDriverSessionsWithPhotos(officeId, dateStr);
+            renderDriverMarkers(dashboardMap, drivers);
+            if (dashboardMapFullscreen) {
+                renderDriverMarkers(dashboardMapFullscreen, drivers);
+            }
+        }
+
         async function loadDashboardData() {
             const officeId = getCurrentOfficeId();
             if (!officeId) return;
@@ -358,7 +597,20 @@
             document.getElementById('stat-pending-expenses').textContent = expenseCounts.pending;
             document.getElementById('stat-validated-expenses').textContent = expenseCounts.validated;
             document.getElementById('stat-drivers-working').textContent = driversWorking;
-            document.getElementById('stat-active-drivers').textContent = '—';
+
+            const dateStr = getTodayDateString();
+            const q = window.firebaseQuery(
+                window.firebaseCollection(window.firestore, 'driverDaySessions'),
+                window.firebaseWhere('officeId', '==', officeId),
+                window.firebaseWhere('date', '==', dateStr)
+            );
+            const snap = await window.firebaseGetDocs(q);
+            let activeCount = 0;
+            snap.docs.forEach(d => {
+                const data = d.data();
+                if (data.dayStartedAt && !data.dayEndedAt) activeCount++;
+            });
+            document.getElementById('stat-active-drivers').textContent = activeCount;
         }
 
         function setDashboardDate() {
@@ -368,6 +620,9 @@
             el.textContent = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
         }
 
+        let unsubscribeExpenses = null;
+        let unsubscribeDriverSessions = null;
+
         async function init() {
             try {
                 currentSession = await window.sotoSession.bootstrap(['office', 'admin']);
@@ -375,8 +630,11 @@
                 if (currentSession.officeId) {
                     await loadOfficeLogo(currentSession.officeId);
                     setDashboardDate();
+                    initDashboardMap();
                     await loadDashboardData();
+                    await refreshDriverMap();
                     await updateNotificationCount();
+                    setupRealtimeListeners();
                 }
             } catch (e) {
                 console.error('[Dashboard] Bootstrap failed', e);
@@ -386,10 +644,58 @@
             if (el) { el.style.opacity = '0'; el.style.transition = 'opacity 0.3s ease-out'; setTimeout(() => { el.style.display = 'none'; }, 300); }
         }
 
+        function setupRealtimeListeners() {
+            const officeId = getCurrentOfficeId();
+            if (!officeId || !window.firebaseOnSnapshot) return;
+            const dateStr = getTodayDateString();
+
+            if (unsubscribeExpenses) unsubscribeExpenses();
+            const expenseQ = window.firebaseQuery(
+                window.firebaseCollection(window.firestore, 'expenseBatches'),
+                window.firebaseWhere('officeId', '==', officeId)
+            );
+            unsubscribeExpenses = window.firebaseOnSnapshot(expenseQ, () => {
+                loadExpenseCounts(officeId).then(r => {
+                    document.getElementById('stat-pending-expenses').textContent = r.pending;
+                    document.getElementById('stat-validated-expenses').textContent = r.validated;
+                });
+            });
+
+            if (unsubscribeDriverSessions) unsubscribeDriverSessions();
+            const sessionQ = window.firebaseQuery(
+                window.firebaseCollection(window.firestore, 'driverDaySessions'),
+                window.firebaseWhere('officeId', '==', officeId),
+                window.firebaseWhere('date', '==', dateStr)
+            );
+            unsubscribeDriverSessions = window.firebaseOnSnapshot(sessionQ, (snap) => {
+                let activeCount = 0;
+                snap.docs.forEach(d => {
+                    const data = d.data();
+                    if (data.dayStartedAt && !data.dayEndedAt) activeCount++;
+                });
+                const el = document.getElementById('stat-active-drivers');
+                if (el) el.textContent = activeCount;
+                refreshDriverMap();
+            });
+        }
+
         async function logout() {
             try { await window.signOut(window.auth); } catch (e) {}
             window.sotoSession?.clearSession();
             window.location.href = '/pages/soto-routes-login.html';
+        }
+        function toggleDashboardMapFullscreen() {
+            const overlay = document.getElementById('dashboard-map-fullscreen');
+            if (!overlay) return;
+            const isOpen = overlay.style.display === 'flex';
+            overlay.style.display = isOpen ? 'none' : 'flex';
+            document.body.style.overflow = isOpen ? '' : 'hidden';
+            if (!isOpen) {
+                setTimeout(() => {
+                    initDashboardMapFullscreen();
+                    refreshDriverMap();
+                }, 100);
+            }
         }
         function toggleProfileDropdown() { document.getElementById('profileDropdown').classList.toggle('hidden'); }
         document.addEventListener('click', function(e) {
