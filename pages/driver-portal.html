@@ -509,10 +509,14 @@
                     </div>
                     <!-- Password Change: only shown if hasChangedPassword === 0 -->
                     <div id="profileCompletePasswordWrap" class="hidden">
-                        <label for="profileCompletePassword" class="block text-sm font-medium text-gray-300 mb-1">Change your password</label>
-                        <p class="text-xs text-gray-400 mb-2">Please create a new password for your account</p>
+                        <label for="profileCompletePasswordCurrent" class="block text-sm font-medium text-gray-300 mb-1">Current password</label>
+                        <p class="text-xs text-gray-400 mb-2">Enter your temporary password that was emailed to you</p>
+                        <input type="password" id="profileCompletePasswordCurrent" class="w-full px-3 py-2 bg-[#283039] border border-[#3a444e] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#3a444e] focus:border-[#3a444e] mb-3" placeholder="Current/temporary password" minlength="6">
+                        
+                        <label for="profileCompletePassword" class="block text-sm font-medium text-gray-300 mb-1">New password</label>
+                        <p class="text-xs text-gray-400 mb-2">Create a new password (minimum 6 characters)</p>
                         <input type="password" id="profileCompletePassword" class="w-full px-3 py-2 bg-[#283039] border border-[#3a444e] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#3a444e] focus:border-[#3a444e] mb-2" placeholder="New password" minlength="6">
-                        <input type="password" id="profileCompletePasswordConfirm" class="w-full px-3 py-2 bg-[#283039] border border-[#3a444e] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#3a444e] focus:border-[#3a444e]" placeholder="Confirm password" minlength="6">
+                        <input type="password" id="profileCompletePasswordConfirm" class="w-full px-3 py-2 bg-[#283039] border border-[#3a444e] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#3a444e] focus:border-[#3a444e]" placeholder="Confirm new password" minlength="6">
                     </div>
                     <button type="submit" id="profileCompleteSubmit" class="w-full py-3 bg-[#283039] hover:bg-[#3a444e] text-white font-semibold rounded-lg transition-colors border border-[#3a444e]">
                         Save and continue
@@ -1200,8 +1204,10 @@
             if (passwordWrap) passwordWrap.classList.toggle('hidden', !needPasswordChange);
             const passwordInput = document.getElementById('profileCompletePassword');
             const passwordConfirmInput = document.getElementById('profileCompletePasswordConfirm');
+            const passwordCurrentInput = document.getElementById('profileCompletePasswordCurrent');
             if (passwordInput) passwordInput.value = '';
             if (passwordConfirmInput) passwordConfirmInput.value = '';
+            if (passwordCurrentInput) passwordCurrentInput.value = '';
 
             if (introEl) {
                 const items = [];
@@ -1688,6 +1694,7 @@
             const photoInputWrap = document.getElementById('profileCompletePhotoInputWrap');
             const passwordInput = document.getElementById('profileCompletePassword');
             const passwordConfirmInput = document.getElementById('profileCompletePasswordConfirm');
+            const passwordCurrentInput = document.getElementById('profileCompletePasswordCurrent');
             const submitBtn = document.getElementById('profileCompleteSubmit');
 
             const postcode = postcodeInput ? postcodeInput.value.trim() : '';
@@ -1695,6 +1702,7 @@
             const hasNewPhoto = photoInput && photoInput.files && photoInput.files[0];
             const newPassword = passwordInput ? passwordInput.value : '';
             const confirmPassword = passwordConfirmInput ? passwordConfirmInput.value : '';
+            const currentPassword = passwordCurrentInput ? passwordCurrentInput.value : '';
 
             if (needPostcode && showingPostcodeInput && !postcode) {
                 notifyWarning('Please enter your home postcode.', 'Required');
@@ -1710,12 +1718,16 @@
                 return;
             }
             if (needPasswordChange) {
+                if (!currentPassword || currentPassword.length < 6) {
+                    notifyWarning('Please enter your current/temporary password.', 'Current Password Required');
+                    return;
+                }
                 if (!newPassword || newPassword.length < 6) {
-                    notifyWarning('Password must be at least 6 characters long.', 'Invalid Password');
+                    notifyWarning('New password must be at least 6 characters long.', 'Invalid Password');
                     return;
                 }
                 if (newPassword !== confirmPassword) {
-                    notifyWarning('Passwords do not match. Please try again.', 'Password Mismatch');
+                    notifyWarning('New passwords do not match. Please try again.', 'Password Mismatch');
                     return;
                 }
             }
@@ -1723,13 +1735,27 @@
             submitBtn.disabled = true;
             try {
                 // Handle password change first if needed
-                if (needPasswordChange && newPassword) {
+                if (needPasswordChange && newPassword && currentPassword) {
                     try {
-                        await window.updatePassword(window.auth.currentUser, newPassword);
+                        const user = window.auth.currentUser;
+                        // Re-authenticate with current/temporary password
+                        const credential = window.EmailAuthProvider.credential(user.email, currentPassword);
+                        await window.reauthenticateWithCredential(user, credential);
+                        
+                        // Now update to new password
+                        await window.updatePassword(user, newPassword);
                         notifySuccess('Password changed successfully.', 'Password Updated');
                     } catch (passwordError) {
                         console.error('Error updating password:', passwordError);
-                        notifyError('Could not update password: ' + (passwordError.message || 'Please try again.'), 'Password Error');
+                        let errorMsg = 'Could not update password. ';
+                        if (passwordError.code === 'auth/wrong-password') {
+                            errorMsg = 'Current password is incorrect. Please check your temporary password.';
+                        } else if (passwordError.code === 'auth/weak-password') {
+                            errorMsg = 'Password is too weak. Please use a stronger password.';
+                        } else {
+                            errorMsg += passwordError.message || 'Please try again.';
+                        }
+                        notifyError(errorMsg, 'Password Error');
                         submitBtn.disabled = false;
                         return;
                     }
