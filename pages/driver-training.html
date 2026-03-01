@@ -1145,12 +1145,26 @@
             panel.className = 'category-zoom-panel ' + colorClass;
 
             var html = '<strong>Topics</strong>';
-            cats.forEach(function (cat) {
+            // Separate regular topics from quiz items
+            var regularCats = cats.filter(function (cat) { return !cat.key.startsWith('quiz-'); });
+            var quizCats = cats.filter(function (cat) { return cat.key.startsWith('quiz-'); });
+            regularCats.forEach(function (cat) {
                 var completedCount = getCategoryCompleted(progress, cat.key);
                 var total = cat.subs.length;
                 var percent = useServerComplete ? 100 : (total ? Math.round((completedCount / total) * 100) : 0);
                 html += '<a class="category-zoom-link" href="javascript:void(0)" onclick="closeTrainingCategoryZoom(); openTrainingModal(\'' + cat.key + '\')">' + escapeHtml(cat.title) + '<span class="category-zoom-percent">' + percent + '%</span></a>';
             });
+            // Add separator and quiz items
+            if (quizCats.length > 0) {
+                html += '<div style="border-top: 1px solid rgba(255,255,255,0.15); margin: 0.75rem 0; padding-top: 0.75rem;"></div>';
+                html += '<strong style="opacity: 0.9;">Quiz</strong>';
+                quizCats.forEach(function (cat) {
+                    var completedCount = getCategoryCompleted(progress, cat.key);
+                    var total = cat.subs.length;
+                    var percent = useServerComplete ? 100 : (total ? Math.round((completedCount / total) * 100) : 0);
+                    html += '<a class="category-zoom-link" href="javascript:void(0)" onclick="closeTrainingCategoryZoom(); openTrainingModal(\'' + cat.key + '\')">' + escapeHtml(cat.title) + '<span class="category-zoom-percent">' + percent + '%</span></a>';
+                });
+            }
             contentEl.innerHTML = html;
 
             overlay.classList.remove('is-visible', 'category-zoom-overlay-hidden');
@@ -1240,12 +1254,26 @@
                 html += '<div class="flip-card-back ' + colorClass + '">';
                 html += '<div class="back-content">';
                 html += '<strong>Topics</strong>';
-                cats.forEach(function (cat) {
+                // Separate regular topics from quiz items
+                var regularCats = cats.filter(function (cat) { return !cat.key.startsWith('quiz-'); });
+                var quizCats = cats.filter(function (cat) { return cat.key.startsWith('quiz-'); });
+                regularCats.forEach(function (cat) {
                     var completedCount = getCategoryCompleted(progress, cat.key);
                     var total = cat.subs.length;
                     var percent = useServerComplete ? 100 : (total ? Math.round((completedCount / total) * 100) : 0);
                     html += '<a class="flip-back-link" href="javascript:void(0)" onclick="event.stopPropagation(); openTrainingModal(\'' + cat.key + '\')">' + escapeHtml(cat.title) + '<span class="flip-back-percent">' + percent + '%</span></a>';
                 });
+                // Add separator and quiz items
+                if (quizCats.length > 0) {
+                    html += '<div style="border-top: 1px solid rgba(255,255,255,0.15); margin: 0.75rem 0; padding-top: 0.75rem;"></div>';
+                    html += '<strong style="opacity: 0.9;">Quiz</strong>';
+                    quizCats.forEach(function (cat) {
+                        var completedCount = getCategoryCompleted(progress, cat.key);
+                        var total = cat.subs.length;
+                        var percent = useServerComplete ? 100 : (total ? Math.round((completedCount / total) * 100) : 0);
+                        html += '<a class="flip-back-link" href="javascript:void(0)" onclick="event.stopPropagation(); openTrainingModal(\'' + cat.key + '\')">' + escapeHtml(cat.title) + '<span class="flip-back-percent">' + percent + '%</span></a>';
+                    });
+                }
                 html += '</div></div></div></div></div>';
                 html += '</div>';
             });
