@@ -286,6 +286,9 @@
                 );
                 const driversSnapshot = await window.getDocs(driversQuery);
                 
+                console.log('Messages page - Loading drivers for officeId:', officeId);
+                console.log('Messages page - Found drivers:', driversSnapshot.docs.length);
+                
                 // Also get users to get their UIDs for read status checking
                 const usersQuery = window.query(
                     window.collection(window.db, 'users'),
@@ -293,6 +296,8 @@
                     window.where('role', '==', 'driver')
                 );
                 const usersSnapshot = await window.getDocs(usersQuery);
+                
+                console.log('Messages page - Found users with role=driver:', usersSnapshot.docs.length);
                 
                 // Create a map of email -> uid for quick lookup
                 const emailToUidMap = {};
@@ -312,6 +317,8 @@
                         ...driverData
                     };
                 });
+                
+                console.log('Messages page - Final allDrivers array:', allDrivers);
             } catch (error) {
                 console.error('Error loading drivers:', error);
             }

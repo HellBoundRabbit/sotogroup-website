@@ -494,6 +494,13 @@
                         <label for="profileCompletePhoto" class="block text-sm font-medium text-gray-300 mb-1">Display picture</label>
                         <input type="file" id="profileCompletePhoto" accept="image/*" class="w-full text-sm text-gray-400 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border file:border-[#3a444e] file:bg-[#283039] file:text-white file:font-medium file:hover:bg-[#3a444e]">
                     </div>
+                    <!-- Password Change: only shown if hasChangedPassword === 0 -->
+                    <div id="profileCompletePasswordWrap" class="hidden">
+                        <label for="profileCompletePassword" class="block text-sm font-medium text-gray-300 mb-1">Change your password</label>
+                        <p class="text-xs text-gray-400 mb-2">Please create a new password for your account</p>
+                        <input type="password" id="profileCompletePassword" class="w-full px-3 py-2 bg-[#283039] border border-[#3a444e] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#3a444e] focus:border-[#3a444e] mb-2" placeholder="New password" minlength="6">
+                        <input type="password" id="profileCompletePasswordConfirm" class="w-full px-3 py-2 bg-[#283039] border border-[#3a444e] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#3a444e] focus:border-[#3a444e]" placeholder="Confirm password" minlength="6">
+                    </div>
                     <button type="submit" id="profileCompleteSubmit" class="w-full py-3 bg-[#283039] hover:bg-[#3a444e] text-white font-semibold rounded-lg transition-colors border border-[#3a444e]">
                         Save and continue
                     </button>
@@ -1082,15 +1089,16 @@
                     const existingPhotoUrl = currentUser.photoURL || currentUser.photoUrl || currentUser.avatarUrl || null;
                     const needPhoto = !existingPhotoUrl;
                     const needDriverType = typeof window.AvailabilityModel !== 'undefined' && !window.AvailabilityModel.hasDriverTypeSet(currentUser);
+                    const needPasswordChange = !(currentUser.hasChangedPassword === 1 || currentUser.hasChangedPassword === '1' || currentUser.hasChangedPassword === true);
 
-                    if (needPostcode || needPhoto || needDriverType) {
+                    if (needPostcode || needPhoto || needDriverType || needPasswordChange) {
                         // If PWA install prompt is visible (user opened portal NOT in PWA), show profile modal only after they dismiss it
                         const pwaOverlay = document.getElementById('pwa-install-overlay');
                         if (pwaOverlay) {
-                            window._pendingProfileCompleteModal = { needPostcode, needPhoto, needDriverType, existingPhotoUrl, postcodeVal: postcodeVal.trim() };
+                            window._pendingProfileCompleteModal = { needPostcode, needPhoto, needDriverType, needPasswordChange, existingPhotoUrl, postcodeVal: postcodeVal.trim() };
                             return;
                         }
-                        showProfileCompleteModal(needPostcode, needPhoto, needDriverType, existingPhotoUrl, postcodeVal.trim());
+                        showProfileCompleteModal(needPostcode, needPhoto, needDriverType, needPasswordChange, existingPhotoUrl, postcodeVal.trim());
                         return;
                     }
 
@@ -1101,8 +1109,9 @@
                 }
         }
 
-        function showProfileCompleteModal(needPostcode, needPhoto, needDriverType, existingPhotoUrl, existingPostcode) {
+        function showProfileCompleteModal(needPostcode, needPhoto, needDriverType, needPasswordChange, existingPhotoUrl, existingPostcode) {
             if (typeof needDriverType === 'undefined') needDriverType = false;
+            if (typeof needPasswordChange === 'undefined') needPasswordChange = false;
             const modal = document.getElementById('driverProfileCompleteModal');
             const postcodeDisplayWrap = document.getElementById('profileCompletePostcodeDisplayWrap');
             const postcodeInputWrap = document.getElementById('profileCompletePostcodeInputWrap');
@@ -1114,11 +1123,13 @@
             const photoInput = document.getElementById('profileCompletePhoto');
             const introEl = document.getElementById('profileCompleteIntro');
             const daysWrap = document.getElementById('profileCompleteDaysWrap');
+            const passwordWrap = document.getElementById('profileCompletePasswordWrap');
 
             if (modal) {
                 modal.dataset.needPostcode = needPostcode ? 'true' : 'false';
                 modal.dataset.needPhoto = needPhoto ? 'true' : 'false';
                 modal.dataset.needDriverType = needDriverType ? 'true' : 'false';
+                modal.dataset.needPasswordChange = needPasswordChange ? 'true' : 'false';
             }
 
             // Driver type radios and days (Mon–Fri): part = working days only, standby = standby days only
@@ -1168,11 +1179,25 @@
             }
             if (photoInput) photoInput.value = '';
 
+            // Password change: only show if needPasswordChange is true
+            if (passwordWrap) passwordWrap.classList.toggle('hidden', !needPasswordChange);
+            const passwordInput = document.getElementById('profileCompletePassword');
+            const passwordConfirmInput = document.getElementById('profileCompletePasswordConfirm');
+            if (passwordInput) passwordInput.value = '';
+            if (passwordConfirmInput) passwordConfirmInput.value = '';
+
             if (introEl) {
-                if (needPostcode && needPhoto) introEl.textContent = 'Please add the following before using the portal.';
-                else if (needPostcode) introEl.textContent = 'Add your home postcode to continue. You can change it later in Account.';
-                else if (needPhoto) introEl.textContent = 'Add your display picture to continue. You can change it later in Account.';
-                else introEl.textContent = 'Review your profile below. Use Edit to change postcode or display picture.';
+                const items = [];
+                if (needPostcode) items.push('postcode');
+                if (needPhoto) items.push('display picture');
+                if (needDriverType) items.push('driver type');
+                if (needPasswordChange) items.push('password');
+                
+                if (items.length > 0) {
+                    introEl.textContent = 'Please add the following before using the portal: ' + items.join(', ') + '.';
+                } else {
+                    introEl.textContent = 'Review your profile below. Use Edit to change postcode or display picture.';
+                }
             }
 
             if (modal) modal.classList.remove('hidden');
@@ -1610,15 +1635,20 @@
             const needPostcode = modal && modal.dataset.needPostcode === 'true';
             const needPhoto = modal && modal.dataset.needPhoto === 'true';
             const needDriverType = modal && modal.dataset.needDriverType === 'true';
+            const needPasswordChange = modal && modal.dataset.needPasswordChange === 'true';
             const postcodeInput = document.getElementById('profileCompletePostcode');
             const photoInput = document.getElementById('profileCompletePhoto');
             const postcodeInputWrap = document.getElementById('profileCompletePostcodeInputWrap');
             const photoInputWrap = document.getElementById('profileCompletePhotoInputWrap');
+            const passwordInput = document.getElementById('profileCompletePassword');
+            const passwordConfirmInput = document.getElementById('profileCompletePasswordConfirm');
             const submitBtn = document.getElementById('profileCompleteSubmit');
 
             const postcode = postcodeInput ? postcodeInput.value.trim() : '';
             const showingPostcodeInput = postcodeInputWrap && !postcodeInputWrap.classList.contains('hidden');
             const hasNewPhoto = photoInput && photoInput.files && photoInput.files[0];
+            const newPassword = passwordInput ? passwordInput.value : '';
+            const confirmPassword = passwordConfirmInput ? passwordConfirmInput.value : '';
 
             if (needPostcode && showingPostcodeInput && !postcode) {
                 notifyWarning('Please enter your home postcode.', 'Required');
@@ -1633,11 +1663,35 @@
                 notifyWarning('Please select a driver type (Full time, Part time, or Standby).', 'Required');
                 return;
             }
+            if (needPasswordChange) {
+                if (!newPassword || newPassword.length < 6) {
+                    notifyWarning('Password must be at least 6 characters long.', 'Invalid Password');
+                    return;
+                }
+                if (newPassword !== confirmPassword) {
+                    notifyWarning('Passwords do not match. Please try again.', 'Password Mismatch');
+                    return;
+                }
+            }
 
             submitBtn.disabled = true;
             try {
+                // Handle password change first if needed
+                if (needPasswordChange && newPassword) {
+                    try {
+                        await window.updatePassword(window.auth.currentUser, newPassword);
+                        notifySuccess('Password changed successfully.', 'Password Updated');
+                    } catch (passwordError) {
+                        console.error('Error updating password:', passwordError);
+                        notifyError('Could not update password: ' + (passwordError.message || 'Please try again.'), 'Password Error');
+                        submitBtn.disabled = false;
+                        return;
+                    }
+                }
+
                 const updates = {};
                 if (showingPostcodeInput && postcode) updates.homePostcode = postcode;
+                if (needPasswordChange && newPassword) updates.hasChangedPassword = 1; // Mark password as changed
                 if (typeRadio && typeRadio.value) {
                     updates.availabilityType = typeRadio.value;
                     const working = [];
@@ -1662,7 +1716,7 @@
 
                 if (Object.keys(updates).length > 0) {
                     // Only send keys allowed by Firestore rules (driver update on users)
-                    const allowedUserKeys = ['homePostcode', 'photoURL', 'photoUrl', 'readMessages', 'trainingComplete', 'updatedAt', 'availabilityType', 'availabilityWorkingDays', 'availabilityStandbyDays'];
+                    const allowedUserKeys = ['homePostcode', 'photoURL', 'photoUrl', 'readMessages', 'trainingComplete', 'updatedAt', 'availabilityType', 'availabilityWorkingDays', 'availabilityStandbyDays', 'hasChangedPassword'];
                     const userPayload = {};
                     allowedUserKeys.forEach(function (k) {
                         if (k === 'updatedAt') userPayload.updatedAt = window.serverTimestamp();
@@ -1670,6 +1724,8 @@
                     });
                     if (Object.keys(userPayload).length > 0) {
                         await window.updateDoc(window.doc(window.db, 'users', currentUser.uid), userPayload);
+                        // Update currentUser with new values
+                        Object.assign(currentUser, updates);
                     }
                     try {
                         const driverUpdates = {};
@@ -1954,6 +2010,8 @@
                 const availabilityCard = document.getElementById('availabilityCard');
                 const authorizationCard = document.getElementById('authorizationCard');
                 const trainingCard = document.getElementById('trainingCard');
+                const btnStartDayCard = document.getElementById('btnStartDayCard');
+                const btnEndDayCard = document.getElementById('btnEndDayCard');
 
                 // Progression gate: only Training clickable until equipment collected (induction → training → in-person → equipment)
                 const equipmentCollected = (currentUser.equipmentCollected === 1 || currentUser.equipmentCollected === '1');
@@ -1964,6 +2022,8 @@
                     if (messagesCard) { messagesCard.classList.add('disabled'); messagesCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
                     if (availabilityCard) { availabilityCard.classList.add('disabled'); availabilityCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
                     if (authorizationCard) { authorizationCard.classList.add('disabled'); authorizationCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    if (btnStartDayCard) { btnStartDayCard.classList.add('disabled'); btnStartDayCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    if (btnEndDayCard) { btnEndDayCard.classList.add('disabled'); btnEndDayCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
                     // Training stays enabled; Account is not in this list
                     return;
                 }
@@ -2038,6 +2098,13 @@
                     // Grey out Training
                     if (trainingCard) {
                         trainingCard.classList.add('disabled');
+                    }
+                    // Grey out Start Day and End Day
+                    if (btnStartDayCard) {
+                        btnStartDayCard.classList.add('disabled');
+                    }
+                    if (btnEndDayCard) {
+                        btnEndDayCard.classList.add('disabled');
                     }
                     // DO NOT grey out Messages (messagesCard) - user needs to access it to read messages
                     // DO NOT grey out Account button - user needs to access account settings
@@ -2253,7 +2320,7 @@
             const pending = window._pendingProfileCompleteModal;
             if (pending) {
                 window._pendingProfileCompleteModal = null;
-                showProfileCompleteModal(pending.needPostcode, pending.needPhoto, pending.needDriverType, pending.existingPhotoUrl, pending.postcodeVal);
+                showProfileCompleteModal(pending.needPostcode, pending.needPhoto, pending.needDriverType, pending.needPasswordChange, pending.existingPhotoUrl, pending.postcodeVal);
             }
             // Always show again next time - prompt will appear every time driver portal opens
         }
