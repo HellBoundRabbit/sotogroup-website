@@ -1748,7 +1748,7 @@
                     } catch (passwordError) {
                         console.error('Error updating password:', passwordError);
                         let errorMsg = 'Could not update password. ';
-                        if (passwordError.code === 'auth/wrong-password') {
+                        if (passwordError.code === 'auth/wrong-password' || passwordError.code === 'auth/invalid-credential') {
                             errorMsg = 'Current password is incorrect. Please check your temporary password.';
                         } else if (passwordError.code === 'auth/weak-password') {
                             errorMsg = 'Password is too weak. Please use a stronger password.';
