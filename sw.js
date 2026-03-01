@@ -4,7 +4,7 @@
  * Works offline-first: uploads resume when connection is restored
  */
 
-const CACHE_NAME = 'expense-upload-v1';
+const CACHE_NAME = 'expense-upload-v2-march2026';
 const STORAGE_BUCKET = 'soto-routes.firebasestorage.app';
 const DB_NAME = 'ExpenseDraftsDB';
 const DB_VERSION = 4; // Match expense-offline-storage.js v4 (batch.lines + lineKey index)

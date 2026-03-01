@@ -2,8 +2,19 @@
   "hosting": {
     "public": ".",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "rewrites": [{ "source": "/login", "destination": "/pages/soto-routes-login.html" }]
+    "rewrites": [{ "source": "/login", "destination": "/pages/soto-routes-login.html" }],
+    "headers": [
+      {
+        "source": "**/*.@(html|htm)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      }
+    ]
   },
   "functions": { "source": "functions" },
-  "storage": [{ "rules": "storage.rules" }]
+  "storage": [{ "bucket": "soto-routes.firebasestorage.app", "rules": "storage.rules" }]
 }
