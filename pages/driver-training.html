@@ -1405,14 +1405,11 @@
                 }
                 body = body.replace('__GOOGLE_MAPS_VIDEO__', videoHtml);
             }
+            // Only show quiz shortcuts for the quiz categories themselves, not for subcategories
             var sectionId = cat ? cat.sectionId : '';
-            if (sectionId === 'standards') {
-                body += '<div class="training-modal-section mt-6 pt-4 border-t border-white/10"><h4 class="training-modal-section-title">Quiz</h4><p class="training-modal-section-body mb-3">Test your knowledge of the standards.</p><button type="button" class="training-understood-btn" onclick="openTrainingModal(\'quiz-standards\')">Take Standards quiz</button></div>';
-            } else if (sectionId === 'apps') {
-                body += '<div class="training-modal-section mt-6 pt-4 border-t border-white/10"><h4 class="training-modal-section-title">Quiz</h4><p class="training-modal-section-body mb-3">Test your knowledge of the apps.</p><button type="button" class="training-understood-btn" onclick="openTrainingModal(\'quiz-apps\')">Take Apps quiz</button></div>';
-            } else if (sectionId === 'payment') {
-                body += '<div class="training-modal-section mt-6 pt-4 border-t border-white/10"><h4 class="training-modal-section-title">Quiz</h4><p class="training-modal-section-body text-gray-500">Quiz coming soon.</p></div>';
-            }
+            var isQuizCategory = (key === 'quiz-standards' || key === 'quiz-apps' || key === 'quiz-payment');
+            
+            // Quiz shortcuts removed from subcategories - they only appear in main categories (quiz-standards, quiz-apps)
             return body;
         }
 
