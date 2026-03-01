@@ -189,7 +189,7 @@
                                 <span class="material-symbols-outlined text-xl">fullscreen</span>
                             </button>
                         </div>
-                        <div id="dashboard-map-inner" class="relative w-full" style="height: 400px;">
+                        <div id="dashboard-map-inner" class="relative w-full" style="height: 400px; opacity: 0; transition: opacity 0.3s ease-in;">
                             <div id="dashboard-map-leaflet" class="absolute inset-0 w-full h-full"></div>
                             <div id="dashboard-map-placeholder" class="absolute inset-0 flex items-center justify-center bg-[#0f1419] text-[#9cabba] text-sm">
                                 <span>Loading map…</span>
@@ -635,6 +635,12 @@
                     await refreshDriverMap();
                     await updateNotificationCount();
                     setupRealtimeListeners();
+                    
+                    // Show the map now that everything is loaded
+                    const mapInner = document.getElementById('dashboard-map-inner');
+                    if (mapInner) {
+                        mapInner.style.opacity = '1';
+                    }
                 }
             } catch (e) {
                 console.error('[Dashboard] Bootstrap failed', e);
