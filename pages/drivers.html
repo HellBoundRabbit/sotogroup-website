@@ -651,10 +651,6 @@ class="form-input w-full rounded-md bg-[#283039] border border-[#3a444e] focus:r
 <input type="email" id="email" required
 class="form-input w-full rounded-md bg-[#283039] border border-[#3a444e] focus:ring-2 focus:ring-[var(--success-color)] focus:border-[var(--success-color)] h-10 px-3 py-2 text-sm">
 </div>
-<div class="flex items-center gap-2">
-<input type="checkbox" id="emailCredentialsSingle" name="emailCredentials" class="rounded border-[#3a444e] bg-[#283039] text-[var(--success-color)] focus:ring-[var(--success-color)]">
-<label for="emailCredentialsSingle" class="text-sm text-[#9cabba]">Email login details to this driver</label>
-</div>
 <button id="single-driver-submit-btn" type="submit" class="w-full h-10 px-4 rounded-md bg-[var(--success-color)] text-white text-sm font-bold hover:opacity-90 transition-opacity">
 Add Driver
 </button>
@@ -958,7 +954,7 @@ homePostcode: ''
 
 const tempPassword = response?.data?.temporaryPassword;
 
-if (tempPassword && document.getElementById('emailCredentialsSingle')?.checked) {
+if (tempPassword) {
 try {
 const sendEmailFn = getCallable('sendDriverLoginEmail');
 const loginBaseUrl = window.location.origin || 'https://soto-routes.web.app';
@@ -969,9 +965,7 @@ console.warn('Send email failed:', emailErr);
 notifySuccess('Driver created. Could not send email: ' + (emailErr.message || 'check Functions config').replace(/^Failed to send email\.\s*/i, ''), 'Driver Created');
 }
 } else {
-let successMessage = 'Driver added successfully!';
-if (tempPassword) successMessage += '\n\nTemporary login password: ' + tempPassword + '\n\nPlease share it securely with the driver.';
-notifySuccess(successMessage, 'Driver Created');
+notifySuccess('Driver added successfully!', 'Driver Created');
 }
 addDriverForm.reset();
 closeAddDriverModal();
