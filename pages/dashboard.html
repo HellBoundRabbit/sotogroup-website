@@ -859,7 +859,7 @@
             const iconHtml = (step) => {
                 if (step.type === 'startday') return '<span class="material-symbols-outlined timeline-icon startday">home</span>';
                 if (step.type === 'ended') return '<span class="timeline-icon ended" title="End of day">🏁</span>';
-                if (step.type === 'carryover') return '<span class="timeline-icon deliver">▼ C/O</span>';
+                if (step.type === 'carryover') return '<span class="timeline-icon carryover"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle">south</span> CO</span>';
                 if (step.type === 'collect') return '<span class="timeline-icon collect">▲' + (step.job || '') + '</span>';
                 if (step.type === 'deliver') return '<span class="timeline-icon deliver">▼' + (step.job || '') + '</span>';
                 return '<span class="timeline-icon">•</span>';
