@@ -69,6 +69,17 @@
         .driver-marker-status.green { color: #22c55e; }
         .driver-marker-status.red { color: #ef4444; }
         .driver-div-icon { background: none !important; border: none !important; }
+        .timeline-step { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid #283039; font-size: 13px; }
+        .timeline-step:last-child { border-bottom: none; }
+        .timeline-step:hover { background: rgba(40,48,57,0.5); }
+        .timeline-time { color: #9cabba; font-variant-numeric: tabular-nums; flex-shrink: 0; width: 4.5rem; }
+        .timeline-icon { flex-shrink: 0; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; }
+        .timeline-icon.startday { color: #22c55e; }
+        .timeline-icon.collect { color: #22c55e; }
+        .timeline-icon.deliver, .timeline-icon.carryover { color: #ef4444; }
+        .timeline-icon.ended { color: #6b7280; }
+        .timeline-name { color: #e5e7eb; flex: 1; min-width: 0; }
+        .timeline-step-desc { color: #9cabba; font-size: 11px; margin-top: 1px; }
     </style>
 </head>
 <body class="bg-[#111418] text-white" style="font-family: Inter, 'Noto Sans', sans-serif;">
@@ -193,21 +204,32 @@
                         </a>
                     </div>
 
-                    <!-- Map placeholder -->
-                    <div id="dashboard-map-container" class="bg-[#1a1f24] border border-[#283039] rounded-lg overflow-hidden">
-                        <div class="px-4 py-2 border-b border-[#283039] flex items-center justify-between gap-2">
-                            <div class="flex items-center gap-2">
-                                <span class="material-symbols-outlined text-[#9cabba]">map</span>
-                                <span class="text-sm font-medium text-[#9cabba]">Driver locations</span>
+                    <!-- Map + Timeline -->
+                    <div class="flex gap-4">
+                        <div id="dashboard-map-container" class="flex-1 min-w-0 bg-[#1a1f24] border border-[#283039] rounded-lg overflow-hidden">
+                            <div class="px-4 py-2 border-b border-[#283039] flex items-center justify-between gap-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-[#9cabba]">map</span>
+                                    <span class="text-sm font-medium text-[#9cabba]">Driver locations</span>
+                                </div>
+                                <button type="button" onclick="toggleDashboardMapFullscreen()" class="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-[#283039] transition-colors text-[#9cabba] hover:text-white" aria-label="Full screen map">
+                                    <span class="material-symbols-outlined text-xl">fullscreen</span>
+                                </button>
                             </div>
-                            <button type="button" onclick="toggleDashboardMapFullscreen()" class="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-[#283039] transition-colors text-[#9cabba] hover:text-white" aria-label="Full screen map">
-                                <span class="material-symbols-outlined text-xl">fullscreen</span>
-                            </button>
+                            <div id="dashboard-map-inner" class="relative w-full" style="height: 400px; opacity: 0; transition: opacity 0.3s ease-in;">
+                                <div id="dashboard-map-leaflet" class="absolute inset-0 w-full h-full"></div>
+                                <div id="dashboard-map-placeholder" class="absolute inset-0 flex items-center justify-center bg-[#0f1419] text-[#9cabba] text-sm">
+                                    <span>Loading map…</span>
+                                </div>
+                            </div>
                         </div>
-                        <div id="dashboard-map-inner" class="relative w-full" style="height: 400px; opacity: 0; transition: opacity 0.3s ease-in;">
-                            <div id="dashboard-map-leaflet" class="absolute inset-0 w-full h-full"></div>
-                            <div id="dashboard-map-placeholder" class="absolute inset-0 flex items-center justify-center bg-[#0f1419] text-[#9cabba] text-sm">
-                                <span>Loading map…</span>
+                        <div id="dashboard-timeline-panel" class="w-80 shrink-0 bg-[#1a1f24] border border-[#283039] rounded-lg overflow-hidden flex flex-col">
+                            <div class="px-4 py-2 border-b border-[#283039] flex items-center gap-2 shrink-0">
+                                <span class="material-symbols-outlined text-[#9cabba]">schedule</span>
+                                <span class="text-sm font-medium text-[#9cabba]">Timeline</span>
+                            </div>
+                            <div id="dashboard-timeline-list" class="flex-1 overflow-y-auto min-h-0" style="height: 368px;">
+                                <div class="px-4 py-6 text-center text-[#9cabba] text-sm">Loading timeline…</div>
                             </div>
                         </div>
                     </div>
@@ -624,6 +646,99 @@
             renderDriverMarkers(dashboardMap, drivers);
             if (dashboardMapFullscreen) {
                 renderDriverMarkers(dashboardMapFullscreen, drivers);
+            }
+            refreshTimeline(officeId, dateStr);
+        }
+
+        function parseTimestamp(val) {
+            if (!val) return null;
+            if (val && typeof val.toDate === 'function') return val.toDate();
+            if (typeof val === 'string') return new Date(val);
+            if (val instanceof Date) return val;
+            return null;
+        }
+
+        function parseName(name) {
+            const s = (name || '').trim();
+            const parts = s.split(/\s+/);
+            const firstName = parts[0] || '';
+            const lastName = parts.slice(1).join(' ') || '';
+            return { firstName, lastName, full: s || 'Driver' };
+        }
+
+        async function fetchTimelineSteps(officeId, dateStr) {
+            const steps = [];
+            const q = window.firebaseQuery(
+                window.firebaseCollection(window.firestore, 'driverDaySessions'),
+                window.firebaseWhere('officeId', '==', officeId),
+                window.firebaseWhere('date', '==', dateStr)
+            );
+            const snap = await window.firebaseGetDocs(q);
+            for (const doc of snap.docs) {
+                const data = doc.data();
+                const { firstName, lastName } = parseName(data.name);
+
+                const push = (coord, type, job) => {
+                    if (!coord) return;
+                    const dt = parseTimestamp(coord.datetime) || (type === 'startday' && parseTimestamp(data.dayStartedAt)) || (type === 'ended' && parseTimestamp(data.dayEndedAt));
+                    if (!dt) return;
+                    steps.push({ datetime: dt.getTime(), date: dt, firstName, lastName, fullName: (firstName + ' ' + lastName).trim() || data.name || 'Driver', type, job });
+                };
+
+                push(data.startDayCoordinate, 'startday');
+                push(data.carryoverDeliverCoordinate, 'carryover');
+                for (let j = 1; j <= 10; j++) {
+                    push(data['job' + j + 'CollectCoordinate'], 'collect', j);
+                    push(data['job' + j + 'DeliverCoordinate'], 'deliver', j);
+                }
+                push(data.endDayCoordinate, 'ended');
+            }
+            steps.sort((a, b) => a.datetime - b.datetime);
+            return steps;
+        }
+
+        function renderTimeline(steps) {
+            const list = document.getElementById('dashboard-timeline-list');
+            if (!list) return;
+            if (!steps.length) {
+                list.innerHTML = '<div class="px-4 py-6 text-center text-[#9cabba] text-sm">No steps recorded today</div>';
+                return;
+            }
+            const formatTime = (d) => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+            const iconHtml = (step) => {
+                if (step.type === 'startday') return '<span class="material-symbols-outlined timeline-icon startday">home</span>';
+                if (step.type === 'ended') return '<span class="timeline-icon ended" title="End of day">🏁</span>';
+                if (step.type === 'carryover') return '<span class="timeline-icon deliver">▼ C/O</span>';
+                if (step.type === 'collect') return '<span class="timeline-icon collect">▲' + (step.job || '') + '</span>';
+                if (step.type === 'deliver') return '<span class="timeline-icon deliver">▼' + (step.job || '') + '</span>';
+                return '<span class="timeline-icon">•</span>';
+            };
+            const desc = (step) => {
+                if (step.type === 'startday') return 'Start of day';
+                if (step.type === 'ended') return 'End of day';
+                if (step.type === 'carryover') return 'Deliver carryover';
+                if (step.type === 'collect') return 'Collect job ' + (step.job || '');
+                if (step.type === 'deliver') return 'Deliver job ' + (step.job || '');
+                return '';
+            };
+            list.innerHTML = steps.map(step => {
+                const name = step.fullName || (step.firstName + ' ' + step.lastName).trim() || 'Driver';
+                return '<div class="timeline-step">' +
+                    '<span class="timeline-time">' + formatTime(step.date) + '</span>' +
+                    iconHtml(step) +
+                    '<div class="timeline-name"><div>' + (step.firstName ? step.firstName + (step.lastName ? ' ' + step.lastName : '') : name) + '</div>' +
+                    '<div class="timeline-step-desc">' + desc(step) + '</div></div></div>';
+            }).join('');
+        }
+
+        async function refreshTimeline(officeId, dateStr) {
+            const list = document.getElementById('dashboard-timeline-list');
+            if (!list) return;
+            try {
+                const steps = await fetchTimelineSteps(officeId || getCurrentOfficeId(), dateStr || getTodayDateString());
+                renderTimeline(steps);
+            } catch (e) {
+                list.innerHTML = '<div class="px-4 py-6 text-center text-red-400 text-sm">Failed to load timeline</div>';
             }
         }
 

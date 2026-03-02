@@ -497,7 +497,7 @@
                     <div id="profileCompletePhotoDisplayWrap" class="hidden">
                         <p class="text-sm font-medium text-gray-300 mb-2">Display picture</p>
                         <div class="flex items-center gap-3">
-                            <img id="profileCompleteExistingPhoto" src="" alt="Your photo" class="w-16 h-16 rounded-full object-cover border-2 border-[#3a444e]">
+                            <img id="profileCompleteExistingPhoto" src="" alt="Your photo" class="w-16 h-16 min-w-[4rem] min-h-[4rem] aspect-square rounded-full object-cover border-2 border-[#3a444e] shrink-0">
                             <button type="button" onclick="profileCompleteEditPhoto()" class="text-sm text-[#9cabba] hover:text-white flex items-center gap-1">
                                 <span class="material-symbols-outlined text-sm">edit</span> Edit
                             </button>
@@ -646,19 +646,7 @@
             </div>
 
             <!-- Account Buttons (hidden by default) -->
-            <div class="account-buttons space-y-8" style="display: none;">
-                <!-- Availability settings (template: type + default days) -->
-                <div class="features-grid-single">
-                    <div class="feature-button" onclick="showAvailabilitySettings()">
-                        <div class="spinner-wrapper">
-                            <div class="spinner-orange"></div>
-                            <div class="spinner1">
-                                <span class="material-symbols-outlined spinner-icon">event</span>
-                            </div>
-                        </div>
-                        <h3 class="text-lg font-semibold text-white">Availability settings</h3>
-                    </div>
-                </div>
+            <div class="account-buttons flex flex-col gap-8" style="display: none;">
                 <!-- Profile (postcode & display picture) -->
                 <div class="features-grid-single">
                     <div class="feature-button" onclick="showProfileSettings()">
@@ -669,6 +657,18 @@
                             </div>
                         </div>
                         <h3 class="text-lg font-semibold text-white">Profile</h3>
+                    </div>
+                </div>
+                <!-- Availability settings (template: type + default days) -->
+                <div class="features-grid-single">
+                    <div class="feature-button" onclick="showAvailabilitySettings()">
+                        <div class="spinner-wrapper">
+                            <div class="spinner-orange"></div>
+                            <div class="spinner1">
+                                <span class="material-symbols-outlined spinner-icon">event</span>
+                            </div>
+                        </div>
+                        <h3 class="text-lg font-semibold text-white">Availability settings</h3>
                     </div>
                 </div>
                 <!-- Change Password -->
@@ -683,7 +683,6 @@
                         <h3 class="text-lg font-semibold text-white">Change Password</h3>
                     </div>
                 </div>
-
                 <!-- Logout -->
                 <div class="features-grid-single">
                     <div class="feature-button" onclick="logout()">
@@ -873,7 +872,7 @@
                 <div>
                     <p class="text-sm font-medium text-gray-300 mb-2">Display picture</p>
                     <div class="flex items-center gap-3 mb-2">
-                        <img id="profileSettingsPhotoPreview" src="" alt="" class="w-16 h-16 rounded-full object-cover border-2 border-gray-700 bg-[#1a1f24]">
+                        <img id="profileSettingsPhotoPreview" src="" alt="" class="w-16 h-16 min-w-[4rem] min-h-[4rem] aspect-square rounded-full object-cover border-2 border-gray-700 bg-[#1a1f24] shrink-0">
                         <input type="file" id="profileSettingsPhoto" accept="image/*" class="text-sm text-gray-400 file:py-2 file:px-4 file:rounded-lg file:border file:border-gray-700 file:bg-[#1a1f24] file:text-white file:font-medium file:hover:bg-gray-700">
                     </div>
                 </div>
