@@ -1668,13 +1668,13 @@
         // Helper functions for navigation
         async function showNotifications() {
             const dropdown = document.getElementById('notificationDropdown');
-            if (!dropdown) return;
-            
-            // Toggle dropdown visibility
+            const listEl = document.getElementById('notificationsList');
+            if (!dropdown || !listEl) return;
+
             dropdown.classList.toggle('hidden');
-            
+
             if (!dropdown.classList.contains('hidden')) {
-                // Load and display notifications
+                listEl.innerHTML = '<div class="px-4 py-3 text-gray-400 text-sm text-center">Loading...</div>';
                 await loadNotifications();
             }
         }
@@ -2357,15 +2357,9 @@
         // Update notification count across all office pages
         async function updateNotificationCount() {
             try {
-                console.log('[EXPENSES] updateNotificationCount called');
                 const officeId = getCurrentOfficeId();
-                if (!officeId) {
-                    console.log('[EXPENSES] No office context available for notifications');
-                    return;
-                }
-                
-                console.log('[EXPENSES] Office ID:', officeId);
-                
+                if (!officeId) return;
+
                 // Get all availability change notifications for this office
                 const notificationsQuery = window.query(
                     window.collection(window.db, 'availabilityNotifications'),
@@ -2373,8 +2367,7 @@
                 );
                 
                 const notificationsSnapshot = await window.getDocs(notificationsQuery);
-                console.log('[EXPENSES] Total notifications found:', notificationsSnapshot.docs.length);
-                
+
                 // Aggregate notifications by driver
                 const driverChanges = {};
                 // Filter to only unseen notifications and convert dates
@@ -2389,9 +2382,7 @@
                     })
                     .filter(notification => notification.seen !== true) // Only include unseen notifications
                     .sort((a, b) => b.createdAt - a.createdAt); // Sort by date (most recent first)
-                
-                console.log('[EXPENSES] Unseen notifications:', allNotifications.length);
-                
+
                 // Group by driver and only count the most recent batch (within 1 hour of latest)
                 allNotifications.forEach(notification => {
                     const driverId = notification.driverId;
@@ -2441,19 +2432,15 @@
                 
                 // Count total number of drivers with changes
                 const availabilityCount = Object.keys(driverChanges).length;
-                console.log('[EXPENSES] Drivers with changes:', availabilityCount);
-                
+
                 // Check for old expenses (>24 working hours)
                 const oldExpenseResult = await checkOldExpenses(officeId);
-                console.log('[EXPENSES] Old expenses count:', oldExpenseResult.total);
-                
+
                 // Total notification count (availability changes + old expenses)
                 const unreadCount = availabilityCount + (oldExpenseResult.total > 0 ? 1 : 0);
-                console.log('[EXPENSES] Total unread count:', unreadCount);
-                
+
                 // Update notification badge on all pages
                 updateNotificationBadge(unreadCount);
-                console.log('[EXPENSES] Badge updated');
                 
             } catch (error) {
                 console.error('[EXPENSES] Error updating notification count:', error);
@@ -2462,18 +2449,13 @@
 
         // Update notification badge display
         function updateNotificationBadge(count) {
-            console.log('[EXPENSES] updateNotificationBadge called with count:', count);
             const badgeElements = document.querySelectorAll('.notification-badge');
-            console.log('[EXPENSES] Found badge elements:', badgeElements.length);
-            badgeElements.forEach((badge, index) => {
-                console.log(`[EXPENSES] Badge ${index}:`, badge);
+            badgeElements.forEach((badge) => {
                 if (count > 0) {
                     badge.textContent = count > 99 ? '99+' : count.toString();
                     badge.classList.remove('hidden');
-                    console.log(`[EXPENSES] Badge ${index} shown with count:`, badge.textContent);
                 } else {
                     badge.classList.add('hidden');
-                    console.log(`[EXPENSES] Badge ${index} hidden`);
                 }
             });
         }
