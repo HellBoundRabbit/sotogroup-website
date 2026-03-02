@@ -251,6 +251,7 @@
             padding: 16px;
             transition: opacity 0.2s;
             position: relative;
+            overflow: visible;
             user-select: none;
             -webkit-user-select: none;
             -webkit-touch-callout: none;
@@ -266,18 +267,21 @@
             transform: scale(0.95);
             transition: transform 0.1s;
         }
-        /* Hold progress bar */
+        /* Hold progress bar - positioned in the gap between rows so it doesn't affect button spacing */
         .hold-progress-bar {
             position: absolute;
-            bottom: 0;
+            bottom: -17px; /* Sits in the grid gap (34px), centered - does not add to button height */
             left: 0;
             right: 0;
             height: 4px;
-            background: transparent; /* Hide the grey background */
+            margin: 0;
+            background: transparent;
             border-radius: 0 0 8px 8px;
             overflow: hidden;
-            opacity: 0; /* Hidden by default */
+            opacity: 0;
             transition: opacity 0.2s;
+            z-index: 1;
+            pointer-events: none;
         }
         .hold-progress-bar.visible {
             opacity: 1; /* Show when active or hint */
@@ -376,6 +380,7 @@
             width: 100%;
             max-width: 420px;
             margin: 0 auto;
+            overflow: visible;
         }
         .features-grid-single {
             grid-column: 1 / -1;

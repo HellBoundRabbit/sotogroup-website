@@ -153,23 +153,31 @@
                     <!-- Stats grid -->
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
                         <!-- 1. Drivers working today -->
-                        <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-4">
+                        <div id="stat-drivers-working-wrap" class="relative bg-[#1a1f24] border border-[#283039] rounded-lg p-4 cursor-pointer hover:bg-[#283039] transition-colors" onclick="toggleDriversWorkingDropdown(event)">
                             <div class="flex items-center gap-3">
                                 <span class="material-symbols-outlined text-2xl text-[var(--primary-color)]">groups</span>
-                                <div>
+                                <div class="flex-1 min-w-0">
                                     <div class="text-[#9cabba] text-sm">Drivers working today</div>
                                     <div class="text-xl font-bold text-white" id="stat-drivers-working">0</div>
                                 </div>
+                                <span class="material-symbols-outlined text-[#9cabba] text-lg">expand_more</span>
+                            </div>
+                            <div id="dropdown-drivers-working" class="hidden absolute left-0 right-0 top-full mt-1 z-20 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                                <div id="dropdown-drivers-working-list" class="py-2 text-sm"></div>
                             </div>
                         </div>
                         <!-- 2. Active drivers -->
-                        <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-4">
+                        <div id="stat-active-drivers-wrap" class="relative bg-[#1a1f24] border border-[#283039] rounded-lg p-4 cursor-pointer hover:bg-[#283039] transition-colors" onclick="toggleActiveDriversDropdown(event)">
                             <div class="flex items-center gap-3">
                                 <span class="material-symbols-outlined text-2xl text-[#9cabba]">location_on</span>
-                                <div>
+                                <div class="flex-1 min-w-0">
                                     <div class="text-[#9cabba] text-sm">Active drivers</div>
                                     <div class="text-xl font-bold text-[#6b7280]" id="stat-active-drivers">—</div>
                                 </div>
+                                <span class="material-symbols-outlined text-[#9cabba] text-lg">expand_more</span>
+                            </div>
+                            <div id="dropdown-active-drivers" class="hidden absolute left-0 right-0 top-full mt-1 z-20 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                                <div id="dropdown-active-drivers-list" class="py-2 text-sm"></div>
                             </div>
                         </div>
                         <!-- 3. Pending expenses -->
@@ -207,12 +215,13 @@
                     <!-- Map + Timeline -->
                     <div class="flex gap-4">
                         <div id="dashboard-map-container" class="flex-1 min-w-0 bg-[#1a1f24] border border-[#283039] rounded-lg overflow-hidden">
-                            <div class="px-4 py-2 border-b border-[#283039] flex items-center justify-between gap-2">
-                                <div class="flex items-center gap-2">
-                                    <span class="material-symbols-outlined text-[#9cabba]">map</span>
-                                    <span class="text-sm font-medium text-[#9cabba]">Driver locations</span>
+                            <div class="px-4 py-2 border-b border-[#283039] flex items-center justify-between gap-2 flex-wrap">
+                                <div class="flex items-center gap-2 flex-1 min-w-0">
+                                    <span class="material-symbols-outlined text-[#9cabba] shrink-0">map</span>
+                                    <span class="text-sm font-medium text-[#9cabba] shrink-0">Driver locations</span>
+                                    <input type="text" id="dashboard-map-driver-search" placeholder="Filter by name..." class="flex-1 min-w-0 max-w-[180px] ml-2 px-2 py-1.5 text-sm bg-[#111418] border border-[#283039] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#0d7ff2]" autocomplete="off">
                                 </div>
-                                <button type="button" onclick="toggleDashboardMapFullscreen()" class="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-[#283039] transition-colors text-[#9cabba] hover:text-white" aria-label="Full screen map">
+                                <button type="button" onclick="toggleDashboardMapFullscreen()" class="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-[#283039] transition-colors text-[#9cabba] hover:text-white shrink-0" aria-label="Full screen map">
                                     <span class="material-symbols-outlined text-xl">fullscreen</span>
                                 </button>
                             </div>
@@ -305,6 +314,12 @@
         }
 
         async function loadDriversWorkingToday(officeId) {
+            const list = await loadDriversWorkingTodayList(officeId);
+            return list.length;
+        }
+
+        async function loadDriversWorkingTodayList(officeId) {
+            const names = [];
             try {
                 const Model = window.AvailabilityModel;
                 const q = window.firebaseQuery(
@@ -312,30 +327,90 @@
                     window.firebaseWhere('officeId', '==', officeId)
                 );
                 const driversSnap = await window.firebaseGetDocs(q);
-                const now = new Date();
-                const dateString = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+                const dateString = getTodayDateString();
                 const calendarRef = window.firebaseDoc(window.firestore, 'calendar', dateString);
                 const calendarDoc = await window.firebaseGetDoc(calendarRef);
                 const driversMap = (calendarDoc.exists() && calendarDoc.data().drivers) ? calendarDoc.data().drivers : {};
                 const driversOffLegacy = calendarDoc.exists() ? (calendarDoc.data().driversOff || []) : [];
                 const dateObj = new Date(dateString + 'T12:00:00');
-                let workingCount = 0;
                 driversSnap.docs.forEach((d) => {
                     const data = d.data();
                     const driverId = d.id || data.uid;
                     const driver = { ...data, uid: driverId };
-                    if (!Model || !Model.hasDriverTypeSet(driver)) return; // only count drivers who have set availability
+                    if (!Model || !Model.hasDriverTypeSet(driver)) return;
                     const template = Model.getDriverTemplate(driver);
                     const entry = driversMap[driverId] || null;
                     let status = Model.getEffectiveStatus(template, entry, dateObj);
                     if (entry && entry.status) status = entry.status;
                     else if (driversOffLegacy.includes(driverId) && !entry) status = 'off';
-                    if (status === 'working') workingCount++;
+                    if (status === 'working') {
+                        const first = (data.firstName || data.name || '').trim();
+                        const last = (data.lastName || '').trim();
+                        const name = [first, last].filter(Boolean).join(' ').trim() || 'Driver';
+                        names.push((name && !name.includes('@')) ? name : 'Driver');
+                    }
                 });
-                return workingCount;
             } catch (e) {
-                console.error('[Dashboard] Drivers working today failed', e);
-                return 0;
+                console.error('[Dashboard] Drivers working today list failed', e);
+            }
+            return names.sort((a, b) => a.localeCompare(b));
+        }
+
+        async function fetchActiveDriversList(officeId) {
+            const names = [];
+            try {
+                const dateStr = getTodayDateString();
+                const q = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'driverDaySessions'),
+                    window.firebaseWhere('officeId', '==', officeId),
+                    window.firebaseWhere('date', '==', dateStr)
+                );
+                const snap = await window.firebaseGetDocs(q);
+                for (const d of snap.docs) {
+                    const data = d.data();
+                    if (!data.dayStartedAt || data.dayEndedAt) continue;
+                    const displayName = await fetchDriverDisplayName(data.driverId);
+                    names.push(displayName || (data.name && !String(data.name).includes('@') ? data.name : 'Driver'));
+                }
+            } catch (e) {
+                console.error('[Dashboard] Active drivers list failed', e);
+            }
+            return names.sort((a, b) => a.localeCompare(b));
+        }
+
+        function toggleDriversWorkingDropdown(e) {
+            e.stopPropagation();
+            const dd = document.getElementById('dropdown-drivers-working');
+            const other = document.getElementById('dropdown-active-drivers');
+            if (other && !other.classList.contains('hidden')) other.classList.add('hidden');
+            if (dd.classList.contains('hidden')) {
+                dd.classList.remove('hidden');
+                const list = document.getElementById('dropdown-drivers-working-list');
+                list.innerHTML = '<div class="px-3 py-2 text-[#9cabba]">Loading...</div>';
+                loadDriversWorkingTodayList(getCurrentOfficeId()).then(names => {
+                    if (names.length === 0) list.innerHTML = '<div class="px-3 py-2 text-[#9cabba]">No drivers working today</div>';
+                    else list.innerHTML = names.map(n => '<div class="px-3 py-1.5 text-white hover:bg-[#283039]">' + (n || 'Driver') + '</div>').join('');
+                });
+            } else {
+                dd.classList.add('hidden');
+            }
+        }
+
+        function toggleActiveDriversDropdown(e) {
+            e.stopPropagation();
+            const dd = document.getElementById('dropdown-active-drivers');
+            const other = document.getElementById('dropdown-drivers-working');
+            if (other && !other.classList.contains('hidden')) other.classList.add('hidden');
+            if (dd.classList.contains('hidden')) {
+                dd.classList.remove('hidden');
+                const list = document.getElementById('dropdown-active-drivers-list');
+                list.innerHTML = '<div class="px-3 py-2 text-[#9cabba]">Loading...</div>';
+                fetchActiveDriversList(getCurrentOfficeId()).then(names => {
+                    if (names.length === 0) list.innerHTML = '<div class="px-3 py-2 text-[#9cabba]">No active drivers</div>';
+                    else list.innerHTML = names.map(n => '<div class="px-3 py-1.5 text-white hover:bg-[#283039]">' + (n || 'Driver') + '</div>').join('');
+                });
+            } else {
+                dd.classList.add('hidden');
             }
         }
 
@@ -446,6 +521,7 @@
         let dashboardMapFullscreen = null;
         let driverMarkerLayer = null;
         let driverMarkerLayerFullscreen = null;
+        let dashboardDriversCache = [];
 
         function getTodayDateString() {
             const d = new Date();
@@ -519,7 +595,13 @@
             if (active.length === 0) {
                 if (map === dashboardMap) {
                     const ph = document.getElementById('dashboard-map-placeholder');
-                    if (ph) { ph.style.display = 'flex'; ph.innerHTML = '<span>No active drivers on map today</span>'; }
+                    if (ph) {
+                        ph.style.display = 'flex';
+                        const searchEl = document.getElementById('dashboard-map-driver-search');
+                        const hasFilter = searchEl && (searchEl.value || '').trim().length > 0;
+                        const hasCached = dashboardDriversCache.length > 0;
+                        ph.innerHTML = '<span>' + (hasFilter && hasCached ? 'No drivers match your search' : 'No active drivers on map today') + '</span>';
+                    }
                 }
                 if (map === dashboardMap) map.addLayer(newLayer);
                 return;
@@ -539,7 +621,7 @@
                         iconAnchor: [30, 45]
                     });
                     const m = L.marker([d.lat, d.lng], { icon }).addTo(newLayer);
-                    m.bindTooltip(d.email || d.name || 'Driver', { direction: 'top', offset: [0, -10] });
+                    m.bindTooltip(d.name || 'Driver', { direction: 'top', offset: [0, -10] });
                     bounds.push([d.lat, d.lng]);
                 } else {
                     const avgLat = cluster.reduce((s, c) => s + c.lat, 0) / cluster.length;
@@ -551,7 +633,7 @@
                         iconAnchor: [45, 64]
                     });
                     const m = L.marker([avgLat, avgLng], { icon }).addTo(newLayer);
-                    m.bindTooltip(cluster.map(c => c.email || c.name || 'Driver').join(', '), { direction: 'top' });
+                    m.bindTooltip(cluster.map(c => c.name || 'Driver').join(', '), { direction: 'top' });
                     bounds.push([avgLat, avgLng]);
                 }
             });
@@ -571,6 +653,14 @@
                 attribution: '© OpenStreetMap'
             }).addTo(dashboardMap);
             dashboardMap.setMaxBounds([[49.5, -8.5], [61.5, 2.5]]);
+            const searchEl = document.getElementById('dashboard-map-driver-search');
+            if (searchEl) {
+                let searchDebounce;
+                searchEl.addEventListener('input', () => {
+                    clearTimeout(searchDebounce);
+                    searchDebounce = setTimeout(applyDriverMapFilter, 150);
+                });
+            }
         }
 
         function initDashboardMapFullscreen() {
@@ -606,26 +696,37 @@
                 if (!info || info.status === 'ended') continue;
                 let photoUrl = null;
                 let email = null;
+                let displayName = null;
                 try {
                     const userSnap = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'users', data.driverId));
                     if (userSnap.exists()) {
                         const u = userSnap.data();
                         photoUrl = u.photoURL || u.photoUrl;
                         email = u.email || null;
+                        const first = (u.firstName || u.name || '').trim();
+                        const last = (u.lastName || '').trim();
+                        const n = [first, last].filter(Boolean).join(' ').trim();
+                        if (n && !n.includes('@')) displayName = n;
                     }
-                    if (!photoUrl || !email) {
+                    if (!photoUrl || !email || !displayName) {
                         const drSnap = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'drivers', data.driverId));
                         if (drSnap.exists()) {
                             const dr = drSnap.data();
                             if (!photoUrl) photoUrl = dr.photoURL || dr.photoUrl;
                             if (!email) email = dr.email || null;
+                            if (!displayName) {
+                                const first = (dr.firstName || dr.name || '').trim();
+                                const last = (dr.lastName || '').trim();
+                                const n = [first, last].filter(Boolean).join(' ').trim();
+                                if (n && !n.includes('@')) displayName = n;
+                            }
                         }
                     }
                 } catch (e) {}
                 const statusColor = (info.status === 'startday' || info.status === 'collect') ? 'green' : 'red';
                 drivers.push({
                     driverId: data.driverId,
-                    name: data.name || 'Driver',
+                    name: displayName || ((data.name && !String(data.name).includes('@')) ? data.name : 'Driver'),
                     email: email || null,
                     lat: info.lat,
                     lng: info.lng,
@@ -638,15 +739,35 @@
             return drivers;
         }
 
+        function filterDriversByName(drivers, query) {
+            const q = (query || '').trim().toLowerCase();
+            if (!q) return drivers;
+            return drivers.filter(d => {
+                const name = (d.name || '').trim();
+                const parts = name.split(/\s+/);
+                const first = (parts[0] || '').toLowerCase();
+                const last = (parts.slice(1).join(' ') || '').toLowerCase();
+                return first.startsWith(q) || last.startsWith(q);
+            });
+        }
+
+        function applyDriverMapFilter() {
+            const searchEl = document.getElementById('dashboard-map-driver-search');
+            const query = searchEl ? searchEl.value : '';
+            const filtered = filterDriversByName(dashboardDriversCache, query);
+            renderDriverMarkers(dashboardMap, filtered);
+            if (dashboardMapFullscreen) {
+                renderDriverMarkers(dashboardMapFullscreen, filtered);
+            }
+        }
+
         async function refreshDriverMap() {
             const officeId = getCurrentOfficeId();
             if (!officeId || !dashboardMap) return;
             const dateStr = getTodayDateString();
             const drivers = await fetchDriverSessionsWithPhotos(officeId, dateStr);
-            renderDriverMarkers(dashboardMap, drivers);
-            if (dashboardMapFullscreen) {
-                renderDriverMarkers(dashboardMapFullscreen, drivers);
-            }
+            dashboardDriversCache = drivers;
+            applyDriverMapFilter();
             refreshTimeline(officeId, dateStr);
         }
 
@@ -666,8 +787,32 @@
             return { firstName, lastName, full: s || 'Driver' };
         }
 
+        async function fetchDriverDisplayName(driverId) {
+            if (!driverId) return 'Driver';
+            try {
+                const userSnap = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'users', driverId));
+                if (userSnap.exists()) {
+                    const u = userSnap.data();
+                    const first = (u.firstName || u.name || '').trim();
+                    const last = (u.lastName || '').trim();
+                    const name = [first, last].filter(Boolean).join(' ').trim();
+                    if (name && !name.includes('@')) return name;
+                }
+                const drSnap = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'drivers', driverId));
+                if (drSnap.exists()) {
+                    const d = drSnap.data();
+                    const first = (d.firstName || d.name || '').trim();
+                    const last = (d.lastName || '').trim();
+                    const name = [first, last].filter(Boolean).join(' ').trim();
+                    if (name && !name.includes('@')) return name;
+                }
+            } catch (e) {}
+            return null;
+        }
+
         async function fetchTimelineSteps(officeId, dateStr) {
             const steps = [];
+            const nameCache = {};
             const q = window.firebaseQuery(
                 window.firebaseCollection(window.firestore, 'driverDaySessions'),
                 window.firebaseWhere('officeId', '==', officeId),
@@ -676,13 +821,19 @@
             const snap = await window.firebaseGetDocs(q);
             for (const doc of snap.docs) {
                 const data = doc.data();
-                const { firstName, lastName } = parseName(data.name);
+                const driverId = data.driverId;
+                let displayName = nameCache[driverId];
+                if (displayName === undefined) {
+                    displayName = await fetchDriverDisplayName(driverId);
+                    if (!displayName) displayName = (data.name && !String(data.name).includes('@')) ? data.name : 'Driver';
+                    nameCache[driverId] = displayName;
+                }
 
                 const push = (coord, type, job) => {
                     if (!coord) return;
                     const dt = parseTimestamp(coord.datetime) || (type === 'startday' && parseTimestamp(data.dayStartedAt)) || (type === 'ended' && parseTimestamp(data.dayEndedAt));
                     if (!dt) return;
-                    steps.push({ datetime: dt.getTime(), date: dt, firstName, lastName, fullName: (firstName + ' ' + lastName).trim() || data.name || 'Driver', type, job });
+                    steps.push({ datetime: dt.getTime(), date: dt, fullName: displayName, type, job });
                 };
 
                 push(data.startDayCoordinate, 'startday');
@@ -693,7 +844,7 @@
                 }
                 push(data.endDayCoordinate, 'ended');
             }
-            steps.sort((a, b) => a.datetime - b.datetime);
+            steps.sort((a, b) => b.datetime - a.datetime);
             return steps;
         }
 
@@ -713,21 +864,12 @@
                 if (step.type === 'deliver') return '<span class="timeline-icon deliver">▼' + (step.job || '') + '</span>';
                 return '<span class="timeline-icon">•</span>';
             };
-            const desc = (step) => {
-                if (step.type === 'startday') return 'Start of day';
-                if (step.type === 'ended') return 'End of day';
-                if (step.type === 'carryover') return 'Deliver carryover';
-                if (step.type === 'collect') return 'Collect job ' + (step.job || '');
-                if (step.type === 'deliver') return 'Deliver job ' + (step.job || '');
-                return '';
-            };
             list.innerHTML = steps.map(step => {
                 const name = step.fullName || (step.firstName + ' ' + step.lastName).trim() || 'Driver';
                 return '<div class="timeline-step">' +
                     '<span class="timeline-time">' + formatTime(step.date) + '</span>' +
                     iconHtml(step) +
-                    '<div class="timeline-name"><div>' + (step.firstName ? step.firstName + (step.lastName ? ' ' + step.lastName : '') : name) + '</div>' +
-                    '<div class="timeline-step-desc">' + desc(step) + '</div></div></div>';
+                    '<div class="timeline-name">' + name + '</div></div>';
             }).join('');
         }
 
@@ -865,6 +1007,10 @@
         document.addEventListener('click', function(e) {
             const d = document.getElementById('profileDropdown');
             if (!e.target.closest('button[onclick="toggleProfileDropdown()"]') && d && !d.contains(e.target)) d.classList.add('hidden');
+            const dw = document.getElementById('stat-drivers-working-wrap');
+            const da = document.getElementById('stat-active-drivers-wrap');
+            if (dw && !dw.contains(e.target)) document.getElementById('dropdown-drivers-working')?.classList.add('hidden');
+            if (da && !da.contains(e.target)) document.getElementById('dropdown-active-drivers')?.classList.add('hidden');
         });
         async function showNotifications() {
             const dropdown = document.getElementById('notificationDropdown');
