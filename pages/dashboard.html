@@ -60,11 +60,12 @@
         .spinner1 { background-color: rgb(36, 36, 36); width: 52px; height: 52px; border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2; }
         @keyframes spin { to { transform: rotate(360deg); } }
         #dashboard-map-inner .leaflet-container { background: #0f1419; }
-        .driver-marker-bubble { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 4px 8px; background: rgba(26,31,36,0.95); border-radius: 999px; box-shadow: 0 2px 8px rgba(0,0,0,0.4); flex-wrap: wrap; max-width: 120px; }
-        .driver-marker-single { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 3px solid; box-sizing: border-box; }
+        .driver-marker-pin { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; width: 52px; min-height: 64px; padding: 6px 6px 20px 6px; background: rgba(26,31,36,0.95); box-shadow: 0 2px 8px rgba(0,0,0,0.4); clip-path: path('M26 0 C11.64 0 0 11.64 0 26 C0 38 26 64 26 64 S52 38 52 26 C52 11.64 40.36 0 26 0 Z'); flex-shrink: 0; }
+        .driver-marker-pin.cluster { width: 90px; min-height: 64px; padding: 6px 6px 20px 6px; clip-path: path('M45 0 C19.98 0 0 11.64 0 26 C0 38 45 64 45 64 S90 38 90 26 C90 11.64 70.02 0 45 0 Z'); }
+        .driver-marker-single { width: 36px; height: 36px; min-width: 36px; min-height: 36px; border-radius: 50%; object-fit: cover; border: 2px solid; box-sizing: border-box; flex-shrink: 0; aspect-ratio: 1; }
         .driver-marker-single.green { border-color: #22c55e; }
         .driver-marker-single.red { border-color: #ef4444; }
-        .driver-marker-status { font-size: 11px; font-weight: 700; line-height: 1; }
+        .driver-marker-status { font-size: 10px; font-weight: 700; line-height: 1; }
         .driver-marker-status.green { color: #22c55e; }
         .driver-marker-status.red { color: #ef4444; }
         .driver-div-icon { background: none !important; border: none !important; }
@@ -479,12 +480,12 @@
             const borderClass = driver.statusColor === 'green' ? 'green' : 'red';
             if (isCluster && driver.drivers) {
                 const imgs = driver.drivers.slice(0, 4).map(d =>
-                    '<img src="' + toPhotoUrl(d.photoUrl) + '" alt="" class="driver-marker-single ' + (d.statusColor === 'green' ? 'green' : 'red') + '" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">'
+                    '<img src="' + toPhotoUrl(d.photoUrl) + '" alt="" class="driver-marker-single ' + (d.statusColor === 'green' ? 'green' : 'red') + '" style="width:26px;height:26px;border-radius:50%;object-fit:cover;">'
                 ).join('');
-                return '<div class="driver-marker-bubble">' + imgs + '<span class="driver-marker-status ' + borderClass + '">' + driver.drivers.length + '</span></div>';
+                return '<div class="driver-marker-pin cluster">' + imgs + '<span class="driver-marker-status ' + borderClass + '">' + driver.drivers.length + '</span></div>';
             }
             const statusText = driver.status === 'startday' ? '⌂' : (driver.status === 'carryover' ? 'C/O' : (driver.status === 'collect' ? '▲' + (driver.job || '') : '▼' + (driver.job || '')));
-            return '<div class="driver-marker-bubble"><img src="' + toPhotoUrl(driver.photoUrl) + '" alt="" class="driver-marker-single ' + borderClass + '" style="border-radius:50%;object-fit:cover;"><span class="driver-marker-status ' + borderClass + '">' + statusText + '</span></div>';
+            return '<div class="driver-marker-pin"><img src="' + toPhotoUrl(driver.photoUrl) + '" alt="" class="driver-marker-single ' + borderClass + '"><span class="driver-marker-status ' + borderClass + '">' + statusText + '</span></div>';
         }
 
         function renderDriverMarkers(map, drivers) {
@@ -516,7 +517,7 @@
                         iconAnchor: [30, 45]
                     });
                     const m = L.marker([d.lat, d.lng], { icon }).addTo(newLayer);
-                    m.bindTooltip(d.name || 'Driver', { direction: 'top', offset: [0, -10] });
+                    m.bindTooltip(d.email || d.name || 'Driver', { direction: 'top', offset: [0, -10] });
                     bounds.push([d.lat, d.lng]);
                 } else {
                     const avgLat = cluster.reduce((s, c) => s + c.lat, 0) / cluster.length;
@@ -524,11 +525,11 @@
                     const icon = L.divIcon({
                         html: createDriverMarkerHtml({ drivers: cluster, statusColor: cluster[0].statusColor }, true),
                         className: 'driver-div-icon',
-                        iconSize: [100, 50],
-                        iconAnchor: [50, 45]
+                        iconSize: [90, 64],
+                        iconAnchor: [45, 64]
                     });
                     const m = L.marker([avgLat, avgLng], { icon }).addTo(newLayer);
-                    m.bindTooltip(cluster.map(c => c.name).join(', '), { direction: 'top' });
+                    m.bindTooltip(cluster.map(c => c.email || c.name || 'Driver').join(', '), { direction: 'top' });
                     bounds.push([avgLat, avgLng]);
                 }
             });
@@ -582,18 +583,28 @@
                 const info = getDriverLastCoordinateAndStatus(data);
                 if (!info || info.status === 'ended') continue;
                 let photoUrl = null;
+                let email = null;
                 try {
                     const userSnap = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'users', data.driverId));
-                    if (userSnap.exists()) photoUrl = userSnap.data().photoURL || userSnap.data().photoUrl;
-                    if (!photoUrl) {
+                    if (userSnap.exists()) {
+                        const u = userSnap.data();
+                        photoUrl = u.photoURL || u.photoUrl;
+                        email = u.email || null;
+                    }
+                    if (!photoUrl || !email) {
                         const drSnap = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'drivers', data.driverId));
-                        if (drSnap.exists()) photoUrl = drSnap.data().photoURL || drSnap.data().photoUrl;
+                        if (drSnap.exists()) {
+                            const dr = drSnap.data();
+                            if (!photoUrl) photoUrl = dr.photoURL || dr.photoUrl;
+                            if (!email) email = dr.email || null;
+                        }
                     }
                 } catch (e) {}
                 const statusColor = (info.status === 'startday' || info.status === 'collect') ? 'green' : 'red';
                 drivers.push({
                     driverId: data.driverId,
                     name: data.name || 'Driver',
+                    email: email || null,
                     lat: info.lat,
                     lng: info.lng,
                     status: info.status,
