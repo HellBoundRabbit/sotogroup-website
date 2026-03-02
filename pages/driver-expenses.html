@@ -1342,65 +1342,85 @@
             });
             batchData.lines = linesForFirestore;
             if (draft.lineOrder && Array.isArray(draft.lineOrder)) batchData.lineOrder = draft.lineOrder;
-            if (!batchId) {
-                batchData.createdAt = window.serverTimestamp();
-                const batchRef = await window.addDoc(window.collection(window.db, 'expenseBatches'), batchData);
-                batchId = batchRef.id;
-                draft.id = batchId;
-                console.log('[syncDraftToFirestore] Created batch with lines:', batchId);
-            } else {
-                await window.updateDoc(window.doc(window.db, 'expenseBatches', batchId), batchData);
-                console.log('[syncDraftToFirestore] Updated batch with lines:', batchId);
-            }
-            let enqueuedUploadCount = 0;
-            const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            if (!isLocalhost && window.expenseUploadQueue) {
-                const reg = (draft.registration || '').trim();
-                const submissionDate = targetStatus === 'pending' ? (() => {
-                    const d = draft.submittedAt ? new Date(typeof draft.submittedAt.toDate === 'function' ? draft.submittedAt.toDate() : draft.submittedAt) : new Date();
-                    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                })() : null;
-                for (const k of LINE_KEYS) {
-                    const photoBlobs = photoBlobsByLineKey[k];
-                    if (!photoBlobs || photoBlobs.length === 0) continue;
-                    const line = draft.lines[k];
-                    const amount = line && typeof line.amount === 'number' ? line.amount : 0;
-                    try {
+            const createdNewBatch = !batchId;
+            const SYNC_TIMEOUT_MS = 60000; // 60s — poor signal (e.g. train) can hang Firestore
+            const syncWork = (async () => {
+                if (!batchId) {
+                    batchData.createdAt = window.serverTimestamp();
+                    const batchRef = await window.addDoc(window.collection(window.db, 'expenseBatches'), batchData);
+                    batchId = batchRef.id;
+                    draft.id = batchId;
+                    console.log('[syncDraftToFirestore] Created batch with lines:', batchId);
+                } else {
+                    await window.updateDoc(window.doc(window.db, 'expenseBatches', batchId), batchData);
+                    console.log('[syncDraftToFirestore] Updated batch with lines:', batchId);
+                }
+                // Enqueue photo uploads only AFTER batch exists (atomic: all-or-nothing)
+                let enqueuedUploadCount = 0;
+                const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                if (!isLocalhost && window.expenseUploadQueue) {
+                    const reg = (draft.registration || '').trim();
+                    const submissionDate = targetStatus === 'pending' ? (() => {
+                        const d = draft.submittedAt ? new Date(typeof draft.submittedAt.toDate === 'function' ? draft.submittedAt.toDate() : draft.submittedAt) : new Date();
+                        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                    })() : null;
+                    for (const k of LINE_KEYS) {
+                        const photoBlobs = photoBlobsByLineKey[k];
+                        if (!photoBlobs || photoBlobs.length === 0) continue;
+                        const line = draft.lines[k];
+                        const amount = line && typeof line.amount === 'number' ? line.amount : 0;
                         await window.expenseUploadQueue.enqueueExpenseUpload(batchId, k, { amount, registration: reg, targetStatus, submissionDate }, photoBlobs);
                         enqueuedUploadCount += (photoBlobs.length || 0);
-                    } catch (e) {
-                        console.error('[syncDraftToFirestore] Failed to enqueue photo upload for line', k, e);
+                    }
+                    if (typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
+                        await window.expenseUploadQueue.updateGlobalUploadStatus();
+                    }
+                    if (navigator.onLine && typeof window.expenseUploadQueue.getAuthTokenAndProcessQueue === 'function') {
+                        await window.expenseUploadQueue.getAuthTokenAndProcessQueue();
                     }
                 }
-                if (typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') {
-                    await window.expenseUploadQueue.updateGlobalUploadStatus();
-                }
-                // Trigger Service Worker to process uploads immediately (otherwise they only run on 30s timer or page load)
-                if (navigator.onLine && typeof window.expenseUploadQueue.getAuthTokenAndProcessQueue === 'function') {
-                    await window.expenseUploadQueue.getAuthTokenAndProcessQueue();
-                }
-            }
-            draft.enqueuedUploadCount = enqueuedUploadCount;
-
-            draft.status = targetStatus;
-            draft.driverId = driverId;
-            draft.officeId = officeId;
-            draft.driverName = driverName;
-            draft.driverEmail = driverEmail;
-            draft.totalAmount = totalAmount;
-            draft.updatedAt = Date.now();
-            if (draft.submittedAt && typeof draft.submittedAt.toDate === 'function') {
-                draft.submittedAt = draft.submittedAt.toDate().getTime();
-            }
+                draft.enqueuedUploadCount = enqueuedUploadCount;
+            });
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Sync timed out. Your data is saved locally and will retry when you return.')), SYNC_TIMEOUT_MS);
+            });
+            let syncPhaseComplete = false;
             try {
-                await window.expenseDraftDB.saveDraft(draft);
-            } catch (storageError) {
-                console.warn('Unable to store draft snapshot locally:', storageError);
+                await Promise.race([syncWork(), timeoutPromise]);
+                syncPhaseComplete = true;
+
+                draft.status = targetStatus;
+                draft.driverId = driverId;
+                draft.officeId = officeId;
+                draft.driverName = driverName;
+                draft.driverEmail = driverEmail;
+                draft.totalAmount = totalAmount;
+                draft.updatedAt = Date.now();
+                if (draft.submittedAt && typeof draft.submittedAt.toDate === 'function') {
+                    draft.submittedAt = draft.submittedAt.toDate().getTime();
+                }
+                try {
+                    await window.expenseDraftDB.saveDraft(draft);
+                } catch (storageError) {
+                    console.warn('Unable to store draft snapshot locally:', storageError);
+                }
+
+                removeSubmissionQueueEntry(draft.localId);
+
+                return draft;
+            } catch (syncError) {
+                // Rollback only when failure happened during Firestore/enqueue (not during saveDraft etc.)
+                if (!syncPhaseComplete && createdNewBatch && batchId && window.deleteDoc && window.doc && window.db) {
+                    try {
+                        await window.deleteDoc(window.doc(window.db, 'expenseBatches', batchId));
+                        console.warn('[syncDraftToFirestore] Rolled back batch after error:', batchId, syncError.message);
+                    } catch (rollbackErr) {
+                        console.error('[syncDraftToFirestore] Failed to rollback batch:', batchId, rollbackErr);
+                    }
+                    draft.id = null;
+                }
+                throw syncError;
             }
-
-            removeSubmissionQueueEntry(draft.localId);
-
-            return draft;
         }
 
         async function processSubmissionQueue(options = {}) {
@@ -1427,10 +1447,17 @@
                 // CRITICAL FIX: Check if this entry is already being processed or was already processed
                 // Prevent duplicate processing of the same localId
                 const processingKey = `processing_${entry.localId}`;
-                if (sessionStorage.getItem(processingKey)) {
-                    console.log('[processSubmissionQueue] Entry already being processed, skipping:', entry.localId);
-                    remaining.push(entry); // Keep in queue but skip for now
-                    continue;
+                const processingVal = sessionStorage.getItem(processingKey);
+                if (processingVal) {
+                    const startedAt = parseInt(processingVal, 10);
+                    const STALE_MS = 120000; // 2 min — tab crash/close leaves key stuck
+                    if (!isNaN(startedAt) && Date.now() - startedAt > STALE_MS) {
+                        sessionStorage.removeItem(processingKey);
+                    } else {
+                        console.log('[processSubmissionQueue] Entry already being processed, skipping:', entry.localId);
+                        remaining.push(entry);
+                        continue;
+                    }
                 }
                 
                 // Mark as processing
@@ -1571,6 +1598,10 @@
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden && navigator.onLine) {
                 processSubmissionQueue({ showToast: false });
+                // Trigger photo upload queue processing when user returns to tab
+                if (window.expenseUploadQueue && typeof window.expenseUploadQueue.getAuthTokenAndProcessQueue === 'function') {
+                    window.expenseUploadQueue.getAuthTokenAndProcessQueue();
+                }
             }
         });
 

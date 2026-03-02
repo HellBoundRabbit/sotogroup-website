@@ -1018,6 +1018,19 @@
                     Promise.resolve().then(fn).catch(function () {});
                 }, 3000); // Check every 3 seconds
 
+                // When user returns to tab, trigger upload queue processing (resume on next login/session)
+                document.addEventListener('visibilitychange', () => {
+                    if (!document.hidden && navigator.onLine && window.expenseUploadQueue && typeof window.expenseUploadQueue.getAuthTokenAndProcessQueue === 'function') {
+                        window.expenseUploadQueue.getAuthTokenAndProcessQueue();
+                    }
+                });
+                // When network returns, resume photo upload queue
+                window.addEventListener('online', () => {
+                    if (window.expenseUploadQueue && typeof window.expenseUploadQueue.getAuthTokenAndProcessQueue === 'function') {
+                        window.expenseUploadQueue.getAuthTokenAndProcessQueue();
+                    }
+                });
+
                 // Listen for Service Worker messages (auth token requests and photo uploads)
                 if ('serviceWorker' in navigator && navigator.serviceWorker) {
                     navigator.serviceWorker.addEventListener('message', async (event) => {

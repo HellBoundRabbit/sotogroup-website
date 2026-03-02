@@ -12,7 +12,6 @@
     <script src="/assets/js/tailwind-runtime.js"></script>
     <script src="/js/session-manager.js"></script>
     <script>
-        console.log('[LOGIN DEBUG] soto-routes-login.html loaded - DEBUG BUILD 2026-03-01');
         tailwind.config = {
             plugins: {
                 forms: {},
@@ -218,29 +217,26 @@
         }
 
         function redirectAfterLogin(session) {
-            console.log('[LOGIN DEBUG] redirectAfterLogin called', {
-                session,
-                role: session?.role,
-                fullUrl: window.location.href,
-                search: window.location.search
-            });
             const urlParams = new URLSearchParams(window.location.search);
             const redirectUrl = urlParams.get('redirect');
-            console.log('[LOGIN DEBUG] redirect param from URL:', redirectUrl || '(none)');
 
             if (redirectUrl) {
-                const decoded = decodeURIComponent(redirectUrl);
-                console.log('[LOGIN DEBUG] Using redirect param ->', decoded);
-                window.location.href = decoded;
+                window.location.href = decodeURIComponent(redirectUrl);
                 return;
             }
 
-            const target = { admin: '/pages/admin-panel.html', office: '/pages/dashboard.html', driver: '/pages/driver-portal.html' }[session?.role];
-            console.log('[LOGIN DEBUG] Role:', session?.role, '-> target:', target || '(invalid role)');
-            if (target) {
-                window.location.href = target;
-            } else {
-                showMessage('Invalid user role. Please contact support.');
+            switch (session.role) {
+                case 'admin':
+                    window.location.href = '/pages/admin-panel.html';
+                    break;
+                case 'office':
+                    window.location.href = '/pages/dashboard.html';
+                    break;
+                case 'driver':
+                    window.location.href = '/pages/driver-portal.html';
+                    break;
+                default:
+                    showMessage('Invalid user role. Please contact support.');
             }
         }
 
@@ -261,14 +257,13 @@
                 
                 // Sign in with Firebase Auth
                 await window.signInWithEmailAndPassword(window.auth, email, password);
-                console.log('[LOGIN DEBUG] Auth sign-in done, bootstrapping session...');
                 const session = await window.sotoSession.bootstrap();
-                console.log('[LOGIN DEBUG] Bootstrap returned session:', session?.role, session);
+                
                 if (!session) {
                     showMessage('Unable to establish session. Please try again.');
                         return;
                     }
-                console.log('[LOGIN DEBUG] Calling redirectAfterLogin with role:', session.role);
+                    
                 redirectAfterLogin(session);
                 
             } catch (error) {
@@ -327,14 +322,11 @@
         document.addEventListener('DOMContentLoaded', async function() {
             try {
                 await waitForFirebase();
-                console.log('[LOGIN DEBUG] DOMContentLoaded - setting up onAuthStateChanged');
+                
                 if (window.auth?.onAuthStateChanged) {
                     window.auth.onAuthStateChanged(async (user) => {
-                        console.log('[LOGIN DEBUG] onAuthStateChanged fired, user:', user ? user.uid : null);
                         if (user) {
-                            console.log('[LOGIN DEBUG] User already logged in, bootstrapping (already-logged-in path)...');
                             const session = await window.sotoSession.bootstrap();
-                            console.log('[LOGIN DEBUG] Already-logged-in bootstrap session:', session?.role, session);
                             if (session) {
                                 redirectAfterLogin(session);
                             }
