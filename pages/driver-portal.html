@@ -1998,10 +1998,13 @@
                 const updates = { availabilityType: typeRadio.value, availabilityWorkingDays: working, availabilityStandbyDays: standby, updatedAt: window.serverTimestamp() };
                 await window.updateDoc(window.doc(window.db, 'users', currentUser.uid), updates);
                 try {
-                    const officeId = getCurrentOfficeId();
-                    const payload = { ...updates };
-                    if (officeId) payload.officeId = officeId;
-                    await window.setDoc(window.doc(window.db, 'drivers', currentUser.uid), payload, { merge: true });
+                    const driverDocId = await getDriverDocIdForSync();
+                    if (driverDocId) {
+                        const officeId = getCurrentOfficeId();
+                        const payload = { ...updates };
+                        if (officeId) payload.officeId = officeId;
+                        await window.setDoc(window.doc(window.db, 'drivers', driverDocId), payload, { merge: true });
+                    }
                 } catch (e) { console.warn('Could not sync to drivers doc:', e); }
                 const Model = window.AvailabilityModel;
                 const oldTemplate = Model ? Model.getDriverTemplate(currentUser) : null;
