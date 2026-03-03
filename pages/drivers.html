@@ -124,6 +124,17 @@ async function initializeDriversApp() {
     // Keep full-screen loading until drivers list is loaded (no flash of empty/loading list)
     await fetchAndDisplayDrivers();
 
+    // If navigated from dashboard with ?driver=ID, open that driver's detail modal
+    const params = new URLSearchParams(window.location.search);
+    const driverId = params.get('driver');
+    if (driverId) {
+        setTimeout(function () {
+            openDriverDetailModal(driverId);
+            var cardEl = document.querySelector('.driver-card[data-driver-id="' + CSS.escape(driverId) + '"]');
+            if (cardEl) cardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }, 150);
+    }
+
     const loadingOverlay = document.getElementById('loading-overlay');
     if (loadingOverlay) {
         loadingOverlay.style.opacity = '0';

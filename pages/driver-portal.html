@@ -567,7 +567,7 @@
                             <span class="material-symbols-outlined spinner-icon" id="btnStartDayIcon">play_circle</span>
                         </div>
                     </div>
-                    <h3 class="text-lg font-semibold text-white" id="btnStartDayLabel">Start Day</h3>
+                    <h3 class="text-lg font-semibold text-white text-center w-full" id="btnStartDayLabel">Start Day</h3>
                     <div id="startDayProgressBar" class="hold-progress-bar"></div>
                 </div>
 
@@ -1409,8 +1409,21 @@
                     const snap = await window.getDoc(window.doc(window.db, 'driverDaySessions', docId));
                     if (snap.exists()) {
                         const data = snap.data();
-                        if (data.dayStartedAt && !data.dayEndedAt && data.inPossessionOfVehicle === true) {
+                        if (!data.dayStartedAt) continue;
+                        // Already closed (manual or auto): check carryover flag
+                        if (data.dayEndedAt && data.endedWithVehicleInPossession === true) {
                             return { dateStr, docId, data };
+                        }
+                        // Stale past session (day ended at midnight): auto-close and return carryover if had car
+                        if (!data.dayEndedAt) {
+                            const hadVehicle = data.inPossessionOfVehicle === true;
+                            await window.updateDoc(window.doc(window.db, 'driverDaySessions', docId), {
+                                dayEndedAt: window.serverTimestamp(),
+                                dayEndedAtMidnight: true,
+                                endedWithVehicleInPossession: hadVehicle,
+                                inPossessionOfVehicle: false
+                            });
+                            if (hadVehicle) return { dateStr, docId, data };
                         }
                     }
                 } catch (e) { console.warn('[Carryover] Check failed for', dateStr, e); }
@@ -1459,7 +1472,7 @@
                         awaitingCollect: carryover ? false : true
                     });
                     notifySuccess('Day started.', 'Start Day');
-                } else if (hasCarryover && awaitingCollect) {
+                } else if (hasCarryover && !awaitingCollect) {
                     await window.updateDoc(window.doc(window.db, 'driverDaySessions', docId), {
                         carryoverDeliverCoordinate: coordPayload(loc),
                         carryover: false,
@@ -1527,11 +1540,13 @@
             }
 
             try {
-                await window.updateDoc(window.doc(window.db, 'driverDaySessions', docId), {
+                const updatePayload = {
                     endDayCoordinate: coordPayload(loc),
                     dayEndedAt: window.serverTimestamp(),
                     inPossessionOfVehicle: false
-                });
+                };
+                if (inPossession) updatePayload.endedWithVehicleInPossession = true;
+                await window.updateDoc(window.doc(window.db, 'driverDaySessions', docId), updatePayload);
                 notifySuccess('Day ended.', 'End Day');
                 await loadDriverDaySessionAndUpdateButtons();
             } catch (e) {

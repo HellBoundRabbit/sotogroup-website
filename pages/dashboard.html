@@ -314,12 +314,12 @@
         }
 
         async function loadDriversWorkingToday(officeId) {
-            const list = await loadDriversWorkingTodayList(officeId);
-            return list.length;
+            const items = await loadDriversWorkingTodayList(officeId);
+            return items.length;
         }
 
         async function loadDriversWorkingTodayList(officeId) {
-            const names = [];
+            const items = [];
             try {
                 const Model = window.AvailabilityModel;
                 const q = window.firebaseQuery(
@@ -347,17 +347,17 @@
                         const first = (data.firstName || data.name || '').trim();
                         const last = (data.lastName || '').trim();
                         const name = [first, last].filter(Boolean).join(' ').trim() || 'Driver';
-                        names.push((name && !name.includes('@')) ? name : 'Driver');
+                        items.push({ driverId, name: (name && !name.includes('@')) ? name : 'Driver' });
                     }
                 });
             } catch (e) {
                 console.error('[Dashboard] Drivers working today list failed', e);
             }
-            return names.sort((a, b) => a.localeCompare(b));
+            return items.sort((a, b) => a.name.localeCompare(b.name));
         }
 
         async function fetchActiveDriversList(officeId) {
-            const names = [];
+            const items = [];
             try {
                 const dateStr = getTodayDateString();
                 const q = window.firebaseQuery(
@@ -370,12 +370,13 @@
                     const data = d.data();
                     if (!data.dayStartedAt || data.dayEndedAt) continue;
                     const displayName = await fetchDriverDisplayName(data.driverId);
-                    names.push(displayName || (data.name && !String(data.name).includes('@') ? data.name : 'Driver'));
+                    const name = displayName || (data.name && !String(data.name).includes('@') ? data.name : 'Driver');
+                    items.push({ driverId: data.driverId, name });
                 }
             } catch (e) {
                 console.error('[Dashboard] Active drivers list failed', e);
             }
-            return names.sort((a, b) => a.localeCompare(b));
+            return items.sort((a, b) => a.name.localeCompare(b.name));
         }
 
         function toggleDriversWorkingDropdown(e) {
@@ -387,9 +388,9 @@
                 dd.classList.remove('hidden');
                 const list = document.getElementById('dropdown-drivers-working-list');
                 list.innerHTML = '<div class="px-3 py-2 text-[#9cabba]">Loading...</div>';
-                loadDriversWorkingTodayList(getCurrentOfficeId()).then(names => {
-                    if (names.length === 0) list.innerHTML = '<div class="px-3 py-2 text-[#9cabba]">No drivers working today</div>';
-                    else list.innerHTML = names.map(n => '<div class="px-3 py-1.5 text-white hover:bg-[#283039]">' + (n || 'Driver') + '</div>').join('');
+                loadDriversWorkingTodayList(getCurrentOfficeId()).then(items => {
+                    if (items.length === 0) list.innerHTML = '<div class="px-3 py-2 text-[#9cabba]">No drivers working today</div>';
+                    else list.innerHTML = items.map(it => '<a href="/pages/drivers.html?driver=' + encodeURIComponent(it.driverId) + '" class="block px-3 py-1.5 text-white hover:bg-[#283039]">' + (it.name || 'Driver') + '</a>').join('');
                 });
             } else {
                 dd.classList.add('hidden');
@@ -405,9 +406,9 @@
                 dd.classList.remove('hidden');
                 const list = document.getElementById('dropdown-active-drivers-list');
                 list.innerHTML = '<div class="px-3 py-2 text-[#9cabba]">Loading...</div>';
-                fetchActiveDriversList(getCurrentOfficeId()).then(names => {
-                    if (names.length === 0) list.innerHTML = '<div class="px-3 py-2 text-[#9cabba]">No active drivers</div>';
-                    else list.innerHTML = names.map(n => '<div class="px-3 py-1.5 text-white hover:bg-[#283039]">' + (n || 'Driver') + '</div>').join('');
+                fetchActiveDriversList(getCurrentOfficeId()).then(items => {
+                    if (items.length === 0) list.innerHTML = '<div class="px-3 py-2 text-[#9cabba]">No active drivers</div>';
+                    else list.innerHTML = items.map(it => '<a href="/pages/drivers.html?driver=' + encodeURIComponent(it.driverId) + '" class="block px-3 py-1.5 text-white hover:bg-[#283039]">' + (it.name || 'Driver') + '</a>').join('');
                 });
             } else {
                 dd.classList.add('hidden');
@@ -582,7 +583,7 @@
                 ).join('');
                 return '<div class="driver-marker-pin cluster">' + imgs + '<span class="driver-marker-status ' + borderClass + '">' + driver.drivers.length + '</span></div>';
             }
-            const statusText = driver.status === 'startday' ? '⌂' : (driver.status === 'carryover' ? 'C/O' : (driver.status === 'collect' ? '▲' + (driver.job || '') : '▼' + (driver.job || '')));
+            const statusText = driver.status === 'startday' ? '⌂' : (driver.status === 'carryover' ? 'CO' : (driver.status === 'collect' ? '▲' + (driver.job || '') : '▼' + (driver.job || '')));
             return '<div class="driver-marker-pin"><img src="' + toPhotoUrl(driver.photoUrl) + '" alt="" class="driver-marker-single ' + borderClass + '"><span class="driver-marker-status ' + borderClass + '">' + statusText + '</span></div>';
         }
 
