@@ -180,6 +180,12 @@ async function uploadPhotoBlobMedia(blob, path, authToken) {
 // Process upload queue
 async function processUploadQueue(authToken) {
   return new Promise((resolve, reject) => {
+    // Fix 1: Don't dispatch uploads to main thread when offline - avoids 4+ min Firebase backoff
+    if (!navigator.onLine) {
+      resolve({ processed: 0, failed: 0 });
+      return;
+    }
+
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onsuccess = async () => {
       const db = request.result;
@@ -325,11 +331,11 @@ async function processUploadQueue(authToken) {
             console.error('[SW] Upload task failed:', error);
             const errorTx = db.transaction(['expenseUploadQueue'], 'readwrite');
             const errorStore = errorTx.objectStore('expenseUploadQueue');
+            // Fix 3: Always requeue as pending - never mark failed. Allows retry on next process (e.g. after refresh).
             task.status = 'pending';
             task.retries = (task.retries || 0) + 1;
             task.lastError = error.message;
             task.updatedAt = Date.now();
-            if (task.retries >= 5) task.status = 'failed';
             await new Promise((res, rej) => {
               const req = errorStore.put(task);
               req.onsuccess = () => res();
@@ -376,6 +382,12 @@ async function processUploadQueue(authToken) {
 // Process wait time upload queue
 async function processWaitTimeQueue(authToken) {
   return new Promise((resolve, reject) => {
+    // Fix 1: Don't process when offline - tasks stay pending, will retry when online
+    if (!navigator.onLine) {
+      resolve({ processed: 0, failed: 0 });
+      return;
+    }
+
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     
     request.onsuccess = async () => {
