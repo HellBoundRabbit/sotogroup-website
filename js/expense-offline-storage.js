@@ -1229,6 +1229,13 @@ class ExpenseUploadQueue {
             if (mainContent) {
                 mainContent.style.marginTop = '0';
             }
+            // Push modals down so close (X) button isn't covered by the banner
+            const BANNER_HEIGHT = 56;
+            ['batchModal', 'expenseModal', 'linePhotoGalleryModal', 'photoViewerModal'].forEach(id => {
+                const modal = document.getElementById(id);
+                const inner = modal && modal.querySelector(':scope > div');
+                if (inner) inner.style.paddingTop = `${BANNER_HEIGHT + 8}px`;
+            });
             
             // Update banner text - show expense count
             if (bannerText) {
@@ -1320,6 +1327,12 @@ class ExpenseUploadQueue {
         if (mainContent) {
             mainContent.style.marginTop = '0';
         }
+        // Remove modal top padding when banner is hidden
+        ['batchModal', 'expenseModal', 'linePhotoGalleryModal', 'photoViewerModal'].forEach(id => {
+            const modal = document.getElementById(id);
+            const inner = modal && modal.querySelector(':scope > div');
+            if (inner) inner.style.paddingTop = '';
+        });
     }
 
     /**
