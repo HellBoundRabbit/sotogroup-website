@@ -180,12 +180,9 @@ async function uploadPhotoBlobMedia(blob, path, authToken) {
 // Process upload queue
 async function processUploadQueue(authToken) {
   return new Promise((resolve, reject) => {
-    // Fix 1: Don't dispatch uploads to main thread when offline - avoids 4+ min Firebase backoff
-    if (!navigator.onLine) {
-      resolve({ processed: 0, failed: 0 });
-      return;
-    }
-
+    // Note: We tried checking navigator.onLine here to avoid 4+ min Firebase backoff when offline,
+    // but it's unreliable in SW context (can be false when actually online), causing stuck uploads.
+    // Main thread already skips sending process-queue when offline (getAuthTokenAndProcessQueue).
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onsuccess = async () => {
       const db = request.result;
@@ -382,12 +379,6 @@ async function processUploadQueue(authToken) {
 // Process wait time upload queue
 async function processWaitTimeQueue(authToken) {
   return new Promise((resolve, reject) => {
-    // Fix 1: Don't process when offline - tasks stay pending, will retry when online
-    if (!navigator.onLine) {
-      resolve({ processed: 0, failed: 0 });
-      return;
-    }
-
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     
     request.onsuccess = async () => {
