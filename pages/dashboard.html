@@ -322,6 +322,7 @@
 
         async function loadDriversWorkingTodayList(officeId) {
             const items = [];
+            const seenUids = new Set();
             try {
                 const Model = window.AvailabilityModel;
                 const q = window.firebaseQuery(
@@ -353,6 +354,8 @@
                     if (entry && entry.status) status = entry.status;
                     else if ((driversOffLegacy.includes(driverId) || driversOffLegacy.includes(uid)) && !entry) status = 'off';
                     if (status === 'working') {
+                        if (seenUids.has(uid)) continue;
+                        seenUids.add(uid);
                         let first = (data.firstName || data.name || '').trim();
                         let last = (data.lastName || '').trim();
                         let name = [first, last].filter(Boolean).join(' ').trim();
