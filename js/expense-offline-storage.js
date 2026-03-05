@@ -1262,7 +1262,11 @@ class ExpenseUploadQueue {
             const percent = totalPhotos > 0 ? Math.round((completedPhotos / totalPhotos) * 100) : 0;
 
             if (bannerSubtitle) {
-                if (remainingPhotos > 0 && totalPhotos > 0) {
+                // Fix 2: When offline with pending uploads, show clear message instead of "0 of X photos"
+                const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+                if (isOffline && (photoCount > 0 || totalPhotos > 0)) {
+                    bannerSubtitle.textContent = 'Offline – uploads will resume when online';
+                } else if (remainingPhotos > 0 && totalPhotos > 0) {
                     bannerSubtitle.textContent = `${completedPhotos} of ${totalPhotos} photo${totalPhotos === 1 ? '' : 's'} (${percent}%)`;
                 } else if (totalPhotos > 0 && completedPhotos >= totalPhotos) {
                     bannerSubtitle.textContent = `${totalPhotos} of ${totalPhotos} photo${totalPhotos === 1 ? '' : 's'} (100%)`;
