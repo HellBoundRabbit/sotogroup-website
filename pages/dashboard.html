@@ -61,9 +61,10 @@
         @keyframes spin { to { transform: rotate(360deg); } }
         #dashboard-map-inner .leaflet-container { background: #0f1419; }
         .driver-marker-pin { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; width: 52px; min-height: 64px; padding: 6px 6px 20px 6px; background: rgba(26,31,36,0.95); box-shadow: 0 2px 8px rgba(0,0,0,0.4); clip-path: path('M26 0 C11.64 0 0 11.64 0 26 C0 38 26 64 26 64 S52 38 52 26 C52 11.64 40.36 0 26 0 Z'); flex-shrink: 0; }
-        .driver-marker-pin.cluster { padding: 6px 6px 20px 6px; background: rgba(26,31,36,0.95); box-shadow: 0 2px 8px rgba(0,0,0,0.4); border-radius: 12px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
-        .driver-marker-cluster-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
-        .driver-marker-cluster-grid .driver-marker-single { width: 28px; height: 28px; min-width: 28px; min-height: 28px; }
+        .driver-marker-pin.cluster { position: relative; padding: 10px 10px 16px; background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.2), 0 1px 3px rgba(0,0,0,0.1); border: 1px solid rgba(255,255,255,0.6); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+        .driver-marker-pin.cluster::after { content: ''; position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 10px solid rgba(255,255,255,0.92); filter: drop-shadow(0 2px 2px rgba(0,0,0,0.15)); }
+        .driver-marker-cluster-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+        .driver-marker-cluster-grid .driver-marker-single { width: 32px; height: 32px; min-width: 32px; min-height: 32px; }
         .driver-marker-single { width: 36px; height: 36px; min-width: 36px; min-height: 36px; border-radius: 50%; object-fit: cover; border: 2px solid; box-sizing: border-box; flex-shrink: 0; aspect-ratio: 1; }
         .driver-marker-single.green { border-color: #22c55e; }
         .driver-marker-single.red { border-color: #ef4444; }
@@ -654,8 +655,9 @@
                     const avgLat = cluster.reduce((s, c) => s + c.lat, 0) / cluster.length;
                     const avgLng = cluster.reduce((s, c) => s + c.lng, 0) / cluster.length;
                     const rows = Math.ceil(Math.min(cluster.length, 16) / 4);
-                    const w = 4 * 28 + 3 * 4 + 16;
-                    const h = rows * 28 + (rows - 1) * 4 + 28;
+                    const cell = 32; const gap = 5; const pad = 20;
+                    const w = 4 * cell + 3 * gap + pad;
+                    const h = rows * cell + (rows - 1) * gap + pad + 22;
                     const icon = L.divIcon({
                         html: createDriverMarkerHtml({ drivers: cluster, statusColor: cluster[0].statusColor }, true),
                         className: 'driver-div-icon',
