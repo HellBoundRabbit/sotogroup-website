@@ -61,7 +61,9 @@
         @keyframes spin { to { transform: rotate(360deg); } }
         #dashboard-map-inner .leaflet-container { background: #0f1419; }
         .driver-marker-pin { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; width: 52px; min-height: 64px; padding: 6px 6px 20px 6px; background: rgba(26,31,36,0.95); box-shadow: 0 2px 8px rgba(0,0,0,0.4); clip-path: path('M26 0 C11.64 0 0 11.64 0 26 C0 38 26 64 26 64 S52 38 52 26 C52 11.64 40.36 0 26 0 Z'); flex-shrink: 0; }
-        .driver-marker-pin.cluster { width: 90px; min-height: 64px; padding: 6px 6px 20px 6px; clip-path: path('M45 0 C19.98 0 0 11.64 0 26 C0 38 45 64 45 64 S90 38 90 26 C90 11.64 70.02 0 45 0 Z'); }
+        .driver-marker-pin.cluster { padding: 6px 6px 20px 6px; background: rgba(26,31,36,0.95); box-shadow: 0 2px 8px rgba(0,0,0,0.4); border-radius: 12px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .driver-marker-cluster-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+        .driver-marker-cluster-grid .driver-marker-single { width: 28px; height: 28px; min-width: 28px; min-height: 28px; }
         .driver-marker-single { width: 36px; height: 36px; min-width: 36px; min-height: 36px; border-radius: 50%; object-fit: cover; border: 2px solid; box-sizing: border-box; flex-shrink: 0; aspect-ratio: 1; }
         .driver-marker-single.green { border-color: #22c55e; }
         .driver-marker-single.red { border-color: #ef4444; }
@@ -333,23 +335,41 @@
                 const driversMap = (calendarDoc.exists() && calendarDoc.data().drivers) ? calendarDoc.data().drivers : {};
                 const driversOffLegacy = calendarDoc.exists() ? (calendarDoc.data().driversOff || []) : [];
                 const dateObj = new Date(dateString + 'T12:00:00');
-                driversSnap.docs.forEach((d) => {
+                for (const d of driversSnap.docs) {
                     const data = d.data();
                     const driverId = d.id || data.uid;
-                    const driver = { ...data, uid: driverId };
-                    if (!Model || !Model.hasDriverTypeSet(driver)) return;
-                    const template = Model.getDriverTemplate(driver);
-                    const entry = driversMap[driverId] || null;
+                    const uid = data.uid || driverId;
+                    let driverForType = { ...data, uid: driverId };
+                    if (!Model || !Model.hasDriverTypeSet(driverForType)) {
+                        try {
+                            const userSnap = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'users', uid));
+                            if (userSnap.exists()) driverForType = { ...driverForType, ...userSnap.data() };
+                        } catch (e) {}
+                        if (!Model || !Model.hasDriverTypeSet(driverForType)) continue;
+                    }
+                    const template = Model.getDriverTemplate(driverForType);
+                    const entry = driversMap[driverId] || driversMap[uid] || null;
                     let status = Model.getEffectiveStatus(template, entry, dateObj);
                     if (entry && entry.status) status = entry.status;
-                    else if (driversOffLegacy.includes(driverId) && !entry) status = 'off';
+                    else if ((driversOffLegacy.includes(driverId) || driversOffLegacy.includes(uid)) && !entry) status = 'off';
                     if (status === 'working') {
-                        const first = (data.firstName || data.name || '').trim();
-                        const last = (data.lastName || '').trim();
-                        const name = [first, last].filter(Boolean).join(' ').trim() || 'Driver';
-                        items.push({ driverId, name: (name && !name.includes('@')) ? name : 'Driver' });
+                        let first = (data.firstName || data.name || '').trim();
+                        let last = (data.lastName || '').trim();
+                        let name = [first, last].filter(Boolean).join(' ').trim();
+                        if (!name || name.includes('@')) {
+                            try {
+                                const userSnap = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'users', uid));
+                                if (userSnap.exists()) {
+                                    const u = userSnap.data();
+                                    first = (u.firstName || u.name || '').trim();
+                                    last = (u.lastName || '').trim();
+                                    name = [first, last].filter(Boolean).join(' ').trim();
+                                }
+                            } catch (e) {}
+                        }
+                        items.push({ driverId: uid, name: (name && !name.includes('@')) ? name : 'Driver' });
                     }
-                });
+                }
             } catch (e) {
                 console.error('[Dashboard] Drivers working today list failed', e);
             }
@@ -578,10 +598,13 @@
         function createDriverMarkerHtml(driver, isCluster) {
             const borderClass = driver.statusColor === 'green' ? 'green' : 'red';
             if (isCluster && driver.drivers) {
-                const imgs = driver.drivers.slice(0, 4).map(d =>
-                    '<img src="' + toPhotoUrl(d.photoUrl) + '" alt="" class="driver-marker-single ' + (d.statusColor === 'green' ? 'green' : 'red') + '" style="width:26px;height:26px;border-radius:50%;object-fit:cover;">'
+                const maxShow = 16;
+                const drivers = driver.drivers.slice(0, maxShow);
+                const imgs = drivers.map(d =>
+                    '<img src="' + toPhotoUrl(d.photoUrl) + '" alt="" class="driver-marker-single ' + (d.statusColor === 'green' ? 'green' : 'red') + '">'
                 ).join('');
-                return '<div class="driver-marker-pin cluster">' + imgs + '<span class="driver-marker-status ' + borderClass + '">' + driver.drivers.length + '</span></div>';
+                const extra = driver.drivers.length > maxShow ? '<span class="driver-marker-status ' + borderClass + '">+' + (driver.drivers.length - maxShow) + '</span>' : '';
+                return '<div class="driver-marker-pin cluster"><div class="driver-marker-cluster-grid">' + imgs + '</div>' + extra + '</div>';
             }
             const statusText = driver.status === 'startday' ? '⌂' : (driver.status === 'carryover' ? 'CO' : (driver.status === 'collect' ? '▲' + (driver.job || '') : '▼' + (driver.job || '')));
             return '<div class="driver-marker-pin"><img src="' + toPhotoUrl(driver.photoUrl) + '" alt="" class="driver-marker-single ' + borderClass + '"><span class="driver-marker-status ' + borderClass + '">' + statusText + '</span></div>';
@@ -627,11 +650,14 @@
                 } else {
                     const avgLat = cluster.reduce((s, c) => s + c.lat, 0) / cluster.length;
                     const avgLng = cluster.reduce((s, c) => s + c.lng, 0) / cluster.length;
+                    const rows = Math.ceil(Math.min(cluster.length, 16) / 4);
+                    const w = 4 * 28 + 3 * 4 + 16;
+                    const h = rows * 28 + (rows - 1) * 4 + 28;
                     const icon = L.divIcon({
                         html: createDriverMarkerHtml({ drivers: cluster, statusColor: cluster[0].statusColor }, true),
                         className: 'driver-div-icon',
-                        iconSize: [90, 64],
-                        iconAnchor: [45, 64]
+                        iconSize: [w, h],
+                        iconAnchor: [w / 2, h]
                     });
                     const m = L.marker([avgLat, avgLng], { icon }).addTo(newLayer);
                     m.bindTooltip(cluster.map(c => c.name || 'Driver').join(', '), { direction: 'top' });
