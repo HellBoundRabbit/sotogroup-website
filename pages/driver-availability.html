@@ -100,6 +100,10 @@
             z-index: 2;
             position: relative;
         }
+        /* Lock icon on day cards - yellow to match legend (overrides .day-card span) */
+        .day-card .day-lock-icon {
+            color: #eab308 !important;
+        }
         
         /* Available (on) days - green solid glowing border */
         .day-card.available:not(.pending-on)::before {
@@ -283,9 +287,9 @@
             background: rgb(36, 36, 36); /* Darker grey background */
             z-index: 1;
         }
-        /* Month title and grid - on top of calendar background */
-        .calendar-container > #monthYear,
-        .calendar-container > .grid {
+        /* Month title, header row, and grid - on top of calendar background */
+        .calendar-container > div,
+        .calendar-container > #monthYear {
             position: relative;
             z-index: 2;
         }
@@ -306,6 +310,10 @@
         /* Calendar days container */
         #calendarDays {
             display: contents;
+        }
+        /* Calendar grid - rows fill available space */
+        .calendar-container .grid {
+            grid-auto-rows: minmax(0, 1fr);
         }
         
         /* Loading spinner */
@@ -438,10 +446,10 @@
         </div>
     </div>
 
-    <!-- Main Content -->
-    <div id="mainContent" class="container max-w-2xl mx-auto px-4 py-4">
+    <!-- Main Content - flex to let calendar fill available space -->
+    <div id="mainContent" class="flex flex-col min-h-[calc(100vh-4rem)] px-4 py-4 pb-8 max-w-2xl mx-auto">
         <!-- Legend - above calendar, in a line -->
-        <div class="flex flex-col items-center gap-3 mb-4">
+        <div class="flex flex-col items-center gap-3 mb-4 shrink-0">
             <div class="flex flex-wrap items-center justify-center gap-6">
                 <div class="flex items-center gap-2">
                     <div class="legend-icon legend-working w-7 h-7 rounded-lg"></div>
@@ -462,25 +470,25 @@
             </div>
         </div>
 
-        <!-- Calendar with arrows -->
-        <div class="flex items-center gap-2">
-            <button onclick="previousMonth()" class="touch-target p-3 hover:bg-[#283039] rounded-lg transition-colors shrink-0">
-                <span class="material-symbols-outlined text-3xl font-bold" style="font-variation-settings: 'FILL' 1, 'wght' 700;">chevron_left</span>
-            </button>
-            <div class="calendar-container flex-1 min-w-0">
-                <h2 id="monthYear" class="text-center text-lg font-semibold text-white mb-3"></h2>
-                <div class="grid grid-cols-5 gap-4">
-                    <div class="text-center text-xs text-gray-500 font-medium py-1">Mon</div>
-                    <div class="text-center text-xs text-gray-500 font-medium py-1">Tue</div>
-                    <div class="text-center text-xs text-gray-500 font-medium py-1">Wed</div>
-                    <div class="text-center text-xs text-gray-500 font-medium py-1">Thu</div>
-                    <div class="text-center text-xs text-gray-500 font-medium py-1">Fri</div>
-                    <div id="calendarDays" class="contents"></div>
-                </div>
+        <!-- Calendar - fills remaining space, arrows on same row as month/year -->
+        <div class="calendar-container flex-1 flex flex-col min-h-0 min-w-0">
+            <div class="flex items-center justify-between mb-3 shrink-0">
+                <button onclick="previousMonth()" class="touch-target p-2 -ml-2 hover:bg-[#283039] rounded-lg transition-colors shrink-0">
+                    <span class="material-symbols-outlined text-2xl font-bold text-gray-300" style="font-variation-settings: 'FILL' 1, 'wght' 700;">chevron_left</span>
+                </button>
+                <h2 id="monthYear" class="text-lg font-semibold text-white"></h2>
+                <button onclick="nextMonth()" class="touch-target p-2 -mr-2 hover:bg-[#283039] rounded-lg transition-colors shrink-0">
+                    <span class="material-symbols-outlined text-2xl font-bold text-gray-300" style="font-variation-settings: 'FILL' 1, 'wght' 700;">chevron_right</span>
+                </button>
             </div>
-            <button onclick="nextMonth()" class="touch-target p-3 hover:bg-[#283039] rounded-lg transition-colors shrink-0">
-                <span class="material-symbols-outlined text-3xl font-bold" style="font-variation-settings: 'FILL' 1, 'wght' 700;">chevron_right</span>
-            </button>
+            <div class="grid grid-cols-5 gap-2 sm:gap-4 flex-1 min-h-0">
+                <div class="text-center text-xs text-gray-500 font-medium py-1">Mon</div>
+                <div class="text-center text-xs text-gray-500 font-medium py-1">Tue</div>
+                <div class="text-center text-xs text-gray-500 font-medium py-1">Wed</div>
+                <div class="text-center text-xs text-gray-500 font-medium py-1">Thu</div>
+                <div class="text-center text-xs text-gray-500 font-medium py-1">Fri</div>
+                <div id="calendarDays" class="contents"></div>
+            </div>
         </div>
 
     </div>
@@ -915,7 +923,7 @@
                 const clickHandler = isLocked ? '' : `onclick="toggleAvailability('${dateString}')"`;
                 const markSeenBtn = editedByOffice ? ` <button type="button" onclick="event.stopPropagation(); markDayAsSeenByDriver('${dateString}')" class="text-xs text-blue-400 hover:underline mt-1">Mark as seen</button>` : '';
                 const lockIcon = isLocked
-                    ? '<span class="material-symbols-outlined text-sm text-yellow-500 flex items-center justify-center mt-0.5">lock</span>'
+                    ? '<span class="material-symbols-outlined day-lock-icon text-sm flex items-center justify-center mt-0.5">lock</span>'
                     : '';
 
                 calendarHTML.push(`

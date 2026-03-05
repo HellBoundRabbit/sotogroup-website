@@ -393,6 +393,17 @@
         </div>
     </div>
 
+    <div id="submitWaitTimeOverlay" class="loading-overlay hidden">
+        <div class="text-center">
+            <div class="spinner-wrapper mx-auto mb-4">
+                <div class="spinner"></div>
+                <div class="spinner1"></div>
+            </div>
+            <p class="text-gray-400">Saving wait time...</p>
+            <p class="text-gray-500 text-sm mt-2">Please wait</p>
+        </div>
+    </div>
+
     <div id="topNav" class="bg-black border-b border-gray-800 sticky top-0 z-50">
         <div class="flex items-center px-4 py-3">
             <button onclick="goToPortal()" class="touch-target">
@@ -1374,6 +1385,12 @@
                 saveBtn.textContent = 'Saving...';
             }
 
+            const submitOverlay = document.getElementById('submitWaitTimeOverlay');
+            if (submitOverlay) {
+                submitOverlay.classList.remove('hidden');
+                submitOverlay.style.display = 'flex';
+            }
+
             try {
                 // WRITE-FIRST APPROACH: Save to IndexedDB immediately, then to Firestore
                 // Service Worker will handle upload if offline
@@ -1424,6 +1441,11 @@
                     saveBtnSpan.textContent = 'Save Wait Time';
                 } else {
                     saveBtn.textContent = 'Save Wait Time';
+                }
+                const submitOverlay = document.getElementById('submitWaitTimeOverlay');
+                if (submitOverlay) {
+                    submitOverlay.classList.add('hidden');
+                    submitOverlay.style.display = 'none';
                 }
                 validateWaitTimeForm();
             }
@@ -1781,6 +1803,14 @@
                 submitBtnSpan.textContent = 'Resubmitting...';
             }
 
+            const submitOverlay = document.getElementById('submitWaitTimeOverlay');
+            if (submitOverlay) {
+                const overlayText = submitOverlay.querySelector('p');
+                if (overlayText) overlayText.textContent = 'Resubmitting wait time...';
+                submitOverlay.classList.remove('hidden');
+                submitOverlay.style.display = 'flex';
+            }
+
             try {
                 // Check if this wait time has been returned 3 times (cannot appeal)
                 if (waitTimeToAppeal.returnNotes3) {
@@ -1803,6 +1833,8 @@
                         `Unfortunately, you have appealed too many times. Please call ${officeName} to discuss this wait time further. Please discard this wait time submission.`,
                         'Maximum Appeals Reached'
                     );
+                    const soMax = document.getElementById('submitWaitTimeOverlay');
+                    if (soMax) { soMax.classList.add('hidden'); soMax.style.display = 'none'; }
                     submitBtn.disabled = false;
                     if (submitBtnSpan) {
                         submitBtnSpan.textContent = 'Resubmit Wait Time';
@@ -1818,6 +1850,8 @@
                 if (hasSecondAppeal) {
                     // Already has both appeals - cannot appeal again
                     notifyWarning('This wait time has already been appealed twice. Cannot appeal again.');
+                    const so2 = document.getElementById('submitWaitTimeOverlay');
+                    if (so2) { so2.classList.add('hidden'); so2.style.display = 'none'; }
                     submitBtn.disabled = false;
                     if (submitBtnSpan) {
                         submitBtnSpan.textContent = 'Resubmit Wait Time';
@@ -1871,6 +1905,13 @@
                 const submitBtnSpan = submitBtn.querySelector('span');
                 if (submitBtnSpan) {
                     submitBtnSpan.textContent = 'Resubmit Wait Time';
+                }
+                const so = document.getElementById('submitWaitTimeOverlay');
+                if (so) {
+                    const overlayText = so.querySelector('p');
+                    if (overlayText) overlayText.textContent = 'Saving wait time...';
+                    so.classList.add('hidden');
+                    so.style.display = 'none';
                 }
             }
         }

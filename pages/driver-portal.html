@@ -1120,8 +1120,6 @@
                         }
                     }
 
-                    document.getElementById('loadingOverlay').style.display = 'none';
-
                     const postcodeVal = currentUser.homePostcode || currentUser.postcode || '';
                     const needPostcode = !(postcodeVal && String(postcodeVal).trim());
                     const existingPhotoUrl = currentUser.photoURL || currentUser.photoUrl || currentUser.avatarUrl || null;
@@ -1134,16 +1132,21 @@
                         const pwaOverlay = document.getElementById('pwa-install-overlay');
                         if (pwaOverlay) {
                             window._pendingProfileCompleteModal = { needPostcode, needPhoto, needDriverType, needPasswordChange, existingPhotoUrl, postcodeVal: postcodeVal.trim() };
+                            document.getElementById('loadingOverlay').style.display = 'none';
                             return;
                         }
+                        document.getElementById('loadingOverlay').style.display = 'none';
                         showProfileCompleteModal(needPostcode, needPhoto, needDriverType, needPasswordChange, existingPhotoUrl, postcodeVal.trim());
                         return;
                     }
 
+                    // Load Start/End Day button states before revealing the page (prevents green/grey flash)
                     await finishDriverPortalInit();
+                    document.getElementById('loadingOverlay').style.display = 'none';
                 } catch (error) {
                     console.error('Error loading user data:', error);
                     notifyError('Error loading user data. Please try again.');
+                    document.getElementById('loadingOverlay').style.display = 'none';
                 }
         }
 
@@ -1856,8 +1859,9 @@
                     currentUser = { ...currentUser, ...updates };
                 }
 
-                document.getElementById('driverProfileCompleteModal').classList.add('hidden');
+                // Load Start/End Day button states before closing modal (prevents green/grey flash)
                 await finishDriverPortalInit();
+                document.getElementById('driverProfileCompleteModal').classList.add('hidden');
             } catch (err) {
                 console.error('Profile complete error:', err);
                 notifyError(err.message || 'Could not save. Please try again.');

@@ -758,6 +758,12 @@
         .category-zoom-panel.apps .category-zoom-link:hover { background: rgba(93, 145, 255, 0.12); }
         .category-zoom-panel.payment .category-zoom-link { color: var(--train-purple); }
         .category-zoom-panel.payment .category-zoom-link:hover { background: rgba(186, 66, 255, 0.12); }
+        /* Disable hover on touch devices to prevent sticky hover on subcategory links */
+        @media (hover: none) or (pointer: coarse) {
+            .category-zoom-panel .category-zoom-link:hover {
+                background: transparent !important;
+            }
+        }
         .category-zoom-panel .category-zoom-percent {
             font-size: 0.75rem;
             opacity: 0.85;
