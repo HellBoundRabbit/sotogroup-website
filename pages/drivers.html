@@ -1072,7 +1072,7 @@ async function deleteDriver(driverId) {
     if (!confirmed) return;
 
     closeDriverDetailModal();
-    notifyInfo('Deleting driver and all associated data...', 'Please wait');
+    uiDialogs.showAlert({ title: 'Please wait', message: 'Deleting driver and all associated data...', noButtons: true });
 
     try {
         var deleteDriverFn = getCallable('deleteDriver');
