@@ -413,12 +413,12 @@
                 <path d="M6 6l12 12M18 6L6 18" stroke-linecap="round" stroke-linejoin="round"></path>
             </svg>
         `;
-        state.closeButton.addEventListener('click', () => resolveModal(false));
-        state.secondaryButton.addEventListener('click', () => resolveModal(false));
-        state.primaryButton.addEventListener('click', () => resolveModal(true));
+        state.closeButton.addEventListener('click', () => { if (!state.noDismiss) resolveModal(false); });
+        state.secondaryButton.addEventListener('click', () => { if (!state.noDismiss) resolveModal(false); });
+        state.primaryButton.addEventListener('click', () => { if (!state.noDismiss) resolveModal(true); });
 
         overlay.addEventListener('click', (event) => {
-            if (event.target === overlay) {
+            if (event.target === overlay && !state.noDismiss) {
                 resolveModal(false);
             }
         });
@@ -563,13 +563,18 @@
                 cancelText = 'Cancel',
                 tone = 'info',
                 showCancel = mode === 'confirm',
+                noButtons = false,
             } = options || {};
 
+            state.noDismiss = !!noButtons;
             state.title.textContent = title;
             state.message.textContent = message;
             state.primaryButton.textContent = confirmText;
             state.secondaryButton.textContent = cancelText;
             state.secondaryButton.style.display = showCancel ? 'inline-flex' : 'none';
+            state.primaryButton.style.display = noButtons ? 'none' : 'inline-flex';
+            state.closeButton.style.display = noButtons ? 'none' : 'flex';
+            state.overlay.querySelector('.ui-dialogs-actions').style.display = noButtons ? 'none' : 'flex';
 
             setTone(tone);
 
@@ -585,6 +590,7 @@
                 state.primaryButton.focus();
 
                 state.keyHandler = (event) => {
+                    if (state.noDismiss) return;
                     if (event.key === 'Escape') {
                         resolveModal(false);
                     } else if (event.key === 'Enter') {
