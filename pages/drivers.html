@@ -919,6 +919,33 @@ allDrivers.sort((a, b) => {
 
 renderDrivers(allDrivers);
 
+// For drivers without a photo (e.g. older accounts where photo is only in users), fetch from users and re-render
+var driversWithoutPhoto = allDrivers.filter(function (d) {
+    var raw = d.photoURL || d.photoUrl || d.avatarUrl || '';
+    return !raw || !isValidPhotoUrl(raw);
+});
+if (driversWithoutPhoto.length > 0 && window.firebaseGetDoc && window.firebaseDoc && window.firestore) {
+    Promise.all(driversWithoutPhoto.map(function (driver) {
+        var uid = driver.uid || driver.id;
+        if (!uid) return Promise.resolve(null);
+        return window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'users', uid))
+            .then(function (snap) {
+                if (!snap || !snap.exists()) return null;
+                var d = snap.data();
+                var userPhoto = d.photoURL || d.photoUrl || d.avatarUrl;
+                if (userPhoto && isValidPhotoUrl(userPhoto)) {
+                    driver.photoURL = String(userPhoto).trim();
+                    return driver;
+                }
+                return null;
+            })
+            .catch(function () { return null; });
+    })).then(function (results) {
+        var anyUpdated = results.some(function (r) { return r != null; });
+        if (anyUpdated) renderDrivers(allDrivers);
+    });
+}
+
 if (allDrivers.length === 0) {
 emptyState.classList.remove('hidden');
 }
