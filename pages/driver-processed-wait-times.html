@@ -123,22 +123,15 @@
             z-index: -1;
         }
         
-        /* Processed: green and black */
+        /* Processed: solid glowing green */
         .animated-border-processed::before {
             content: '';
             position: absolute;
             inset: -2px;
             border-radius: 1rem;
-            background: linear-gradient(45deg, rgb(0, 0, 0), rgb(0, 255, 0), rgb(0, 0, 0));
-            background-size: 200% 200%;
-            animation: borderGradient 3s ease infinite;
+            background: #10b981;
+            box-shadow: 0 0 12px #10b981, 0 0 4px #10b981;
             z-index: -1;
-        }
-        
-        @keyframes borderGradient {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
         }
     </style>
     <script type="module">

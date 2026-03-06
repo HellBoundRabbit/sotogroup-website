@@ -547,6 +547,7 @@
         let driverMarkerLayer = null;
         let driverMarkerLayerFullscreen = null;
         let dashboardDriversCache = [];
+        let dashboardTimelineStepsCache = [];
 
         function getTodayDateString() {
             const d = new Date();
@@ -783,6 +784,18 @@
             });
         }
 
+        function filterTimelineStepsByName(steps, query) {
+            const q = (query || '').trim().toLowerCase();
+            if (!q) return steps;
+            return steps.filter(step => {
+                const name = (step.fullName || '').trim();
+                const parts = name.split(/\s+/);
+                const first = (parts[0] || '').toLowerCase();
+                const last = (parts.slice(1).join(' ') || '').toLowerCase();
+                return first.startsWith(q) || last.startsWith(q);
+            });
+        }
+
         function applyDriverMapFilter() {
             const searchEl = document.getElementById('dashboard-map-driver-search');
             const query = searchEl ? searchEl.value : '';
@@ -791,6 +804,8 @@
             if (dashboardMapFullscreen) {
                 renderDriverMarkers(dashboardMapFullscreen, filtered);
             }
+            const filteredSteps = filterTimelineStepsByName(dashboardTimelineStepsCache, query);
+            renderTimeline(filteredSteps);
         }
 
         async function refreshDriverMap() {
@@ -884,7 +899,12 @@
             const list = document.getElementById('dashboard-timeline-list');
             if (!list) return;
             if (!steps.length) {
-                list.innerHTML = '<div class="px-4 py-6 text-center text-[#9cabba] text-sm">No steps recorded today</div>';
+                const searchEl = document.getElementById('dashboard-map-driver-search');
+                const hasFilter = searchEl && (searchEl.value || '').trim().length > 0;
+                const msg = hasFilter && dashboardTimelineStepsCache.length > 0
+                    ? 'No steps match your search'
+                    : 'No steps recorded today';
+                list.innerHTML = '<div class="px-4 py-6 text-center text-[#9cabba] text-sm">' + msg + '</div>';
                 return;
             }
             const formatTime = (d) => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
@@ -910,7 +930,11 @@
             if (!list) return;
             try {
                 const steps = await fetchTimelineSteps(officeId || getCurrentOfficeId(), dateStr || getTodayDateString());
-                renderTimeline(steps);
+                dashboardTimelineStepsCache = steps;
+                const searchEl = document.getElementById('dashboard-map-driver-search');
+                const query = searchEl ? searchEl.value : '';
+                const filtered = filterTimelineStepsByName(steps, query);
+                renderTimeline(filtered);
             } catch (e) {
                 list.innerHTML = '<div class="px-4 py-6 text-center text-red-400 text-sm">Failed to load timeline</div>';
             }

@@ -279,46 +279,60 @@
                 const officeId = getCurrentOfficeId();
                 if (!officeId) return;
 
-                // Load drivers from the drivers collection (where firstName/lastName are stored)
-                const driversQuery = window.query(
-                    window.collection(window.db, 'drivers'),
-                    window.where('officeId', '==', officeId)
-                );
-                const driversSnapshot = await window.getDocs(driversQuery);
-                
-                console.log('Messages page - Loading drivers for officeId:', officeId);
-                console.log('Messages page - Found drivers:', driversSnapshot.docs.length);
-                
-                // Also get users to get their UIDs for read status checking
+                // Load driver accounts from users collection (role=driver, officeId) — this is the source of read status
                 const usersQuery = window.query(
                     window.collection(window.db, 'users'),
                     window.where('officeId', '==', officeId),
                     window.where('role', '==', 'driver')
                 );
                 const usersSnapshot = await window.getDocs(usersQuery);
-                
-                console.log('Messages page - Found users with role=driver:', usersSnapshot.docs.length);
-                
-                // Create a map of email -> uid for quick lookup
-                const emailToUidMap = {};
-                usersSnapshot.forEach(doc => {
-                    const userData = doc.data();
-                    if (userData.email) {
-                        emailToUidMap[userData.email] = doc.id;
-                    }
-                });
-                
-                // Map drivers and add their UIDs
-                allDrivers = driversSnapshot.docs.map(doc => {
-                    const driverData = doc.data();
-                    return {
-                        id: doc.id,
-                        uid: emailToUidMap[driverData.email] || driverData.uid || doc.id,
-                        ...driverData
+
+                // Build driver list from users; merge in names from drivers collection if available
+                const driversByUid = {};
+                const driverIds = [];
+                usersSnapshot.docs.forEach(docSnap => {
+                    const u = docSnap.data();
+                    const uid = docSnap.id;
+                    const firstName = (u.firstName || u.name || '').trim();
+                    const lastName = (u.lastName || '').trim();
+                    const name = [firstName, lastName].filter(Boolean).join(' ').trim();
+                    driverIds.push(uid);
+                    driversByUid[uid] = {
+                        id: uid,
+                        uid: uid,
+                        firstName: firstName || (name ? name.split(/\s+/)[0] : ''),
+                        lastName: lastName || (name ? name.split(/\s+/).slice(1).join(' ') : ''),
+                        email: u.email || '',
+                        name: name || 'Driver'
                     };
                 });
-                
-                console.log('Messages page - Final allDrivers array:', allDrivers);
+
+                // Optionally enrich from drivers collection (names may be more complete)
+                try {
+                    const driversQuery = window.query(
+                        window.collection(window.db, 'drivers'),
+                        window.where('officeId', '==', officeId)
+                    );
+                    const driversSnapshot = await window.getDocs(driversQuery);
+                    driversSnapshot.docs.forEach(docSnap => {
+                        const d = docSnap.data();
+                        const uid = d.uid || docSnap.id;
+                        if (driversByUid[uid]) {
+                            const fn = (d.firstName || d.name || '').trim();
+                            const ln = (d.lastName || '').trim();
+                            if (fn || ln) {
+                                driversByUid[uid].firstName = fn || driversByUid[uid].firstName;
+                                driversByUid[uid].lastName = ln || driversByUid[uid].lastName;
+                                driversByUid[uid].name = [fn, ln].filter(Boolean).join(' ').trim() || driversByUid[uid].name;
+                            }
+                            if (d.email) driversByUid[uid].email = d.email;
+                        }
+                    });
+                } catch (e) {
+                    console.warn('Could not enrich drivers from drivers collection:', e);
+                }
+
+                allDrivers = driverIds.map(uid => driversByUid[uid]).filter(Boolean);
             } catch (error) {
                 console.error('Error loading drivers:', error);
             }

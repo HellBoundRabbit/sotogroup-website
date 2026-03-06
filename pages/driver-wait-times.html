@@ -210,37 +210,29 @@
             z-index: -1;
         }
         
-        /* Pending: orange and black */
+        /* Pending: solid glowing orange */
         .animated-border-pending::before {
             content: '';
             position: absolute;
             inset: -2px;
             border-radius: 1rem;
-            background: linear-gradient(45deg, rgb(0, 0, 0), rgb(255, 165, 0), rgb(0, 0, 0));
-            background-size: 200% 200%;
-            animation: borderGradient 3s ease infinite;
+            background: #f59e0b;
+            box-shadow: 0 0 12px #f59e0b, 0 0 4px #f59e0b;
             z-index: -1;
         }
         
-        /* Processed: green and black */
+        /* Processed: solid glowing green */
         .animated-border-processed::before {
             content: '';
             position: absolute;
             inset: -2px;
             border-radius: 1rem;
-            background: linear-gradient(45deg, rgb(0, 0, 0), rgb(0, 255, 0), rgb(0, 0, 0));
-            background-size: 200% 200%;
-            animation: borderGradient 3s ease infinite;
+            background: #10b981;
+            box-shadow: 0 0 12px #10b981, 0 0 4px #10b981;
             z-index: -1;
         }
         
-        @keyframes borderGradient {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-        }
-        
-        /* Modal: purple and cyan border */
+        /* Modal: solid glowing purple/cyan */
         .animated-border-modal {
             position: relative;
             background: #1a1f24;
@@ -259,13 +251,12 @@
             position: absolute;
             inset: -2px;
             border-radius: 1.5rem;
-            background: linear-gradient(45deg, rgb(186, 66, 255), rgb(0, 225, 255), rgb(186, 66, 255));
-            background-size: 200% 200%;
-            animation: borderGradient 3s ease infinite;
+            background: linear-gradient(135deg, rgb(186, 66, 255), rgb(0, 225, 255));
+            box-shadow: 0 0 12px rgba(186, 66, 255, 0.5), 0 0 12px rgba(0, 225, 255, 0.5);
             z-index: -1;
         }
         
-        /* Animated button borders */
+        /* Button borders: solid glow */
         .animated-button {
             position: relative;
             background: rgb(36, 36, 36);
@@ -286,27 +277,25 @@
             z-index: -1;
         }
         
-        /* Submit: green and black */
+        /* Submit: solid glowing green */
         .animated-button-submit::before {
             content: '';
             position: absolute;
             inset: -2px;
             border-radius: 0.5rem;
-            background: linear-gradient(45deg, rgb(0, 0, 0), rgb(0, 255, 0), rgb(0, 0, 0));
-            background-size: 200% 200%;
-            animation: borderGradient 3s ease infinite;
+            background: #10b981;
+            box-shadow: 0 0 12px #10b981, 0 0 4px #10b981;
             z-index: -1;
         }
         
-        /* Discard: grey and black */
+        /* Discard: solid glowing grey */
         .animated-button-discard::before {
             content: '';
             position: absolute;
             inset: -2px;
             border-radius: 0.5rem;
-            background: linear-gradient(45deg, rgb(0, 0, 0), rgb(128, 128, 128), rgb(0, 0, 0));
-            background-size: 200% 200%;
-            animation: borderGradient 3s ease infinite;
+            background: #6b7280;
+            box-shadow: 0 0 12px rgba(107, 114, 128, 0.6), 0 0 4px rgba(107, 114, 128, 0.4);
             z-index: -1;
         }
     </style>
