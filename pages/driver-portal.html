@@ -129,6 +129,11 @@
             left: 0;
             filter: blur(1px);
         }
+        /* Hide feature buttons until day state is loaded (prevents green/grey flash) */
+        .portal-buttons.portal-buttons-loading {
+            visibility: hidden;
+        }
+
         .spinner-green::before {
             content: '';
             position: absolute;
@@ -558,7 +563,7 @@
 
         <!-- Main Options -->
         <div class="w-full max-w-md mx-auto flex-1">
-            <div class="features-grid portal-buttons">
+            <div class="features-grid portal-buttons portal-buttons-loading">
                 <!-- Start Day -->
                 <div id="btnStartDayCard" class="feature-button">
                     <div class="spinner-wrapper">
@@ -1294,6 +1299,8 @@
             await checkAndDisableFeatures();
             await loadDriverDaySessionAndUpdateButtons();
             setupHoldToConfirmButtons();
+            const portalBtns = document.querySelector('.portal-buttons');
+            if (portalBtns) portalBtns.classList.remove('portal-buttons-loading');
             console.log('Loading complete!');
         }
 

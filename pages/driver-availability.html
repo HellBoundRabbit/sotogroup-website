@@ -311,9 +311,16 @@
         #calendarDays {
             display: contents;
         }
-        /* Calendar grid - rows fill available space */
-        .calendar-container .grid {
-            grid-auto-rows: minmax(0, 1fr);
+        /* Calendar grid - compact rows, small gaps, no stretch */
+        .calendar-container .calendar-grid {
+            grid-auto-rows: minmax(0, auto);
+            gap: 0.5rem;
+        }
+        .calendar-container .day-headers {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 0.5rem;
+            margin-bottom: 0.25rem;
         }
         
         /* Loading spinner */
@@ -470,8 +477,8 @@
             </div>
         </div>
 
-        <!-- Calendar - fills remaining space, arrows on same row as month/year -->
-        <div class="calendar-container flex-1 flex flex-col min-h-0 min-w-0">
+        <!-- Calendar - compact layout, no overflow -->
+        <div class="calendar-container flex-1 flex flex-col min-h-0 min-w-0 overflow-auto">
             <div class="flex items-center justify-between mb-3 shrink-0">
                 <button onclick="previousMonth()" class="touch-target p-2 -ml-2 hover:bg-[#283039] rounded-lg transition-colors shrink-0">
                     <span class="material-symbols-outlined text-2xl font-bold text-gray-300" style="font-variation-settings: 'FILL' 1, 'wght' 700;">chevron_left</span>
@@ -481,12 +488,14 @@
                     <span class="material-symbols-outlined text-2xl font-bold text-gray-300" style="font-variation-settings: 'FILL' 1, 'wght' 700;">chevron_right</span>
                 </button>
             </div>
-            <div class="grid grid-cols-5 gap-2 sm:gap-4 flex-1 min-h-0">
-                <div class="text-center text-xs text-gray-500 font-medium py-1">Mon</div>
-                <div class="text-center text-xs text-gray-500 font-medium py-1">Tue</div>
-                <div class="text-center text-xs text-gray-500 font-medium py-1">Wed</div>
-                <div class="text-center text-xs text-gray-500 font-medium py-1">Thu</div>
-                <div class="text-center text-xs text-gray-500 font-medium py-1">Fri</div>
+            <div class="day-headers">
+                <div class="text-center text-xs text-gray-500 font-medium">Mon</div>
+                <div class="text-center text-xs text-gray-500 font-medium">Tue</div>
+                <div class="text-center text-xs text-gray-500 font-medium">Wed</div>
+                <div class="text-center text-xs text-gray-500 font-medium">Thu</div>
+                <div class="text-center text-xs text-gray-500 font-medium">Fri</div>
+            </div>
+            <div class="grid grid-cols-5 calendar-grid shrink-0">
                 <div id="calendarDays" class="contents"></div>
             </div>
         </div>
@@ -861,7 +870,7 @@
         }
         window.loadUnseenChanges = loadUnseenChanges;
 
-        // Render calendar (working / standby / off, 7-day lock, edited-by-office + mark as seen)
+        // Render calendar (working / standby / off, 7-day lock)
         function renderCalendar() {
             const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
                 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -898,7 +907,6 @@
                 const effectiveStatus = hasPending ? pendingChanges[dateString] : (statusByDate[dateString] || STATUS.WORKING);
                 const isLocked = isInLockWindow(cellDate);
                 const entry = calendarEntries[dateString] || {};
-                const editedByOffice = entry.editedByOffice && !entry.seenByDriver;
 
                 const isToday = cellDate.getTime() === today.getTime();
                 let className = 'day-card aspect-square rounded-lg flex flex-col items-center justify-center transition-all relative';
@@ -921,7 +929,6 @@
 
                 const dayNumber = cellDate.getDate();
                 const clickHandler = isLocked ? '' : `onclick="toggleAvailability('${dateString}')"`;
-                const markSeenBtn = editedByOffice ? ` <button type="button" onclick="event.stopPropagation(); markDayAsSeenByDriver('${dateString}')" class="text-xs text-blue-400 hover:underline mt-1">Mark as seen</button>` : '';
                 const lockIcon = isLocked
                     ? '<span class="material-symbols-outlined day-lock-icon text-sm flex items-center justify-center mt-0.5">lock</span>'
                     : '';
@@ -931,8 +938,6 @@
                         <div class="flex flex-col items-center justify-center">
                             <span class="text-lg font-semibold text-white">${dayNumber}</span>
                             ${lockIcon}
-                            ${editedByOffice ? '<span class="text-xs text-amber-400 mt-0.5">Office updated</span>' : ''}
-                            ${markSeenBtn}
                         </div>
                     </div>
                 `);
@@ -963,32 +968,6 @@
             renderCalendar();
             updateSaveButtonVisibility();
         }
-
-        async function markDayAsSeenByDriver(dateString) {
-            const uid = getCurrentDriverId();
-            const officeId = getCurrentOfficeId();
-            if (!uid || !officeId) return;
-            try {
-                const calendarRef = window.firebaseDoc(window.firestore, 'calendar', dateString);
-                const snap = await window.firebaseGetDoc(calendarRef);
-                const data = snap.exists() ? snap.data() : {};
-                const drivers = data.drivers && typeof data.drivers === 'object' ? { ...data.drivers } : {};
-                drivers[uid] = { ...(drivers[uid] || {}), seenByDriver: true };
-                await window.setDoc(calendarRef, {
-                    date: dateString,
-                    officeId,
-                    updatedAt: window.serverTimestamp(),
-                    drivers
-                }, { merge: true });
-                if (calendarEntries[dateString]) calendarEntries[dateString].seenByDriver = true;
-                renderCalendar();
-                notifySuccess('Marked as seen.');
-            } catch (e) {
-                console.error('Mark as seen failed:', e);
-                notifyError('Could not mark as seen.');
-            }
-        }
-        window.markDayAsSeenByDriver = markDayAsSeenByDriver;
 
         // Update save button visibility based on pending changes
         function updateSaveButtonVisibility() {
