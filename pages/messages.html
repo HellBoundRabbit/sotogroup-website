@@ -184,6 +184,13 @@
             </button>
         </div>
 
+        <!-- Debug banner (remove when fixed) -->
+        <div id="messagesDebugBanner" class="mb-4 p-4 bg-amber-900/30 border border-amber-600/50 rounded-lg text-sm text-amber-200 hidden">
+            <strong>Messages debug:</strong>
+            <span id="messagesDebugText">Loading...</span>
+            <span class="ml-2 text-amber-400">(Open browser console for full logs)</span>
+        </div>
+
         <!-- Messages List -->
         <div id="messagesList" class="space-y-4">
             <div class="text-center py-8 text-gray-400">
@@ -277,15 +284,26 @@
         async function loadDrivers() {
             try {
                 const officeId = getCurrentOfficeId();
-                if (!officeId) return;
+                console.log('[Messages DEBUG] loadDrivers - officeId:', officeId, 'session.officeId:', currentSession?.officeId, 'currentUser.officeId:', currentUser?.officeId);
+                if (!officeId) {
+                    console.warn('[Messages DEBUG] loadDrivers - no officeId, aborting');
+                    return;
+                }
 
                 // Load driver accounts from users collection (role=driver, officeId) — this is the source of read status
-                const usersQuery = window.query(
-                    window.collection(window.db, 'users'),
-                    window.where('officeId', '==', officeId),
-                    window.where('role', '==', 'driver')
-                );
-                const usersSnapshot = await window.getDocs(usersQuery);
+                let usersSnapshot;
+                try {
+                    const usersQuery = window.query(
+                        window.collection(window.db, 'users'),
+                        window.where('officeId', '==', officeId),
+                        window.where('role', '==', 'driver')
+                    );
+                    usersSnapshot = await window.getDocs(usersQuery);
+                    console.log('[Messages DEBUG] users query (officeId + role=driver) - docs:', usersSnapshot.docs.length);
+                } catch (usersErr) {
+                    console.error('[Messages DEBUG] users query FAILED:', usersErr);
+                    throw usersErr;
+                }
 
                 // Build driver list from users; merge in names from drivers collection if available
                 const driversByUid = {};
@@ -307,13 +325,39 @@
                     };
                 });
 
-                // Optionally enrich from drivers collection (names may be more complete)
+                // Fallback: if users returned 0, try drivers collection (driver may have role stored differently)
+                let driversSnapshot = null;
                 try {
                     const driversQuery = window.query(
                         window.collection(window.db, 'drivers'),
                         window.where('officeId', '==', officeId)
                     );
-                    const driversSnapshot = await window.getDocs(driversQuery);
+                    driversSnapshot = await window.getDocs(driversQuery);
+                    console.log('[Messages DEBUG] drivers query (officeId) - docs:', driversSnapshot.docs.length);
+                } catch (driversErr) {
+                    console.warn('[Messages DEBUG] drivers query FAILED:', driversErr);
+                }
+
+                if (usersSnapshot.docs.length === 0 && driversSnapshot && driversSnapshot.docs && driversSnapshot.docs.length > 0) {
+                    console.log('[Messages DEBUG] Using drivers collection as fallback (users returned 0)');
+                    driversSnapshot.docs.forEach(docSnap => {
+                        const d = docSnap.data();
+                        const uid = d.uid || docSnap.id;
+                        const fn = (d.firstName || d.name || '').trim();
+                        const ln = (d.lastName || '').trim();
+                        if (!driversByUid[uid]) {
+                            driverIds.push(uid);
+                            driversByUid[uid] = {
+                                id: uid,
+                                uid: uid,
+                                firstName: fn,
+                                lastName: ln,
+                                email: d.email || '',
+                                name: [fn, ln].filter(Boolean).join(' ').trim() || 'Driver'
+                            };
+                        }
+                    });
+                } else if (driversSnapshot) {
                     driversSnapshot.docs.forEach(docSnap => {
                         const d = docSnap.data();
                         const uid = d.uid || docSnap.id;
@@ -328,13 +372,26 @@
                             if (d.email) driversByUid[uid].email = d.email;
                         }
                     });
-                } catch (e) {
-                    console.warn('Could not enrich drivers from drivers collection:', e);
                 }
 
                 allDrivers = driverIds.map(uid => driversByUid[uid]).filter(Boolean);
+                console.log('[Messages DEBUG] loadDrivers - final allDrivers:', allDrivers.length, allDrivers);
+
+                var banner = document.getElementById('messagesDebugBanner');
+                var text = document.getElementById('messagesDebugText');
+                if (banner && text) {
+                    banner.classList.remove('hidden');
+                    text.textContent = 'officeId=' + officeId + ' | drivers found=' + allDrivers.length +
+                        (allDrivers.length > 0 ? ' (' + allDrivers.map(function(d){ return d.name || d.email || d.uid; }).join(', ') + ')' : '');
+                }
             } catch (error) {
-                console.error('Error loading drivers:', error);
+                console.error('[Messages DEBUG] loadDrivers ERROR:', error);
+                var banner = document.getElementById('messagesDebugBanner');
+                var text = document.getElementById('messagesDebugText');
+                if (banner && text) {
+                    banner.classList.remove('hidden');
+                    text.textContent = 'ERROR: ' + (error.message || String(error));
+                }
             }
         }
 
@@ -387,8 +444,11 @@
         }
 
         async function getMessageReadStatus(messageId) {
-            if (allDrivers.length === 0) return { read: 0, total: 0, readDrivers: [], unreadDrivers: [] };
-            
+            if (allDrivers.length === 0) {
+                console.log('[Messages DEBUG] getMessageReadStatus - allDrivers is empty, returning 0/0');
+                return { read: 0, total: 0, readDrivers: [], unreadDrivers: [] };
+            }
+            console.log('[Messages DEBUG] getMessageReadStatus - messageId:', messageId, 'checking', allDrivers.length, 'drivers');
             const readDrivers = [];
             const unreadDrivers = [];
             
@@ -397,6 +457,9 @@
                 if (userDoc.exists()) {
                     const userData = userDoc.data();
                     const readMessages = userData.readMessages || [];
+                    if (driver.uid === allDrivers[0].uid) {
+                        console.log('[Messages DEBUG] Sample user doc (first driver) - uid:', driver.uid, 'readMessages:', readMessages);
+                    }
                     const firstName = driver.firstName || '';
                     const lastName = driver.lastName || '';
                     const driverName = `${firstName} ${lastName}`.trim() || 'Unknown Driver';
