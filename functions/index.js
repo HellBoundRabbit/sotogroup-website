@@ -10,6 +10,7 @@
 
 const functions = require("firebase-functions");
 const { onSchedule } = require("firebase-functions/scheduler");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 
@@ -142,3 +143,53 @@ exports.checkOverdueExpenses = onSchedule(
 
     return null;
 });
+
+/** Login URL used in driver login emails – short branded link. */
+const DRIVER_LOGIN_URL = "https://sotogroup.uk/login";
+
+/** Send driver login credentials email via Resend (callable). */
+exports.sendDriverLoginEmail = onCall(
+  { secrets: [RESEND_API_KEY] },
+  async (req) => {
+    const { toEmail, temporaryPassword, firstName, lastName } = req.data || {};
+    if (!toEmail || !temporaryPassword) {
+      throw new HttpsError("invalid-argument", "Missing toEmail or temporaryPassword.");
+    }
+    const apiKey = RESEND_API_KEY.value();
+    if (!apiKey) {
+      throw new HttpsError("failed-precondition", "Resend API key not configured.");
+    }
+    const fromEmail = process.env.RESEND_FROM_EMAIL || "SOTOGroup <noreply@sotogroup.uk>";
+    const name = [firstName, lastName].filter(Boolean).join(" ") || "Driver";
+    const subject = "SOTOGroup – Your login details";
+    const html = `
+    <p>Hi ${name},</p>
+    <p>Here are your login details for SOTOGroup:</p>
+    <ul>
+      <li><strong>Email:</strong> ${toEmail}</li>
+      <li><strong>Temporary password:</strong> ${temporaryPassword}</li>
+    </ul>
+    <p><a href="${DRIVER_LOGIN_URL}">Log in at sotogroup.uk/login</a></p>
+    <p>Please change your password after your first login.</p>
+    <p>— SOTOGroup</p>
+    `;
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [toEmail],
+        subject,
+        html,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new HttpsError("internal", `Failed to send email. ${err}`);
+    }
+    return { ok: true };
+  }
+);
