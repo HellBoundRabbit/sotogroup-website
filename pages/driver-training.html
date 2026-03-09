@@ -974,9 +974,9 @@
                 title: 'Johnsons Fleet Services',
                 body: '<p>All collection, driving, and delivery standards (under <strong>All Jobs</strong>) should be adhered to. In addition, the following standards are specific to Johnsons Fleet Services.</p><h4>Collection</h4><ul>' +
                     '<li>Johnsons Fleet Services is open from <strong>7:30am – 3:30pm</strong>.</li>' +
-                    '<li>When collecting keys, you will be required to give them the <strong>make and model</strong> of the car and the <strong>last 6 digits of the chassis</strong>. See the <a href="javascript:void(0)" class="training-link-apps" onclick="closeTrainingModal(); openTrainingModal(\'apps-model\')">MoDel</a> section of the Apps category in Training to see where this is located.</li>' +
+                    '<li>When collecting keys, you will be required to give them the <strong>make and model</strong> of the car and the <strong>last 6 digits of the chassis</strong>. See the <a href="javascript:void(0)" class="training-link-apps" onclick="closeTrainingModal(false); openTrainingModal(\'apps-model\')">MoDel</a> section of the Apps category in Training to see where this is located.</li>' +
                     '<li>When collecting the keys you will be told if the car is located at the <strong>compound</strong> or <strong>on site</strong>. If the car is at the compound, Johnsons will supply a lift to the location (a few minutes’ drive).</li>' +
-                    '<li>Any damage found on the car, any missing accessories or cables, or if the car doesn’t have any fuel (it should be supplied with 25% – not including electric cars) should be reported <strong>immediately</strong> to the office on the <a href="javascript:void(0)" class="training-link-apps" onclick="closeTrainingModal(); openTrainingModal(\'apps-whatsapp\')">General Group Chat</a> and to the key office, who will remedy it.</li></ul>'
+                    '<li>Any damage found on the car, any missing accessories or cables, or if the car doesn’t have any fuel (it should be supplied with 25% – not including electric cars) should be reported <strong>immediately</strong> to the office on the <a href="javascript:void(0)" class="training-link-apps" onclick="closeTrainingModal(false); openTrainingModal(\'apps-whatsapp\')">General Group Chat</a> and to the key office, who will remedy it.</li></ul>'
             },
             'motorway': { title: 'Motorway', sections: [ { title: 'Standards', body: '<p><em>Motorway standards content to be added.</em></p>' } ] },
             'apps-model': {
@@ -1129,6 +1129,7 @@
         window.toggleFlipCard = toggleFlipCard;
 
         var currentCategoryZoomWrap = null;
+        var lastCategoryZoomSectionId = null;
 
         function openTrainingCategoryZoom(wrapEl) {
             if (!wrapEl) return;
@@ -1158,7 +1159,7 @@
                 var completedCount = getCategoryCompleted(progress, cat.key);
                 var total = cat.subs.length;
                 var percent = useServerComplete ? 100 : (total ? Math.round((completedCount / total) * 100) : 0);
-                html += '<a class="category-zoom-link" href="javascript:void(0)" onclick="closeTrainingCategoryZoom(); openTrainingModal(\'' + cat.key + '\')">' + escapeHtml(cat.title) + '<span class="category-zoom-percent">' + percent + '%</span></a>';
+                html += '<a class="category-zoom-link" href="javascript:void(0)" onclick="lastCategoryZoomSectionId=\'' + sectionId + '\'; closeTrainingCategoryZoom(); openTrainingModal(\'' + cat.key + '\')">' + escapeHtml(cat.title) + '<span class="category-zoom-percent">' + percent + '%</span></a>';
             });
             // Add separator and quiz items
             if (quizCats.length > 0) {
@@ -1168,7 +1169,7 @@
                     var completedCount = getCategoryCompleted(progress, cat.key);
                     var total = cat.subs.length;
                     var percent = useServerComplete ? 100 : (total ? Math.round((completedCount / total) * 100) : 0);
-                    html += '<a class="category-zoom-link" href="javascript:void(0)" onclick="closeTrainingCategoryZoom(); openTrainingModal(\'' + cat.key + '\')">' + escapeHtml(cat.title) + '<span class="category-zoom-percent">' + percent + '%</span></a>';
+                    html += '<a class="category-zoom-link" href="javascript:void(0)" onclick="lastCategoryZoomSectionId=\'' + sectionId + '\'; closeTrainingCategoryZoom(); openTrainingModal(\'' + cat.key + '\')">' + escapeHtml(cat.title) + '<span class="category-zoom-percent">' + percent + '%</span></a>';
                 });
             }
             contentEl.innerHTML = html;
@@ -1343,7 +1344,7 @@
                     (currentQuizKey && TRAINING_CATEGORIES.find(function(c){ return c.key === currentQuizKey; }) && TRAINING_CATEGORIES.find(function(c){ return c.key === currentQuizKey; }).subs.length ?
                         '<div class="mt-6 pt-4 border-t border-white/10"><p class="font-semibold text-white mb-3">Mark complete</p><ul class="space-y-2">' +
                         '<li class="flex items-center justify-between gap-3 py-2"><span class="text-gray-400">Take the quiz</span>' +
-                        (pass ? '<button type="button" onclick="setCategorySubCompleted(\'' + currentQuizKey + '\',0,true); renderTrainingCategories(); closeTrainingModal();" class="px-3 py-1.5 rounded-lg text-sm font-medium bg-cyan-500/20 text-cyan-400 border border-cyan-500/50">Mark complete</button>' : '<span class="text-gray-500 text-sm">Pass the quiz to mark complete</span>') +
+                        (pass ? '<button type="button" onclick="setCategorySubCompleted(\'' + currentQuizKey + '\',0,true); renderTrainingCategories(); closeTrainingModal(true);" class="px-3 py-1.5 rounded-lg text-sm font-medium bg-cyan-500/20 text-cyan-400 border border-cyan-500/50">Mark complete</button>' : '<span class="text-gray-500 text-sm">Pass the quiz to mark complete</span>') +
                         '</li></ul></div>' : '');
                 return;
             }
@@ -1455,11 +1456,19 @@
             maybeShowTrainingCompleteDialog();
         }
 
-        function closeTrainingModal() {
+        function closeTrainingModal(andReopenCategoryZoom) {
+            if (typeof andReopenCategoryZoom === 'undefined') andReopenCategoryZoom = true;
             const overlay = document.getElementById('trainingModalOverlay');
             overlay.classList.remove('is-open');
             overlay.setAttribute('aria-hidden', 'true');
             document.body.style.overflow = '';
+            if (andReopenCategoryZoom && lastCategoryZoomSectionId) {
+                var wrap = document.querySelector('.flip-card-wrap[data-section-id="' + lastCategoryZoomSectionId + '"]');
+                if (wrap) {
+                    setTimeout(function () { openTrainingCategoryZoom(wrap); }, 50);
+                }
+                lastCategoryZoomSectionId = null;
+            }
         }
 
         function maybeShowTrainingCompleteDialog() {
