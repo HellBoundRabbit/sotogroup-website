@@ -952,26 +952,36 @@
                 const usedLineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)) ? (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)(batch) : [];
                 const expensesForPhotos = usedLineKeys.map(k => (batch.lines || {})[k]).filter(Boolean);
                 let photoIndex = 1;
+                const photoFailures = [];
                 for (const line of expensesForPhotos) {
                     if (line && Array.isArray(line.photos)) {
                         for (const photoURL of line.photos) {
                             if (typeof photoURL !== 'string') continue;
+                            const result = await (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.fetchPhotoBlob ? EXPENSE_BATCH_SCHEMA.fetchPhotoBlob : fetchPhotoBlob)(photoURL);
+                            if (result.error) { photoFailures.push(result.error); continue; }
                             try {
-                                const response = await fetch(photoURL);
-                                const photoBlob = await response.blob();
                                 const photoFileName = `photo_${photoIndex}.jpg`;
                                 const photoFileHandle = await currentHandle.getFileHandle(photoFileName, { create: true });
                                 const photoWritable = await photoFileHandle.createWritable();
-                                await photoWritable.write(photoBlob);
+                                await photoWritable.write(result.blob);
                                 await photoWritable.close();
                                 photoIndex++;
                             } catch (error) {
-                                console.error('Error saving photo:', photoURL, error);
+                                photoFailures.push({ url: photoURL, reason: (error && error.message) || String(error) });
                             }
                         }
                     }
                 }
                 notifySuccess(`Successfully saved PDF and photos to ${dateFolderName}/${cleanedReg}/`, 'Files Saved');
+                if (photoFailures.length > 0) {
+                    const msg = photoFailures.length + ' photo(s) could not be downloaded for batch ' + batch.registration + '.\n\nClick "Copy debug info" to copy details you can send for support.';
+                    const copied = await (window.uiDialogs && window.uiDialogs.showConfirmation ? window.uiDialogs.showConfirmation({ title: 'Some Photos Failed', message: msg, confirmText: 'Copy debug info', cancelText: 'Close', tone: 'warning' }) : Promise.resolve(false));
+                    if (copied) {
+                        const debugText = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.buildPhotoFetchDebugText ? EXPENSE_BATCH_SCHEMA.buildPhotoFetchDebugText : (f) => JSON.stringify(f, null, 2))(photoFailures, batch.registration);
+                        await navigator.clipboard.writeText(debugText);
+                        if (window.uiDialogs && window.uiDialogs.showToast) window.uiDialogs.showToast({ title: 'Copied', message: 'Debug info copied. Paste and send for support.', tone: 'success' });
+                    }
+                }
             } catch (error) {
                 if (error.name === 'AbortError' || error.message?.includes('canceled')) {
                     // User cancelled folder selection - offer ZIP fallback
@@ -1020,18 +1030,15 @@
                 const usedLineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)) ? (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)(batch) : [];
                 const expensesForPhotos = usedLineKeys.map(k => (batch.lines || {})[k]).filter(Boolean);
                 let photoIndex = 1;
+                const photoFailures = [];
                 for (const line of expensesForPhotos) {
                     if (line && Array.isArray(line.photos)) {
                         for (const photoURL of line.photos) {
                             if (typeof photoURL !== 'string') continue;
-                            try {
-                                const response = await fetch(photoURL);
-                                const photoBlob = await response.blob();
-                                zip.file(folderPath + `photo_${photoIndex}.jpg`, photoBlob);
-                                photoIndex++;
-                            } catch (error) {
-                                console.error('Error downloading photo:', photoURL, error);
-                            }
+                            const result = await (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.fetchPhotoBlob ? EXPENSE_BATCH_SCHEMA.fetchPhotoBlob : fetchPhotoBlob)(photoURL);
+                            if (result.error) { photoFailures.push(result.error); continue; }
+                            zip.file(folderPath + `photo_${photoIndex}.jpg`, result.blob);
+                            photoIndex++;
                         }
                     }
                 }
@@ -1048,6 +1055,15 @@
                 URL.revokeObjectURL(url);
                 
                 notifySuccess('Successfully downloaded PDF and photos as ZIP file!', 'ZIP Downloaded');
+                if (photoFailures.length > 0) {
+                    const msg = photoFailures.length + ' photo(s) could not be downloaded.\n\nClick "Copy debug info" to copy details you can send for support.';
+                    const copied = await (window.uiDialogs && window.uiDialogs.showConfirmation ? window.uiDialogs.showConfirmation({ title: 'Some Photos Failed', message: msg, confirmText: 'Copy debug info', cancelText: 'Close', tone: 'warning' }) : Promise.resolve(false));
+                    if (copied) {
+                        const debugText = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.buildPhotoFetchDebugText ? EXPENSE_BATCH_SCHEMA.buildPhotoFetchDebugText : (f) => JSON.stringify(f, null, 2))(photoFailures, batch.registration);
+                        await navigator.clipboard.writeText(debugText);
+                        if (window.uiDialogs && window.uiDialogs.showToast) window.uiDialogs.showToast({ title: 'Copied', message: 'Debug info copied. Paste and send for support.', tone: 'success' });
+                    }
+                }
             } catch (error) {
                 console.error('Error generating ZIP:', error);
                 notifyError('Error generating ZIP: ' + error.message);

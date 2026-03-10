@@ -2691,8 +2691,7 @@
         }
 
         // Compress image for faster upload: max dimension 1600px, JPEG quality 0.88.
-        // Converts HEIC (iPhone) to JPEG – browsers can't decode HEIC for canvas, so raw HEIC
-        // would be stored with .jpg extension and fail to display on PC/Chrome.
+        // Converts all formats (HEIC, PNG, WebP, etc.) to JPEG so Storage has consistent format.
         function compressImageForUpload(fileOrBlob) {
             return (async function() {
                 if (!fileOrBlob || !(fileOrBlob instanceof File || fileOrBlob instanceof Blob)) {
@@ -2737,10 +2736,6 @@
                         var scale = Math.min(1, maxDim / Math.max(w, h));
                         var cw = Math.round(w * scale);
                         var ch = Math.round(h * scale);
-                        if (scale >= 1 && blob.size && blob.size < 300000) {
-                            resolve(blob);
-                            return;
-                        }
                         var canvas = document.createElement('canvas');
                         canvas.width = cw;
                         canvas.height = ch;
@@ -4571,18 +4566,15 @@
                 
                 // Download and add photos (valid URLs only) from batch.lines
                 let photoIndex = 1;
+                const photoFailures = [];
                 for (const line of Object.values(batch.lines || {})) {
                     if (!line || !Array.isArray(line.photos)) continue;
                     for (const photoURL of line.photos) {
                         if (typeof photoURL !== 'string' || !photoURL.startsWith('http')) continue;
-                        try {
-                            const response = await fetch(photoURL);
-                            const photoBlob = await response.blob();
-                            zip.file(folderPath + `photo_${photoIndex}.jpg`, photoBlob);
-                            photoIndex++;
-                        } catch (error) {
-                            console.error('Error downloading photo:', photoURL, error);
-                        }
+                        const result = await (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.fetchPhotoBlob ? EXPENSE_BATCH_SCHEMA.fetchPhotoBlob : fetchPhotoBlob)(photoURL);
+                        if (result.error) { photoFailures.push(result.error); continue; }
+                        zip.file(folderPath + `photo_${photoIndex}.jpg`, result.blob);
+                        photoIndex++;
                     }
                 }
                 
@@ -4598,6 +4590,15 @@
                 setTimeout(() => URL.revokeObjectURL(url), 100);
                 
                 notifySuccess('Successfully downloaded PDF and photos as ZIP file!', 'Download Complete');
+                if (photoFailures.length > 0) {
+                    const msg = photoFailures.length + ' photo(s) could not be downloaded.\n\nClick "Copy debug info" to copy details you can send for support.';
+                    const copied = await (window.uiDialogs && window.uiDialogs.showConfirmation ? window.uiDialogs.showConfirmation({ title: 'Some Photos Failed', message: msg, confirmText: 'Copy debug info', cancelText: 'Close', tone: 'warning' }) : Promise.resolve(false));
+                    if (copied) {
+                        const debugText = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.buildPhotoFetchDebugText ? EXPENSE_BATCH_SCHEMA.buildPhotoFetchDebugText : (f) => JSON.stringify(f, null, 2))(photoFailures, batch.registration);
+                        await navigator.clipboard.writeText(debugText);
+                        if (window.uiDialogs && window.uiDialogs.showToast) window.uiDialogs.showToast({ title: 'Copied', message: 'Debug info copied. Paste and send for support.', tone: 'success' });
+                    }
+                }
             } catch (error) {
                 console.error('Error downloading PDF and photos:', error);
                 notifyError('Failed to download files. Please try again.');
