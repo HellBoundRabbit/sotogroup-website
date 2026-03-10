@@ -91,6 +91,65 @@
         return getUsedLines(batch).length;
     }
 
+    /**
+     * Fetches a photo URL. Retries on failure. Returns { blob } on success or { error } on failure.
+     * @param {string} photoURL - Firebase Storage download URL
+     * @param {number} retries - Number of retries (default 2)
+     * @returns {Promise<{blob:Blob}|{error:{url:string,reason:string,status?:number}}>}
+     */
+    async function fetchPhotoBlob(photoURL, retries = 2) {
+        const MIN_VALID_SIZE = 500;
+        let lastError = null;
+        for (let attempt = 0; attempt <= retries; attempt++) {
+            try {
+                const response = await fetch(photoURL);
+                if (!response.ok) {
+                    lastError = { url: photoURL, reason: 'HTTP ' + response.status + ' ' + response.statusText, status: response.status };
+                    if (attempt < retries) await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
+                    continue;
+                }
+                const blob = await response.blob();
+                const contentLength = response.headers.get('Content-Length');
+                if (contentLength) {
+                    const expected = parseInt(contentLength, 10);
+                    if (!isNaN(expected) && blob.size !== expected) {
+                        lastError = { url: photoURL, reason: 'Size mismatch: got ' + blob.size + ', expected ' + expected };
+                        if (attempt < retries) { await new Promise(r => setTimeout(r, 400)); continue; }
+                        continue;
+                    }
+                }
+                if (blob.size < MIN_VALID_SIZE) {
+                    lastError = { url: photoURL, reason: 'Suspiciously small (' + blob.size + ' bytes), likely error page' };
+                    if (attempt < retries) continue;
+                    continue;
+                }
+                return { blob };
+            } catch (err) {
+                lastError = { url: photoURL, reason: (err && err.message) ? err.message : String(err) };
+                if (attempt < retries) await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
+            }
+        }
+        return { error: lastError };
+    }
+
+    /**
+     * Builds debug text from failed photo fetches for support/debugging.
+     * @param {Array<{url:string,reason:string,status?:number}>} failures
+     * @param {string} context - e.g. batch registration, "Transfer"
+     * @returns {string}
+     */
+    function buildPhotoFetchDebugText(failures, context) {
+        const lines = ['--- Photo download failure report ---', 'Context: ' + (context || 'Expense transfer'), 'Date: ' + new Date().toISOString(), 'Failed count: ' + failures.length, ''];
+        failures.forEach((f, i) => {
+            lines.push('[' + (i + 1) + '] ' + (f.reason || 'Unknown'));
+            if (f.batch) lines.push('    Batch: ' + f.batch);
+            lines.push('    URL: ' + (f.url || ''));
+            lines.push('');
+        });
+        lines.push('--- End report ---');
+        return lines.join('\n');
+    }
+
     function normalizeLines(lines) {
         if (!lines) return emptyLines();
         const out = emptyLines();
@@ -121,12 +180,17 @@
         getUsedLines,
         getUsedLinesInOrder,
         getUsedLineCount,
-        normalizeLines
+        normalizeLines,
+        fetchPhotoBlob,
+        buildPhotoFetchDebugText
     };
 
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = schema;
     } else {
         global.EXPENSE_BATCH_SCHEMA = schema;
+        if (typeof global.fetchPhotoBlob === 'undefined') {
+            global.fetchPhotoBlob = fetchPhotoBlob;
+        }
     }
 })(typeof window !== 'undefined' ? window : this);
