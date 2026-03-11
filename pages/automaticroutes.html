@@ -1475,15 +1475,17 @@
         container.appendChild(jobsListDiv);
         
         if (ungroupedJobs.length === 0) {
+            finishRouteGrouping();
             jobsListDiv.innerHTML = `
                 <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-8 text-center">
                     <h3 class="text-xl font-bold text-white mb-2">All Jobs Grouped!</h3>
                     <p class="text-gray-400 mb-4">You've successfully organized all ${parsedJobsData.length} jobs into ${routeCounter} routes.</p>
                     <button 
-                        onclick="finishRouteGrouping()"
-                        class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium"
+                        onclick="processRoutes()"
+                        class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2 mx-auto"
                     >
-                        Finish & Save Routes
+                        <span class="material-symbols-outlined">visibility</span>
+                        Review Parsed Data & Save
                     </button>
                 </div>
             `;
@@ -2612,21 +2614,16 @@
         }
     });
 
-    // Finish route grouping
+    // Finish route grouping (clean up key handler; review screen is shown via "Review Parsed Data & Save" button)
     function finishRouteGrouping() {
         routeGroupingMode = false;
         if (window.routeGroupingKeyHandler) {
             document.removeEventListener('keydown', window.routeGroupingKeyHandler);
         }
-        
-        // Enable process routes button
         const processBtn = document.getElementById('processRoutesBtn');
         if (processBtn) {
             processBtn.disabled = false;
         }
-        
-        // Show message and stay on grouping screen
-        alert(`Successfully created ${routeCounter} routes! Click "Process Routes" to review and save.`);
     }
 
     async function initializePage() {
