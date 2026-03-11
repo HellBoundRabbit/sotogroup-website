@@ -90,38 +90,41 @@
             }
         }
         
-        /* Animated border for message panels */
-        .animated-border-message {
-            position: relative;
-            background: rgba(26, 31, 36, 0.8);
-            backdrop-filter: blur(10px);
+        /* Message cards: read = thin border only, unread = thin border + glow bleed */
+        .message-card {
+            background: rgba(26, 31, 36, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.12);
             border-radius: 0.5rem;
             padding: 1.5rem;
-            isolation: isolate;
         }
-        .animated-border-message::after {
-            content: '';
-            position: absolute;
-            inset: 0;
+        .message-card-unread {
+            background: rgba(26, 31, 36, 0.95);
+            border: 1px solid rgba(0, 225, 255, 0.5);
             border-radius: 0.5rem;
-            background: rgba(26, 31, 36, 0.8);
-            z-index: -1;
+            padding: 1.5rem;
+            box-shadow: 0 0 20px rgba(186, 66, 255, 0.15), 0 0 40px rgba(0, 225, 255, 0.1), inset 0 0 30px rgba(0, 225, 255, 0.04);
         }
-        .animated-border-message::before {
-            content: '';
-            position: absolute;
-            inset: -2px;
-            border-radius: 0.5rem;
-            background: linear-gradient(45deg, rgb(186, 66, 255), rgb(0, 225, 255), rgb(186, 66, 255));
-            background-size: 200% 200%;
-            animation: borderGradient 3s ease infinite;
-            z-index: -1;
+        .btn-view-message {
+            background: linear-gradient(135deg, rgba(186, 66, 255, 0.25), rgba(0, 225, 255, 0.25));
+            border: 1px solid rgba(0, 225, 255, 0.5);
+            box-shadow: 0 0 12px rgba(186, 66, 255, 0.4), 0 0 12px rgba(0, 225, 255, 0.3);
+            color: rgb(0, 225, 255);
         }
-        
-        @keyframes borderGradient {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
+        .btn-view-message:hover {
+            background: linear-gradient(135deg, rgba(186, 66, 255, 0.4), rgba(0, 225, 255, 0.4));
+            box-shadow: 0 0 18px rgba(186, 66, 255, 0.5), 0 0 18px rgba(0, 225, 255, 0.4);
+            border-color: rgba(0, 225, 255, 0.7);
+        }
+        .btn-confirm-read {
+            background: linear-gradient(135deg, rgba(186, 66, 255, 0.25), rgba(0, 225, 255, 0.25));
+            border: 1px solid rgba(0, 225, 255, 0.5);
+            box-shadow: 0 0 12px rgba(186, 66, 255, 0.4), 0 0 12px rgba(0, 225, 255, 0.3);
+            color: rgb(0, 225, 255);
+        }
+        .btn-confirm-read:hover {
+            background: linear-gradient(135deg, rgba(186, 66, 255, 0.4), rgba(0, 225, 255, 0.4));
+            box-shadow: 0 0 18px rgba(186, 66, 255, 0.5), 0 0 18px rgba(0, 225, 255, 0.4);
+            border-color: rgba(0, 225, 255, 0.7);
         }
     </style>
     <script type="module">
@@ -211,7 +214,7 @@
                 <p id="messageDetailContent" class="text-gray-300 whitespace-pre-wrap mb-6"></p>
                 <div class="flex justify-between items-center">
                     <span id="messageDetailDate" class="text-sm text-gray-400"></span>
-                    <button id="markAsReadBtn" onclick="markAsReadFromDetail()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors text-sm font-semibold flex items-center gap-2 touch-target">
+                    <button id="markAsReadBtn" onclick="markAsReadFromDetail()" class="btn-confirm-read px-6 py-2 rounded-lg transition-all text-sm font-semibold flex items-center gap-2 touch-target">
                         <span class="material-symbols-outlined text-sm">check</span>
                         I have read and understood this message
                     </button>
@@ -320,18 +323,18 @@
             container.innerHTML = allMessages.map(msg => {
                 const createdAt = msg.createdAt?.toDate ? msg.createdAt.toDate() : new Date(msg.createdAt);
                 const isRead = checkIfMessageRead(msg.id);
-                
+                const cardClass = isRead ? 'message-card' : 'message-card-unread';
                 return `
-                    <div class="animated-border-message">
+                    <div class="${cardClass}">
                         <div class="flex justify-between items-center">
                             <div class="flex-1">
                                 <div class="flex items-center gap-3 mb-2">
                                     <h3 class="text-lg font-semibold text-white">${escapeHtml(msg.title)}</h3>
-                                    ${!isRead ? '<span class="bg-blue-600 px-3 py-1 rounded-full text-xs font-semibold">NEW</span>' : ''}
+                                    ${!isRead ? '<span class="px-3 py-1 rounded-full text-xs font-semibold" style="background: rgba(0,225,255,0.2); color: rgb(0,225,255); border: 1px solid rgba(0,225,255,0.4);">NEW</span>' : ''}
                                 </div>
                                 <span class="text-sm text-gray-400">${createdAt.toLocaleString()}</span>
                             </div>
-                            <button onclick="viewMessage('${msg.id}')" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors text-sm font-semibold flex items-center gap-2 touch-target">
+                            <button onclick="viewMessage('${msg.id}')" class="btn-view-message px-6 py-2 rounded-lg transition-all text-sm font-semibold flex items-center gap-2 touch-target">
                                 <span class="material-symbols-outlined text-sm">visibility</span>
                                 View
                             </button>

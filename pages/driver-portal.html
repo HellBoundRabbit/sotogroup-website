@@ -515,7 +515,11 @@
                     </div>
                     <div id="profileCompletePhotoInputWrap" class="hidden">
                         <label for="profileCompletePhoto" class="block text-sm font-medium text-gray-300 mb-1">Display picture</label>
-                        <input type="file" id="profileCompletePhoto" accept="image/*" class="w-full text-sm text-gray-400 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border file:border-[#3a444e] file:bg-[#283039] file:text-white file:font-medium file:hover:bg-[#3a444e]">
+                        <div class="flex items-center gap-2">
+                            <label for="profileCompletePhoto" class="cursor-pointer inline-flex px-4 py-2 rounded-lg border border-[#3a444e] bg-[#283039] text-white text-sm font-medium hover:bg-[#3a444e] transition-colors">Choose file</label>
+                            <input type="file" id="profileCompletePhoto" accept="image/*" class="sr-only" aria-describedby="profileCompletePhotoFilename">
+                            <span id="profileCompletePhotoFilename" class="text-sm text-gray-400"></span>
+                        </div>
                     </div>
                     <!-- Password Change: LAST step, only shown if hasChangedPassword === 0 -->
                     <div id="profileCompletePasswordWrap" class="hidden">
@@ -889,7 +893,11 @@
                     <p class="text-sm font-medium text-gray-300 mb-2">Display picture</p>
                     <div class="flex items-center gap-3 mb-2">
                         <img id="profileSettingsPhotoPreview" src="" alt="" class="w-16 h-16 min-w-[4rem] min-h-[4rem] aspect-square rounded-full object-cover border-2 border-gray-700 bg-[#1a1f24] shrink-0">
-                        <input type="file" id="profileSettingsPhoto" accept="image/*" class="text-sm text-gray-400 file:py-2 file:px-4 file:rounded-lg file:border file:border-gray-700 file:bg-[#1a1f24] file:text-white file:font-medium file:hover:bg-gray-700">
+                        <div class="flex items-center gap-2">
+                            <label for="profileSettingsPhoto" class="cursor-pointer inline-flex px-4 py-2 rounded-lg border border-gray-700 bg-[#1a1f24] text-white text-sm font-medium hover:bg-gray-700 transition-colors">Choose file</label>
+                            <input type="file" id="profileSettingsPhoto" accept="image/*" class="sr-only" aria-describedby="profileSettingsPhotoFilename">
+                            <span id="profileSettingsPhotoFilename" class="text-sm text-gray-400"></span>
+                        </div>
                     </div>
                 </div>
                 <div class="flex gap-3 mt-6">
@@ -906,7 +914,7 @@
 
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, getDocs, query, where, doc, getDoc, updateDoc, setDoc, serverTimestamp, deleteField } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, getDocs, query, where, doc, getDoc, updateDoc, setDoc, addDoc, serverTimestamp, deleteField } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, signOut, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
@@ -953,6 +961,7 @@
         window.uploadBytes = uploadBytes;
         window.getDownloadURL = getDownloadURL;
         window.collection = collection;
+        window.addDoc = addDoc;
         window.getDocs = getDocs;
         window.query = query;
         window.where = where;
@@ -971,6 +980,53 @@
         const notifyInfo = (message, title = 'Notice') => uiDialogs.showAlert({ title, message, tone: 'info' });
 
         const getCurrentOfficeId = () => currentSession?.officeId || currentUser?.officeId || null;
+
+        function formatTemplateLabel(t) {
+            if (!t || !t.availabilityType) return 'Unknown';
+            if (t.availabilityType === 'full') return 'Full time';
+            if (t.availabilityType === 'standby') {
+                const days = ['Mon','Tue','Wed','Thu','Fri'];
+                const s = (t.availabilityStandbyDays || []).map(i => days[i]).join(', ');
+                return s ? `Standby (${s})` : 'Standby';
+            }
+            if (t.availabilityType === 'part') {
+                const days = ['Mon','Tue','Wed','Thu','Fri'];
+                const w = (t.availabilityWorkingDays || []).map(i => days[i]).join(', ');
+                const s = (t.availabilityStandbyDays || []).map(i => days[i]).join(', ');
+                const parts = [];
+                if (w) parts.push(`Working: ${w}`);
+                if (s) parts.push(`Standby: ${s}`);
+                return parts.length ? `Specific days (${parts.join('; ')})` : 'Specific days';
+            }
+            return 'Unknown';
+        }
+
+        async function createStructureChangeNotification(oldTemplate, newTemplate) {
+            const officeId = getCurrentOfficeId();
+            if (!officeId || !currentUser) return;
+            const fromLabel = formatTemplateLabel(oldTemplate);
+            const toLabel = formatTemplateLabel(newTemplate);
+            const driverName = currentUser.name || [currentUser.firstName, currentUser.lastName].filter(Boolean).join(' ') || currentUser.email || 'Driver';
+            try {
+                await window.addDoc(window.collection(window.db, 'structureChangeNotifications'), {
+                    officeId,
+                    driverId: currentUser.uid,
+                    driverName,
+                    changeSummary: `Changed from ${fromLabel} to ${toLabel}`,
+                    previousType: oldTemplate?.availabilityType || 'full',
+                    newType: newTemplate?.availabilityType || 'full',
+                    previousWorkingDays: oldTemplate?.availabilityWorkingDays || [],
+                    previousStandbyDays: oldTemplate?.availabilityStandbyDays || [],
+                    newWorkingDays: newTemplate?.availabilityWorkingDays || [],
+                    newStandbyDays: newTemplate?.availabilityStandbyDays || [],
+                    seen: false,
+                    createdAt: window.serverTimestamp()
+                });
+                console.log('Structure change notification created');
+            } catch (e) {
+                console.warn('Could not create structure change notification:', e);
+            }
+        }
 
         // Initialize function
         async function initializeDriverPortal() {
@@ -1229,7 +1285,9 @@
                 existingPhotoEl.src = existingPhotoUrl;
                 existingPhotoEl.onerror = function () { photoDisplayWrap.classList.add('hidden'); };
             }
-            if (photoInput) photoInput.value = '';
+            if (photoInput) { photoInput.value = ''; }
+            const fnEl = document.getElementById('profileCompletePhotoFilename');
+            if (fnEl) fnEl.textContent = '';
 
             // Password change: only show if needPasswordChange is true
             if (passwordWrap) passwordWrap.classList.toggle('hidden', !needPasswordChange);
@@ -1298,7 +1356,10 @@
         function profileCompleteEditPhoto() {
             document.getElementById('profileCompletePhotoDisplayWrap').classList.add('hidden');
             document.getElementById('profileCompletePhotoInputWrap').classList.remove('hidden');
-            document.getElementById('profileCompletePhoto').value = '';
+            const pcPhoto = document.getElementById('profileCompletePhoto');
+            if (pcPhoto) pcPhoto.value = '';
+            const pcFn = document.getElementById('profileCompletePhotoFilename');
+            if (pcFn) pcFn.textContent = '';
         }
 
         async function finishDriverPortalInit() {
@@ -1729,6 +1790,19 @@
             return (officeName + ' - Drivers') + '/' + fileName;
         }
 
+        (function () {
+            function setupFileInputFilename(inputId, spanId) {
+                var inp = document.getElementById(inputId);
+                var fnSpan = document.getElementById(spanId);
+                if (inp && fnSpan) {
+                    inp.addEventListener('change', function () {
+                        fnSpan.textContent = (inp.files && inp.files[0]) ? inp.files[0].name : '';
+                    });
+                }
+            }
+            setupFileInputFilename('profileCompletePhoto', 'profileCompletePhotoFilename');
+            setupFileInputFilename('profileSettingsPhoto', 'profileSettingsPhotoFilename');
+        })();
         document.getElementById('driverProfileCompleteForm').addEventListener('submit', async function (e) {
             e.preventDefault();
             const modal = document.getElementById('driverProfileCompleteModal');
@@ -1840,6 +1914,7 @@
                         if (typeof applyTemplateChangeToCalendar === 'function') {
                             await applyTemplateChangeToCalendar(oldTemplate || newTemplate, newTemplate);
                         }
+                        await createStructureChangeNotification(oldTemplate || newTemplate, newTemplate);
                     }
                     currentUser = { ...currentUser, ...updates };
                 }
@@ -2029,6 +2104,7 @@
                 if (typeof applyTemplateChangeToCalendar === 'function') {
                     await applyTemplateChangeToCalendar(oldTemplate || newTemplate, newTemplate);
                 }
+                await createStructureChangeNotification(oldTemplate || newTemplate, newTemplate);
                 currentUser = { ...currentUser, ...updates };
                 notifySuccess('Availability settings saved.');
                 hideAvailabilitySettings();
@@ -2047,7 +2123,10 @@
             const preview = document.getElementById('profileSettingsPhotoPreview');
             preview.src = photoUrl || '';
             preview.onerror = function () { preview.src = ''; };
-            document.getElementById('profileSettingsPhoto').value = '';
+            const psPhoto = document.getElementById('profileSettingsPhoto');
+            if (psPhoto) psPhoto.value = '';
+            const psFn = document.getElementById('profileSettingsPhotoFilename');
+            if (psFn) psFn.textContent = '';
             document.getElementById('profileSettingsModal').classList.remove('hidden');
         }
 

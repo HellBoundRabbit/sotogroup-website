@@ -3007,8 +3007,11 @@ function minimizeRoute(routeId) {
         `;
     }).join('');
     
-    // Get all REG numbers for the title
-    const regNumbers = routeData.jobs.map(job => job.reg).filter(reg => reg && reg !== '-' && reg !== 'Not found').join(', ') || 'Route ' + routeId;
+    // Get all REG numbers for the title: "Job 1: REG1, Job 2: REG2"
+    const regNumbers = routeData.jobs.map((job, i) => {
+        const reg = job.reg && job.reg !== '-' && job.reg !== 'Not found' ? job.reg : '-';
+        return `Job ${i + 1}: ${reg}`;
+    }).join('  |  ') || 'Route ' + routeId;
     
     minimizedBar.innerHTML = `
         <div class="flex flex-col gap-1">

@@ -17,6 +17,7 @@
     <script src="/js/mobile-nav.js"></script>
     <script src="/js/session-manager.js"></script>
     <script src="/js/settings.js"></script>
+    <script src="/js/availability-model.js"></script>
     <script>
         tailwind.config = {
             plugins: {
@@ -2704,11 +2705,13 @@
                     const locationElement = document.getElementById(`firebase-route-${routeNumber}-driver-location`);
                     const regElement = document.getElementById(`firebase-route-${routeNumber}-reg`);
                     
-                    // Always populate REG from first job (even if no driver assigned)
+                    // Populate REG for each job: "Job 1: REG1, Job 2: REG2"
                     if (regElement && routeData.jobs.length > 0) {
-                        const firstJob = routeData.jobs[0];
-                        const regNumber = firstJob?.parsedData?.reg_number || '-';
-                        regElement.textContent = regNumber;
+                        const regParts = routeData.jobs.map((job, i) => {
+                            const reg = job?.parsedData?.reg_number || '-';
+                            return `Job ${i + 1}: ${reg}`;
+                        });
+                        regElement.textContent = regParts.join('  |  ');
                     }
                     
                     // Populate driver information if assigned
@@ -2814,9 +2817,9 @@
                     
                 <!-- Driver Info Line -->
                 <div class="flex items-center gap-3 mb-3 text-sm">
-                    <div class="flex items-center gap-2">
+                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
                         <span class="text-gray-400 font-medium text-xs">REG:</span>
-                        <span class="text-white font-bold" id="firebase-route-${routeNumber}-reg">-</span>
+                        <span class="text-white font-bold text-xs" id="firebase-route-${routeNumber}-reg">-</span>
                     </div>
                     <div class="h-4 w-px bg-gray-600"></div>
                     <div class="flex items-center gap-2">
@@ -3688,12 +3691,15 @@
                 );
                 
                 tempDriversOff = []; // Reset temporary list
+                const Model = window.AvailabilityModel;
+                const STATUS_OFF = Model ? Model.STATUS.OFF : 'off';
+                const dateObj = new Date(dateString + 'T12:00:00');
                 
                 if (calendarDoc.exists()) {
                     const calendarData = calendarDoc.data();
                     
                     if (calendarData.officeId && calendarData.officeId !== officeId) {
-                        console.warn('[OPTIMISATION] Calendar entry belongs to a different office. Ignoring legacy data.');
+                        console.warn('[OPTIMISATION] Calendar entry belongs to a different office. Ignoring.');
                         updateDriversOffDisplay();
                         return;
                     }
@@ -3706,33 +3712,60 @@
                         }
                     }
                     
-                    const driversOff = calendarData.driversOff || [];
-                    console.log('Calendar document found:', calendarData);
-                    console.log('Drivers off in calendar:', driversOff);
+                    // Use updated drivers map (same as availability page) - primary source of truth
+                    const driversMap = calendarData.drivers && typeof calendarData.drivers === 'object' ? calendarData.drivers : {};
+                    const driversOffLegacy = calendarData.driversOff && Array.isArray(calendarData.driversOff)
+                        ? (calendarData.driversOff[0] && typeof calendarData.driversOff[0] === 'object' && calendarData.driversOff[0].driverId
+                            ? calendarData.driversOff.map(item => item.driverId) : calendarData.driversOff)
+                        : (calendarData.driverIdString ? [calendarData.driverIdString] : []);
                     
-                    // Populate tempDriversOff with actual drivers off from Firebase
-                    driversOff.forEach(driverOff => {
-                        console.log('Looking for driver with ID:', driverOff.driverId);
-                        console.log('Driver off object structure:', driverOff);
-                        console.log('Available driver IDs:', allDrivers.map(d => d.id));
-                        console.log('Available driver UIDs:', allDrivers.map(d => d.uid));
-                        
-                        // Try to match by Firebase Auth UID first, then by Firestore document ID
-                        const driver = allDrivers.find(d => d.uid === driverOff.driverId || d.id === driverOff.driverId);
+                    const offDriverIds = new Set();
+                    
+                    allDrivers.forEach((driver) => {
+                        const driverId = driver.uid || driver.id;
+                        if (!Model || !Model.hasDriverTypeSet(driver)) {
+                            // No template: fall back to legacy driversOff only
+                            if (driversOffLegacy.includes(driverId)) offDriverIds.add(driverId);
+                            return;
+                        }
+                        const template = Model.getDriverTemplate(driver);
+                        const entry = driversMap[driverId] || null;
+                        let status = Model.getEffectiveStatus(template, entry, dateObj);
+                        if (entry && entry.status) status = entry.status;
+                        else if (driversOffLegacy.includes(driverId) && !entry) status = STATUS_OFF;
+                        if (status === STATUS_OFF) offDriverIds.add(driverId);
+                    });
+                    
+                    // Populate tempDriversOff from offDriverIds
+                    offDriverIds.forEach(driverId => {
+                        const driver = allDrivers.find(d => (d.uid || d.id) === driverId);
                         if (driver) {
-                            console.log('Found matching driver:', driver);
                             tempDriversOff.push({
                                 id: driver.id,
-                                name: driver.name || (driver.firstName + ' ' + driver.lastName) || driverOff.driverName || 'Unknown Driver',
+                                name: driver.name || (driver.firstName + ' ' + driver.lastName) || 'Unknown Driver',
                                 email: driver.email
                             });
-                        } else {
-                            console.log('No matching driver found for ID:', driverOff.driverId);
-                            console.log('Available drivers:', allDrivers);
                         }
                     });
+                    console.log('Calendar drivers map used. Drivers off:', tempDriversOff.length);
                 } else {
-                    console.log('No calendar document found for date:', dateString);
+                    // No calendar doc: use template-only (e.g. part-time driver's default off days)
+                    if (Model) {
+                        allDrivers.forEach((driver) => {
+                            const driverId = driver.uid || driver.id;
+                            if (!Model.hasDriverTypeSet(driver)) return;
+                            const template = Model.getDriverTemplate(driver);
+                            const status = Model.statusFromTemplate(template, dateObj);
+                            if (status === STATUS_OFF) {
+                                tempDriversOff.push({
+                                    id: driver.id,
+                                    name: driver.name || (driver.firstName + ' ' + driver.lastName) || 'Unknown Driver',
+                                    email: driver.email
+                                });
+                            }
+                        });
+                    }
+                    console.log('No calendar doc for date. Template-only off:', tempDriversOff.length);
                 }
                 
                 updateDriversOffDisplay();

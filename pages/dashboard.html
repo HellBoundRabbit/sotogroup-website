@@ -25,7 +25,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, getDocs, getDoc, doc, query, where, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, getDocs, getDoc, doc, query, where, onSnapshot, updateDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         const firebaseConfig = {
@@ -48,6 +48,7 @@
         window.firebaseQuery = query;
         window.firebaseWhere = where;
         window.firebaseOnSnapshot = onSnapshot;
+        window.firebaseUpdateDoc = updateDoc;
         window.signOut = signOut;
     </script>
     <style type="text/tailwindcss">
@@ -60,12 +61,14 @@
         .spinner1 { background-color: rgb(36, 36, 36); width: 52px; height: 52px; border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2; }
         @keyframes spin { to { transform: rotate(360deg); } }
         #dashboard-map-inner .leaflet-container { background: #0f1419; }
-        .driver-marker-pin { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; width: 56px; min-height: 68px; padding: 8px 8px 22px 8px; background: rgba(26,31,36,0.95); box-shadow: 0 2px 8px rgba(0,0,0,0.4); clip-path: path('M28 0 C12.5 0 0 12.5 0 28 C0 40 28 68 28 68 S56 40 56 28 C56 12.5 43.5 0 28 0 Z'); flex-shrink: 0; }
-        /* Cluster bubble: Find My–style horizontal capsule with pointed tail */
-        .driver-marker-pin.cluster { position: relative; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 8px; padding: 12px 16px 20px; background: rgba(45,55,65,0.95); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.12); flex-shrink: 0; }
-        .driver-marker-pin.cluster::after { content: ''; position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 12px solid transparent; border-right: 12px solid transparent; border-top: 12px solid rgba(45,55,65,0.95); filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); }
-        .driver-marker-cluster-row { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 8px; flex-wrap: nowrap; }
-        .driver-marker-cluster-row .driver-marker-single { width: 44px; height: 44px; min-width: 44px; min-height: 44px; flex-shrink: 0; }
+        #dashboard-map-leaflet { touch-action: none; }
+        .driver-marker-wrap { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; flex-shrink: 0; }
+        .driver-marker-photos { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; max-width: 156px; }
+        .driver-marker-photos .driver-marker-single { width: 36px; height: 36px; min-width: 36px; min-height: 36px; }
+        .driver-marker-hline { height: 3px; background: #22c55e; min-width: 24px; width: 100%; max-width: 160px; margin-top: 4px; }
+        .driver-marker-vline { width: 2px; height: 12px; background: #22c55e; margin-top: -1px; }
+        .driver-marker-vline.red { background: #ef4444; }
+        .driver-marker-hline.red { background: #ef4444; }
         .driver-marker-single { width: 36px; height: 36px; min-width: 36px; min-height: 36px; border-radius: 50%; object-fit: cover; border: 2px solid; box-sizing: border-box; flex-shrink: 0; aspect-ratio: 1; }
         .driver-marker-single.green { border-color: #22c55e; }
         .driver-marker-single.red { border-color: #ef4444; }
@@ -231,7 +234,7 @@
                             </div>
                             <div id="dashboard-map-inner" class="relative w-full" style="height: 400px; opacity: 0; transition: opacity 0.3s ease-in;">
                                 <div id="dashboard-map-leaflet" class="absolute inset-0 w-full h-full"></div>
-                                <div id="dashboard-map-placeholder" class="absolute inset-0 flex items-center justify-center bg-[#0f1419] text-[#9cabba] text-sm">
+                                <div id="dashboard-map-placeholder" class="absolute inset-0 flex items-center justify-center bg-[#0f1419] text-[#9cabba] text-sm pointer-events-none">
                                     <span>Loading map…</span>
                                 </div>
                             </div>
@@ -603,17 +606,17 @@
         }
         function createDriverMarkerHtml(driver, isCluster) {
             const borderClass = driver.statusColor === 'green' ? 'green' : 'red';
+            const lineClass = borderClass;
             if (isCluster && driver.drivers) {
-                const maxShow = 8;
+                const maxShow = 9;
                 const drivers = driver.drivers.slice(0, maxShow);
                 const imgs = drivers.map(d =>
                     '<img src="' + toPhotoUrl(d.photoUrl) + '" alt="" class="driver-marker-single ' + (d.statusColor === 'green' ? 'green' : 'red') + '">'
                 ).join('');
                 const extra = driver.drivers.length > maxShow ? '<span class="driver-marker-status ' + borderClass + '">+' + (driver.drivers.length - maxShow) + '</span>' : '';
-                return '<div class="driver-marker-pin cluster"><div class="driver-marker-cluster-row">' + imgs + '</div>' + extra + '</div>';
+                return '<div class="driver-marker-wrap"><div class="driver-marker-photos">' + imgs + extra + '</div><div class="driver-marker-hline ' + lineClass + '"></div><div class="driver-marker-vline ' + lineClass + '"></div></div>';
             }
-            const statusText = driver.status === 'startday' ? '⌂' : (driver.status === 'carryover' ? 'CO' : (driver.status === 'collect' ? '▲' + (driver.job || '') : '▼' + (driver.job || '')));
-            return '<div class="driver-marker-pin"><img src="' + toPhotoUrl(driver.photoUrl) + '" alt="" class="driver-marker-single ' + borderClass + '"><span class="driver-marker-status ' + borderClass + '">' + statusText + '</span></div>';
+            return '<div class="driver-marker-wrap"><div class="driver-marker-photos"><img src="' + toPhotoUrl(driver.photoUrl) + '" alt="" class="driver-marker-single ' + borderClass + '"></div><div class="driver-marker-hline ' + lineClass + '"></div><div class="driver-marker-vline ' + lineClass + '"></div></div>';
         }
 
         function renderDriverMarkers(map, drivers) {
@@ -647,8 +650,8 @@
                     const icon = L.divIcon({
                         html: createDriverMarkerHtml(d, false),
                         className: 'driver-div-icon',
-                        iconSize: [56, 68],
-                        iconAnchor: [28, 68]
+                        iconSize: [48, 56],
+                        iconAnchor: [24, 56]
                     });
                     const m = L.marker([d.lat, d.lng], { icon }).addTo(newLayer);
                     m.bindTooltip(d.name || 'Driver', { direction: 'top', offset: [0, -10] });
@@ -656,11 +659,12 @@
                 } else {
                     const avgLat = cluster.reduce((s, c) => s + c.lat, 0) / cluster.length;
                     const avgLng = cluster.reduce((s, c) => s + c.lng, 0) / cluster.length;
-                    const n = Math.min(cluster.length, 8);
-                    const hasExtra = cluster.length > 8;
-                    const avatarSize = 44; const gap = 8; const padH = 32; const padV = 32; const tailH = 12; const extraW = hasExtra ? 28 : 0;
-                    const w = n * avatarSize + Math.max(0, n - 1) * gap + padH + extraW;
-                    const h = avatarSize + padV + tailH;
+                    const n = Math.min(cluster.length, 9);
+                    const cols = 3;
+                    const rows = Math.ceil(n / cols);
+                    const avatarSize = 36; const gap = 6; const lineH = 4; const stemH = 12;
+                    const w = cols * avatarSize + (cols - 1) * gap;
+                    const h = rows * avatarSize + (rows - 1) * gap + lineH + stemH;
                     const icon = L.divIcon({
                         html: createDriverMarkerHtml({ drivers: cluster, statusColor: cluster[0].statusColor }, true),
                         className: 'driver-div-icon',
@@ -696,6 +700,11 @@
                     searchDebounce = setTimeout(applyDriverMapFilter, 150);
                 });
             }
+            window.addEventListener('resize', function onResize() {
+                if (dashboardMap && document.getElementById('dashboard-map-leaflet')) {
+                    dashboardMap.invalidateSize();
+                }
+            });
         }
 
         function initDashboardMapFullscreen() {
@@ -998,6 +1007,11 @@
                     const mapInner = document.getElementById('dashboard-map-inner');
                     if (mapInner) {
                         mapInner.style.opacity = '1';
+                        setTimeout(function () {
+                            if (dashboardMap) {
+                                dashboardMap.invalidateSize();
+                            }
+                        }, 350);
                     }
                 }
             } catch (e) {
@@ -1077,12 +1091,77 @@
             if (!dropdown.classList.contains('hidden')) await loadNotifications();
         }
         function showChangePassword() {
-            notifyWarning('Change password is available on other office pages (e.g. Availability or Expenses).', 'Dashboard');
+            if (typeof window.showChangePasswordFromNav === 'function') {
+                window.showChangePasswordFromNav();
+            } else {
+                window.location.href = '/pages/availability.html';
+            }
             document.getElementById('profileDropdown').classList.add('hidden');
         }
-        function showSettings() {
-            document.getElementById('profileDropdown').classList.add('hidden');
-            notifyWarning('Settings are available on other office pages (e.g. Availability or Expenses).', 'Dashboard');
+        async function showSettings() {
+            const modal = document.getElementById('settingsModal');
+            const dropdown = document.getElementById('profileDropdown');
+            if (dropdown) dropdown.classList.add('hidden');
+            if (!modal) return;
+            modal.classList.remove('hidden');
+            const useAsanaApi = window.sotoSettings?.getUseAsanaApiForRoutes() || false;
+            const toggle = document.getElementById('useAsanaApiToggle');
+            if (toggle) toggle.checked = useAsanaApi;
+            const officeId = getCurrentOfficeId();
+            if (officeId) {
+                try {
+                    const officeRef = window.firebaseDoc(window.firestore, 'offices', officeId);
+                    const officeSnap = await window.firebaseGetDoc(officeRef);
+                    const data = officeSnap.exists() ? officeSnap.data() : {};
+                    const overdueToggle = document.getElementById('overdueNotificationToggle');
+                    const overdueEmail = document.getElementById('overdueNotificationEmail');
+                    if (overdueToggle) overdueToggle.checked = !!data.overdueNotificationEnabled;
+                    if (overdueEmail) overdueEmail.value = data.overdueNotificationEmail || '';
+                } catch (e) {
+                    console.warn('Could not load office settings for overdue notification', e);
+                }
+            }
+        }
+        function hideSettings() {
+            const modal = document.getElementById('settingsModal');
+            if (modal) modal.classList.add('hidden');
+        }
+        function handleAsanaApiToggle(checked) {
+            if (window.sotoSettings) {
+                window.sotoSettings.setUseAsanaApiForRoutes(checked);
+            }
+        }
+        async function handleOverdueNotificationToggle(checked) {
+            const officeId = getCurrentOfficeId();
+            if (!officeId) return;
+            const emailEl = document.getElementById('overdueNotificationEmail');
+            const email = (emailEl && emailEl.value) ? emailEl.value.trim() : '';
+            try {
+                await window.firebaseUpdateDoc(window.firebaseDoc(window.firestore, 'offices', officeId), {
+                    overdueNotificationEnabled: !!checked,
+                    overdueNotificationEmail: email || ''
+                });
+            } catch (e) {
+                console.error('Failed to save overdue notification setting', e);
+                if (window.uiDialogs) window.uiDialogs.showAlert({ title: 'Settings', message: 'Could not save. You may not have permission to update office settings.', tone: 'danger' });
+            }
+        }
+        async function saveOverdueNotificationEmail() {
+            const officeId = getCurrentOfficeId();
+            if (!officeId) return;
+            const toggle = document.getElementById('overdueNotificationToggle');
+            const emailEl = document.getElementById('overdueNotificationEmail');
+            const enabled = toggle ? toggle.checked : false;
+            const email = (emailEl && emailEl.value) ? emailEl.value.trim() : '';
+            try {
+                await window.firebaseUpdateDoc(window.firebaseDoc(window.firestore, 'offices', officeId), {
+                    overdueNotificationEnabled: !!enabled,
+                    overdueNotificationEmail: email
+                });
+            } catch (e) {
+                console.error('Failed to save overdue notification email', e);
+                if (window.uiDialogs) window.uiDialogs.showAlert({ title: 'Settings', message: 'Could not save. You may not have permission to update office settings.', tone: 'danger' });
+            }
         }
         function viewUsage() {
             if (currentSession && currentSession.officeId) window.location.href = '/pages/office-calendar.html?officeId=' + currentSession.officeId;
@@ -1091,5 +1170,44 @@
         if (document.readyState === 'complete' || document.readyState === 'interactive') init();
         else document.addEventListener('DOMContentLoaded', init);
     </script>
+<!-- Settings Modal -->
+<div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-6 w-full max-w-md">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-xl font-bold text-white">Settings</h3>
+            <button onclick="hideSettings()" class="text-gray-400 hover:text-white">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div class="space-y-4">
+            <div class="flex items-center justify-between py-3 border-b border-[#283039]">
+                <div class="flex-1">
+                    <label for="useAsanaApiToggle" class="block text-sm font-medium text-white mb-1">Use Asana API for route input</label>
+                    <p class="text-xs text-gray-400">When enabled, routes button will redirect to automatic routes page</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                    <input type="checkbox" id="useAsanaApiToggle" class="sr-only peer" onchange="handleAsanaApiToggle(this.checked)">
+                    <div class="w-11 h-6 bg-[#283039] peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+            </div>
+            <div class="py-3 border-b border-[#283039]">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex-1">
+                        <label for="overdueNotificationToggle" class="block text-sm font-medium text-white mb-1">Receive an email notification when expenses are overdue</label>
+                        <p class="text-xs text-gray-400">One email when expense batches first pass 24 working hours</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                        <input type="checkbox" id="overdueNotificationToggle" class="sr-only peer" onchange="handleOverdueNotificationToggle(this.checked)">
+                        <div class="w-11 h-6 bg-[#283039] peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+                <input type="email" id="overdueNotificationEmail" placeholder="Email address for notifications" class="w-full mt-2 px-3 py-2 bg-[#111418] border border-[#283039] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500" onblur="saveOverdueNotificationEmail()">
+            </div>
+        </div>
+        <div class="mt-6 flex justify-end">
+            <button onclick="hideSettings()" class="px-4 py-2 bg-[#283039] hover:bg-[#3a444e] text-white rounded-lg transition-colors font-medium">Close</button>
+        </div>
+    </div>
+</div>
 </body>
 </html>

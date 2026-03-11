@@ -15,7 +15,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, addDoc, getDocs, query, orderBy, where, updateDoc, doc, deleteDoc, getDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, addDoc, getDocs, query, orderBy, where, updateDoc, doc, deleteDoc, getDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         
@@ -53,6 +53,7 @@
         window.deleteDoc = deleteDoc;
         window.getDoc = getDoc;
         window.serverTimestamp = serverTimestamp;
+        window.onSnapshot = onSnapshot;
         window.signOut = signOut;
         
         console.log('Firebase initialized successfully!');
@@ -104,10 +105,51 @@
                 transform: rotate(360deg);
             }
         }
+        .btn-create-message {
+            background: linear-gradient(135deg, rgba(186, 66, 255, 0.25), rgba(0, 225, 255, 0.25));
+            border: 1px solid rgba(0, 225, 255, 0.5);
+            box-shadow: 0 0 12px rgba(186, 66, 255, 0.4), 0 0 12px rgba(0, 225, 255, 0.3);
+            color: rgb(0, 225, 255);
+        }
+        .btn-create-message:hover {
+            background: linear-gradient(135deg, rgba(186, 66, 255, 0.4), rgba(0, 225, 255, 0.4));
+            box-shadow: 0 0 18px rgba(186, 66, 255, 0.5), 0 0 18px rgba(0, 225, 255, 0.4);
+            border-color: rgba(0, 225, 255, 0.7);
+        }
+        .btn-modal-primary {
+            background: linear-gradient(135deg, rgba(186, 66, 255, 0.25), rgba(0, 225, 255, 0.25));
+            border: 1px solid rgba(0, 225, 255, 0.5);
+            box-shadow: 0 0 12px rgba(186, 66, 255, 0.4), 0 0 12px rgba(0, 225, 255, 0.3);
+            color: rgb(0, 225, 255);
+        }
+        .btn-modal-primary:hover {
+            background: linear-gradient(135deg, rgba(186, 66, 255, 0.4), rgba(0, 225, 255, 0.4));
+            box-shadow: 0 0 18px rgba(186, 66, 255, 0.5), 0 0 18px rgba(0, 225, 255, 0.4);
+            border-color: rgba(0, 225, 255, 0.7);
+        }
+        .btn-modal-secondary {
+            background: rgba(58, 68, 78, 0.6);
+            border: 1px solid rgba(107, 114, 128, 0.5);
+            box-shadow: 0 0 10px rgba(107, 114, 128, 0.25);
+            color: #e5e7eb;
+        }
+        .btn-modal-secondary:hover {
+            background: rgba(58, 68, 78, 0.9);
+            box-shadow: 0 0 14px rgba(107, 114, 128, 0.4);
+            border-color: rgba(156, 163, 175, 0.6);
+        }
     </style>
 </head>
 <body class="bg-[#111418] text-white" style='font-family: Inter, "Noto Sans", sans-serif;'>
-<div class="relative flex h-auto min-h-screen w-full flex-col dark group/design-root overflow-x-hidden">
+    <!-- Loading overlay: hidden once page is fully loaded -->
+    <div id="messagesPageLoader" class="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[#111418]">
+        <div class="spinner-wrapper mb-4">
+            <div class="spinner"></div>
+            <div class="spinner1"></div>
+        </div>
+        <p class="text-gray-400">Loading messages...</p>
+    </div>
+<div id="messagesPageContent" class="hidden relative flex h-auto min-h-screen w-full flex-col dark group/design-root overflow-x-hidden">
 <div class="flex h-full grow flex-col">
         <header class="relative flex items-center justify-between whitespace-nowrap border-b border-solid border-b-[#283039] px-6 py-3" data-soto-nav>
 <div class="flex items-center gap-4">
@@ -177,8 +219,8 @@
 
     <!-- Main Content -->
     <main class="flex-1 px-6 py-8 max-w-4xl mx-auto">
-        <div class="flex justify-end items-center mb-8">
-            <button onclick="showCreateMessageModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors text-sm font-semibold flex items-center gap-2">
+        <div class="flex justify-center items-center mb-8">
+            <button onclick="showCreateMessageModal()" class="btn-create-message px-6 py-2.5 rounded-lg transition-all text-sm font-semibold flex items-center gap-2">
                 <span class="material-symbols-outlined">add</span>
                 Create Message
             </button>
@@ -215,10 +257,10 @@
                     <textarea id="messageContent" required rows="8" class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter your message for drivers..."></textarea>
                 </div>
                 <div class="flex gap-3 pt-4">
-                    <button type="button" onclick="hideCreateMessageModal()" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                    <button type="button" onclick="hideCreateMessageModal()" class="flex-1 btn-modal-secondary px-4 py-2 rounded-md text-sm font-medium transition-all">
                         Cancel
                     </button>
-                    <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                    <button type="submit" class="flex-1 btn-modal-primary px-4 py-2 rounded-md text-sm font-medium transition-all">
                         Publish Message
                     </button>
                 </div>
@@ -267,10 +309,13 @@
                 await initializeNotifications();
             await loadDrivers();
             await loadMessages();
+                document.getElementById('messagesPageLoader').classList.add('hidden');
+                document.getElementById('messagesPageContent').classList.remove('hidden');
             } catch (error) {
                 console.error('Initialization error on messages page:', error);
                 notifyError('Unable to load messages. Please refresh the page.');
-                window.location.href = '/pages/soto-routes-login.html';
+                document.getElementById('messagesPageLoader').classList.add('hidden');
+                document.getElementById('messagesPageContent').classList.remove('hidden');
             }
         }
 
@@ -310,11 +355,17 @@
             if (!officeId) return;
             try {
                 const officeDoc = await window.getDoc(window.doc(window.db, 'offices', officeId));
+                const logoImg = document.getElementById('officeLogoImg');
+                if (!logoImg) return;
                 if (officeDoc.exists()) {
                     const officeData = officeDoc.data();
-                    const logoImg = document.getElementById('officeLogoImg');
-                    if (logoImg && officeData.logoUrl) {
-                        logoImg.src = officeData.logoUrl;
+                    if (officeData.logoUrl) {
+                        await new Promise(function (resolve) {
+                            logoImg.onload = resolve;
+                            logoImg.onerror = resolve;
+                            logoImg.src = officeData.logoUrl;
+                            if (logoImg.complete) resolve();
+                        });
                     }
                 }
             } catch (error) {
@@ -348,6 +399,7 @@
                 }
 
                 displayMessages();
+                setupReadStatusListeners();
             } catch (error) {
                 console.error('Error loading messages:', error);
                 document.getElementById('messagesList').innerHTML = '<div class="text-center py-8 text-red-400">Error loading messages</div>';
@@ -409,6 +461,53 @@
             };
         }
 
+        let readStatusUnsubscribes = [];
+
+        async function refreshMessageReadStatus() {
+            for (const msg of allMessages) {
+                const readStatus = await getMessageReadStatus(msg.id);
+                const btn = document.getElementById('readCount_' + msg.id);
+                const statusDiv = document.getElementById('driverStatus_' + msg.id);
+                if (btn) btn.textContent = readStatus.read + '/' + readStatus.total + ' drivers read this message';
+                if (statusDiv) {
+                    statusDiv.innerHTML = (readStatus.unreadDrivers.length > 0 ? `
+                        <div class="mb-4">
+                            <p class="text-sm font-semibold text-gray-400 mb-2">Not Read:</p>
+                            <div class="space-y-1">
+                                ${readStatus.unreadDrivers.map(driver => '<div class="text-sm text-gray-300">• ' + escapeHtml(driver.name) + (driver.name !== 'Unknown Driver' && driver.email ? ' (' + escapeHtml(driver.email) + ')' : driver.name === 'Unknown Driver' && driver.email ? ' - ' + escapeHtml(driver.email) : '') + '</div>').join('')}
+                            </div>
+                        </div>
+                    ` : '') + (readStatus.readDrivers.length > 0 ? `
+                        <div>
+                            <p class="text-sm font-semibold text-gray-400 mb-2">Read:</p>
+                            <div class="space-y-1">
+                                ${readStatus.readDrivers.map(driver => '<div class="text-sm text-green-400 flex items-center gap-2"><span class="material-symbols-outlined text-sm">check_circle</span>' + escapeHtml(driver.name) + (driver.name !== 'Unknown Driver' && driver.email ? ' (' + escapeHtml(driver.email) + ')' : driver.name === 'Unknown Driver' && driver.email ? ' - ' + escapeHtml(driver.email) : '') + '</div>').join('')}
+                            </div>
+                        </div>
+                    ` : '') + (readStatus.unreadDrivers.length === 0 && readStatus.readDrivers.length === 0 ? '<p class="text-sm text-gray-400">No drivers found for this office.</p>' : '');
+                }
+            }
+        }
+
+        function setupReadStatusListeners() {
+            readStatusUnsubscribes.forEach(function (unsub) { try { unsub(); } catch (e) {} });
+            readStatusUnsubscribes = [];
+            if (allDrivers.length === 0) return;
+            var debounceTimer;
+            var debouncedRefresh = function () {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(refreshMessageReadStatus, 300);
+            };
+            for (var i = 0; i < allDrivers.length; i++) {
+                var uid = allDrivers[i].uid;
+                if (!uid) continue;
+                try {
+                    var unsub = window.onSnapshot(window.doc(window.db, 'users', uid), debouncedRefresh);
+                    readStatusUnsubscribes.push(unsub);
+                } catch (e) { console.warn('Could not listen to users/' + uid, e); }
+            }
+        }
+
         async function displayMessages() {
             const container = document.getElementById('messagesList');
             if (allMessages.length === 0) {
@@ -429,7 +528,7 @@
                         <div class="flex items-center gap-3 flex-1">
                             <h3 class="text-lg font-semibold text-white">${escapeHtml(msg.title)}</h3>
                             ${msg.published ? `
-                                <button onclick="toggleDriverStatus('${msg.id}')" class="text-blue-400 hover:text-blue-300 transition-colors cursor-pointer underline text-sm">
+                                <button id="readCount_${msg.id}" onclick="toggleDriverStatus('${msg.id}')" class="text-blue-400 hover:text-blue-300 transition-colors cursor-pointer underline text-sm">
                                     ${readStatus.read}/${readStatus.total} drivers read this message
                                 </button>
                             ` : ''}

@@ -475,6 +475,7 @@
                 <span class="material-symbols-outlined text-yellow-500 text-lg">lock</span>
                 <span class="text-xs text-gray-500">Next 7 days are locked (contact the office)</span>
             </div>
+            <p class="text-xs text-gray-500">Standard: Working ↔ Off. Standby drivers: Standby ↔ Off.</p>
         </div>
 
         <!-- Calendar - compact layout, no overflow -->
@@ -580,6 +581,18 @@
 
         async function applyAvailabilityChange(dateString, newStatus, context = {}) {
             const driverId = context.driverId || getCurrentDriverId();
+            const type = (driverTemplate && driverTemplate.availabilityType) || 'full';
+            const isStandbyDriver = type === 'standby';
+            const isPartTime = type === 'part';
+            if (isStandbyDriver && newStatus === STATUS.WORKING) {
+                newStatus = STATUS.STANDBY;
+            } else if (!isStandbyDriver && newStatus === STATUS.STANDBY) {
+                const dateObj = new Date(dateString + 'T12:00:00');
+                const templateStatus = window.AvailabilityModel ? window.AvailabilityModel.statusFromTemplate(driverTemplate, dateObj) : STATUS.WORKING;
+                if (type === 'full' || (type === 'part' && templateStatus === STATUS.WORKING)) {
+                    newStatus = STATUS.OFF;
+                }
+            }
             const driverName =
                 context.driverName ||
                 (currentUser && (currentUser.name || `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim())) ||
@@ -949,16 +962,21 @@
             }
         }
 
-        // Cycle status: standby drivers = off ↔ standby only; part/full = off ↔ working only
+        // Cycle status: standby drivers = off ↔ standby only; standard/full = off ↔ working only; part = depends on day
         function toggleAvailability(dateString) {
             if (isSaving) return;
             const type = (driverTemplate && driverTemplate.availabilityType) || 'full';
+            const dateObj = new Date(dateString + 'T12:00:00');
+            const templateStatus = window.AvailabilityModel ? window.AvailabilityModel.statusFromTemplate(driverTemplate, dateObj) : STATUS.WORKING;
             const isStandbyDriver = type === 'standby';
-            const defaultStatus = isStandbyDriver ? STATUS.STANDBY : STATUS.WORKING;
+            const isPartTime = type === 'part';
+            const defaultStatus = isStandbyDriver ? STATUS.STANDBY : (isPartTime ? templateStatus : STATUS.WORKING);
             const savedStatus = statusByDate[dateString] || defaultStatus;
             const current = pendingChanges.hasOwnProperty(dateString) ? pendingChanges[dateString] : savedStatus;
             let next;
             if (isStandbyDriver) {
+                next = current === STATUS.STANDBY ? STATUS.OFF : STATUS.STANDBY;
+            } else if (isPartTime && templateStatus === STATUS.STANDBY) {
                 next = current === STATUS.STANDBY ? STATUS.OFF : STATUS.STANDBY;
             } else {
                 next = current === STATUS.WORKING ? STATUS.OFF : STATUS.WORKING;

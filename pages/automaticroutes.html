@@ -1590,9 +1590,8 @@
             return getJobNum(ungroupedJobs[a].task.name || '') - getJobNum(ungroupedJobs[b].task.name || '');
         });
         
-        // Find the last selected job in the sorted order
-        const lastSelectedIndex = Math.max(...selectedJobsForRoute);
-        const lastSelectedPosition = sortedIndicesBefore.indexOf(lastSelectedIndex);
+        // Find the first selected job in the sorted order (so focus moves to task right below it after save)
+        const firstSelectedPosition = Math.min(...selectedJobsForRoute.map(idx => sortedIndicesBefore.indexOf(idx)));
         
         // Create route
         routeCounter++;
@@ -1626,10 +1625,10 @@
                 return getJobNum(ungroupedJobs[a].task.name || '') - getJobNum(ungroupedJobs[b].task.name || '');
             });
             
-            // Find the next job: the one that comes after the last selected in sorted order
-            // Iterate through the old sorted list starting from after the last selected
+            // Find the next job: the one right below the first selected job in sorted order
+            // Iterate through the old sorted list starting from after the first selected
             let foundNextJob = false;
-            for (let pos = lastSelectedPosition + 1; pos < sortedIndicesBefore.length; pos++) {
+            for (let pos = firstSelectedPosition + 1; pos < sortedIndicesBefore.length; pos++) {
                 const oldIndex = sortedIndicesBefore[pos];
                 // Check if this job wasn't removed
                 if (!indicesToRemove.includes(oldIndex)) {
@@ -1658,7 +1657,7 @@
                 }
             }
             
-            // If no next job found (last selected was at the end), wrap to first
+            // If no next job found (first selected was at the end), focus first remaining job
             if (!foundNextJob && sortedIndicesAfter.length > 0) {
                 currentFocusedJobIndex = sortedIndicesAfter[0];
             } else if (!foundNextJob) {
@@ -2151,11 +2150,19 @@
                 `;
             });
             
+            const routeRegSummary = routeData.jobs.map((job, i) => {
+                const reg = job.parsedData?.reg_number || '-';
+                return `Job ${i + 1}: ${reg}`;
+            }).join('  |  ');
+            
             routeCard.innerHTML = `
                 <div class="flex items-center justify-between mb-4 pb-3 border-b border-[#283039]">
-                    <h3 class="text-xl font-bold text-white">
-                        Route ${routeIndex + 1}
-                    </h3>
+                    <div>
+                        <h3 class="text-xl font-bold text-white">
+                            Route ${routeIndex + 1}
+                        </h3>
+                        <p class="text-sm text-gray-400 mt-0.5">${routeRegSummary}</p>
+                    </div>
                     <div class="flex items-center gap-2">
                         <span class="text-xs text-gray-400">Overall Confidence:</span>
                         <span class="px-3 py-1 rounded text-sm font-semibold ${
