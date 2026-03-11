@@ -439,7 +439,36 @@
             border-radius: 12px;
             overflow: hidden;
             background: #000;
+            position: relative;
+            min-height: 200px;
         }
+        .training-video-placeholder {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.8);
+            cursor: pointer;
+        }
+        .training-video-placeholder.is-hidden { display: none; }
+        .training-video-play-btn {
+            width: 80px;
+            height: 80px;
+            border: none;
+            border-radius: 50%;
+            background: rgba(0, 225, 255, 0.2);
+            color: rgb(0, 225, 255);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s, transform 0.2s;
+        }
+        .training-video-play-btn:hover { background: rgba(0, 225, 255, 0.35); transform: scale(1.05); }
+        .training-video-play-btn .material-symbols-outlined { font-size: 64px; }
+        .training-video-target { display: none; }
+        .training-video-target.is-visible { display: block; }
         .training-video-wrap .training-video,
         .training-video-wrap iframe {
             display: block;
@@ -537,6 +566,10 @@
         .training-modal-body .highlight { background: rgba(0, 225, 255, 0.12); border-left: 3px solid rgb(0, 225, 255); padding: 0.5rem 0.75rem; margin: 0.75rem 0; border-radius: 0 6px 6px 0; }
         .training-modal-body .quiz-option { display: block; width: 100%; text-align: left; padding: 12px 16px; margin-bottom: 8px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); color: #e5e7eb; cursor: pointer; transition: background 0.2s; }
         .training-modal-body .quiz-option:hover { background: rgba(255,255,255,0.1); }
+        /* Disable hover on touch devices to prevent sticky highlight on previous answer */
+        @media (hover: none) or (pointer: coarse) {
+            .training-modal-body .quiz-option:hover { background: rgba(255,255,255,0.06) !important; }
+        }
         .training-modal-body .quiz-option.correct { border-color: rgb(0, 225, 255); background: rgba(0, 225, 255, 0.15); }
         .training-modal-body .quiz-option.incorrect { border-color: rgb(239, 68, 68); background: rgba(239, 68, 68, 0.15); }
         .training-modal-body .quiz-result { font-weight: 600; margin-top: 1rem; padding: 1rem; border-radius: 10px; text-align: center; }
@@ -897,10 +930,9 @@
     <!-- Training complete confirmation (cyan/purple theme) -->
     <div id="trainingCompleteOverlay" class="training-complete-overlay" aria-hidden="true">
         <div class="training-complete-card">
-            <p class="training-complete-message">Are you comfortable with the information you've received and ready to start your in-person training?</p>
+            <p class="training-complete-message">Congratulations you've completed your training. You can return to this page at any point.</p>
             <div class="training-complete-actions">
-                <button type="button" class="training-complete-btn training-complete-yes" onclick="confirmTrainingComplete()">Yes</button>
-                <button type="button" class="training-complete-btn training-complete-no" onclick="closeTrainingCompleteDialog()">No</button>
+                <button type="button" class="training-complete-btn training-complete-yes" onclick="confirmTrainingComplete()">OK</button>
             </div>
         </div>
     </div>
@@ -1002,10 +1034,8 @@
         };
 
         var QUIZ_STANDARDS = [
-            { q: 'Where do you meet for the start of the day?', options: ['Johnsons Fleet Services, Tamworth', 'The delivery address', 'The office'], correctIndex: 0 },
-            { q: 'How should you plan your journey to the meeting point?', options: ['Drive', 'Google Maps and public transport', 'You don\'t need to plan'], correctIndex: 1 },
+            { q: 'How should you plan your journey to the first collection?', options: ['Drive', 'Google Maps and public transport', 'You don\'t need to plan'], correctIndex: 1 },
             { q: 'Which app do you get your jobs from?', options: ['MoDel', 'Asana', 'WhatsApp'], correctIndex: 1 },
-            { q: 'What does the PIN on an Asana job get used for?', options: ['Nothing', 'MoDel – to add the job', 'Key office'], correctIndex: 1 },
             { q: 'Where do you get the keys at Johnsons?', options: ['From the car', 'Key office – using last 6 digits of chassis', 'Reception'], correctIndex: 1 },
             { q: 'Who do you CC the collection form to?', options: ['The customer', 'team@ec-logistics.co.uk', 'Your personal email'], correctIndex: 1 },
             { q: 'What percentage of the job price do drivers get?', options: ['25%', '50%', '100%'], correctIndex: 1 },
@@ -1020,17 +1050,19 @@
             { q: 'In MoDel, how do you add a new job?', options: ['Scan a barcode', 'Tap + and enter Reg and PIN', 'It appears automatically'], correctIndex: 1 },
             { q: 'Before downloading a job in MoDel, you should confirm what?', options: ['The price', 'The addresses match Asana', 'The customer name'], correctIndex: 1 },
             { q: 'Where is the expense sheet for a job in MoDel?', options: ['Home tab', 'Expense tab', 'Settings'], correctIndex: 1 },
-            { q: 'Which part of the chassis number do you give to the key office?', options: ['First 6 digits', 'Last 6 digits', 'The full number'], correctIndex: 1 },
-            { q: 'What do you do first at the car before filling the collection form?', options: ['Get the keys', 'Take beauty shots', 'Drive away'], correctIndex: 1 },
             { q: 'Beauty shots help with what?', options: ['Fuel level', 'Recording condition and damage', 'Finding the car'], correctIndex: 1 },
             { q: 'Where do you update the office at every step of the day?', options: ['Email', 'General WhatsApp group', 'Phone call only'], correctIndex: 1 }
         ];
 
-        var TRAINING_PROGRESS_KEY = 'driver_training_progress';
+        var TRAINING_PROGRESS_KEY_PREFIX = 'driver_training_progress_';
+
+        function getTrainingProgressKey() {
+            return TRAINING_PROGRESS_KEY_PREFIX + (currentUserUid || '');
+        }
 
         function getTrainingProgress() {
             try {
-                var raw = localStorage.getItem(TRAINING_PROGRESS_KEY);
+                var raw = localStorage.getItem(getTrainingProgressKey());
                 return raw ? JSON.parse(raw) : {};
             } catch (e) {
                 return {};
@@ -1039,7 +1071,7 @@
 
         function setTrainingProgress(progress) {
             try {
-                localStorage.setItem(TRAINING_PROGRESS_KEY, JSON.stringify(progress));
+                localStorage.setItem(getTrainingProgressKey(), JSON.stringify(progress));
             } catch (e) {}
         }
 
@@ -1380,6 +1412,47 @@
             }, 1200);
         }
 
+        function buildTrainingVideoPlaceholder(type, embedHtml, videoUrl) {
+            var placeholder = '<div class="training-video-placeholder" onclick="playTrainingVideo(this)" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();playTrainingVideo(this);}" role="button" tabindex="0" aria-label="Play video">' +
+                '<button type="button" class="training-video-play-btn"><span class="material-symbols-outlined">play_circle</span></button></div>';
+            var target;
+            if (type === 'embed' && embedHtml) {
+                target = '<div class="training-video-target" data-type="embed" data-embed="' + escapeHtml(embedHtml.replace(/"/g, '&quot;')) + '"></div>';
+            } else {
+                target = '<div class="training-video-target" data-type="video" data-src="' + escapeHtml(videoUrl) + '">' +
+                    '<video class="training-video" controls playsinline preload="none"></video></div>';
+            }
+            return placeholder + target;
+        }
+        function playTrainingVideo(placeholderEl) {
+            var wrap = placeholderEl && placeholderEl.closest ? placeholderEl.closest('.training-video-wrap') : null;
+            if (!wrap) return;
+            var target = wrap.querySelector('.training-video-target');
+            if (!target) return;
+            var type = target.getAttribute('data-type');
+            if (type === 'video') {
+                var video = target.querySelector('.training-video');
+                var src = target.getAttribute('data-src');
+                if (video && src) {
+                    video.src = src;
+                    target.classList.add('is-visible');
+                    placeholderEl.classList.add('is-hidden');
+                    video.play().catch(function () {});
+                }
+            } else if (type === 'embed') {
+                var embed = target.getAttribute('data-embed');
+                if (embed) {
+                    var autoplayEmbed = embed.replace(/src="([^"]*)"/, function (_, url) {
+                        return 'src="' + url + (url.indexOf('?') >= 0 ? '&' : '?') + 'autoplay=1"';
+                    });
+                    target.innerHTML = autoplayEmbed;
+                    target.classList.add('is-visible');
+                    placeholderEl.classList.add('is-hidden');
+                }
+            }
+        }
+        window.playTrainingVideo = playTrainingVideo;
+
         function buildModalBodyHtml(key) {
             var data = TRAINING_MODALS[key];
             if (!data) return '';
@@ -1414,30 +1487,19 @@
                 });
             }
             if (key === 'apps-model') {
-                var modelVideoHtml = '';
-                var modelVideoUrl = (typeof TRAINING_MODEL_VIDEO_URL === 'string' && TRAINING_MODEL_VIDEO_URL.trim()) ? TRAINING_MODEL_VIDEO_URL.trim() : '';
-                if (typeof TRAINING_MODEL_VIDEO_EMBED === 'string' && TRAINING_MODEL_VIDEO_EMBED.trim()) {
-                    modelVideoHtml = TRAINING_MODEL_VIDEO_EMBED.trim();
-                } else if (modelVideoUrl) {
-                    modelVideoHtml = '<video class="training-video" controls playsinline preload="metadata" src="' + escapeHtml(modelVideoUrl) + '"></video>';
-                } else {
-                    var modelFallbackUrl = 'https://firebasestorage.googleapis.com/v0/b/soto-routes.firebasestorage.app/o/training%2FMoDelTutorial.mov?alt=media';
-                    modelVideoHtml = '<video class="training-video" controls playsinline preload="metadata" src="' + escapeHtml(modelFallbackUrl) + '"></video>';
-                }
+                var modelVideoHtml = buildTrainingVideoPlaceholder(
+                    typeof TRAINING_MODEL_VIDEO_EMBED === 'string' && TRAINING_MODEL_VIDEO_EMBED.trim() ? 'embed' : 'video',
+                    (typeof TRAINING_MODEL_VIDEO_EMBED === 'string' && TRAINING_MODEL_VIDEO_EMBED.trim()) ? TRAINING_MODEL_VIDEO_EMBED.trim() : '',
+                    (typeof TRAINING_MODEL_VIDEO_URL === 'string' && TRAINING_MODEL_VIDEO_URL.trim()) ? TRAINING_MODEL_VIDEO_URL.trim() : 'https://firebasestorage.googleapis.com/v0/b/soto-routes.firebasestorage.app/o/training%2FMoDelTutorial.mov?alt=media'
+                );
                 body = body.replace('__MODEL_VIDEO__', modelVideoHtml);
             }
             if (key === 'apps-google-maps') {
-                var videoHtml = '';
-                var videoUrl = (typeof TRAINING_GOOGLE_MAPS_VIDEO_URL === 'string' && TRAINING_GOOGLE_MAPS_VIDEO_URL.trim()) ? TRAINING_GOOGLE_MAPS_VIDEO_URL.trim() : '';
-                if (typeof TRAINING_GOOGLE_MAPS_VIDEO_EMBED === 'string' && TRAINING_GOOGLE_MAPS_VIDEO_EMBED.trim()) {
-                    videoHtml = TRAINING_GOOGLE_MAPS_VIDEO_EMBED.trim();
-                } else if (videoUrl) {
-                    videoHtml = '<video class="training-video" controls playsinline preload="metadata" src="' + escapeHtml(videoUrl) + '"></video>';
-                } else {
-                    // Fallback: use Firebase Storage URL for training/GoogleMapsTutorial.mov if config not set (e.g. old deploy)
-                    var fallbackUrl = 'https://firebasestorage.googleapis.com/v0/b/soto-routes.firebasestorage.app/o/training%2FGoogleMapsTutorial.mov?alt=media';
-                    videoHtml = '<video class="training-video" controls playsinline preload="metadata" src="' + escapeHtml(fallbackUrl) + '"></video>';
-                }
+                var videoHtml = buildTrainingVideoPlaceholder(
+                    (typeof TRAINING_GOOGLE_MAPS_VIDEO_EMBED === 'string' && TRAINING_GOOGLE_MAPS_VIDEO_EMBED.trim()) ? 'embed' : 'video',
+                    (typeof TRAINING_GOOGLE_MAPS_VIDEO_EMBED === 'string' && TRAINING_GOOGLE_MAPS_VIDEO_EMBED.trim()) ? TRAINING_GOOGLE_MAPS_VIDEO_EMBED.trim() : '',
+                    (typeof TRAINING_GOOGLE_MAPS_VIDEO_URL === 'string' && TRAINING_GOOGLE_MAPS_VIDEO_URL.trim()) ? TRAINING_GOOGLE_MAPS_VIDEO_URL.trim() : 'https://firebasestorage.googleapis.com/v0/b/soto-routes.firebasestorage.app/o/training%2FGoogleMapsTutorial.mov?alt=media'
+                );
                 body = body.replace('__GOOGLE_MAPS_VIDEO__', videoHtml);
             }
             // Only show quiz shortcuts for the quiz categories themselves, not for subcategories

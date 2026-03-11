@@ -1294,18 +1294,32 @@ if (error.code === 'already-exists') {
 }
 }
 
-// Hide loading state
-loadingOverlay.classList.add('hidden');
-progressText.textContent = '';
-
-// Close the multiple drivers modal
-closeMultipleDriverModal();
-
-// Show temporary passwords modal if any drivers were created
+// Send emails automatically (like single driver flow) and skip the credentials modal
 const driversWithPasswords = createdDrivers.filter(d => d.temporaryPassword);
 if (driversWithPasswords.length > 0) {
-showTempPasswordsModal(driversWithPasswords);
+progressText.textContent = 'Sending login emails...';
+let sent = 0;
+let failed = 0;
+for (const driver of driversWithPasswords) {
+try {
+const sendEmailFn = getCallable('sendDriverLoginEmail');
+const loginBaseUrl = window.location.origin || 'https://soto-routes.web.app';
+await sendEmailFn({ toEmail: driver.email, temporaryPassword: driver.temporaryPassword, firstName: driver.firstName || '', lastName: driver.lastName || '', loginBaseUrl });
+sent++;
+} catch (err) {
+console.warn('Send email failed for ' + driver.email, err);
+failed++;
 }
+}
+if (failed === 0) notifySuccess('Driver(s) created and login details sent by email to all.', 'All Done');
+else if (sent > 0) notifyWarning('Created ' + driversWithPasswords.length + ' driver(s). Emails sent to ' + sent + ', failed for ' + failed + '.', 'Partial');
+else notifyWarning('Drivers created but could not send emails. Check Functions config (Resend API key).', 'Emails Failed');
+}
+
+// Hide loading and close the multiple drivers modal
+loadingOverlay.classList.add('hidden');
+progressText.textContent = '';
+closeMultipleDriverModal();
 
 // Refresh the drivers list
 await fetchAndDisplayDrivers();
