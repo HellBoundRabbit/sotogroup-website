@@ -1,4 +1,8 @@
 {
+  "firestore": {
+    "rules": "miscellaneous-development-files/firestore.rules",
+    "indexes": "miscellaneous-development-files/firestore.indexes.json"
+  },
   "hosting": {
     "public": ".",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
