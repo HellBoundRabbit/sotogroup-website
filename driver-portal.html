@@ -1,0 +1,2759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SOTO Routes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#000000">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16.png">
+    <link rel="icon" type="image/svg+xml" href="/assets/logos/favicon.svg">
+    <link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png">
+    <title>Driver Portal | SOTO Routes</title>
+    <script src="/assets/js/tailwind-runtime.js"></script>
+    <script src="/js/session-manager.js"></script>
+    <script src="/js/availability-model.js"></script>
+    <script src="../js/ui-dialogs.js"></script>
+    <!-- Offline Storage & Upload Queue System -->
+    <script src="/js/expense-offline-storage.js"></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <style>
+        body {
+            font-family: Inter, "Noto Sans", sans-serif;
+        }
+        .glass-card {
+            background: rgba(26, 31, 36, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .profile-complete-modal-border {
+            background: linear-gradient(135deg, rgb(0, 225, 255), rgb(186, 66, 255));
+            border: none;
+            border-radius: 14px;
+            box-shadow: 0 0 0 2px rgba(0, 225, 255, 0.6), 0 0 0 4px rgba(186, 66, 255, 0.4), 0 0 30px rgba(0, 225, 255, 0.35), 0 0 40px rgba(186, 66, 255, 0.25);
+        }
+        .profile-modal-scroll-indicator {
+            position: absolute;
+            bottom: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0.6;
+            animation: bounce 2s infinite;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        .profile-modal-scroll-indicator.hidden {
+            opacity: 0;
+        }
+        .spinner-wrapper {
+            width: 56px;
+            height: 56px;
+            position: relative;
+            margin: 0 auto;
+        }
+        .spinner {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            /* animation: spinning82341 1.7s linear infinite; */
+            filter: blur(1px);
+        }
+        .spinner::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(186, 66, 255) 35%, rgb(0, 225, 255));
+            box-shadow: 0px -5px 20px 0px rgb(186, 66, 255), 0px 5px 20px 0px rgb(0, 225, 255);
+        }
+        .spinner-red {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            /* animation: spinning82341 1.7s linear infinite; */
+            filter: blur(1px);
+        }
+        .spinner-red::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(255, 0, 0) 35%, rgb(255, 100, 100));
+            box-shadow: 0px -5px 20px 0px rgb(255, 0, 0), 0px 5px 20px 0px rgb(255, 100, 100);
+        }
+        .spinner-orange {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            /* animation: spinning82341 1.7s linear infinite; */
+            filter: blur(1px);
+        }
+        .spinner-orange::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(255, 140, 0) 35%, rgb(255, 180, 60));
+            box-shadow: 0px -5px 20px 0px rgb(255, 140, 0), 0px 5px 20px 0px rgb(255, 180, 60);
+        }
+        /* Green glow for Start Day / Collect */
+        .spinner-green {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            filter: blur(1px);
+        }
+        /* Hide feature buttons until day state is loaded (prevents green/grey flash) */
+        .portal-buttons.portal-buttons-loading {
+            visibility: hidden;
+        }
+
+        .spinner-green::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(34, 197, 94) 35%, rgb(74, 222, 128));
+            box-shadow: 0px -5px 20px 0px rgb(34, 197, 94), 0px 5px 20px 0px rgb(74, 222, 128);
+        }
+        /* Red glow for End Day / Deliver */
+        .spinner-red-glow {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            filter: blur(1px);
+        }
+        .spinner-red-glow::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(239, 68, 68) 35%, rgb(248, 113, 113));
+            box-shadow: 0px -5px 20px 0px rgb(239, 68, 68), 0px 5px 20px 0px rgb(248, 113, 113);
+        }
+        /* Greyed out (End Day when disabled) */
+        .spinner-grey {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            filter: blur(1px);
+        }
+        .spinner-grey::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(75, 85, 99) 35%, rgb(107, 114, 128));
+            box-shadow: 0px -2px 10px 0px rgb(75, 85, 99);
+        }
+        .spinner1 {
+            background-color: rgb(36, 36, 36);
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2;
+        }
+        .spinner-icon {
+            position: relative;
+            z-index: 3;
+            color: white;
+            font-size: 1.875rem;
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+            filter: none !important;
+        }
+        .logo-wrapper {
+            width: 64px;
+            height: 64px;
+            position: relative;
+            margin: 0 auto;
+        }
+        .logo-spinner {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            /* animation: spinning82341 1.7s linear infinite; */
+            filter: blur(1px);
+        }
+        .logo-spinner::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(186, 66, 255) 35%, rgb(0, 225, 255));
+            box-shadow: 0px -5px 20px 0px rgb(186, 66, 255), 0px 5px 20px 0px rgb(0, 225, 255);
+        }
+        .logo-inner {
+            background-color: rgb(36, 36, 36);
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2;
+        }
+        .logo-svg {
+            position: relative;
+            z-index: 3;
+            filter: none !important;
+        }
+        .feature-button {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            padding: 16px;
+            transition: opacity 0.2s;
+            position: relative;
+            overflow: visible;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+        .feature-button:hover {
+            opacity: 0.8;
+        }
+        .feature-button.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .feature-button.holding {
+            transform: scale(0.95);
+            transition: transform 0.1s;
+        }
+        /* Hold progress bar - positioned in the gap between rows so it doesn't affect button spacing */
+        .hold-progress-bar {
+            position: absolute;
+            bottom: -17px; /* Sits in the grid gap (34px), centered - does not add to button height */
+            left: 0;
+            right: 0;
+            height: 4px;
+            margin: 0;
+            background: transparent;
+            border-radius: 0 0 8px 8px;
+            overflow: hidden;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 1;
+            pointer-events: none;
+        }
+        .hold-progress-bar.visible {
+            opacity: 1; /* Show when active or hint */
+        }
+        .hold-progress-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, rgb(34, 197, 94), rgb(74, 222, 128));
+            transition: width 0.05s linear;
+        }
+        .hold-progress-bar.end-day::after {
+            background: linear-gradient(90deg, rgb(239, 68, 68), rgb(248, 113, 113));
+        }
+        .hold-progress-bar.active::after {
+            animation: fillProgress 1s linear forwards;
+        }
+        .hold-progress-bar.hint::after {
+            width: 5%; /* Show 5% on tap */
+        }
+        @keyframes fillProgress {
+            from { width: 0%; }
+            to { width: 100%; }
+        }
+        /* Action loading overlay (appears during Start/End Day processing) */
+        .action-loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(8px);
+            z-index: 100;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        .action-loading-overlay.visible {
+            display: flex;
+        }
+        .action-loading-content {
+            text-align: center;
+        }
+        /* Scroll indicator */
+        .scroll-indicator {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            opacity: 0.7;
+            animation: bounce 2s infinite;
+            transition: opacity 0.3s;
+        }
+        .scroll-indicator span {
+            font-size: 2.5rem;
+        }
+        .scroll-indicator.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .account-view .scroll-indicator {
+            display: none;
+        }
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% {
+                transform: translateX(-50%) translateY(0);
+            }
+            40% {
+                transform: translateX(-50%) translateY(-12px);
+            }
+            60% {
+                transform: translateX(-50%) translateY(-6px);
+            }
+        }
+        .account-view .portal-buttons {
+            display: none;
+        }
+        .account-view .account-buttons {
+            display: flex;
+        }
+        .portal-view .account-buttons {
+            display: none;
+        }
+        .portal-view .home-button {
+            display: none;
+        }
+        .account-view .account-button {
+            display: none;
+        }
+        .features-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 34px;
+            width: 100%;
+            max-width: 420px;
+            margin: 0 auto;
+            overflow: visible;
+        }
+        .features-grid-single {
+            grid-column: 1 / -1;
+            display: flex;
+            justify-content: center;
+        }
+        @keyframes spinning82341 {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        @keyframes spinning82341-counter {
+            to {
+                transform: rotate(-360deg);
+            }
+        }
+    </style>
+</head>
+<body class="bg-black text-white" style='font-family: Inter, "Noto Sans", sans-serif;'>
+    <!-- Upload Banner (shown when uploading) -->
+    <div id="uploadBanner" class="hidden fixed top-0 left-0 right-0 bg-orange-600 text-white z-[100] shadow-lg">
+        <div class="flex items-center justify-center gap-3 px-4 py-2">
+            <span class="material-symbols-outlined animate-pulse">cloud_upload</span>
+            <div class="flex flex-col items-center flex-1">
+                <span id="uploadBannerText" class="font-semibold text-sm">Uploading expenses...</span>
+                <span id="uploadBannerSubtitle" class="text-xs opacity-90">Uploading photos...</span>
+                <!-- Progress bar -->
+                <div id="uploadProgressBar" class="w-full max-w-xs mt-2 h-1.5 bg-white bg-opacity-20 rounded-full overflow-hidden">
+                    <div id="uploadProgressFill" class="h-full bg-white transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-black flex items-center justify-center z-50">
+        <div class="text-center">
+            <div class="spinner-wrapper mx-auto mb-4">
+                <div class="spinner"></div>
+                <div class="spinner1"></div>
+            </div>
+            <p class="text-gray-400">Loading...</p>
+        </div>
+    </div>
+
+    <!-- Action Loading Overlay (Start/End Day) -->
+    <div id="actionLoadingOverlay" class="action-loading-overlay">
+        <div class="action-loading-content">
+            <div class="spinner-wrapper mx-auto mb-4">
+                <div class="spinner"></div>
+                <div class="spinner1"></div>
+            </div>
+            <p id="actionLoadingText" class="text-white text-lg font-semibold">Starting day...</p>
+        </div>
+    </div>
+
+    <!-- Complete profile modal (postcode / display picture – variable, with Edit) -->
+    <div id="driverProfileCompleteModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[60] hidden overflow-y-auto p-4">
+        <div class="profile-complete-modal-border rounded-xl p-[2px] w-full max-w-sm my-8 relative" id="driverProfileCompleteModalInner">
+            <div id="profileCompleteModalContent" class="bg-[#1a1f24] rounded-[10px] p-6 max-h-[calc(100vh-4rem)] overflow-y-auto">
+                <h2 class="text-xl font-bold text-white mb-2">Complete your profile</h2>
+                <p id="profileCompleteIntro" class="text-sm text-gray-400 mb-4">Please add the following before using the portal.</p>
+                <form id="driverProfileCompleteForm" class="space-y-4">
+                    <!-- Driver type (Full / Part / Standby) - above postcode -->
+                    <div id="profileCompleteDriverTypeWrap">
+                        <p class="text-sm font-medium text-gray-300 mb-2">Driver type</p>
+                        <div class="flex flex-wrap gap-2 mb-2">
+                            <label class="inline-flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="profileCompleteDriverType" value="full" class="rounded border-gray-500 bg-[#283039] text-[#0d7ff2] focus:ring-[#0d7ff2]">
+                                <span class="text-sm text-white">Full time</span>
+                            </label>
+                            <label class="inline-flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="profileCompleteDriverType" value="part" class="rounded border-gray-500 bg-[#283039] text-[#0d7ff2] focus:ring-[#0d7ff2]">
+                                <span class="text-sm text-white">Part time</span>
+                            </label>
+                            <label class="inline-flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="profileCompleteDriverType" value="standby" class="rounded border-gray-500 bg-[#283039] text-[#0d7ff2] focus:ring-[#0d7ff2]">
+                                <span class="text-sm text-white">Standby</span>
+                            </label>
+                        </div>
+                        <div id="profileCompleteDaysWrap" class="hidden mt-2">
+                            <div id="profileCompleteWorkingDaysSection" class="hidden">
+                                <p class="text-sm font-medium text-gray-300 mb-2">Working days (Mon–Fri)</p>
+                                <div class="flex flex-wrap gap-2" id="profileCompleteWorkingDays">
+                                    <label class="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" name="profileCompleteWorkingDay" value="0" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm">Mon</span></label>
+                                    <label class="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" name="profileCompleteWorkingDay" value="1" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm">Tue</span></label>
+                                    <label class="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" name="profileCompleteWorkingDay" value="2" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm">Wed</span></label>
+                                    <label class="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" name="profileCompleteWorkingDay" value="3" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm">Thu</span></label>
+                                    <label class="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" name="profileCompleteWorkingDay" value="4" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm">Fri</span></label>
+                                </div>
+                            </div>
+                            <div id="profileCompleteStandbyDaysSection" class="hidden">
+                                <p class="text-sm font-medium text-gray-300 mb-2">Standby days (Mon–Fri)</p>
+                                <div class="flex flex-wrap gap-2" id="profileCompleteStandbyDays">
+                                    <label class="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" name="profileCompleteStandbyDay" value="0" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm">Mon</span></label>
+                                    <label class="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" name="profileCompleteStandbyDay" value="1" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm">Tue</span></label>
+                                    <label class="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" name="profileCompleteStandbyDay" value="2" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm">Wed</span></label>
+                                    <label class="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" name="profileCompleteStandbyDay" value="3" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm">Thu</span></label>
+                                    <label class="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" name="profileCompleteStandbyDay" value="4" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm">Fri</span></label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Postcode: display when set, else input -->
+                    <div id="profileCompletePostcodeDisplayWrap" class="hidden">
+                        <p class="text-sm font-medium text-gray-300 mb-1">Home postcode</p>
+                        <div class="flex items-center justify-between gap-2 py-2">
+                            <span id="profileCompletePostcodeValue" class="text-white font-medium">—</span>
+                            <button type="button" onclick="profileCompleteEditPostcode()" class="text-sm text-[#9cabba] hover:text-white flex items-center gap-1">
+                                <span class="material-symbols-outlined text-sm">edit</span> Edit
+                            </button>
+                        </div>
+                    </div>
+                    <div id="profileCompletePostcodeInputWrap" class="hidden">
+                        <label for="profileCompletePostcode" class="block text-sm font-medium text-gray-300 mb-1">Home postcode</label>
+                        <input type="text" id="profileCompletePostcode" class="w-full px-3 py-2 bg-[#283039] border border-[#3a444e] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#3a444e] focus:border-[#3a444e]" placeholder="e.g. SW1A 1AA" maxlength="12">
+                    </div>
+                    <!-- Photo: display when set, else file input -->
+                    <div id="profileCompletePhotoDisplayWrap" class="hidden">
+                        <p class="text-sm font-medium text-gray-300 mb-2">Display picture</p>
+                        <div class="flex items-center gap-3">
+                            <img id="profileCompleteExistingPhoto" src="" alt="Your photo" class="w-16 h-16 min-w-[4rem] min-h-[4rem] aspect-square rounded-full object-cover border-2 border-[#3a444e] shrink-0">
+                            <button type="button" onclick="profileCompleteEditPhoto()" class="text-sm text-[#9cabba] hover:text-white flex items-center gap-1">
+                                <span class="material-symbols-outlined text-sm">edit</span> Edit
+                            </button>
+                        </div>
+                    </div>
+                    <div id="profileCompletePhotoInputWrap" class="hidden">
+                        <label for="profileCompletePhoto" class="block text-sm font-medium text-gray-300 mb-1">Display picture</label>
+                        <div class="flex items-center gap-2">
+                            <label for="profileCompletePhoto" class="cursor-pointer inline-flex px-4 py-2 rounded-lg border border-[#3a444e] bg-[#283039] text-white text-sm font-medium hover:bg-[#3a444e] transition-colors">Choose file</label>
+                            <input type="file" id="profileCompletePhoto" accept="image/*" class="sr-only" aria-describedby="profileCompletePhotoFilename">
+                            <span id="profileCompletePhotoFilename" class="text-sm text-gray-400"></span>
+                        </div>
+                    </div>
+                    <!-- Password Change: LAST step, only shown if hasChangedPassword === 0 -->
+                    <div id="profileCompletePasswordWrap" class="hidden">
+                        <label for="profileCompletePasswordCurrent" class="block text-sm font-medium text-gray-300 mb-1">Current password</label>
+                        <p class="text-xs text-gray-400 mb-2">Enter your temporary password that was emailed to you</p>
+                        <input type="password" id="profileCompletePasswordCurrent" class="w-full px-3 py-2 bg-[#283039] border border-[#3a444e] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#3a444e] focus:border-[#3a444e] mb-3" placeholder="Current/temporary password" minlength="6">
+                        
+                        <label for="profileCompletePassword" class="block text-sm font-medium text-gray-300 mb-1">New password</label>
+                        <p class="text-xs text-gray-400 mb-2">Create a new password (minimum 6 characters)</p>
+                        <input type="password" id="profileCompletePassword" class="w-full px-3 py-2 bg-[#283039] border border-[#3a444e] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#3a444e] focus:border-[#3a444e] mb-2" placeholder="New password" minlength="6">
+                        <input type="password" id="profileCompletePasswordConfirm" class="w-full px-3 py-2 bg-[#283039] border border-[#3a444e] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#3a444e] focus:border-[#3a444e]" placeholder="Confirm new password" minlength="6">
+                    </div>
+                    <button type="submit" id="profileCompleteSubmit" class="w-full py-3 bg-[#283039] hover:bg-[#3a444e] text-white font-semibold rounded-lg transition-colors border border-[#3a444e]">
+                        Save and continue
+                    </button>
+                </form>
+            </div>
+            <!-- Scroll indicator -->
+            <div id="profileModalScrollIndicator" class="profile-modal-scroll-indicator hidden">
+                <span class="material-symbols-outlined text-gray-400 text-xl">keyboard_arrow_down</span>
+            </div>
+            <!-- Saving overlay (shows during profile save) -->
+            <div id="profileCompleteSavingOverlay" class="absolute inset-0 bg-[#1a1f24] bg-opacity-95 flex flex-col items-center justify-center rounded-[10px] z-10 hidden">
+                <span class="material-symbols-outlined animate-spin text-4xl text-[#0d7ff2] mb-3">hourglass_empty</span>
+                <p class="text-white font-medium">Saving your profile...</p>
+                <p class="text-sm text-gray-400 mt-1">Please wait</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="min-h-screen flex flex-col px-6 py-8 portal-view">
+        <!-- Logo -->
+        <div class="w-full max-w-md mx-auto mb-6">
+            <div class="logo-wrapper">
+                <div class="logo-spinner"></div>
+                <div class="logo-inner">
+                    <svg class="logo-svg" width="32" height="32" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M13.8261 17.4264C16.7203 18.1174 20.2244 18.5217 24 18.5217C27.7756 18.5217 31.2797 18.1174 34.1739 17.4264C36.9144 16.7722 39.9967 15.2331 41.3563 14.1648L24.8486 40.6391C24.4571 41.267 23.5429 41.267 23.1514 40.6391L6.64374 14.1648C8.00331 15.2331 11.0856 16.7722 13.8261 17.4264Z" fill="white"></path>
+                        <path clip-rule="evenodd" d="M39.998 12.236C39.9944 12.2537 39.9875 12.2845 39.9748 12.3294C39.9436 12.4399 39.8949 12.5741 39.8346 12.7175C39.8168 12.7597 39.7989 12.8007 39.7813 12.8398C38.5103 13.7113 35.9788 14.9393 33.7095 15.4811C30.9875 16.131 27.6413 16.5217 24 16.5217C20.3587 16.5217 17.0125 16.131 14.2905 15.4811C12.0012 14.9346 9.44505 13.6897 8.18538 12.8168C8.17384 12.7925 8.16216 12.767 8.15052 12.7408C8.09919 12.6249 8.05721 12.5114 8.02977 12.411C8.00356 12.3152 8.00039 12.2667 8.00004 12.2612C8.00004 12.261 8 12.2607 8.00004 12.2612C8.00004 12.2359 8.0104 11.9233 8.68485 11.3686C9.34546 10.8254 10.4222 10.2469 11.9291 9.72276C14.9242 8.68098 19.1919 8 24 8C28.8081 8 33.0758 8.68098 36.0709 9.72276C37.5778 10.2469 38.6545 10.8254 39.3151 11.3686C39.9006 11.8501 39.9857 12.1489 39.998 12.236ZM4.95178 15.2312L21.4543 41.6973C22.6288 43.5809 25.3712 43.5809 26.5457 41.6973L43.0534 15.223C43.0709 15.1948 43.0878 15.1662 43.104 15.1371L41.3563 14.1648C43.104 15.1371 43.1038 15.1374 43.104 15.1371L43.1051 15.135L43.1065 15.1325L43.1101 15.1261L43.1199 15.1082C43.1276 15.094 43.1377 15.0754 43.1497 15.0527C43.1738 15.0075 43.2062 14.9455 43.244 14.8701C43.319 14.7208 43.4196 14.511 43.5217 14.2683C43.6901 13.8679 44 13.0689 44 12.2609C44 10.5573 43.003 9.22254 41.8558 8.2791C40.6947 7.32427 39.1354 6.55361 37.385 5.94477C33.8654 4.72057 29.133 4 24 4C18.867 4 14.1346 4.72057 10.615 5.94478C8.86463 6.55361 7.30529 7.32428 6.14419 8.27911C4.99695 9.22255 3.99999 10.5573 3.99999 12.2609C3.99999 13.1275 4.29264 13.9078 4.49321 14.3607C4.60375 14.6102 4.71348 14.8196 4.79687 14.9689C4.83898 15.0444 4.87547 15.1065 4.9035 15.1529C4.91754 15.1762 4.92954 15.1957 4.93916 15.2111L4.94662 15.223L4.95178 15.2312ZM35.9868 18.996L24 38.22L12.0131 18.996C12.4661 19.1391 12.9179 19.2658 13.3617 19.3718C16.4281 20.1039 20.0901 20.5217 24 20.5217C27.9099 20.5217 31.5719 20.1039 34.6383 19.3718C35.082 19.2658 35.5339 19.1391 35.9868 18.996Z" fill="white" fill-rule="evenodd"></path>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- Header -->
+        <div class="w-full max-w-md mx-auto mb-8">
+            <h1 class="text-3xl font-bold text-white text-center mb-2">Driver Portal</h1>
+            <p id="userEmail" class="text-gray-400 text-center text-sm"></p>
+        </div>
+
+        <!-- Main Options -->
+        <div class="w-full max-w-md mx-auto flex-1">
+            <div class="features-grid portal-buttons portal-buttons-loading">
+                <!-- Start Day -->
+                <div id="btnStartDayCard" class="feature-button">
+                    <div class="spinner-wrapper">
+                        <div class="spinner-green" id="btnStartDayGlow"></div>
+                        <div class="spinner1">
+                            <span class="material-symbols-outlined spinner-icon" id="btnStartDayIcon">play_circle</span>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold text-white text-center w-full" id="btnStartDayLabel">Start Day</h3>
+                    <div id="startDayProgressBar" class="hold-progress-bar"></div>
+                </div>
+
+                <!-- End Day -->
+                <div id="btnEndDayCard" class="feature-button">
+                    <div class="spinner-wrapper">
+                        <div class="spinner-grey" id="btnEndDayGlow"></div>
+                        <div class="spinner1">
+                            <span class="material-symbols-outlined spinner-icon" style="font-variation-settings: 'FILL' 1;">sports_score</span>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold text-white">End Day</h3>
+                    <div id="endDayProgressBar" class="hold-progress-bar"></div>
+                </div>
+
+                <!-- Expenses -->
+                <div id="expensesCard" class="feature-button" onclick="handleFeatureClick('/pages/driver-expenses.html')">
+                    <div class="spinner-wrapper">
+                        <div class="spinner"></div>
+                        <div class="spinner1">
+                            <span class="material-symbols-outlined spinner-icon">receipt</span>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold text-white">Expenses</h3>
+                </div>
+
+                <!-- Wait Times -->
+                <div id="waitTimesCard" class="feature-button" onclick="handleFeatureClick('/pages/driver-wait-times.html')">
+                    <div class="spinner-wrapper">
+                        <div class="spinner"></div>
+                        <div class="spinner1">
+                            <span class="material-symbols-outlined spinner-icon">schedule</span>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold text-white">Wait Times</h3>
+                </div>
+
+                <!-- Messages -->
+                <div id="messagesCard" class="feature-button" onclick="window.location.href='/pages/driver-messages.html'">
+                    <div class="spinner-wrapper">
+                        <div class="spinner"></div>
+                        <div class="spinner1">
+                            <span class="material-symbols-outlined spinner-icon">message</span>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold text-white">Messages</h3>
+                </div>
+
+                <!-- Availability -->
+                <div id="availabilityCard" class="feature-button" onclick="window.location.href='/pages/driver-availability.html'">
+                    <div class="spinner-wrapper">
+                        <div class="spinner"></div>
+                        <div class="spinner1">
+                            <span class="material-symbols-outlined spinner-icon">event</span>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold text-white">Availability</h3>
+                </div>
+
+                <!-- Authorization -->
+                <div id="authorizationCard" class="feature-button" onclick="handleFeatureClick('/pages/driver-authorization.html')">
+                    <div class="spinner-wrapper">
+                        <div class="spinner"></div>
+                        <div class="spinner1">
+                            <span class="material-symbols-outlined spinner-icon">verified_user</span>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold text-white">Authorization</h3>
+                </div>
+
+                <!-- Training -->
+                <div id="trainingCard" class="feature-button" onclick="handleFeatureClick('/pages/driver-training.html')">
+                    <div class="spinner-wrapper">
+                        <div class="spinner"></div>
+                        <div class="spinner1">
+                            <span class="material-symbols-outlined spinner-icon">school</span>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold text-white">Training</h3>
+                </div>
+            </div>
+
+            <!-- Account Buttons (hidden by default) -->
+            <div class="account-buttons flex flex-col gap-8" style="display: none;">
+                <!-- Profile (postcode & display picture) -->
+                <div class="features-grid-single">
+                    <div class="feature-button" onclick="showProfileSettings()">
+                        <div class="spinner-wrapper">
+                            <div class="spinner-orange"></div>
+                            <div class="spinner1">
+                                <span class="material-symbols-outlined spinner-icon">person</span>
+                            </div>
+                        </div>
+                        <h3 class="text-lg font-semibold text-white">Profile</h3>
+                    </div>
+                </div>
+                <!-- Availability settings (template: type + default days) -->
+                <div class="features-grid-single">
+                    <div class="feature-button" onclick="showAvailabilitySettings()">
+                        <div class="spinner-wrapper">
+                            <div class="spinner-orange"></div>
+                            <div class="spinner1">
+                                <span class="material-symbols-outlined spinner-icon">event</span>
+                            </div>
+                        </div>
+                        <h3 class="text-lg font-semibold text-white">Availability settings</h3>
+                    </div>
+                </div>
+                <!-- Change Password -->
+                <div class="features-grid-single">
+                    <div class="feature-button" onclick="showChangePassword()">
+                        <div class="spinner-wrapper">
+                            <div class="spinner-orange"></div>
+                            <div class="spinner1">
+                                <span class="material-symbols-outlined spinner-icon">lock</span>
+                            </div>
+                        </div>
+                        <h3 class="text-lg font-semibold text-white">Change Password</h3>
+                    </div>
+                </div>
+                <!-- Logout -->
+                <div class="features-grid-single">
+                    <div class="feature-button" onclick="logout()">
+                        <div class="spinner-wrapper">
+                            <div class="spinner-red"></div>
+                            <div class="spinner1">
+                                <span class="material-symbols-outlined spinner-icon">logout</span>
+                            </div>
+                        </div>
+                        <h3 class="text-lg font-semibold text-white">Logout</h3>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Account/Home Button -->
+            <div class="features-grid-single mt-8">
+                <!-- Account Button -->
+                <div class="account-button">
+                    <div class="feature-button" onclick="toggleAccountView()">
+                        <div class="spinner-wrapper">
+                            <div class="spinner-orange"></div>
+                            <div class="spinner1">
+                                <span class="material-symbols-outlined spinner-icon">account_circle</span>
+                            </div>
+                        </div>
+                        <h3 class="text-lg font-semibold text-white">Account</h3>
+                    </div>
+                </div>
+
+                <!-- Home Button (hidden by default) -->
+                <div class="home-button" style="display: none;">
+                    <div class="feature-button" onclick="toggleAccountView()">
+                        <div class="spinner-wrapper">
+                            <div class="spinner"></div>
+                            <div class="spinner1">
+                                <span class="material-symbols-outlined spinner-icon">home</span>
+                            </div>
+                        </div>
+                        <h3 class="text-lg font-semibold text-white">Home</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="mt-8 text-center text-gray-500 text-xs">
+            <p>SOTO Routes © 2025</p>
+        </div>
+    </div>
+
+    <!-- Scroll Indicator -->
+    <div class="scroll-indicator portal-view">
+        <span class="material-symbols-outlined text-gray-500 text-2xl">keyboard_arrow_down</span>
+    </div>
+
+    <!-- Change Password Modal -->
+    <div id="changePasswordModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="glass-card rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-bold text-white">Change Password</h2>
+                <button onclick="hideChangePassword()" class="text-gray-400 hover:text-white transition-colors">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+
+            <form id="changePasswordForm" onsubmit="handleChangePassword(event)">
+                <div class="space-y-4">
+                    <div>
+                        <label for="currentPassword" class="block text-sm font-medium text-gray-300 mb-2">Current Password</label>
+                        <input 
+                            type="password" 
+                            id="currentPassword" 
+                            required
+                            class="w-full px-4 py-3 bg-[#1a1f24] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 transition-colors"
+                            placeholder="Enter current password"
+                        />
+                    </div>
+
+                    <div>
+                        <label for="newPassword" class="block text-sm font-medium text-gray-300 mb-2">New Password</label>
+                        <input 
+                            type="password" 
+                            id="newPassword" 
+                            required
+                            minlength="6"
+                            class="w-full px-4 py-3 bg-[#1a1f24] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 transition-colors"
+                            placeholder="Enter new password (min. 6 characters)"
+                        />
+                    </div>
+
+                    <div>
+                        <label for="confirmPassword" class="block text-sm font-medium text-gray-300 mb-2">Confirm New Password</label>
+                        <input 
+                            type="password" 
+                            id="confirmPassword" 
+                            required
+                            minlength="6"
+                            class="w-full px-4 py-3 bg-[#1a1f24] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 transition-colors"
+                            placeholder="Confirm new password"
+                        />
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mt-6">
+                    <button 
+                        type="button"
+                        onclick="hideChangePassword()"
+                        class="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors font-medium"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        type="submit"
+                        id="changePasswordBtn"
+                        class="flex-1 px-4 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors font-medium"
+                    >
+                        Change Password
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Availability settings modal (template: type + default days from Account) -->
+    <div id="availabilitySettingsModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="glass-card rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-bold text-white">Availability settings</h2>
+                <button type="button" onclick="hideAvailabilitySettings()" class="text-gray-400 hover:text-white transition-colors">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <p class="text-sm text-gray-400 mb-4">Your default working pattern. Changes here do not affect the next 7 days; only the office can change those.</p>
+            <form id="availabilitySettingsForm" class="space-y-4">
+                <div>
+                    <p class="text-sm font-medium text-gray-300 mb-2">Driver type</p>
+                    <div class="flex flex-wrap gap-2">
+                        <label class="inline-flex items-center gap-2 cursor-pointer"><input type="radio" name="availabilitySettingsType" value="full" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm text-white">Full time</span></label>
+                        <label class="inline-flex items-center gap-2 cursor-pointer"><input type="radio" name="availabilitySettingsType" value="part" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm text-white">Part time</span></label>
+                        <label class="inline-flex items-center gap-2 cursor-pointer"><input type="radio" name="availabilitySettingsType" value="standby" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm text-white">Standby</span></label>
+                    </div>
+                </div>
+                <div id="availabilitySettingsDaysWrap" class="hidden">
+                    <div id="availabilitySettingsWorkingSection" class="hidden">
+                        <p class="text-sm font-medium text-gray-300 mb-2">Working days (Mon–Fri)</p>
+                        <div class="flex flex-wrap gap-2">
+                            <label class="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" name="availabilitySettingsWorkingDay" value="0" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm">Mon</span></label>
+                            <label class="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" name="availabilitySettingsWorkingDay" value="1" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm">Tue</span></label>
+                            <label class="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" name="availabilitySettingsWorkingDay" value="2" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm">Wed</span></label>
+                            <label class="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" name="availabilitySettingsWorkingDay" value="3" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm">Thu</span></label>
+                            <label class="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" name="availabilitySettingsWorkingDay" value="4" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm">Fri</span></label>
+                        </div>
+                    </div>
+                    <div id="availabilitySettingsStandbySection" class="hidden">
+                        <p class="text-sm font-medium text-gray-300 mb-2">Standby days (Mon–Fri)</p>
+                        <div class="flex flex-wrap gap-2">
+                            <label class="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" name="availabilitySettingsStandbyDay" value="0" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm">Mon</span></label>
+                            <label class="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" name="availabilitySettingsStandbyDay" value="1" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm">Tue</span></label>
+                            <label class="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" name="availabilitySettingsStandbyDay" value="2" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm">Wed</span></label>
+                            <label class="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" name="availabilitySettingsStandbyDay" value="3" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm">Thu</span></label>
+                            <label class="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" name="availabilitySettingsStandbyDay" value="4" class="rounded border-gray-500 bg-[#283039]"> <span class="text-sm">Fri</span></label>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex gap-3 mt-6">
+                    <button type="button" onclick="hideAvailabilitySettings()" class="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors font-medium">Cancel</button>
+                    <button type="submit" id="availabilitySettingsSubmit" class="flex-1 px-4 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors font-medium">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Profile settings modal (postcode & display picture from Account) -->
+    <div id="profileSettingsModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="glass-card rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-bold text-white">Profile</h2>
+                <button type="button" onclick="hideProfileSettings()" class="text-gray-400 hover:text-white transition-colors">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <form id="profileSettingsForm" class="space-y-4">
+                <div>
+                    <label for="profileSettingsPostcode" class="block text-sm font-medium text-gray-300 mb-2">Home postcode</label>
+                    <input type="text" id="profileSettingsPostcode" class="w-full px-4 py-3 bg-[#1a1f24] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 transition-colors" placeholder="e.g. SW1A 1AA" maxlength="12">
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-300 mb-2">Display picture</p>
+                    <div class="flex items-center gap-3 mb-2">
+                        <img id="profileSettingsPhotoPreview" src="" alt="" class="w-16 h-16 min-w-[4rem] min-h-[4rem] aspect-square rounded-full object-cover border-2 border-gray-700 bg-[#1a1f24] shrink-0">
+                        <div class="flex items-center gap-2">
+                            <label for="profileSettingsPhoto" class="cursor-pointer inline-flex px-4 py-2 rounded-lg border border-gray-700 bg-[#1a1f24] text-white text-sm font-medium hover:bg-gray-700 transition-colors">Choose file</label>
+                            <input type="file" id="profileSettingsPhoto" accept="image/*" class="sr-only" aria-describedby="profileSettingsPhotoFilename">
+                            <span id="profileSettingsPhotoFilename" class="text-sm text-gray-400"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex gap-3 mt-6">
+                    <button type="button" onclick="hideProfileSettings()" class="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors font-medium">
+                        Cancel
+                    </button>
+                    <button type="submit" id="profileSettingsSubmit" class="flex-1 px-4 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors font-medium">
+                        Save
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, getDocs, query, where, doc, getDoc, updateDoc, setDoc, addDoc, serverTimestamp, deleteField } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getAuth, signOut, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+        import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
+        
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA",
+            authDomain: "soto-routes.firebaseapp.com",
+            projectId: "soto-routes",
+            storageBucket: "soto-routes.firebasestorage.app",
+            messagingSenderId: "440989695549",
+            appId: "1:440989695549:web:0bce8b92a46f7f79953454",
+            measurementId: "G-4E3G40QQ9L"
+        };
+        
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const functions = getFunctions(app);
+        const storage = getStorage(app);
+        
+        // Make Firebase available globally
+        window.firebaseApp = app;
+        window.db = db;
+        window.auth = auth;
+        window.functions = functions;
+        window.firebase = {
+            functions,
+            httpsCallable
+        };
+        window.getDoc = getDoc;
+        window.doc = doc;
+        window.updateDoc = updateDoc;
+        window.setDoc = setDoc;
+        window.deleteField = deleteField;
+        window.serverTimestamp = serverTimestamp;
+        window.signOut = signOut;
+        window.updatePassword = updatePassword;
+        window.reauthenticateWithCredential = reauthenticateWithCredential;
+        window.EmailAuthProvider = EmailAuthProvider;
+        window.storage = storage;
+        window.ref = ref;
+        window.uploadBytes = uploadBytes;
+        window.getDownloadURL = getDownloadURL;
+        window.collection = collection;
+        window.addDoc = addDoc;
+        window.getDocs = getDocs;
+        window.query = query;
+        window.where = where;
+        
+        console.log('Firebase initialized successfully!');
+        
+        // Initialize the app after Firebase is ready
+        initializeDriverPortal();
+    </script>
+    <script>
+        let currentSession = null;
+        let currentUser = null;
+        const notifyError = (message, title = 'Error') => uiDialogs.showAlert({ title, message, tone: 'danger' });
+        const notifyWarning = (message, title = 'Heads Up') => uiDialogs.showAlert({ title, message, tone: 'warning' });
+        const notifySuccess = (message, title = 'Success') => uiDialogs.showAlert({ title, message, tone: 'success' });
+        const notifyInfo = (message, title = 'Notice') => uiDialogs.showAlert({ title, message, tone: 'info' });
+
+        const getCurrentOfficeId = () => currentSession?.officeId || currentUser?.officeId || null;
+
+        function formatTemplateLabel(t) {
+            if (!t || !t.availabilityType) return 'Unknown';
+            if (t.availabilityType === 'full') return 'Full time';
+            if (t.availabilityType === 'standby') {
+                const days = ['Mon','Tue','Wed','Thu','Fri'];
+                const s = (t.availabilityStandbyDays || []).map(i => days[i]).join(', ');
+                return s ? `Standby (${s})` : 'Standby';
+            }
+            if (t.availabilityType === 'part') {
+                const days = ['Mon','Tue','Wed','Thu','Fri'];
+                const w = (t.availabilityWorkingDays || []).map(i => days[i]).join(', ');
+                const s = (t.availabilityStandbyDays || []).map(i => days[i]).join(', ');
+                const parts = [];
+                if (w) parts.push(`Working: ${w}`);
+                if (s) parts.push(`Standby: ${s}`);
+                return parts.length ? `Specific days (${parts.join('; ')})` : 'Specific days';
+            }
+            return 'Unknown';
+        }
+
+        async function createStructureChangeNotification(oldTemplate, newTemplate) {
+            const officeId = getCurrentOfficeId();
+            if (!officeId || !currentUser) return;
+            const fromLabel = formatTemplateLabel(oldTemplate);
+            const toLabel = formatTemplateLabel(newTemplate);
+            const driverName = currentUser.name || [currentUser.firstName, currentUser.lastName].filter(Boolean).join(' ') || currentUser.email || 'Driver';
+            try {
+                await window.addDoc(window.collection(window.db, 'structureChangeNotifications'), {
+                    officeId,
+                    driverId: currentUser.uid,
+                    driverName,
+                    changeSummary: `Changed from ${fromLabel} to ${toLabel}`,
+                    previousType: oldTemplate?.availabilityType || 'full',
+                    newType: newTemplate?.availabilityType || 'full',
+                    previousWorkingDays: oldTemplate?.availabilityWorkingDays || [],
+                    previousStandbyDays: oldTemplate?.availabilityStandbyDays || [],
+                    newWorkingDays: newTemplate?.availabilityWorkingDays || [],
+                    newStandbyDays: newTemplate?.availabilityStandbyDays || [],
+                    seen: false,
+                    createdAt: window.serverTimestamp()
+                });
+                console.log('Structure change notification created');
+            } catch (e) {
+                console.warn('Could not create structure change notification:', e);
+            }
+        }
+
+        // Initialize function
+        async function initializeDriverPortal() {
+            console.log('Initializing driver portal...');
+            
+            try {
+                const session = await window.sotoSession.bootstrap(['driver']);
+                if (!session) {
+                        window.location.href = '/pages/soto-routes-login.html';
+                    return;
+                }
+
+                currentSession = session;
+                currentUser = { uid: session.uid, ...session };
+                window.currentUser = currentUser; // Set for ExpenseUploadQueue
+            } catch (error) {
+                console.error('Failed to establish driver session:', error);
+                window.location.href = '/pages/soto-routes-login.html';
+                    return;
+                }
+
+                // Register Service Worker for PWA functionality and background uploads
+                if ('serviceWorker' in navigator) {
+                    try {
+                        const registration = await navigator.serviceWorker.register('/sw.js');
+                        console.log('[SW] Service Worker registered:', registration.scope);
+                        
+                        // Check for updates periodically
+                        setInterval(() => {
+                            registration.update();
+                        }, 60000); // Check every minute
+                    } catch (error) {
+                        console.warn('[SW] Service Worker registration failed:', error);
+                    }
+                }
+
+                // Check if running as PWA and show installation prompt if needed
+                checkPWAInstallation();
+
+                // Check for pending uploads and show banner if needed
+                await checkPendingUploads();
+                
+                // Trigger Service Worker to process any pending uploads
+                if (navigator.onLine && window.expenseUploadQueue) {
+                    try {
+                        await window.expenseUploadQueue.getAuthTokenAndProcessQueue();
+                    } catch (error) {
+                        console.warn('[Driver Portal] Failed to trigger upload processing:', error);
+                    }
+                }
+                
+                // Set up periodic status updates while uploading
+                if (window.uploadStatusCheckInterval) {
+                    clearInterval(window.uploadStatusCheckInterval);
+                }
+                window.uploadStatusCheckInterval = setInterval(() => {
+                    const fn = window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function'
+                        ? () => window.expenseUploadQueue.updateGlobalUploadStatus()
+                        : () => Promise.resolve();
+                    Promise.resolve().then(fn).catch(function () {});
+                }, 3000); // Check every 3 seconds
+
+                // When user returns to tab, trigger upload queue processing (resume on next login/session)
+                document.addEventListener('visibilitychange', () => {
+                    if (!document.hidden && navigator.onLine && window.expenseUploadQueue && typeof window.expenseUploadQueue.getAuthTokenAndProcessQueue === 'function') {
+                        window.expenseUploadQueue.getAuthTokenAndProcessQueue();
+                    }
+                });
+                // When network returns, resume photo upload queue
+                window.addEventListener('online', () => {
+                    if (window.expenseUploadQueue && typeof window.expenseUploadQueue.getAuthTokenAndProcessQueue === 'function') {
+                        window.expenseUploadQueue.getAuthTokenAndProcessQueue();
+                    }
+                });
+
+                // Listen for Service Worker messages (auth token requests and photo uploads)
+                if ('serviceWorker' in navigator && navigator.serviceWorker) {
+                    navigator.serviceWorker.addEventListener('message', async (event) => {
+                        const { type, blob, path, expenseDocId } = event.data || {};
+                        const ports = event.ports || [];
+                        
+                        if (type === 'get-auth-token') {
+                            try {
+                                const auth = window.auth;
+                                if (auth && auth.currentUser) {
+                                    const authToken = await auth.currentUser.getIdToken();
+                                    if (ports.length > 0) {
+                                        ports[0].postMessage({ authToken });
+                                    }
+                                }
+                            } catch (error) {
+                                console.warn('[Driver Portal] Failed to get auth token for Service Worker:', error);
+                            }
+                        } else if (type === 'upload-photo-request' && ports.length > 0 && blob && path) {
+                            // Service Worker requesting main thread to upload photo using Firebase SDK
+                            try {
+                                console.log('[Driver Portal] Received upload request from Service Worker:', { path, expenseDocId });
+                                
+                                // Upload using Firebase SDK (same as successful uploads)
+                                const photoRef = window.ref(window.storage, path);
+                                await window.uploadBytes(photoRef, blob);
+                                const downloadURL = await window.getDownloadURL(photoRef);
+                                
+                                console.log('[Driver Portal] Upload successful:', downloadURL);
+                                
+                                // Send success back to Service Worker
+                                ports[0].postMessage({ success: true, downloadURL });
+                            } catch (error) {
+                                console.error('[Driver Portal] Upload failed:', error);
+                                ports[0].postMessage({ success: false, error: error.message });
+                            }
+                        } else if (type === 'upload-status-changed') {
+                            // Service Worker updated upload status, check again
+                            checkPendingUploads();
+                        }
+                    });
+                }
+
+                try {
+                console.log('Loading user data for:', currentUser.uid);
+                const userDoc = await window.getDoc(window.doc(window.db, 'users', currentUser.uid));
+                    if (!userDoc.exists()) {
+                        console.log('User document not found');
+                        window.location.href = '/pages/soto-routes-login.html';
+                        return;
+                    }
+
+                currentUser = { ...currentUser, ...userDoc.data() };
+                    console.log('Current user:', currentUser);
+                    
+                    // Display user email in header
+                    const userEmailEl = document.getElementById('userEmail');
+                    if (userEmailEl && currentUser.email) {
+                        userEmailEl.textContent = currentUser.email;
+                    }
+                    
+                    // Only drivers can access this page
+                    if (currentUser.role !== 'driver') {
+                        notifyWarning('This page is for drivers only.', 'Access Denied');
+                        window.location.href = '/pages/dashboard.html';
+                        return;
+                    }
+
+                    // Merge homePostcode from drivers doc if missing in users (office sets it when adding driver)
+                    const userPostcode = currentUser.homePostcode || currentUser.postcode || '';
+                    if (!(userPostcode && String(userPostcode).trim())) {
+                        try {
+                            const driverDoc = await window.getDoc(window.doc(window.db, 'drivers', currentUser.uid));
+                            if (driverDoc.exists()) {
+                                const driverData = driverDoc.data();
+                                const driverPostcode = driverData.homePostcode || driverData.postcode || '';
+                                if (driverPostcode && String(driverPostcode).trim()) {
+                                    currentUser.homePostcode = String(driverPostcode).trim();
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('Could not load driver doc for postcode:', e);
+                        }
+                    }
+
+                    const postcodeVal = currentUser.homePostcode || currentUser.postcode || '';
+                    const needPostcode = !(postcodeVal && String(postcodeVal).trim());
+                    const existingPhotoUrl = currentUser.photoURL || currentUser.photoUrl || currentUser.avatarUrl || null;
+                    const needPhoto = !existingPhotoUrl;
+                    const needDriverType = typeof window.AvailabilityModel !== 'undefined' && !window.AvailabilityModel.hasDriverTypeSet(currentUser);
+                    const needPasswordChange = !(currentUser.hasChangedPassword === 1 || currentUser.hasChangedPassword === '1' || currentUser.hasChangedPassword === true);
+
+                    if (needPostcode || needPhoto || needDriverType || needPasswordChange) {
+                        // If PWA install prompt is visible (user opened portal NOT in PWA), show profile modal only after they dismiss it
+                        const pwaOverlay = document.getElementById('pwa-install-overlay');
+                        if (pwaOverlay) {
+                            window._pendingProfileCompleteModal = { needPostcode, needPhoto, needDriverType, needPasswordChange, existingPhotoUrl, postcodeVal: postcodeVal.trim() };
+                            document.getElementById('loadingOverlay').style.display = 'none';
+                            return;
+                        }
+                        document.getElementById('loadingOverlay').style.display = 'none';
+                        showProfileCompleteModal(needPostcode, needPhoto, needDriverType, needPasswordChange, existingPhotoUrl, postcodeVal.trim());
+                        return;
+                    }
+
+                    // Load Start/End Day button states before revealing the page (prevents green/grey flash)
+                    await finishDriverPortalInit();
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                } catch (error) {
+                    console.error('Error loading user data:', error);
+                    notifyError('Error loading user data. Please try again.');
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                }
+        }
+
+        function showProfileCompleteModal(needPostcode, needPhoto, needDriverType, needPasswordChange, existingPhotoUrl, existingPostcode) {
+            if (typeof needDriverType === 'undefined') needDriverType = false;
+            if (typeof needPasswordChange === 'undefined') needPasswordChange = false;
+            const modal = document.getElementById('driverProfileCompleteModal');
+            const postcodeDisplayWrap = document.getElementById('profileCompletePostcodeDisplayWrap');
+            const postcodeInputWrap = document.getElementById('profileCompletePostcodeInputWrap');
+            const postcodeValueEl = document.getElementById('profileCompletePostcodeValue');
+            const postcodeInput = document.getElementById('profileCompletePostcode');
+            const photoDisplayWrap = document.getElementById('profileCompletePhotoDisplayWrap');
+            const photoInputWrap = document.getElementById('profileCompletePhotoInputWrap');
+            const existingPhotoEl = document.getElementById('profileCompleteExistingPhoto');
+            const photoInput = document.getElementById('profileCompletePhoto');
+            const introEl = document.getElementById('profileCompleteIntro');
+            const daysWrap = document.getElementById('profileCompleteDaysWrap');
+            const passwordWrap = document.getElementById('profileCompletePasswordWrap');
+
+            if (modal) {
+                modal.dataset.needPostcode = needPostcode ? 'true' : 'false';
+                modal.dataset.needPhoto = needPhoto ? 'true' : 'false';
+                modal.dataset.needDriverType = needDriverType ? 'true' : 'false';
+                modal.dataset.needPasswordChange = needPasswordChange ? 'true' : 'false';
+            }
+
+            // Driver type radios and days (Mon–Fri): part = working days only, standby = standby days only
+            const typeVal = (currentUser && currentUser.availabilityType) || 'full';
+            const workingDays = (currentUser && Array.isArray(currentUser.availabilityWorkingDays)) ? currentUser.availabilityWorkingDays : [];
+            const standbyDays = (currentUser && Array.isArray(currentUser.availabilityStandbyDays)) ? currentUser.availabilityStandbyDays : [];
+            document.querySelectorAll('input[name="profileCompleteDriverType"]').forEach(function (r) {
+                r.checked = r.value === typeVal;
+            });
+            document.querySelectorAll('input[name="profileCompleteWorkingDay"]').forEach(function (cb) {
+                cb.checked = workingDays.indexOf(parseInt(cb.value, 10)) >= 0;
+            });
+            document.querySelectorAll('input[name="profileCompleteStandbyDay"]').forEach(function (cb) {
+                cb.checked = standbyDays.indexOf(parseInt(cb.value, 10)) >= 0;
+            });
+            const workingSection = document.getElementById('profileCompleteWorkingDaysSection');
+            const standbySection = document.getElementById('profileCompleteStandbyDaysSection');
+            if (daysWrap) daysWrap.classList.toggle('hidden', typeVal === 'full');
+            if (workingSection) workingSection.classList.toggle('hidden', typeVal !== 'part');
+            if (standbySection) standbySection.classList.toggle('hidden', typeVal !== 'standby');
+            document.querySelectorAll('input[name="profileCompleteDriverType"]').forEach(function (r) {
+                r.onchange = function () {
+                    const sel = document.querySelector('input[name="profileCompleteDriverType"]:checked');
+                    const v = sel ? sel.value : 'full';
+                    if (daysWrap) daysWrap.classList.toggle('hidden', v === 'full');
+                    if (workingSection) workingSection.classList.toggle('hidden', v !== 'part');
+                    if (standbySection) standbySection.classList.toggle('hidden', v !== 'standby');
+                };
+            });
+
+            const hasPostcode = !!(existingPostcode && String(existingPostcode).trim());
+            const hasPhoto = !!existingPhotoUrl;
+
+            if (postcodeDisplayWrap) postcodeDisplayWrap.classList.toggle('hidden', !hasPostcode);
+            if (postcodeInputWrap) postcodeInputWrap.classList.toggle('hidden', hasPostcode && !needPostcode);
+            if (postcodeValueEl) postcodeValueEl.textContent = hasPostcode ? existingPostcode : '—';
+            if (postcodeInput) {
+                postcodeInput.value = existingPostcode || '';
+                if (!hasPostcode) postcodeInputWrap.classList.remove('hidden');
+            }
+
+            if (photoDisplayWrap) photoDisplayWrap.classList.toggle('hidden', !hasPhoto);
+            if (photoInputWrap) photoInputWrap.classList.toggle('hidden', hasPhoto && !needPhoto);
+            if (existingPhotoEl && existingPhotoUrl) {
+                existingPhotoEl.src = existingPhotoUrl;
+                existingPhotoEl.onerror = function () { photoDisplayWrap.classList.add('hidden'); };
+            }
+            if (photoInput) { photoInput.value = ''; }
+            const fnEl = document.getElementById('profileCompletePhotoFilename');
+            if (fnEl) fnEl.textContent = '';
+
+            // Password change: only show if needPasswordChange is true
+            if (passwordWrap) passwordWrap.classList.toggle('hidden', !needPasswordChange);
+            const passwordInput = document.getElementById('profileCompletePassword');
+            const passwordConfirmInput = document.getElementById('profileCompletePasswordConfirm');
+            const passwordCurrentInput = document.getElementById('profileCompletePasswordCurrent');
+            if (passwordInput) passwordInput.value = '';
+            if (passwordConfirmInput) passwordConfirmInput.value = '';
+            if (passwordCurrentInput) passwordCurrentInput.value = '';
+
+            if (introEl) {
+                const items = [];
+                if (needDriverType) items.push('driver type and working days');
+                if (needPostcode) items.push('postcode');
+                if (needPhoto) items.push('display picture');
+                if (needPasswordChange) items.push('password');
+                
+                if (items.length > 0) {
+                    introEl.textContent = 'Please add the following before using the portal: ' + items.join(', ') + '.';
+                } else {
+                    introEl.textContent = 'Review your profile below. Use Edit to change postcode or display picture.';
+                }
+            }
+
+            if (modal) {
+                modal.classList.remove('hidden');
+                
+                // Setup scroll indicator
+                const modalContent = document.getElementById('profileCompleteModalContent');
+                const scrollIndicator = document.getElementById('profileModalScrollIndicator');
+                
+                if (modalContent && scrollIndicator) {
+                    // Check if content is scrollable
+                    const checkScroll = () => {
+                        const isScrollable = modalContent.scrollHeight > modalContent.clientHeight;
+                        const isAtBottom = modalContent.scrollHeight - modalContent.scrollTop <= modalContent.clientHeight + 10;
+                        
+                        if (isScrollable && !isAtBottom) {
+                            scrollIndicator.classList.remove('hidden');
+                        } else {
+                            scrollIndicator.classList.add('hidden');
+                        }
+                    };
+                    
+                    // Initial check
+                    setTimeout(checkScroll, 100);
+                    
+                    // Check on scroll
+                    modalContent.addEventListener('scroll', checkScroll);
+                    
+                    // Check on window resize
+                    window.addEventListener('resize', checkScroll);
+                }
+            }
+        }
+
+        function profileCompleteEditPostcode() {
+            document.getElementById('profileCompletePostcodeDisplayWrap').classList.add('hidden');
+            const wrap = document.getElementById('profileCompletePostcodeInputWrap');
+            const input = document.getElementById('profileCompletePostcode');
+            wrap.classList.remove('hidden');
+            input.value = (currentUser && (currentUser.homePostcode || currentUser.postcode)) || '';
+            input.focus();
+        }
+
+        function profileCompleteEditPhoto() {
+            document.getElementById('profileCompletePhotoDisplayWrap').classList.add('hidden');
+            document.getElementById('profileCompletePhotoInputWrap').classList.remove('hidden');
+            const pcPhoto = document.getElementById('profileCompletePhoto');
+            if (pcPhoto) pcPhoto.value = '';
+            const pcFn = document.getElementById('profileCompletePhotoFilename');
+            if (pcFn) pcFn.textContent = '';
+        }
+
+        async function finishDriverPortalInit() {
+            await checkAndDisableFeatures();
+            await loadDriverDaySessionAndUpdateButtons();
+            setupHoldToConfirmButtons();
+            const portalBtns = document.querySelector('.portal-buttons');
+            if (portalBtns) portalBtns.classList.remove('portal-buttons-loading');
+            console.log('Loading complete!');
+        }
+
+        let driverDaySession = null;
+
+        function getTodayDateString() {
+            const d = new Date();
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+
+        function getDriverName() {
+            const first = (currentUser && (currentUser.firstName || currentUser.displayName || '')) || '';
+            const last = (currentUser && currentUser.lastName) || '';
+            return [first, last].filter(Boolean).join(' ').trim() || (currentUser && currentUser.email) || 'Driver';
+        }
+
+        async function loadDriverDaySessionAndUpdateButtons() {
+            if (!currentUser || !currentUser.uid) return;
+            const dateStr = getTodayDateString();
+            const docId = currentUser.uid + '_' + dateStr;
+            try {
+                const snap = await window.getDoc(window.doc(window.db, 'driverDaySessions', docId));
+                driverDaySession = snap.exists() ? { id: snap.id, ...snap.data() } : null;
+            } catch (e) {
+                console.warn('[Driver Day] Load failed:', e);
+                driverDaySession = null;
+            }
+            updateDayButtonsUI();
+        }
+
+        function updateDayButtonsUI() {
+            const cardStart = document.getElementById('btnStartDayCard');
+            const cardEnd = document.getElementById('btnEndDayCard');
+            const labelStart = document.getElementById('btnStartDayLabel');
+            const iconStart = document.getElementById('btnStartDayIcon');
+            const glowStart = document.getElementById('btnStartDayGlow');
+            const glowEnd = document.getElementById('btnEndDayGlow');
+            if (!cardStart || !cardEnd || !labelStart) return;
+
+            const dayStarted = driverDaySession && driverDaySession.dayStartedAt && !driverDaySession.dayEndedAt;
+            const hasCarryover = driverDaySession && driverDaySession.carryover === true;
+            const jobIndex = Math.min((driverDaySession && driverDaySession.currentJobIndex) || 1, 10);
+            const awaitingCollect = driverDaySession ? (driverDaySession.awaitingCollect !== false) : true;
+
+            // Toggle End Day enabled/disabled state (grey when disabled)
+            if (dayStarted) {
+                cardEnd.classList.remove('disabled');
+                if (glowEnd) glowEnd.className = 'spinner-red';
+            } else {
+                cardEnd.classList.add('disabled');
+                if (glowEnd) glowEnd.className = 'spinner-grey';
+            }
+
+            if (!dayStarted) {
+                labelStart.textContent = 'Start Day';
+                if (iconStart) { iconStart.textContent = 'play_circle'; iconStart.classList.add('material-symbols-outlined'); }
+                if (glowStart) glowStart.className = 'spinner-green';
+            } else {
+                if (hasCarryover && !awaitingCollect) {
+                    labelStart.textContent = 'Deliver Carryover';
+                    if (iconStart) { iconStart.textContent = 'south'; iconStart.classList.add('material-symbols-outlined'); }
+                    if (glowStart) glowStart.className = 'spinner-red';
+                } else if (awaitingCollect) {
+                    labelStart.textContent = 'Collect Job ' + jobIndex;
+                    if (iconStart) { iconStart.textContent = 'north'; iconStart.classList.add('material-symbols-outlined'); }
+                    if (glowStart) glowStart.className = 'spinner-green';
+                } else {
+                    labelStart.textContent = 'Deliver Job ' + jobIndex;
+                    if (iconStart) { iconStart.textContent = 'south'; iconStart.classList.add('material-symbols-outlined'); }
+                    if (glowStart) glowStart.className = 'spinner-red';
+                }
+            }
+        }
+
+        function getGeolocation() {
+            return new Promise(function (resolve) {
+                if (!navigator.geolocation) {
+                    resolve(null);
+                    return;
+                }
+                navigator.geolocation.getCurrentPosition(
+                    function (pos) {
+                        resolve({
+                            lat: pos.coords.latitude,
+                            lng: pos.coords.longitude,
+                            accuracy: pos.coords.accuracy,
+                            timestamp: new Date().toISOString()
+                        });
+                    },
+                    function () { resolve(null); },
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                );
+            });
+        }
+
+        function coordPayload(loc) {
+            if (!loc) return {};
+            return {
+                lat: loc.lat,
+                lng: loc.lng,
+                datetime: loc.timestamp || new Date().toISOString()
+            };
+        }
+
+        async function findLastDriverDayWithData() {
+            if (!currentUser || !currentUser.uid) return null;
+            const uid = currentUser.uid;
+            const today = getTodayDateString();
+            let d = new Date();
+            for (let i = 0; i < 30; i++) {
+                d.setDate(d.getDate() - 1);
+                const dateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                if (dateStr >= today) continue;
+                const docId = uid + '_' + dateStr;
+                try {
+                    const snap = await window.getDoc(window.doc(window.db, 'driverDaySessions', docId));
+                    if (snap.exists()) {
+                        const data = snap.data();
+                        if (!data.dayStartedAt) continue;
+                        // Already closed (manual or auto): check carryover flag
+                        if (data.dayEndedAt && data.endedWithVehicleInPossession === true) {
+                            return { dateStr, docId, data };
+                        }
+                        // Stale past session (day ended at midnight): auto-close and return carryover if had car
+                        if (!data.dayEndedAt) {
+                            const hadVehicle = data.inPossessionOfVehicle === true;
+                            await window.updateDoc(window.doc(window.db, 'driverDaySessions', docId), {
+                                dayEndedAt: window.serverTimestamp(),
+                                dayEndedAtMidnight: true,
+                                endedWithVehicleInPossession: hadVehicle,
+                                inPossessionOfVehicle: false
+                            });
+                            if (hadVehicle) return { dateStr, docId, data };
+                        }
+                    }
+                } catch (e) { console.warn('[Carryover] Check failed for', dateStr, e); }
+            }
+            return null;
+        }
+
+        async function handleStartDayOrCollect() {
+            if (!currentUser || !currentUser.uid) return;
+            
+            // Show loading overlay
+            const loadingOverlay = document.getElementById('actionLoadingOverlay');
+            const loadingText = document.getElementById('actionLoadingText');
+            if (loadingOverlay && loadingText) {
+                loadingText.textContent = 'Processing...';
+                loadingOverlay.classList.add('visible');
+            }
+            
+            const loc = await getGeolocation();
+            const dateStr = getTodayDateString();
+            const docId = currentUser.uid + '_' + dateStr;
+            const driverName = getDriverName();
+            const email = currentUser.email || '';
+
+            const dayStarted = driverDaySession && driverDaySession.dayStartedAt && !driverDaySession.dayEndedAt;
+            const hasCarryover = driverDaySession && driverDaySession.carryover === true;
+            const jobIndex = Math.min((driverDaySession && driverDaySession.currentJobIndex) || 1, 10);
+            const awaitingCollect = driverDaySession ? (driverDaySession.awaitingCollect !== false) : true;
+
+            try {
+                if (!dayStarted) {
+                    const carryoverInfo = await findLastDriverDayWithData();
+                    const carryover = !!carryoverInfo;
+                    await window.setDoc(window.doc(window.db, 'driverDaySessions', docId), {
+                        driverId: currentUser.uid,
+                        officeId: getCurrentOfficeId() || null,
+                        name: driverName,
+                        email,
+                        date: dateStr,
+                        carryover,
+                        dayStartedAt: window.serverTimestamp(),
+                        startDayCoordinate: coordPayload(loc),
+                        dayEndedAt: null,
+                        inPossessionOfVehicle: false,
+                        currentJobIndex: carryover ? 1 : 1,
+                        awaitingCollect: carryover ? false : true
+                    });
+                    notifySuccess('Day started.', 'Start Day');
+                } else if (hasCarryover && !awaitingCollect) {
+                    await window.updateDoc(window.doc(window.db, 'driverDaySessions', docId), {
+                        carryoverDeliverCoordinate: coordPayload(loc),
+                        carryover: false,
+                        inPossessionOfVehicle: false,
+                        awaitingCollect: true,
+                        currentJobIndex: 1
+                    });
+                    notifySuccess('Carryover delivered. Proceed to Collect Job 1.', 'Deliver Carryover');
+                } else if (awaitingCollect) {
+                    const collectKey = 'job' + jobIndex + 'CollectCoordinate';
+                    await window.updateDoc(window.doc(window.db, 'driverDaySessions', docId), {
+                        [collectKey]: coordPayload(loc),
+                        inPossessionOfVehicle: true,
+                        awaitingCollect: false
+                    });
+                    notifySuccess('Collect Job ' + jobIndex + ' recorded.', 'Collect');
+                } else {
+                    const deliverKey = 'job' + jobIndex + 'DeliverCoordinate';
+                    const nextJob = Math.min(jobIndex + 1, 10);
+                    await window.updateDoc(window.doc(window.db, 'driverDaySessions', docId), {
+                        [deliverKey]: coordPayload(loc),
+                        inPossessionOfVehicle: false,
+                        awaitingCollect: true,
+                        currentJobIndex: nextJob
+                    });
+                    notifySuccess('Deliver Job ' + jobIndex + ' recorded.', 'Deliver');
+                }
+                await loadDriverDaySessionAndUpdateButtons();
+            } catch (e) {
+                console.error('[Driver Day] Action failed:', e);
+                notifyError(e.message || 'Could not save. Please try again.');
+            } finally {
+                // Hide loading overlay
+                if (loadingOverlay) {
+                    loadingOverlay.classList.remove('visible');
+                }
+            }
+        }
+
+        async function handleEndDay() {
+            if (!currentUser || !currentUser.uid) return;
+            
+            // Show loading overlay
+            const loadingOverlay = document.getElementById('actionLoadingOverlay');
+            const loadingText = document.getElementById('actionLoadingText');
+            if (loadingOverlay && loadingText) {
+                loadingText.textContent = 'Ending day...';
+                loadingOverlay.classList.add('visible');
+            }
+            
+            const loc = await getGeolocation();
+            const dateStr = getTodayDateString();
+            const docId = currentUser.uid + '_' + dateStr;
+
+            const dayStarted = driverDaySession && driverDaySession.dayStartedAt && !driverDaySession.dayEndedAt;
+            const inPossession = driverDaySession && driverDaySession.inPossessionOfVehicle === true;
+
+            if (!dayStarted) {
+                if (loadingOverlay) loadingOverlay.classList.remove('visible');
+                return;
+            }
+
+            if (inPossession) {
+                notifyWarning('You are ending your day in possession of a vehicle. Please ensure this is securely stored.', 'End Day');
+            }
+
+            try {
+                const updatePayload = {
+                    endDayCoordinate: coordPayload(loc),
+                    dayEndedAt: window.serverTimestamp(),
+                    inPossessionOfVehicle: false
+                };
+                if (inPossession) updatePayload.endedWithVehicleInPossession = true;
+                await window.updateDoc(window.doc(window.db, 'driverDaySessions', docId), updatePayload);
+                notifySuccess('Day ended.', 'End Day');
+                await loadDriverDaySessionAndUpdateButtons();
+            } catch (e) {
+                console.error('[Driver Day] End day failed:', e);
+                notifyError(e.message || 'Could not end day. Please try again.');
+            } finally {
+                // Hide loading overlay
+                if (loadingOverlay) {
+                    loadingOverlay.classList.remove('visible');
+                }
+            }
+        }
+
+        function setupHoldToConfirmButtons() {
+            const btnStart = document.getElementById('btnStartDayCard');
+            const btnEnd = document.getElementById('btnEndDayCard');
+            const progressStart = document.getElementById('startDayProgressBar');
+            const progressEnd = document.getElementById('endDayProgressBar');
+
+            let holdTimer = null;
+            let holdProgress = 0;
+            let holdAnimationFrame = null;
+            let hintTimeout = null;
+            const HOLD_DURATION = 1000; // 1 second
+
+            function showHint(progressBar) {
+                progressBar.classList.add('visible', 'hint');
+                if (hintTimeout) clearTimeout(hintTimeout);
+                hintTimeout = setTimeout(function() {
+                    progressBar.classList.remove('visible', 'hint');
+                }, 500);
+            }
+
+            function startHold(button, progressBar, callback) {
+                if (holdTimer) return; // Already holding
+                if (button.classList.contains('disabled')) return; // Don't allow hold on disabled buttons
+
+                // Clear any hint timeout
+                if (hintTimeout) {
+                    clearTimeout(hintTimeout);
+                    hintTimeout = null;
+                }
+
+                button.classList.add('holding');
+                progressBar.classList.remove('hint');
+                progressBar.classList.add('visible', 'active');
+                
+                const startTime = Date.now();
+                
+                holdTimer = setInterval(function() {
+                    const elapsed = Date.now() - startTime;
+                    holdProgress = Math.min(elapsed / HOLD_DURATION, 1);
+                    
+                    if (holdProgress >= 1) {
+                        endHold(button, progressBar);
+                        callback();
+                    }
+                }, 50);
+            }
+
+            function endHold(button, progressBar, showHintOnRelease = false) {
+                if (holdTimer) {
+                    clearInterval(holdTimer);
+                    holdTimer = null;
+                }
+                if (holdAnimationFrame) {
+                    cancelAnimationFrame(holdAnimationFrame);
+                    holdAnimationFrame = null;
+                }
+                button.classList.remove('holding');
+                progressBar.classList.remove('active');
+                
+                // If released early, show hint
+                if (showHintOnRelease && holdProgress > 0 && holdProgress < 0.1) {
+                    showHint(progressBar);
+                } else {
+                    progressBar.classList.remove('visible');
+                }
+                
+                holdProgress = 0;
+            }
+
+            // Start Day button
+            if (btnStart && progressStart) {
+                // Mouse events
+                btnStart.addEventListener('mousedown', function(e) {
+                    e.preventDefault();
+                    startHold(btnStart, progressStart, handleStartDayOrCollect);
+                });
+                btnStart.addEventListener('mouseup', function() {
+                    endHold(btnStart, progressStart, true);
+                });
+                btnStart.addEventListener('mouseleave', function() {
+                    endHold(btnStart, progressStart, false);
+                });
+
+                // Touch events
+                btnStart.addEventListener('touchstart', function(e) {
+                    e.preventDefault();
+                    startHold(btnStart, progressStart, handleStartDayOrCollect);
+                }, { passive: false });
+                btnStart.addEventListener('touchend', function() {
+                    endHold(btnStart, progressStart, true);
+                });
+                btnStart.addEventListener('touchcancel', function() {
+                    endHold(btnStart, progressStart, false);
+                });
+            }
+
+            // End Day button
+            if (btnEnd && progressEnd) {
+                // Mouse events
+                btnEnd.addEventListener('mousedown', function(e) {
+                    e.preventDefault();
+                    startHold(btnEnd, progressEnd, handleEndDay);
+                });
+                btnEnd.addEventListener('mouseup', function() {
+                    endHold(btnEnd, progressEnd, true);
+                });
+                btnEnd.addEventListener('mouseleave', function() {
+                    endHold(btnEnd, progressEnd, false);
+                });
+
+                // Touch events
+                btnEnd.addEventListener('touchstart', function(e) {
+                    e.preventDefault();
+                    startHold(btnEnd, progressEnd, handleEndDay);
+                }, { passive: false });
+                btnEnd.addEventListener('touchend', function() {
+                    endHold(btnEnd, progressEnd, true);
+                });
+                btnEnd.addEventListener('touchcancel', function() {
+                    endHold(btnEnd, progressEnd, false);
+                });
+            }
+        }
+
+        async function getDriverPhotoStoragePath(file) {
+            const officeId = getCurrentOfficeId();
+            let officeName = 'Office';
+            if (officeId) {
+                try {
+                    const officeDoc = await window.getDoc(window.doc(window.db, 'offices', officeId));
+                    if (officeDoc.exists()) officeName = (officeDoc.data().name || officeName).trim();
+                } catch (e) { console.warn('Could not fetch office name for photo path:', e); }
+            }
+            const safe = (s) => String(s || '').replace(/[/\\]/g, '').trim();
+            let firstName = safe(currentUser.firstName);
+            let lastName = safe(currentUser.lastName);
+            if (!firstName || !lastName) {
+                try {
+                    const driverDoc = await window.getDoc(window.doc(window.db, 'drivers', currentUser.uid));
+                    if (driverDoc.exists()) {
+                        const d = driverDoc.data();
+                        if (!firstName) firstName = safe(d.firstName);
+                        if (!lastName) lastName = safe(d.lastName);
+                    }
+                } catch (e) { console.warn('Could not fetch driver name for photo path:', e); }
+            }
+            const displayName = safe(currentUser.displayName);
+            const ext = (file && file.name && file.name.split('.').pop()) ? file.name.split('.').pop().toLowerCase() : 'jpg';
+            const namePart = (firstName && lastName) ? (firstName + ' ' + lastName) : (firstName || lastName || displayName || '');
+            const fileName = namePart ? (namePart + '.' + ext) : (currentUser.uid + '.' + ext);
+            return (officeName + ' - Drivers') + '/' + fileName;
+        }
+
+        (function () {
+            function setupFileInputFilename(inputId, spanId) {
+                var inp = document.getElementById(inputId);
+                var fnSpan = document.getElementById(spanId);
+                if (inp && fnSpan) {
+                    inp.addEventListener('change', function () {
+                        fnSpan.textContent = (inp.files && inp.files[0]) ? inp.files[0].name : '';
+                    });
+                }
+            }
+            setupFileInputFilename('profileCompletePhoto', 'profileCompletePhotoFilename');
+            setupFileInputFilename('profileSettingsPhoto', 'profileSettingsPhotoFilename');
+        })();
+        document.getElementById('driverProfileCompleteForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const modal = document.getElementById('driverProfileCompleteModal');
+            const needPostcode = modal && modal.dataset.needPostcode === 'true';
+            const needPhoto = modal && modal.dataset.needPhoto === 'true';
+            const needDriverType = modal && modal.dataset.needDriverType === 'true';
+            const needPasswordChange = modal && modal.dataset.needPasswordChange === 'true';
+            const postcodeInput = document.getElementById('profileCompletePostcode');
+            const photoInput = document.getElementById('profileCompletePhoto');
+            const postcodeInputWrap = document.getElementById('profileCompletePostcodeInputWrap');
+            const photoInputWrap = document.getElementById('profileCompletePhotoInputWrap');
+            const passwordInput = document.getElementById('profileCompletePassword');
+            const passwordConfirmInput = document.getElementById('profileCompletePasswordConfirm');
+            const passwordCurrentInput = document.getElementById('profileCompletePasswordCurrent');
+            const submitBtn = document.getElementById('profileCompleteSubmit');
+
+            const postcode = postcodeInput ? postcodeInput.value.trim() : '';
+            const showingPostcodeInput = postcodeInputWrap && !postcodeInputWrap.classList.contains('hidden');
+            const hasNewPhoto = photoInput && photoInput.files && photoInput.files[0];
+            const newPassword = passwordInput ? passwordInput.value : '';
+            const confirmPassword = passwordConfirmInput ? passwordConfirmInput.value : '';
+            const currentPassword = passwordCurrentInput ? passwordCurrentInput.value : '';
+
+            if (needPostcode && showingPostcodeInput && !postcode) {
+                notifyWarning('Please enter your home postcode.', 'Required');
+                return;
+            }
+            if (needPhoto && photoInputWrap && !photoInputWrap.classList.contains('hidden') && !hasNewPhoto && !(currentUser.photoURL || currentUser.photoUrl || currentUser.avatarUrl)) {
+                notifyWarning('Please add a display picture to continue.', 'Required');
+                return;
+            }
+            const typeRadio = document.querySelector('input[name="profileCompleteDriverType"]:checked');
+            if (needDriverType && (!typeRadio || !typeRadio.value)) {
+                notifyWarning('Please select a driver type (Full time, Part time, or Standby).', 'Required');
+                return;
+            }
+            if (needPasswordChange) {
+                if (!currentPassword || currentPassword.length < 6) {
+                    notifyWarning('Please enter your current/temporary password.', 'Current Password Required');
+                    return;
+                }
+                if (!newPassword || newPassword.length < 6) {
+                    notifyWarning('New password must be at least 6 characters long.', 'Invalid Password');
+                    return;
+                }
+                if (newPassword !== confirmPassword) {
+                    notifyWarning('New passwords do not match. Please try again.', 'Password Mismatch');
+                    return;
+                }
+            }
+
+            submitBtn.disabled = true;
+            const savingOverlay = document.getElementById('profileCompleteSavingOverlay');
+            if (savingOverlay) savingOverlay.classList.remove('hidden');
+            try {
+                const updates = {};
+                if (showingPostcodeInput && postcode) updates.homePostcode = postcode;
+                if (typeRadio && typeRadio.value) {
+                    updates.availabilityType = typeRadio.value;
+                    const working = [];
+                    const standby = [];
+                    if (typeRadio.value === 'part') {
+                        document.querySelectorAll('input[name="profileCompleteWorkingDay"]:checked').forEach(function (cb) { working.push(parseInt(cb.value, 10)); });
+                    } else if (typeRadio.value === 'standby') {
+                        document.querySelectorAll('input[name="profileCompleteStandbyDay"]:checked').forEach(function (cb) { standby.push(parseInt(cb.value, 10)); });
+                    }
+                    updates.availabilityWorkingDays = working;
+                    updates.availabilityStandbyDays = standby;
+                }
+
+                if (hasNewPhoto) {
+                    const file = photoInput.files[0];
+                    const path = await getDriverPhotoStoragePath(file);
+                    const storageRef = window.ref(window.storage, path);
+                    await window.uploadBytes(storageRef, file);
+                    const photoURL = await window.getDownloadURL(storageRef);
+                    updates.photoURL = photoURL;
+                }
+
+                if (Object.keys(updates).length > 0) {
+                    const allowedUserKeys = ['homePostcode', 'photoURL', 'photoUrl', 'readMessages', 'trainingComplete', 'updatedAt', 'availabilityType', 'availabilityWorkingDays', 'availabilityStandbyDays', 'hasChangedPassword'];
+                    const userPayload = {};
+                    allowedUserKeys.forEach(function (k) {
+                        if (k === 'updatedAt') userPayload.updatedAt = window.serverTimestamp();
+                        else if (updates[k] !== undefined) userPayload[k] = updates[k];
+                    });
+                    if (Object.keys(userPayload).length > 0) {
+                        await window.updateDoc(window.doc(window.db, 'users', currentUser.uid), userPayload);
+                        Object.assign(currentUser, updates);
+                    }
+                    try {
+                        const driverUpdates = {};
+                        if (updates.homePostcode !== undefined) driverUpdates.homePostcode = updates.homePostcode;
+                        if (updates.photoURL !== undefined) driverUpdates.photoURL = updates.photoURL;
+                        if (updates.availabilityType !== undefined) driverUpdates.availabilityType = updates.availabilityType;
+                        if (updates.availabilityWorkingDays !== undefined) driverUpdates.availabilityWorkingDays = updates.availabilityWorkingDays;
+                        if (updates.availabilityStandbyDays !== undefined) driverUpdates.availabilityStandbyDays = updates.availabilityStandbyDays;
+                        if (Object.keys(driverUpdates).length > 0) {
+                            const officeId = getCurrentOfficeId();
+                            const payload = { ...driverUpdates, updatedAt: window.serverTimestamp() };
+                            if (officeId) payload.officeId = officeId;
+                            await window.setDoc(window.doc(window.db, 'drivers', currentUser.uid), payload, { merge: true });
+                        }
+                    } catch (e) { console.warn('Could not sync to drivers doc:', e); }
+                    if (updates.availabilityType !== undefined || updates.availabilityWorkingDays !== undefined || updates.availabilityStandbyDays !== undefined) {
+                        const Model = window.AvailabilityModel;
+                        const oldTemplate = Model ? Model.getDriverTemplate(currentUser) : null;
+                        const newTemplate = { availabilityType: updates.availabilityType ?? currentUser.availabilityType, availabilityWorkingDays: updates.availabilityWorkingDays ?? currentUser.availabilityWorkingDays ?? [], availabilityStandbyDays: updates.availabilityStandbyDays ?? currentUser.availabilityStandbyDays ?? [] };
+                        if (typeof applyTemplateChangeToCalendar === 'function') {
+                            await applyTemplateChangeToCalendar(oldTemplate || newTemplate, newTemplate);
+                        }
+                        await createStructureChangeNotification(oldTemplate || newTemplate, newTemplate);
+                    }
+                    currentUser = { ...currentUser, ...updates };
+                }
+
+                // Password change LAST
+                if (needPasswordChange && newPassword && currentPassword) {
+                    try {
+                        const user = window.auth.currentUser;
+                        const credential = window.EmailAuthProvider.credential(user.email, currentPassword);
+                        await window.reauthenticateWithCredential(user, credential);
+                        await window.updatePassword(user, newPassword);
+                        await window.updateDoc(window.doc(window.db, 'users', currentUser.uid), { hasChangedPassword: 1, updatedAt: window.serverTimestamp() });
+                        currentUser.hasChangedPassword = 1;
+                    } catch (passwordError) {
+                        console.error('Error updating password:', passwordError);
+                        let errorMsg = 'Could not update password. ';
+                        if (passwordError.code === 'auth/wrong-password' || passwordError.code === 'auth/invalid-credential') {
+                            errorMsg = 'Current password is incorrect. Please check your temporary password.';
+                        } else if (passwordError.code === 'auth/weak-password') {
+                            errorMsg = 'Password is too weak. Please use a stronger password.';
+                        } else {
+                            errorMsg += passwordError.message || 'Please try again.';
+                        }
+                        notifyError(errorMsg, 'Password Error');
+                        if (savingOverlay) savingOverlay.classList.add('hidden');
+                        submitBtn.disabled = false;
+                        return;
+                    }
+                }
+
+                await finishDriverPortalInit();
+                if (savingOverlay) savingOverlay.classList.add('hidden');
+                notifySuccess('Profile saved successfully. Welcome to the portal!', 'All set');
+                document.getElementById('driverProfileCompleteModal').classList.add('hidden');
+            } catch (err) {
+                console.error('Profile complete error:', err);
+                notifyError(err.message || 'Could not save. Please try again.');
+                if (savingOverlay) savingOverlay.classList.add('hidden');
+            } finally {
+                submitBtn.disabled = false;
+            }
+        });
+
+        function showAvailabilitySettings() {
+            const typeVal = (currentUser && currentUser.availabilityType) || 'full';
+            const workingDays = (currentUser && Array.isArray(currentUser.availabilityWorkingDays)) ? currentUser.availabilityWorkingDays : [];
+            const standbyDays = (currentUser && Array.isArray(currentUser.availabilityStandbyDays)) ? currentUser.availabilityStandbyDays : [];
+            document.querySelectorAll('input[name="availabilitySettingsType"]').forEach(function (r) { r.checked = r.value === typeVal; });
+            document.querySelectorAll('input[name="availabilitySettingsWorkingDay"]').forEach(function (cb) { cb.checked = workingDays.indexOf(parseInt(cb.value, 10)) >= 0; });
+            document.querySelectorAll('input[name="availabilitySettingsStandbyDay"]').forEach(function (cb) { cb.checked = standbyDays.indexOf(parseInt(cb.value, 10)) >= 0; });
+            const daysWrap = document.getElementById('availabilitySettingsDaysWrap');
+            const workingSection = document.getElementById('availabilitySettingsWorkingSection');
+            const standbySection = document.getElementById('availabilitySettingsStandbySection');
+            if (daysWrap) daysWrap.classList.toggle('hidden', typeVal === 'full');
+            if (workingSection) workingSection.classList.toggle('hidden', typeVal !== 'part');
+            if (standbySection) standbySection.classList.toggle('hidden', typeVal !== 'standby');
+            document.querySelectorAll('input[name="availabilitySettingsType"]').forEach(function (r) {
+                r.onchange = function () {
+                    const sel = document.querySelector('input[name="availabilitySettingsType"]:checked');
+                    const v = sel ? sel.value : 'full';
+                    if (daysWrap) daysWrap.classList.toggle('hidden', v === 'full');
+                    if (workingSection) workingSection.classList.toggle('hidden', v !== 'part');
+                    if (standbySection) standbySection.classList.toggle('hidden', v !== 'standby');
+                };
+            });
+            document.getElementById('availabilitySettingsModal').classList.remove('hidden');
+        }
+        function hideAvailabilitySettings() {
+            document.getElementById('availabilitySettingsModal').classList.add('hidden');
+        }
+        window.showAvailabilitySettings = showAvailabilitySettings;
+        window.hideAvailabilitySettings = hideAvailabilitySettings;
+
+        /**
+         * When template changes: preserve effective status for dates in the 7-day lock window
+         * by creating overrides; clear ALL future overrides (not just existing docs).
+         */
+        async function applyTemplateChangeToCalendar(oldTemplate, newTemplate) {
+            const Model = window.AvailabilityModel;
+            const uid = currentUser && currentUser.uid;
+            const officeId = getCurrentOfficeId();
+            if (!uid || !officeId || !Model) return;
+            try {
+                const toDateStr = Model.toDateString || function (d) {
+                    const x = d instanceof Date ? d : new Date(d);
+                    return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
+                };
+                const lockWindowDates = [];
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                for (let i = 0; i < 7; i++) {
+                    const d = new Date(today);
+                    d.setDate(today.getDate() + i);
+                    if (d.getDay() !== 0 && d.getDay() !== 6) lockWindowDates.push(toDateStr(d));
+                }
+
+                const todayStr = toDateStr(today);
+                // Fetch all docs for office, then filter by date in memory (avoids composite index requirement)
+                const q = window.query(
+                    window.collection(window.db, 'calendar'),
+                    window.where('officeId', '==', officeId)
+                );
+                const snap = await window.getDocs(q);
+                
+                // Filter to future dates only
+                const docsByDate = {};
+                snap.docs.forEach(function (d) { 
+                    if (d.id >= todayStr) {
+                        docsByDate[d.id] = d;
+                    }
+                });
+
+                let preserved = 0;
+                let cleared = 0;
+
+                for (const dateStr of lockWindowDates) {
+                    const dateObj = new Date(dateStr + 'T12:00:00');
+                    const doc = docsByDate[dateStr];
+                    const data = doc && doc.exists() ? doc.data() : {};
+                    const drivers = (data.drivers && typeof data.drivers === 'object') ? { ...data.drivers } : {};
+                    const entry = drivers[uid] || null;
+                    const currentStatus = Model.getEffectiveStatus(oldTemplate, entry, dateObj);
+                    const newStatus = Model.statusFromTemplate(newTemplate, dateObj);
+                    
+                    if (currentStatus !== newStatus) {
+                        drivers[uid] = { status: currentStatus, editedByDriver: window.serverTimestamp() };
+                        await window.setDoc(window.doc(window.db, 'calendar', dateStr), {
+                            date: dateStr,
+                            officeId,
+                            drivers,
+                            updatedAt: window.serverTimestamp()
+                        }, { merge: true });
+                        preserved++;
+                    }
+                }
+
+                for (const d of snap.docs) {
+                    const dateStr = d.id;
+                    if (lockWindowDates.indexOf(dateStr) >= 0) continue;
+                    const data = d.data();
+                    const drivers = data.drivers || {};
+                    if (drivers[uid]) {
+                        await window.updateDoc(window.doc(window.db, 'calendar', dateStr), {
+                            [`drivers.${uid}`]: window.deleteField(),
+                            updatedAt: window.serverTimestamp()
+                        });
+                        cleared++;
+                    }
+                }
+
+                if (preserved > 0 || cleared > 0) {
+                    console.log('[Availability] Preserved', preserved, 'override(s) in 7-day window; cleared', cleared, 'future override(s).');
+                }
+            } catch (e) { 
+                console.error('[Availability] Template change failed:', e); 
+            }
+        }
+
+        document.getElementById('availabilitySettingsForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const typeRadio = document.querySelector('input[name="availabilitySettingsType"]:checked');
+            if (!typeRadio) { notifyWarning('Select a driver type.', 'Required'); return; }
+            const working = [];
+            const standby = [];
+            if (typeRadio.value === 'part') {
+                document.querySelectorAll('input[name="availabilitySettingsWorkingDay"]:checked').forEach(function (cb) { working.push(parseInt(cb.value, 10)); });
+            } else if (typeRadio.value === 'standby') {
+                document.querySelectorAll('input[name="availabilitySettingsStandbyDay"]:checked').forEach(function (cb) { standby.push(parseInt(cb.value, 10)); });
+            }
+            const submitBtn = document.getElementById('availabilitySettingsSubmit');
+            submitBtn.disabled = true;
+            try {
+                const updates = { availabilityType: typeRadio.value, availabilityWorkingDays: working, availabilityStandbyDays: standby, updatedAt: window.serverTimestamp() };
+                await window.updateDoc(window.doc(window.db, 'users', currentUser.uid), updates);
+                try {
+                    const driverDocId = await getDriverDocIdForSync();
+                    if (driverDocId) {
+                        const officeId = getCurrentOfficeId();
+                        const payload = { ...updates };
+                        if (officeId) payload.officeId = officeId;
+                        await window.setDoc(window.doc(window.db, 'drivers', driverDocId), payload, { merge: true });
+                    }
+                } catch (e) { console.warn('Could not sync to drivers doc:', e); }
+                const Model = window.AvailabilityModel;
+                const oldTemplate = Model ? Model.getDriverTemplate(currentUser) : null;
+                const newTemplate = { availabilityType: updates.availabilityType, availabilityWorkingDays: updates.availabilityWorkingDays, availabilityStandbyDays: updates.availabilityStandbyDays };
+                if (typeof applyTemplateChangeToCalendar === 'function') {
+                    await applyTemplateChangeToCalendar(oldTemplate || newTemplate, newTemplate);
+                }
+                await createStructureChangeNotification(oldTemplate || newTemplate, newTemplate);
+                currentUser = { ...currentUser, ...updates };
+                notifySuccess('Availability settings saved.');
+                hideAvailabilitySettings();
+            } catch (err) {
+                console.error('Availability settings save error:', err);
+                notifyError(err.message || 'Could not save.');
+            } finally {
+                submitBtn.disabled = false;
+            }
+        });
+
+        function showProfileSettings() {
+            const postcodeVal = (currentUser && (currentUser.homePostcode || currentUser.postcode)) || '';
+            const photoUrl = (currentUser && (currentUser.photoURL || currentUser.photoUrl || currentUser.avatarUrl)) || '';
+            document.getElementById('profileSettingsPostcode').value = postcodeVal;
+            const preview = document.getElementById('profileSettingsPhotoPreview');
+            preview.src = photoUrl || '';
+            preview.onerror = function () { preview.src = ''; };
+            const psPhoto = document.getElementById('profileSettingsPhoto');
+            if (psPhoto) psPhoto.value = '';
+            const psFn = document.getElementById('profileSettingsPhotoFilename');
+            if (psFn) psFn.textContent = '';
+            document.getElementById('profileSettingsModal').classList.remove('hidden');
+        }
+
+        function hideProfileSettings() {
+            document.getElementById('profileSettingsModal').classList.add('hidden');
+        }
+
+        document.getElementById('profileSettingsForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const postcode = document.getElementById('profileSettingsPostcode').value.trim();
+            const photoInput = document.getElementById('profileSettingsPhoto');
+            const submitBtn = document.getElementById('profileSettingsSubmit');
+            const hasNewPhoto = photoInput.files && photoInput.files[0];
+            submitBtn.disabled = true;
+            try {
+                const updates = {};
+                updates.homePostcode = postcode || '';
+                if (hasNewPhoto) {
+                    const file = photoInput.files[0];
+                    const path = await getDriverPhotoStoragePath(file);
+                    const storageRef = window.ref(window.storage, path);
+                    await window.uploadBytes(storageRef, file);
+                    updates.photoURL = await window.getDownloadURL(storageRef);
+                }
+                await window.updateDoc(window.doc(window.db, 'users', currentUser.uid), updates);
+                try {
+                    const driverUpdates = {};
+                    if (updates.homePostcode !== undefined) driverUpdates.homePostcode = updates.homePostcode;
+                    if (updates.photoURL !== undefined) driverUpdates.photoURL = updates.photoURL;
+                    if (Object.keys(driverUpdates).length > 0) {
+                        const officeId = getCurrentOfficeId();
+                        const payload = { ...driverUpdates, updatedAt: window.serverTimestamp() };
+                        if (officeId) payload.officeId = officeId;
+                        await window.setDoc(window.doc(window.db, 'drivers', currentUser.uid), payload, { merge: true });
+                    }
+                } catch (e) { console.warn('Could not sync to drivers doc:', e); }
+                currentUser = { ...currentUser, ...updates };
+                const preview = document.getElementById('profileSettingsPhotoPreview');
+                if (updates.photoURL) preview.src = updates.photoURL;
+                notifySuccess('Profile updated.');
+                hideProfileSettings();
+            } catch (err) {
+                console.error('Profile settings save error:', err);
+                notifyError(err.message || 'Could not save.');
+            } finally {
+                submitBtn.disabled = false;
+            }
+        });
+
+        // Check for unread messages and disable/grey out features
+        async function checkAndDisableFeatures() {
+            try {
+                const officeId = getCurrentOfficeId();
+                if (!officeId || !currentUser?.uid) {
+                    console.warn('Missing office or user context for checkAndDisableFeatures.');
+                    return;
+                }
+
+                // Check office active features
+                let activeFeatures = {
+                    expenses: true,
+                    waitTimes: true,
+                    messages: true,
+                    availability: true
+                };
+
+                try {
+                    const officeDocRef = window.doc(window.db, 'offices', officeId);
+                    const officeDoc = await window.getDoc(officeDocRef);
+                    if (officeDoc.exists()) {
+                        const officeData = officeDoc.data();
+                        if (officeData.activeFeatures) {
+                            activeFeatures = officeData.activeFeatures;
+                        }
+                    }
+                } catch (officeError) {
+                    console.warn('Could not fetch office features:', officeError);
+                }
+
+                // Disable features based on office settings
+                const expensesCard = document.getElementById('expensesCard');
+                const waitTimesCard = document.getElementById('waitTimesCard');
+                const messagesCard = document.getElementById('messagesCard');
+                const availabilityCard = document.getElementById('availabilityCard');
+                const authorizationCard = document.getElementById('authorizationCard');
+                const trainingCard = document.getElementById('trainingCard');
+                const btnStartDayCard = document.getElementById('btnStartDayCard');
+                const btnEndDayCard = document.getElementById('btnEndDayCard');
+
+                // Progression gate: only Training clickable until equipment collected (induction → training → in-person → equipment)
+                const equipmentCollected = (currentUser.equipmentCollected === 1 || currentUser.equipmentCollected === '1');
+                if (!equipmentCollected) {
+                    const progressionMessage = 'Complete your progression (Training, in-person training day, and equipment) to unlock the portal. Only Training is available until then.';
+                    if (expensesCard) { expensesCard.classList.add('disabled'); expensesCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    if (waitTimesCard) { waitTimesCard.classList.add('disabled'); waitTimesCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    if (messagesCard) { messagesCard.classList.add('disabled'); messagesCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    if (availabilityCard) { availabilityCard.classList.add('disabled'); availabilityCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    if (authorizationCard) { authorizationCard.classList.add('disabled'); authorizationCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    if (btnStartDayCard) { btnStartDayCard.classList.add('disabled'); btnStartDayCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    if (btnEndDayCard) { btnEndDayCard.classList.add('disabled'); btnEndDayCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    // Training stays enabled; Account is not in this list
+                    return;
+                }
+
+                if (!activeFeatures.expenses && expensesCard) {
+                    expensesCard.classList.add('disabled');
+                    expensesCard.onclick = () => notifyInfo('Expenses feature is currently disabled for your office.', 'Feature Disabled');
+                }
+
+                if (!activeFeatures.waitTimes && waitTimesCard) {
+                    waitTimesCard.classList.add('disabled');
+                    waitTimesCard.onclick = () => notifyInfo('Wait Times feature is currently disabled for your office.', 'Feature Disabled');
+                }
+
+                if (!activeFeatures.messages && messagesCard) {
+                    messagesCard.classList.add('disabled');
+                    messagesCard.onclick = () => notifyInfo('Messages feature is currently disabled for your office.', 'Feature Disabled');
+                }
+
+                // Note: Availability always shows coming soon message, regardless of activeFeatures setting
+                // The coming soon modal will handle the message display
+
+                // Check for unread messages
+                const messagesQuery = window.query(
+                    window.collection(window.db, 'messages'),
+                    window.where('officeId', '==', officeId),
+                    window.where('published', '==', true)
+                );
+                const snapshot = await window.getDocs(messagesQuery);
+                const messages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                // Get read messages from localStorage
+                let readMessages = JSON.parse(localStorage.getItem('driver_read_messages') || '[]');
+                
+                // Also get read messages from Firebase (for persistence across devices/sessions)
+                try {
+                    const userDocRef = window.doc(window.db, 'users', currentUser.uid);
+                    const userDoc = await window.getDoc(userDocRef);
+                    if (userDoc.exists()) {
+                        const userData = userDoc.data();
+                        const firebaseReadMessages = userData.readMessages || [];
+                        // Merge Firebase read messages with localStorage (deduplicate)
+                        readMessages = [...new Set([...readMessages, ...firebaseReadMessages])];
+                        // Update localStorage with merged list
+                        localStorage.setItem('driver_read_messages', JSON.stringify(readMessages));
+                    }
+                } catch (firebaseError) {
+                    console.warn('Could not fetch read messages from Firebase, using localStorage only:', firebaseError);
+                }
+                
+                const unreadMessages = messages.filter(msg => !readMessages.includes(msg.id));
+                
+                // Grey out ALL features if there are unread messages (only if messages feature is enabled)
+                // EXCEPT: Messages button and Account button only
+                if (unreadMessages.length > 0 && activeFeatures.messages) {
+                    // Grey out Expenses
+                    if (expensesCard && activeFeatures.expenses) {
+                        expensesCard.classList.add('disabled');
+                    }
+                    // Grey out Wait Times
+                    if (waitTimesCard && activeFeatures.waitTimes) {
+                        waitTimesCard.classList.add('disabled');
+                    }
+                    // Grey out Availability
+                    if (availabilityCard) {
+                        availabilityCard.classList.add('disabled');
+                    }
+                    // Grey out Authorization
+                    if (authorizationCard) {
+                        authorizationCard.classList.add('disabled');
+                    }
+                    // Grey out Training
+                    if (trainingCard) {
+                        trainingCard.classList.add('disabled');
+                    }
+                    // Grey out Start Day and End Day
+                    if (btnStartDayCard) {
+                        btnStartDayCard.classList.add('disabled');
+                    }
+                    if (btnEndDayCard) {
+                        btnEndDayCard.classList.add('disabled');
+                    }
+                    // DO NOT grey out Messages (messagesCard) - user needs to access it to read messages
+                    // DO NOT grey out Account button - user needs to access account settings
+                }
+            } catch (error) {
+                console.error('Error checking messages:', error);
+            }
+        }
+
+        // Handle feature card clicks
+        async function handleFeatureClick(url, alertMessage = null) {
+            // If it's wait times, just show info toast
+            if (alertMessage) {
+                notifyInfo(alertMessage);
+                return;
+            }
+            // Training is always allowed (progression gate is handled in checkAndDisableFeatures)
+            if (url && url.indexOf('driver-training') !== -1) {
+                window.location.href = url;
+                return;
+            }
+            // Check for unread messages before other features (only after progression complete)
+            try {
+                const officeId = getCurrentOfficeId();
+                if (!officeId || !currentUser?.uid) {
+                    window.location.href = url;
+                    return;
+                }
+
+                const messagesQuery = window.query(
+                    window.collection(window.db, 'messages'),
+                    window.where('officeId', '==', officeId),
+                    window.where('published', '==', true)
+                );
+                const snapshot = await window.getDocs(messagesQuery);
+                const messages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                // Get read messages from localStorage
+                let readMessages = JSON.parse(localStorage.getItem('driver_read_messages') || '[]');
+                
+                // Also get read messages from Firebase (for persistence across devices/sessions)
+                try {
+                    const userDocRef = window.doc(window.db, 'users', currentUser.uid);
+                    const userDoc = await window.getDoc(userDocRef);
+                    if (userDoc.exists()) {
+                        const userData = userDoc.data();
+                        const firebaseReadMessages = userData.readMessages || [];
+                        // Merge Firebase read messages with localStorage (deduplicate)
+                        readMessages = [...new Set([...readMessages, ...firebaseReadMessages])];
+                        // Update localStorage with merged list
+                        localStorage.setItem('driver_read_messages', JSON.stringify(readMessages));
+                    }
+                } catch (firebaseError) {
+                    console.warn('Could not fetch read messages from Firebase, using localStorage only:', firebaseError);
+                }
+                
+                const unreadMessages = messages.filter(msg => !readMessages.includes(msg.id));
+                
+                if (unreadMessages.length > 0) {
+                    notifyInfo('There are outstanding messages that need to be read before proceeding. Please read all messages first.', 'Unread Messages');
+                    window.location.href = '/pages/driver-messages.html';
+                    return;
+                }
+                
+                // No unread messages, navigate normally
+                window.location.href = url;
+            } catch (error) {
+                console.error('Error checking messages:', error);
+                // If check fails, allow navigation
+                if (url) {
+                    window.location.href = url;
+                }
+            }
+        }
+
+        // Check for pending uploads and show/hide banner
+        async function checkPendingUploads() {
+            try {
+                if (window.expenseUploadQueue) {
+                    await window.expenseUploadQueue.updateGlobalUploadStatus();
+                }
+            } catch (error) {
+                console.warn('[Driver Portal] Error checking pending uploads:', error);
+            }
+        }
+        
+        // Clean up interval when page unloads
+        window.addEventListener('beforeunload', () => {
+            if (window.uploadStatusCheckInterval) {
+                clearInterval(window.uploadStatusCheckInterval);
+            }
+        });
+
+        // Check if app is running as PWA and prompt installation if not
+        function checkPWAInstallation() {
+            // Only show for mobile and tablets, not desktops
+            const userAgent = window.navigator.userAgent || window.navigator.vendor || window.opera;
+            const isMobileOrTablet = /iPhone|iPod|iPad|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+            
+            if (!isMobileOrTablet) {
+                // Desktop - don't show prompt
+                return;
+            }
+
+            // Detect if running as PWA
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+            const isIOSStandalone = window.navigator.standalone === true;
+            const isPWAMode = isStandalone || isIOSStandalone;
+
+            if (isPWAMode) {
+                // Already running as PWA, no need to prompt
+                return;
+            }
+
+            // Detect OS
+            let os = 'desktop';
+            let installInstructions = '';
+
+            if (/iPad|iPhone|iPod/.test(userAgent) && !window.MSStream) {
+                os = 'ios';
+                installInstructions = `
+                    <div class="space-y-4">
+                        <p class="text-gray-300">To install SOTO Routes on your iPhone:</p>
+                        <ol class="list-decimal list-inside space-y-2 text-gray-300 text-sm">
+                            <li>Tap the <strong class="text-white">Share button</strong> <span class="material-symbols-outlined inline text-base">ios_share</span> at the bottom of your screen</li>
+                            <li>Scroll down and tap <strong class="text-white">"Add to Home Screen"</strong></li>
+                            <li>Tap <strong class="text-white">"Add"</strong> in the top right</li>
+                        </ol>
+                        <p class="text-gray-400 text-xs mt-4">Once installed, open SOTO Routes from your home screen for the best experience.</p>
+                    </div>
+                `;
+            } else if (/android/i.test(userAgent)) {
+                os = 'android';
+                installInstructions = `
+                    <div class="space-y-4">
+                        <p class="text-gray-300">To install SOTO Routes on your Android device:</p>
+                        <ol class="list-decimal list-inside space-y-2 text-gray-300 text-sm">
+                            <li>Tap the <strong class="text-white">menu button</strong> <span class="material-symbols-outlined inline text-base">more_vert</span> in your browser</li>
+                            <li>Tap <strong class="text-white">"Install app"</strong> or <strong class="text-white">"Add to Home screen"</strong></li>
+                            <li>Tap <strong class="text-white">"Install"</strong> to confirm</li>
+                        </ol>
+                        <p class="text-gray-400 text-xs mt-4">Once installed, open SOTO Routes from your home screen for the best experience.</p>
+                    </div>
+                `;
+            } else {
+                os = 'desktop';
+                installInstructions = `
+                    <div class="space-y-4">
+                        <p class="text-gray-300">To install SOTO Routes on your device:</p>
+                        <ul class="list-disc list-inside space-y-2 text-gray-300 text-sm">
+                            <li><strong class="text-white">Chrome/Edge:</strong> Click the install icon in the address bar, or use the menu → "Install SOTO Routes"</li>
+                            <li><strong class="text-white">Safari:</strong> Use File → "Add to Dock" (Mac) or Share → "Add to Home Screen" (iOS)</li>
+                        </ul>
+                        <p class="text-gray-400 text-xs mt-4">Installing the app ensures you have all features and works offline.</p>
+                    </div>
+                `;
+            }
+
+            // Show installation prompt modal
+            showPWAInstallPrompt(installInstructions);
+        }
+
+        // Show PWA installation prompt
+        function showPWAInstallPrompt(instructions) {
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black bg-opacity-75 z-[9999] flex items-center justify-center p-4';
+            overlay.id = 'pwa-install-overlay';
+            
+            overlay.innerHTML = `
+                <div class="bg-[#1a1f24] rounded-2xl w-full max-w-md border border-[#283039] shadow-2xl">
+                    <div class="p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-12 h-12 bg-orange-500 rounded-full flex items-center justify-center">
+                                <span class="material-symbols-outlined text-white text-2xl">warning</span>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-bold text-white">Install SOTO Routes</h3>
+                                <p class="text-sm text-gray-400">For full features and offline access</p>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-6">
+                            <p class="text-orange-400 font-semibold mb-3">⚠️ You're not running SOTO Routes correctly. You may have limited features.</p>
+                            ${instructions}
+                        </div>
+                        
+                        <div class="flex justify-end">
+                            <button onclick="closePWAInstallPrompt()" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-semibold">
+                                I'll Install Later
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(overlay);
+            
+            // Close on overlay click (outside modal)
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    closePWAInstallPrompt();
+                }
+            });
+        }
+
+        // Close PWA install prompt
+        function closePWAInstallPrompt() {
+            const overlay = document.getElementById('pwa-install-overlay');
+            if (overlay) {
+                overlay.remove();
+            }
+            // If we deferred the profile-complete modal (postcode/display picture) until after this prompt, show it now
+            const pending = window._pendingProfileCompleteModal;
+            if (pending) {
+                window._pendingProfileCompleteModal = null;
+                showProfileCompleteModal(pending.needPostcode, pending.needPhoto, pending.needDriverType, pending.needPasswordChange, pending.existingPhotoUrl, pending.postcodeVal);
+            }
+            // Always show again next time - prompt will appear every time driver portal opens
+        }
+
+        // Expose function to window for inline onclick handlers
+        window.closePWAInstallPrompt = closePWAInstallPrompt;
+
+        // Show Availability Coming Soon modal
+        function showAvailabilityComingSoon() {
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black bg-opacity-75 z-[9999] flex items-center justify-center p-4';
+            overlay.id = 'availability-coming-soon-overlay';
+            
+            overlay.innerHTML = `
+                <div class="bg-[#1a1f24] rounded-2xl w-full max-w-md border-2 border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.5)]">
+                    <div class="p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-12 h-12 bg-red-500 rounded-full flex items-center justify-center">
+                                <span class="material-symbols-outlined text-white text-2xl">info</span>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-bold text-white">Feature Coming Soon</h3>
+                                <p class="text-sm text-gray-400">Availability Management</p>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-6">
+                            <p class="text-gray-300 text-base leading-relaxed">
+                                This feature is still in development and will be rolled out soon.
+                            </p>
+                        </div>
+                        
+                        <div class="flex justify-end">
+                            <button onclick="closeAvailabilityComingSoon()" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors font-semibold">
+                                Got It
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(overlay);
+            
+            // Close on overlay click (outside modal)
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    closeAvailabilityComingSoon();
+                }
+            });
+        }
+
+        // Close Availability Coming Soon modal
+        function closeAvailabilityComingSoon() {
+            const overlay = document.getElementById('availability-coming-soon-overlay');
+            if (overlay) {
+                overlay.remove();
+            }
+        }
+
+        // Expose function to window for inline onclick handlers
+        window.closeAvailabilityComingSoon = closeAvailabilityComingSoon;
+
+        // Toggle between portal and account view
+        function toggleAccountView() {
+            const mainContainer = document.querySelector('.min-h-screen');
+            const portalButtons = document.querySelector('.portal-buttons');
+            const accountButtons = document.querySelector('.account-buttons');
+            const accountButton = document.querySelector('.account-button');
+            const homeButton = document.querySelector('.home-button');
+
+            if (mainContainer.classList.contains('account-view')) {
+                // Switch to portal view
+                mainContainer.classList.remove('account-view');
+                mainContainer.classList.add('portal-view');
+                if (portalButtons) portalButtons.style.display = 'grid';
+                if (accountButtons) accountButtons.style.display = 'none';
+                if (accountButton) accountButton.style.display = 'block';
+                if (homeButton) homeButton.style.display = 'none';
+            } else {
+                // Switch to account view
+                mainContainer.classList.remove('portal-view');
+                mainContainer.classList.add('account-view');
+                if (portalButtons) portalButtons.style.display = 'none';
+                if (accountButtons) accountButtons.style.display = 'block';
+                if (accountButton) accountButton.style.display = 'none';
+                if (homeButton) homeButton.style.display = 'block';
+            }
+        }
+
+        // Expose toggle function
+        window.toggleAccountView = toggleAccountView;
+
+        // Handle scroll indicator visibility
+        function handleScrollIndicator() {
+            const scrollIndicator = document.querySelector('.scroll-indicator');
+            const accountButton = document.querySelector('.account-button');
+            if (!scrollIndicator) return;
+
+            function updateIndicator() {
+                if (accountButton) {
+                    const rect = accountButton.getBoundingClientRect();
+                    const isAccountVisible = rect.top < window.innerHeight && rect.bottom > 0;
+                    
+                    if (isAccountVisible) {
+                        scrollIndicator.classList.add('hidden');
+                    } else {
+                        scrollIndicator.classList.remove('hidden');
+                    }
+                } else {
+                    // Fallback to scroll distance if button not found
+                    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                    if (scrollTop > 200) {
+                        scrollIndicator.classList.add('hidden');
+                    } else {
+                        scrollIndicator.classList.remove('hidden');
+                    }
+                }
+            }
+
+            window.addEventListener('scroll', updateIndicator);
+            window.addEventListener('resize', updateIndicator);
+            updateIndicator(); // Check initial state
+        }
+
+        // Initialize scroll indicator
+        handleScrollIndicator();
+
+        // Change Password functions
+        function showChangePassword() {
+            const modal = document.getElementById('changePasswordModal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                const currentPasswordInput = document.getElementById('currentPassword');
+                if (currentPasswordInput) {
+                    setTimeout(() => currentPasswordInput.focus(), 100);
+                }
+            }
+        }
+
+        function hideChangePassword() {
+            const modal = document.getElementById('changePasswordModal');
+            const form = document.getElementById('changePasswordForm');
+            if (modal) modal.classList.add('hidden');
+            if (form) form.reset();
+        }
+
+        async function handleChangePassword(event) {
+            event.preventDefault();
+            
+            const currentPassword = document.getElementById('currentPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            
+            if (newPassword !== confirmPassword) {
+                notifyWarning('New passwords do not match.', 'Password Mismatch');
+                return;
+            }
+            
+            if (newPassword.length < 6) {
+                notifyWarning('New password must be at least 6 characters long.', 'Weak Password');
+                return;
+            }
+            
+            const btn = document.getElementById('changePasswordBtn');
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Changing...';
+            
+            try {
+                const user = window.auth.currentUser;
+                if (!user || !user.email) {
+                    notifyError('No user is currently signed in.', 'Authentication Required');
+                    return;
+                }
+                
+                // Re-authenticate user with current password
+                const credential = window.EmailAuthProvider.credential(user.email, currentPassword);
+                await window.reauthenticateWithCredential(user, credential);
+                
+                // Update password
+                await window.updatePassword(user, newPassword);
+                
+                notifySuccess('Password changed successfully!', 'Password Updated');
+                hideChangePassword();
+                
+            } catch (error) {
+                console.error('Error changing password:', error);
+                
+                if (error.code === 'auth/wrong-password') {
+                    notifyError('Current password is incorrect.', 'Incorrect Password');
+                } else if (error.code === 'auth/weak-password') {
+                    notifyWarning('New password is too weak. Please choose a stronger password.', 'Weak Password');
+                } else if (error.code === 'auth/requires-recent-login') {
+                    notifyWarning('Please log out and log back in, then try changing your password again.', 'Re-authentication Required');
+                } else {
+                    notifyError('Failed to change password. Please try again.', 'Error');
+                }
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+
+        // Expose functions to window
+        window.showChangePassword = showChangePassword;
+        window.hideChangePassword = hideChangePassword;
+        window.handleChangePassword = handleChangePassword;
+
+        // Logout function
+        async function logout() {
+            const confirmed = await showConfirmation({
+                title: 'Logout',
+                message: 'Are you sure you want to logout?',
+                confirmText: 'Logout',
+                cancelText: 'Cancel',
+                tone: 'warning'
+            });
+            if (!confirmed) {
+                return;
+            }
+
+            try {
+                await window.signOut(window.auth);
+            } catch (error) {
+                console.warn('Firebase sign out failed:', error);
+            } finally {
+                window.sotoSession?.clearSession();
+                window.location.href = '/pages/soto-routes-login.html';
+            }
+        }
+    </script>
+</body>
+</html>

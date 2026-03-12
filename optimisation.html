@@ -505,18 +505,21 @@
         
         <main class="flex-1 px-6 py-4">
             <div class="max-w-6xl mx-auto">
-                <div class="flex justify-between items-center mb-4">
-                    <h1 class="text-2xl font-bold tracking-tight">Optimisation</h1>
-                    <div class="flex items-center gap-3">
-                        <button onclick="portJobs()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold flex items-center gap-2">
-                            <span class="material-symbols-outlined text-sm">upload</span>
+                <div class="grid grid-cols-3 items-center mb-4 gap-4">
+                    <div class="flex items-center gap-3 justify-start">
+                        <button onclick="portJobs()" class="bg-cyan-600 hover:bg-cyan-500 border border-cyan-500/50 text-white px-4 py-2.5 rounded-lg transition-colors text-sm font-semibold flex items-center gap-2 shadow-sm">
+                            <span class="material-symbols-outlined text-base">upload</span>
                             Port Jobs
                         </button>
-                        <button onclick="showOptimiseSettings()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold">
-                            <span class="truncate">Optimise</span>
+                        <button onclick="showOptimiseSettings()" class="bg-purple-600 hover:bg-purple-500 border border-purple-500/50 text-white px-4 py-2.5 rounded-lg transition-colors text-sm font-semibold flex items-center gap-2 shadow-sm">
+                            <span class="material-symbols-outlined text-base">tune</span>
+                            Optimise
                         </button>
-                        <button onclick="deleteAllRoutes()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold flex items-center gap-2">
-                            <span class="material-symbols-outlined text-sm">delete</span>
+                    </div>
+                    <h1 class="text-2xl font-bold tracking-tight text-white text-center">Optimisation</h1>
+                    <div class="flex items-center justify-end">
+                        <button onclick="deleteAllRoutes()" class="bg-red-600/90 hover:bg-red-500 border border-red-500/50 text-white px-4 py-2.5 rounded-lg transition-colors text-sm font-semibold flex items-center gap-2 shadow-sm">
+                            <span class="material-symbols-outlined text-base">delete</span>
                             Delete All Routes
                         </button>
                     </div>
@@ -1392,14 +1395,15 @@
         }
 
         // ASANA READ-ONLY: This function ONLY reads task data. NO writes/updates/deletes to Asana anywhere.
+        // Pagination is token-based (no parallel fetching possible). completed_since=now reduces results to incomplete tasks only.
         async function fetchAsanaTasks(accessToken, date, projectId) {
             try {
                 optDebug('fetchAsanaTasks START - fetching TITLES only (name,due_on)', { date, projectId });
                 const startTime = Date.now();
                 
-                // Fetch all tasks from project (only name and due_on - minimal data, no notes)
+                // completed_since=now = only incomplete tasks (skips archived/completed - often cuts 5000+ down to hundreds)
                 let allTasks = [];
-                let nextPageUrl = `https://app.asana.com/api/1.0/projects/${projectId}/tasks?opt_fields=name,due_on&limit=100`;
+                let nextPageUrl = `https://app.asana.com/api/1.0/projects/${projectId}/tasks?opt_fields=name,due_on&limit=100&completed_since=now`;
                 let pageCount = 0;
                 const maxPages = 50; // Safety limit
 
@@ -1928,6 +1932,36 @@
             }
             function esc(v) { return (v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
+            function highlightParsedInRaw(rawText, parsedData) {
+                let t = (rawText || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+                const escR = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const highlights = [];
+                const addFirst = (str) => {
+                    if (!str || str === 'Not found' || !String(str).trim()) return;
+                    const pat = escR(String(str).trim()).replace(/\\s+/g, '\\s*');
+                    try {
+                        const m = new RegExp(pat, 'i').exec(t);
+                        if (m) highlights.push({ start: m.index, end: m.index + m[0].length, text: m[0] });
+                    } catch (e) {}
+                };
+                addFirst(parsedData.reg_number);
+                addFirst(parsedData.collection_address);
+                addFirst(parsedData.postcode_delivery);
+                if (parsedData.price && Number(parsedData.price) > 0) {
+                    const val = Number(parsedData.price);
+                    for (const fmt of [`£${val.toFixed(2)}`, `£${val}`, val.toFixed(2), String(Math.round(val))]) {
+                        try {
+                            const m = new RegExp(escR(fmt), 'i').exec(t);
+                            if (m) { highlights.push({ start: m.index, end: m.index + m[0].length, text: m[0] }); break; }
+                        } catch (e) {}
+                    }
+                }
+                highlights.sort((a, b) => b.start - a.start);
+                const span = (txt) => `<span class="px-0.5 rounded bg-green-500/40 border border-green-500/60 text-green-100 font-semibold">${txt}</span>`;
+                highlights.forEach(h => { t = t.substring(0, h.start) + span(h.text) + t.substring(h.end); });
+                return t;
+            }
+
             routeReviewData.forEach((rd, ri) => {
                 const card = document.createElement('div');
                 card.className = 'bg-[#1a1f24] border border-[#283039] rounded-lg p-6 mb-4';
@@ -1939,8 +1973,8 @@
                         <h4 class="text-sm font-semibold text-white mb-3">${getOrdinal(ji + 1)} Job</h4>
                         <div class="grid grid-cols-2 gap-6">
                             <div>
-                                <label class="text-xs text-gray-400 mb-2 block">Complete Task Info</label>
-                                <div class="bg-[#1a1f24] border border-gray-600 rounded p-4 text-sm text-gray-300 whitespace-pre-wrap max-h-64 overflow-y-auto">${esc(job.rawText)}</div>
+                                <label class="text-xs text-gray-400 mb-2 block">Complete Task Info (parsed values highlighted in green)</label>
+                                <div class="bg-[#1a1f24] border border-gray-600 rounded p-4 text-sm text-gray-300 whitespace-pre-wrap max-h-64 overflow-y-auto">${highlightParsedInRaw(job.rawText, job.parsedData)}</div>
                             </div>
                             <div>
                                 <label class="text-xs text-gray-400 mb-2 block">Parsed Details</label>
@@ -3027,7 +3061,6 @@
                 <!-- Driver Info Line -->
                 <div class="flex items-center gap-3 mb-3 text-sm">
                     <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <span class="text-gray-400 font-medium text-xs">REG:</span>
                         <span class="text-white font-bold text-xs" id="firebase-route-${routeNumber}-reg">-</span>
                     </div>
                     <div class="h-4 w-px bg-gray-600"></div>
@@ -5286,14 +5319,14 @@
                     assignment.routeData.route.carryoverPostcode = assignment.carryoverPostcode;
                 }
                 
-                // Get REG number from first job
-                const firstJob = assignment.routeData.jobs[0];
-                const regNumber = firstJob?.parsedData?.reg_number || '-';
-                
-                // Update REG display
+                // Update REG display (all jobs: Job 1: X, Job 2: Y)
                 const regElement = document.getElementById(`firebase-route-${routeNumber}-reg`);
-                if (regElement) {
-                    regElement.textContent = regNumber;
+                if (regElement && assignment.routeData.jobs.length > 0) {
+                    const regParts = assignment.routeData.jobs.map((job, i) => {
+                        const reg = job?.parsedData?.reg_number || '-';
+                        return `Job ${i + 1}: ${reg}`;
+                    });
+                    regElement.textContent = regParts.join('  |  ');
                 }
                 
                 // Update driver name
@@ -6432,11 +6465,13 @@
                         locationElement.textContent = routeData.route.assignedDriverPostcode || '-';
                     }
                     
-                    // Get REG number from first job
+                    // REG for all jobs: Job 1: X, Job 2: Y
                     if (regElement && routeData.jobs.length > 0) {
-                        const firstJob = routeData.jobs[0];
-                        const regNumber = firstJob?.parsedData?.reg_number || '-';
-                        regElement.textContent = regNumber;
+                        const regParts = routeData.jobs.map((job, i) => {
+                            const reg = job?.parsedData?.reg_number || '-';
+                            return `Job ${i + 1}: ${reg}`;
+                        });
+                        regElement.textContent = regParts.join('  |  ');
                     }
                     
                     // Restore carryover information if it exists
