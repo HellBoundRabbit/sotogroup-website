@@ -143,6 +143,21 @@
                 transform: rotate(360deg);
             }
         }
+        /* Optimisation header buttons - purple/cyan gradient + glow (matches View button style) */
+        .btn-optimisation-gradient {
+            background: linear-gradient(90deg, rgb(186, 66, 255), rgb(0, 225, 255));
+            box-shadow: 0 0 0 2px rgba(0, 225, 255, 0.4), 0 0 0 3px rgba(186, 66, 255, 0.3), 0 0 20px rgba(186, 66, 255, 0.3), 0 0 30px rgba(0, 225, 255, 0.2);
+        }
+        .btn-optimisation-gradient:hover {
+            box-shadow: 0 0 0 2px rgba(0, 225, 255, 0.6), 0 0 0 4px rgba(186, 66, 255, 0.4), 0 0 25px rgba(186, 66, 255, 0.4), 0 0 40px rgba(0, 225, 255, 0.3);
+        }
+        .btn-optimisation-gradient-red {
+            background: linear-gradient(90deg, rgb(185, 28, 28), rgb(239, 68, 68));
+            box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.4), 0 0 20px rgba(239, 68, 68, 0.3);
+        }
+        .btn-optimisation-gradient-red:hover {
+            box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.6), 0 0 25px rgba(239, 68, 68, 0.4);
+        }
     </style>
 </head>
 <body class="bg-[#111418] text-white" style='font-family: Inter, "Noto Sans", sans-serif;'>
@@ -507,18 +522,18 @@
             <div class="max-w-6xl mx-auto">
                 <div class="grid grid-cols-3 items-center mb-4 gap-4">
                     <div class="flex items-center gap-3 justify-start">
-                        <button onclick="portJobs()" class="bg-cyan-600 hover:bg-cyan-500 border border-cyan-500/50 text-white px-4 py-2.5 rounded-lg transition-colors text-sm font-semibold flex items-center gap-2 shadow-sm">
+                        <button onclick="portJobs()" class="btn-optimisation-gradient text-white px-4 py-2.5 rounded-full transition-all text-sm font-semibold flex items-center gap-2 border-0">
                             <span class="material-symbols-outlined text-base">upload</span>
                             Port Jobs
                         </button>
-                        <button onclick="showOptimiseSettings()" class="bg-purple-600 hover:bg-purple-500 border border-purple-500/50 text-white px-4 py-2.5 rounded-lg transition-colors text-sm font-semibold flex items-center gap-2 shadow-sm">
+                        <button onclick="showOptimiseSettings()" class="btn-optimisation-gradient text-white px-4 py-2.5 rounded-full transition-all text-sm font-semibold flex items-center gap-2 border-0">
                             <span class="material-symbols-outlined text-base">tune</span>
                             Optimise
                         </button>
                     </div>
                     <h1 class="text-2xl font-bold tracking-tight text-white text-center">Optimisation</h1>
                     <div class="flex items-center justify-end">
-                        <button onclick="deleteAllRoutes()" class="bg-red-600/90 hover:bg-red-500 border border-red-500/50 text-white px-4 py-2.5 rounded-lg transition-colors text-sm font-semibold flex items-center gap-2 shadow-sm">
+                        <button onclick="deleteAllRoutes()" class="btn-optimisation-gradient-red text-white px-4 py-2.5 rounded-full transition-all text-sm font-semibold flex items-center gap-2 border-0">
                             <span class="material-symbols-outlined text-base">delete</span>
                             Delete All Routes
                         </button>
