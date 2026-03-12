@@ -564,18 +564,6 @@
         .training-modal-body ul:not(.training-category-subs) { margin: 0.5rem auto 1rem; padding-left: 1.25rem; max-width: 360px; }
         .training-modal-body li { margin-bottom: 0.35rem; text-align: left; }
         .training-modal-body .highlight { background: rgba(0, 225, 255, 0.12); border-left: 3px solid rgb(0, 225, 255); padding: 0.5rem 0.75rem; margin: 0.75rem 0; border-radius: 0 6px 6px 0; }
-        .training-modal-body .quiz-option { display: block; width: 100%; text-align: left; padding: 12px 16px; margin-bottom: 8px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); color: #e5e7eb; cursor: pointer; transition: background 0.2s; }
-        .training-modal-body .quiz-option:hover { background: rgba(255,255,255,0.1); }
-        /* Disable hover on touch devices to prevent sticky highlight on previous answer */
-        @media (hover: none) or (pointer: coarse) {
-            .training-modal-body .quiz-option:hover { background: rgba(255,255,255,0.06) !important; }
-        }
-        .training-modal-body .quiz-option.correct { border-color: rgb(0, 225, 255); background: rgba(0, 225, 255, 0.15); }
-        .training-modal-body .quiz-option.incorrect { border-color: rgb(239, 68, 68); background: rgba(239, 68, 68, 0.15); }
-        .training-modal-body .quiz-result { font-weight: 600; margin-top: 1rem; padding: 1rem; border-radius: 10px; text-align: center; }
-        .training-modal-body .quiz-result.pass { background: rgba(0, 225, 255, 0.15); color: rgb(0, 225, 255); }
-        .training-modal-body .quiz-result.fail { background: rgba(239, 68, 68, 0.15); color: #f87171; }
-
         /* Training complete confirmation (cyan–purple theme) */
         .training-complete-overlay {
             position: fixed;
@@ -862,7 +850,7 @@
                     <div class="stepper-circle">2</div>
                     <div class="stepper-line" id="stepper-line-1"></div>
                     <div class="stepper-content">
-                        <div class="stepper-title">Complete the lessons and quizzes</div>
+                        <div class="stepper-title">Complete the lessons</div>
                         <div class="stepper-status">In progress</div>
                         <div class="stepper-time">Use the materials on the Training tab.</div>
                     </div>
@@ -975,7 +963,6 @@
             { key: 'all-jobs', title: 'All Jobs', sectionId: 'standards', subs: [{ title: 'Collection' }, { title: 'On the drive' }, { title: 'Delivery' }] },
             { key: 'johnsons', title: 'Johnsons Fleet Services', sectionId: 'standards', subs: [{ title: 'Collection' }] },
             { key: 'motorway', title: 'Motorway', sectionId: 'standards', subs: [{ title: 'Standards' }] },
-            { key: 'quiz-standards', title: 'Standards quiz', sectionId: 'standards', subs: [{ title: 'Quiz' }] },
             { key: 'apps-model', title: 'MoDel', sectionId: 'apps', subs: [{ title: 'Tutorial' }] },
             { key: 'apps-google-maps', title: 'Google Maps', sectionId: 'apps', subs: [{ title: 'Tutorial' }] },
             { key: 'apps-whatsapp', title: 'WhatsApp', sectionId: 'apps', subs: [{ title: 'General group' }] },
@@ -1028,9 +1015,7 @@
                 }]
             },
             'apps-whatsapp': { title: 'WhatsApp', sections: [ { title: 'General group', body: '<p><em>WhatsApp / General Group Chat section content will appear here. This links from the Johnsons Collection standards.</em></p>' } ] },
-            'payment-placeholder': { title: 'Payment and invoicing', sections: [ { title: 'Content', body: '<p><em>Content to be added.</em></p>' } ] },
-            'quiz-standards': { title: 'Standards quiz', isQuiz: true },
-            'quiz-apps': { title: 'Apps quiz', isQuiz: true }
+            'payment-placeholder': { title: 'Payment and invoicing', sections: [ { title: 'Content', body: '<p><em>Content to be added.</em></p>' } ] }
         };
 
         var QUIZ_STANDARDS = [
@@ -1325,12 +1310,6 @@
             return div.innerHTML;
         }
 
-        var currentQuizKey = null;
-        var currentQuizQuestions = [];
-        var currentQuizIndex = 0;
-        var currentQuizScore = 0;
-        var currentQuizAnswered = false;
-
         function openTrainingModal(key) {
             var data = TRAINING_MODALS[key];
             if (!data) return;
@@ -1338,19 +1317,6 @@
             var titleEl = document.getElementById('trainingModalTitle');
             var bodyEl = document.getElementById('trainingModalBody');
             titleEl.textContent = data.title;
-
-            if (data.isQuiz && (key === 'quiz-standards' || key === 'quiz-apps')) {
-                currentQuizKey = key;
-                currentQuizQuestions = key === 'quiz-standards' ? QUIZ_STANDARDS : QUIZ_APPS;
-                currentQuizIndex = 0;
-                currentQuizScore = 0;
-                currentQuizAnswered = false;
-                renderQuizQuestion();
-                overlay.classList.add('is-open');
-                overlay.setAttribute('aria-hidden', 'false');
-                document.body.style.overflow = 'hidden';
-                return;
-            }
 
             var cat = TRAINING_CATEGORIES.find(function (c) { return c.key === key; });
             var section = cat ? TRAINING_SECTIONS.find(function (s) { return s.id === cat.sectionId; }) : null;
@@ -1571,7 +1537,6 @@
 
         window.openTrainingModal = openTrainingModal;
         window.closeTrainingModal = closeTrainingModal;
-        window.submitQuizAnswer = submitQuizAnswer;
         window.closeTrainingCompleteDialog = closeTrainingCompleteDialog;
         window.confirmTrainingComplete = confirmTrainingComplete;
 

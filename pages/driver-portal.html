@@ -532,6 +532,24 @@
                         <input type="password" id="profileCompletePassword" class="w-full px-3 py-2 bg-[#283039] border border-[#3a444e] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#3a444e] focus:border-[#3a444e] mb-2" placeholder="New password" minlength="6">
                         <input type="password" id="profileCompletePasswordConfirm" class="w-full px-3 py-2 bg-[#283039] border border-[#3a444e] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#3a444e] focus:border-[#3a444e]" placeholder="Confirm new password" minlength="6">
                     </div>
+                    <!-- GDPR / Terms & Conditions -->
+                    <div id="profileCompleteGdprWrap" class="pt-2 border-t border-[#3a444e]">
+                        <p class="text-sm font-medium text-gray-300 mb-2">I agree to the Terms & Conditions and Privacy Policy</p>
+                        <div class="flex flex-wrap gap-4 mb-2">
+                            <label class="inline-flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="profileCompleteGdpr" id="profileCompleteGdprYes" value="yes" class="rounded border-gray-500 bg-[#283039] text-[#0d7ff2] focus:ring-[#0d7ff2]">
+                                <span class="text-sm text-white">Yes</span>
+                            </label>
+                            <label class="inline-flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="profileCompleteGdpr" id="profileCompleteGdprNo" value="no" class="rounded border-gray-500 bg-[#283039] text-[#0d7ff2] focus:ring-[#0d7ff2]">
+                                <span class="text-sm text-white">No</span>
+                            </label>
+                        </div>
+                        <a href="/pages/gdpr-terms.html" target="_blank" rel="noopener" class="text-sm text-[#0d7ff2] hover:underline inline-flex items-center gap-1">
+                            <span class="material-symbols-outlined text-base">description</span>
+                            View T&amp;C's
+                        </a>
+                    </div>
                     <button type="submit" id="profileCompleteSubmit" class="w-full py-3 bg-[#283039] hover:bg-[#3a444e] text-white font-semibold rounded-lg transition-colors border border-[#3a444e]">
                         Save and continue
                     </button>
@@ -915,7 +933,7 @@
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { getFirestore, collection, getDocs, query, where, doc, getDoc, updateDoc, setDoc, addDoc, serverTimestamp, deleteField } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
-        import { getAuth, signOut, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getAuth, signOut, updatePassword, reauthenticateWithCredential, EmailAuthProvider, deleteUser } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
         
@@ -953,6 +971,7 @@
         window.deleteField = deleteField;
         window.serverTimestamp = serverTimestamp;
         window.signOut = signOut;
+        window.deleteUser = deleteUser;
         window.updatePassword = updatePassword;
         window.reauthenticateWithCredential = reauthenticateWithCredential;
         window.EmailAuthProvider = EmailAuthProvider;
@@ -1193,17 +1212,18 @@
                     const needPhoto = !existingPhotoUrl;
                     const needDriverType = typeof window.AvailabilityModel !== 'undefined' && !window.AvailabilityModel.hasDriverTypeSet(currentUser);
                     const needPasswordChange = !(currentUser.hasChangedPassword === 1 || currentUser.hasChangedPassword === '1' || currentUser.hasChangedPassword === true);
+                    const needGdpr = !(currentUser.gdprConfirmed === true || currentUser.gdprConfirmed === 'true' || currentUser.gdprConfirmed === 1);
 
-                    if (needPostcode || needPhoto || needDriverType || needPasswordChange) {
+                    if (needPostcode || needPhoto || needDriverType || needPasswordChange || needGdpr) {
                         // If PWA install prompt is visible (user opened portal NOT in PWA), show profile modal only after they dismiss it
                         const pwaOverlay = document.getElementById('pwa-install-overlay');
                         if (pwaOverlay) {
-                            window._pendingProfileCompleteModal = { needPostcode, needPhoto, needDriverType, needPasswordChange, existingPhotoUrl, postcodeVal: postcodeVal.trim() };
+                            window._pendingProfileCompleteModal = { needPostcode, needPhoto, needDriverType, needPasswordChange, needGdpr, existingPhotoUrl, postcodeVal: postcodeVal.trim() };
                             document.getElementById('loadingOverlay').style.display = 'none';
                             return;
                         }
                         document.getElementById('loadingOverlay').style.display = 'none';
-                        showProfileCompleteModal(needPostcode, needPhoto, needDriverType, needPasswordChange, existingPhotoUrl, postcodeVal.trim());
+                        showProfileCompleteModal(needPostcode, needPhoto, needDriverType, needPasswordChange, needGdpr, existingPhotoUrl, postcodeVal.trim());
                         return;
                     }
 
@@ -1238,6 +1258,7 @@
                 modal.dataset.needPhoto = needPhoto ? 'true' : 'false';
                 modal.dataset.needDriverType = needDriverType ? 'true' : 'false';
                 modal.dataset.needPasswordChange = needPasswordChange ? 'true' : 'false';
+                modal.dataset.needGdpr = needGdpr ? 'true' : 'false';
             }
 
             // Driver type radios and days (Mon–Fri): part = working days only, standby = standby days only
@@ -1298,12 +1319,20 @@
             if (passwordConfirmInput) passwordConfirmInput.value = '';
             if (passwordCurrentInput) passwordCurrentInput.value = '';
 
+            const gdprWrap = document.getElementById('profileCompleteGdprWrap');
+            if (gdprWrap) gdprWrap.classList.toggle('hidden', !needGdpr);
+            const gdprYes = document.getElementById('profileCompleteGdprYes');
+            const gdprNo = document.getElementById('profileCompleteGdprNo');
+            if (gdprYes) gdprYes.checked = !!(currentUser && (currentUser.gdprConfirmed === true || currentUser.gdprConfirmed === 'true' || currentUser.gdprConfirmed === 1));
+            if (gdprNo) gdprNo.checked = !(gdprYes && gdprYes.checked);
+
             if (introEl) {
                 const items = [];
                 if (needDriverType) items.push('driver type and working days');
                 if (needPostcode) items.push('postcode');
                 if (needPhoto) items.push('display picture');
                 if (needPasswordChange) items.push('password');
+                if (needGdpr) items.push('terms & conditions');
                 
                 if (items.length > 0) {
                     introEl.textContent = 'Please add the following before using the portal: ' + items.join(', ') + '.';
@@ -1810,6 +1839,7 @@
             const needPhoto = modal && modal.dataset.needPhoto === 'true';
             const needDriverType = modal && modal.dataset.needDriverType === 'true';
             const needPasswordChange = modal && modal.dataset.needPasswordChange === 'true';
+            const needGdpr = modal && modal.dataset.needGdpr === 'true';
             const postcodeInput = document.getElementById('profileCompletePostcode');
             const photoInput = document.getElementById('profileCompletePhoto');
             const postcodeInputWrap = document.getElementById('profileCompletePostcodeInputWrap');
@@ -1853,6 +1883,34 @@
                     return;
                 }
             }
+            const gdprRadio = document.querySelector('input[name="profileCompleteGdpr"]:checked');
+            const gdprValue = gdprRadio ? gdprRadio.value : '';
+            if (needGdpr && gdprValue === 'no') {
+                const confirmed = await window.showConfirmation({
+                    title: 'Terms & Conditions',
+                    message: 'You have not agreed to our Terms & Conditions. Would you like to delete your profile?',
+                    confirmText: 'Yes, delete my profile',
+                    cancelText: 'No, I\'ll agree to T&C'
+                });
+                if (confirmed) {
+                    try {
+                        const user = window.auth.currentUser;
+                        if (user) {
+                            await window.deleteUser(user);
+                            notifySuccess('Your profile has been deleted. You will be redirected to login.', 'Profile Deleted');
+                            setTimeout(() => { window.location.href = '/pages/soto-routes-login.html'; }, 2000);
+                        }
+                    } catch (err) {
+                        console.error('Error deleting user:', err);
+                        notifyError(err.message || 'Could not delete profile. Please contact support.');
+                    }
+                }
+                return;
+            }
+            if (needGdpr && gdprValue !== 'yes') {
+                notifyWarning('Please agree to the Terms & Conditions to continue.', 'Required');
+                return;
+            }
 
             submitBtn.disabled = true;
             const savingOverlay = document.getElementById('profileCompleteSavingOverlay');
@@ -1882,8 +1940,12 @@
                     updates.photoURL = photoURL;
                 }
 
+                if (gdprValue === 'yes') {
+                    updates.gdprConfirmed = true;
+                    updates.gdprConfirmedAt = window.serverTimestamp();
+                }
                 if (Object.keys(updates).length > 0) {
-                    const allowedUserKeys = ['homePostcode', 'photoURL', 'photoUrl', 'readMessages', 'trainingComplete', 'updatedAt', 'availabilityType', 'availabilityWorkingDays', 'availabilityStandbyDays', 'hasChangedPassword'];
+                    const allowedUserKeys = ['homePostcode', 'photoURL', 'photoUrl', 'readMessages', 'trainingComplete', 'updatedAt', 'availabilityType', 'availabilityWorkingDays', 'availabilityStandbyDays', 'hasChangedPassword', 'gdprConfirmed', 'gdprConfirmedAt'];
                     const userPayload = {};
                     allowedUserKeys.forEach(function (k) {
                         if (k === 'updatedAt') userPayload.updatedAt = window.serverTimestamp();
@@ -2523,7 +2585,7 @@
             const pending = window._pendingProfileCompleteModal;
             if (pending) {
                 window._pendingProfileCompleteModal = null;
-                showProfileCompleteModal(pending.needPostcode, pending.needPhoto, pending.needDriverType, pending.needPasswordChange, pending.existingPhotoUrl, pending.postcodeVal);
+                showProfileCompleteModal(pending.needPostcode, pending.needPhoto, pending.needDriverType, pending.needPasswordChange, pending.needGdpr, pending.existingPhotoUrl, pending.postcodeVal);
             }
             // Always show again next time - prompt will appear every time driver portal opens
         }
