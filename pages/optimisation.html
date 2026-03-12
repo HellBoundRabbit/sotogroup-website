@@ -143,16 +143,25 @@
                 transform: rotate(360deg);
             }
         }
-        /* Optimisation header buttons - purple/cyan gradient + glow (matches View button style) */
-        .btn-optimisation-gradient {
-            background: linear-gradient(90deg, rgb(186, 66, 255), rgb(0, 225, 255));
-            box-shadow: 0 0 0 2px rgba(0, 225, 255, 0.4), 0 0 0 3px rgba(186, 66, 255, 0.3), 0 0 20px rgba(186, 66, 255, 0.3), 0 0 30px rgba(0, 225, 255, 0.2);
+        /* Optimisation header buttons - gradient + glow (matches View button style) */
+        .btn-optimisation-cyan {
+            background: rgb(0, 225, 255);
+            box-shadow: 0 0 0 2px rgba(0, 225, 255, 0.4), 0 0 20px rgba(0, 225, 255, 0.3);
         }
-        .btn-optimisation-gradient:hover {
-            box-shadow: 0 0 0 2px rgba(0, 225, 255, 0.6), 0 0 0 4px rgba(186, 66, 255, 0.4), 0 0 25px rgba(186, 66, 255, 0.4), 0 0 40px rgba(0, 225, 255, 0.3);
+        .btn-optimisation-cyan:hover {
+            background: rgb(34, 211, 238);
+            box-shadow: 0 0 0 2px rgba(0, 225, 255, 0.6), 0 0 25px rgba(0, 225, 255, 0.4);
+        }
+        .btn-optimisation-purple {
+            background: rgb(186, 66, 255);
+            box-shadow: 0 0 0 2px rgba(186, 66, 255, 0.4), 0 0 20px rgba(186, 66, 255, 0.3);
+        }
+        .btn-optimisation-purple:hover {
+            background: rgb(192, 132, 252);
+            box-shadow: 0 0 0 2px rgba(186, 66, 255, 0.6), 0 0 25px rgba(186, 66, 255, 0.4);
         }
         .btn-optimisation-gradient-red {
-            background: linear-gradient(90deg, rgb(185, 28, 28), rgb(239, 68, 68));
+            background: rgb(239, 68, 68);
             box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.4), 0 0 20px rgba(239, 68, 68, 0.3);
         }
         .btn-optimisation-gradient-red:hover {
@@ -522,11 +531,11 @@
             <div class="max-w-6xl mx-auto">
                 <div class="grid grid-cols-3 items-center mb-4 gap-4">
                     <div class="flex items-center gap-3 justify-start">
-                        <button onclick="portJobs()" class="btn-optimisation-gradient text-white px-4 py-2.5 rounded-full transition-all text-sm font-semibold flex items-center gap-2 border-0">
+                        <button onclick="portJobs()" class="btn-optimisation-cyan text-white px-4 py-2.5 rounded-full transition-all text-sm font-semibold flex items-center gap-2 border-0">
                             <span class="material-symbols-outlined text-base">upload</span>
                             Port Jobs
                         </button>
-                        <button onclick="showOptimiseSettings()" class="btn-optimisation-gradient text-white px-4 py-2.5 rounded-full transition-all text-sm font-semibold flex items-center gap-2 border-0">
+                        <button onclick="showOptimiseSettings()" class="btn-optimisation-purple text-white px-4 py-2.5 rounded-full transition-all text-sm font-semibold flex items-center gap-2 border-0">
                             <span class="material-symbols-outlined text-base">tune</span>
                             Optimise
                         </button>
