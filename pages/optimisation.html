@@ -290,6 +290,7 @@
                     <div class="text-center mb-6">
                         <h2 class="text-2xl font-bold text-white mb-2">Connect to Asana</h2>
                         <p class="text-gray-400 text-sm">Connect your Asana account to import routes automatically</p>
+                        <p class="text-green-400/90 text-xs mt-2 font-medium">READ-ONLY: We only read task data. No editing or deleting of Asana data.</p>
                     </div>
                     <button 
                         id="connectAsanaBtn" 
@@ -493,6 +494,10 @@
                             <div class="spinner1"></div>
                         </div>
                         <p class="text-white text-lg font-semibold" id="loadingText">Loading...</p>
+                        <details class="mt-4 text-left max-w-xl mx-auto" id="optDebugDetails">
+                            <summary class="text-gray-400 text-sm cursor-pointer hover:text-white">Debug log</summary>
+                            <pre id="optDebugLog" class="mt-2 p-3 bg-black/50 rounded text-xs text-gray-300 max-h-48 overflow-y-auto font-mono whitespace-pre-wrap"></pre>
+                        </details>
                     </div>
                 </div>
             </div>
@@ -500,18 +505,21 @@
         
         <main class="flex-1 px-6 py-4">
             <div class="max-w-6xl mx-auto">
-                <div class="flex justify-between items-center mb-4">
-                    <h1 class="text-2xl font-bold tracking-tight">Optimisation</h1>
-                    <div class="flex items-center gap-3">
-                        <button onclick="portJobs()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold flex items-center gap-2">
-                            <span class="material-symbols-outlined text-sm">upload</span>
+                <div class="grid grid-cols-3 items-center mb-4 gap-4">
+                    <div class="flex items-center gap-3 justify-start">
+                        <button onclick="portJobs()" class="bg-cyan-600 hover:bg-cyan-500 border border-cyan-500/50 text-white px-4 py-2.5 rounded-lg transition-colors text-sm font-semibold flex items-center gap-2 shadow-sm">
+                            <span class="material-symbols-outlined text-base">upload</span>
                             Port Jobs
                         </button>
-                        <button onclick="showOptimiseSettings()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold">
-                            <span class="truncate">Optimise</span>
+                        <button onclick="showOptimiseSettings()" class="bg-purple-600 hover:bg-purple-500 border border-purple-500/50 text-white px-4 py-2.5 rounded-lg transition-colors text-sm font-semibold flex items-center gap-2 shadow-sm">
+                            <span class="material-symbols-outlined text-base">tune</span>
+                            Optimise
                         </button>
-                        <button onclick="deleteAllRoutes()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold flex items-center gap-2">
-                            <span class="material-symbols-outlined text-sm">delete</span>
+                    </div>
+                    <h1 class="text-2xl font-bold tracking-tight text-white text-center">Optimisation</h1>
+                    <div class="flex items-center justify-end">
+                        <button onclick="deleteAllRoutes()" class="bg-red-600/90 hover:bg-red-500 border border-red-500/50 text-white px-4 py-2.5 rounded-lg transition-colors text-sm font-semibold flex items-center gap-2 shadow-sm">
+                            <span class="material-symbols-outlined text-base">delete</span>
                             Delete All Routes
                         </button>
                     </div>
@@ -784,6 +792,24 @@
         let ungroupedJobs = [];
         let savedRoutesForPort = [];
         let routeReviewData = [];
+
+        // === OPTIMISATION PORT JOBS DEBUG LOGGING ===
+        // All Asana API calls are READ-ONLY (GET only). No PUT/POST/DELETE/PATCH to Asana anywhere.
+        const OPT_DEBUG_PREFIX = '[OPT-PORT]';
+        function optDebug(msg, data) {
+            const ts = new Date().toISOString().slice(11, 23);
+            const line = data !== undefined ? `${ts} ${msg} ${JSON.stringify(data)}` : `${ts} ${msg}`;
+            console.log(OPT_DEBUG_PREFIX, line);
+            const el = document.getElementById('optDebugLog');
+            if (el) {
+                el.textContent = (el.textContent || '') + line + '\n';
+                el.scrollTop = el.scrollHeight;
+            }
+        }
+        function optDebugClear() {
+            const el = document.getElementById('optDebugLog');
+            if (el) el.textContent = '';
+        }
 
         // Port Jobs modal functions
         function portJobs() {
@@ -1233,9 +1259,13 @@
 
         async function loadProjects(accessToken) {
             try {
+                optDebugClear();
+                optDebug('loadProjects START');
                 showScreen('loadingScreen');
                 document.getElementById('loadingText').textContent = 'Loading projects...';
 
+                optDebug('Fetching workspaces (GET, read-only)...');
+                const wsStart = Date.now();
                 const workspacesUrl = 'https://app.asana.com/api/1.0/workspaces';
                 const workspacesResponse = await fetch(workspacesUrl, {
                     headers: {
@@ -1254,6 +1284,7 @@
                 }
 
                 const workspacesData = await workspacesResponse.json();
+                optDebug('Workspaces fetched', { ms: Date.now() - wsStart, count: workspacesData.data?.length || 0 });
                 const workspaceId = workspacesData.data?.[0]?.gid;
 
                 if (!workspaceId) {
@@ -1263,6 +1294,8 @@
                 // Store workspace ID for Search API
                 selectedWorkspaceId = workspaceId;
 
+                optDebug('Fetching projects (GET, read-only)...');
+                const projStart = Date.now();
                 const projectsUrl = `https://app.asana.com/api/1.0/workspaces/${workspaceId}/projects?opt_fields=gid,name&limit=100`;
                 const projectsResponse = await fetch(projectsUrl, {
                     headers: {
@@ -1276,6 +1309,7 @@
 
                 const projectsData = await projectsResponse.json();
                 availableProjects = projectsData.data || [];
+                optDebug('Projects fetched', { ms: Date.now() - projStart, count: availableProjects.length });
 
                 const projectSelect = document.getElementById('projectSelect');
                 if (projectSelect) {
@@ -1334,6 +1368,8 @@
                 return;
             }
 
+            optDebugClear();
+            optDebug('checkTasksForDate START', { date: selectedDate, projectId: selectedProjectId });
             showScreen('loadingScreen');
             document.getElementById('loadingText').textContent = 'Checking tasks in Asana...';
 
@@ -1358,21 +1394,22 @@
             }
         }
 
-        // ASANA SAFETY: This function ONLY reads task data from Asana - no writes, updates, or deletes
-        // All Asana API calls in this codebase are READ-ONLY (GET requests only)
+        // ASANA READ-ONLY: This function ONLY reads task data. NO writes/updates/deletes to Asana anywhere.
+        // Pagination is token-based (no parallel fetching possible). completed_since=now reduces results to incomplete tasks only.
         async function fetchAsanaTasks(accessToken, date, projectId) {
             try {
-                // Fetch tasks directly from client-side for speed
-                console.log(`Fetching tasks for date ${date} (client-side for speed)...`);
+                optDebug('fetchAsanaTasks START - fetching TITLES only (name,due_on)', { date, projectId });
                 const startTime = Date.now();
                 
-                // Fetch all tasks from project (only name and due_on fields for speed)
+                // completed_since=now = only incomplete tasks (skips archived/completed - often cuts 5000+ down to hundreds)
                 let allTasks = [];
-                let nextPageUrl = `https://app.asana.com/api/1.0/projects/${projectId}/tasks?opt_fields=name,due_on&limit=100`;
+                let nextPageUrl = `https://app.asana.com/api/1.0/projects/${projectId}/tasks?opt_fields=name,due_on&limit=100&completed_since=now`;
                 let pageCount = 0;
                 const maxPages = 50; // Safety limit
 
                 while (nextPageUrl && pageCount < maxPages) {
+                    optDebug(`Fetching task list page ${pageCount + 1} (GET, titles only)...`);
+                    const pageStart = Date.now();
                     const response = await fetch(nextPageUrl, {
                         headers: {
                             "Authorization": `Bearer ${accessToken}`,
@@ -1395,6 +1432,7 @@
                     const data = await response.json();
                     const pageTasks = data.data || [];
                     allTasks = allTasks.concat(pageTasks);
+                    optDebug(`Page ${pageCount + 1} done`, { ms: Date.now() - pageStart, tasksThisPage: pageTasks.length, totalSoFar: allTasks.length });
 
                     // Check for next page
                     const nextPage = data.next_page;
@@ -1422,10 +1460,9 @@
                         if (!task.due_on) return false;
                         return task.due_on === date;
                     });
-                    console.log(`Filtered ${originalCount} tasks to ${tasks.length} tasks for date ${date}`);
+                    optDebug('Filtered by date', { before: originalCount, after: tasks.length, date });
                 }
                 
-                // Sort tasks alphabetically by name
                 tasks.sort((a, b) => {
                     const nameA = (a.name || '').toLowerCase();
                     const nameB = (b.name || '').toLowerCase();
@@ -1433,7 +1470,7 @@
                 });
                 
                 const elapsed = Date.now() - startTime;
-                console.log(`Fetched ${tasks.length} tasks for date ${date} in ${elapsed}ms (sorted alphabetically)`);
+                optDebug('fetchAsanaTasks DONE', { totalTasks: tasks.length, totalMs: elapsed });
                 return tasks;
                 
             } catch (error) {
@@ -1505,6 +1542,7 @@
         }
 
         function startRouteGrouping() {
+            optDebug('startRouteGrouping - moving to grouping screen', { taskCount: currentTasks?.length || 0 });
             if (!currentTasks || currentTasks.length === 0) {
                 alert('No tasks to group. Please check tasks first.');
                 return;
@@ -1735,11 +1773,10 @@
             document.addEventListener('keydown', handleKeyPress);
         }
 
-        // ASANA SAFETY: This function ONLY reads full task details from Asana - no writes, updates, or deletes
+        // ASANA READ-ONLY: Fetches name+notes for ONE task. NO writes/updates/deletes.
         async function fetchFullTaskDetails(taskGid, accessToken) {
             try {
-                // Use direct API call for faster loading (same approach as fetchAsanaTasks)
-                // This avoids CORS issues and is much faster than Firebase Functions
+                const t0 = Date.now();
                 const response = await fetch(`https://app.asana.com/api/1.0/tasks/${taskGid}?opt_fields=name,notes`, {
                     headers: {
                         'Authorization': `Bearer ${accessToken}`
@@ -1758,9 +1795,11 @@
                 }
                 
                 const data = await response.json();
+                optDebug(`Fetched task ${taskGid}`, { ms: Date.now() - t0 });
                 return data.data;
                 
             } catch (error) {
+                optDebug(`fetchFullTaskDetails FAILED for ${taskGid}`, { error: error.message });
                 console.error('Error fetching full task details:', error);
                 // Fallback to Firebase function only if direct API fails
                 if (window.firebase && window.firebase.httpsCallable && window.firebase.functions) {
@@ -1788,6 +1827,10 @@
                 return;
             }
 
+            optDebugClear();
+            optDebug('processRoutes START - fetching & parsing in PARALLEL');
+            const totalJobs = savedRoutesForPort.reduce((s,r)=>s+r.jobs.length,0);
+            optDebug('Route/job counts', { routeCount: savedRoutesForPort.length, totalJobs });
             showScreen('loadingScreen');
             document.getElementById('loadingText').textContent = 'Fetching full job details and parsing...';
 
@@ -1797,7 +1840,6 @@
                     throw new Error('No office context available');
                 }
 
-                // Get Asana access token
                 const tokenKey = `asana_token_${officeId}`;
                 const accessToken = localStorage.getItem(tokenKey);
                 if (!accessToken) {
@@ -1805,67 +1847,65 @@
                 }
 
                 routeReviewData = [];
+                const processStart = Date.now();
+
+                // 1. Collect unique task GIDs and build job list
+                const gidsToFetch = new Set();
+                const jobItems = [];
                 for (const route of savedRoutesForPort) {
-                    const routeJobs = [];
-                    let minConfidence = 100;
                     for (let i = 0; i < route.jobs.length; i++) {
-                        const jobData = route.jobs[i];
-                        const task = jobData.task;
-                        
-                        // Fetch full task details (name + notes) from Asana
-                        let fullTask = task;
-                        if (task.gid) {
-                            try {
-                                fullTask = await fetchFullTaskDetails(task.gid, accessToken);
-                            } catch (error) {
-                                console.warn(`Failed to fetch full details for task ${task.gid}, using name only:`, error);
-                                // Fallback to just the name we already have
-                            }
-                        }
-                        
-                        const taskText = `${fullTask.name || ''}\n${fullTask.notes || ''}`;
-                        
-                        let parsedData = {
-                            collection_address: 'Not found',
-                            postcode_delivery: 'Not found',
-                            price: 0,
-                            reg_number: 'Not found',
-                            confidence_scores: { collection: 0, delivery: 0, price: 0, reg: 0 },
-                            overall_confidence: 0
-                        };
-                        
-                        if (window.firebase && window.firebase.httpsCallable && window.firebase.functions) {
-                            try {
-                                const parseFunction = window.firebase.httpsCallable(window.firebase.functions, 'parseJobText');
-                                const result = await parseFunction({ rawText: taskText });
-                                
-                                if (result.data && result.data.success && result.data.parsed_data) {
-                                    parsedData = result.data.parsed_data;
-                                }
-                            } catch (error) {
-                                console.warn('Error parsing job text:', error);
-                            }
-                        }
-                        
-                        const confidence = parsedData.overall_confidence || 50;
-                        if (confidence < minConfidence) minConfidence = confidence;
-                        routeJobs.push({
-                            task: jobData.task,
-                            parsedData: parsedData,
-                            confidence: confidence,
-                            rawText: taskText,
-                            routeId: route.routeId,
-                            jobNumber: i + 1
-                        });
+                        const task = route.jobs[i].task;
+                        if (task?.gid) gidsToFetch.add(task.gid);
+                        jobItems.push({ route, routeId: route.routeId, jobIndex: i, jobData: route.jobs[i] });
                     }
-                    routeReviewData.push({
-                        routeId: route.routeId,
-                        jobs: routeJobs,
-                        minConfidence: minConfidence,
-                        jobCount: routeJobs.length
+                }
+
+                // 2. Fetch all tasks in parallel
+                optDebug('Fetching all tasks in parallel...', { uniqueCount: gidsToFetch.size });
+                const fetchStart = Date.now();
+                const fetchPromises = Array.from(gidsToFetch).map(gid =>
+                    fetchFullTaskDetails(gid, accessToken).then(t => ({ gid, task: t })).catch(err => ({ gid, error: err }))
+                );
+                const fetchResults = await Promise.all(fetchPromises);
+                const taskCache = {};
+                fetchResults.forEach(r => {
+                    if (r.task) taskCache[r.gid] = r.task;
+                    else if (r.error) optDebug(`Fetch failed for ${r.gid}`, { error: r.error?.message });
+                });
+                optDebug('All tasks fetched', { ms: Date.now() - fetchStart });
+
+                // 3. Parse all jobs in parallel (have taskText now)
+                const parseFunction = window.firebase?.httpsCallable?.(window.firebase.functions, 'parseJobText');
+                optDebug('Parsing all jobs in parallel...');
+                const parseStart = Date.now();
+                const parsePromises = jobItems.map(async (item) => {
+                    const fullTask = (item.jobData.task?.gid && taskCache[item.jobData.task.gid]) || item.jobData.task;
+                    const taskText = `${fullTask?.name || ''}\n${fullTask?.notes || ''}`;
+                    let parsedData = { collection_address: 'Not found', postcode_delivery: 'Not found', price: 0, reg_number: 'Not found', confidence_scores: { collection: 0, delivery: 0, price: 0, reg: 0 }, overall_confidence: 0 };
+                    if (parseFunction) {
+                        try {
+                            const result = await parseFunction({ rawText: taskText });
+                            if (result?.data?.success && result.data.parsed_data) parsedData = result.data.parsed_data;
+                        } catch (e) { console.warn('Parse error:', e); }
+                    }
+                    return { ...item, taskText, parsedData };
+                });
+                const parsedJobs = await Promise.all(parsePromises);
+                optDebug('All jobs parsed', { ms: Date.now() - parseStart });
+
+                // 4. Rebuild routes from parsed results
+                for (const route of savedRoutesForPort) {
+                    const routeJobs = parsedJobs.filter(p => p.routeId === route.routeId).sort((a,b) => a.jobIndex - b.jobIndex);
+                    let minConfidence = 100;
+                    const jobs = routeJobs.map((p, idx) => {
+                        const conf = p.parsedData.overall_confidence || 50;
+                        if (conf < minConfidence) minConfidence = conf;
+                        return { task: p.jobData.task, parsedData: p.parsedData, confidence: conf, rawText: p.taskText, routeId: route.routeId, jobNumber: idx + 1 };
                     });
+                    routeReviewData.push({ routeId: route.routeId, jobs, minConfidence, jobCount: jobs.length });
                 }
                 routeReviewData.sort((a, b) => a.minConfidence - b.minConfidence);
+                optDebug('processRoutes DONE', { totalMs: Date.now() - processStart, routes: routeReviewData.length });
                 displayRouteReview();
                 showScreen('routeReviewScreen');
                 
@@ -1892,6 +1932,36 @@
             }
             function esc(v) { return (v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
+            function highlightParsedInRaw(rawText, parsedData) {
+                let t = (rawText || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+                const escR = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const highlights = [];
+                const addFirst = (str) => {
+                    if (!str || str === 'Not found' || !String(str).trim()) return;
+                    const pat = escR(String(str).trim()).replace(/\\s+/g, '\\s*');
+                    try {
+                        const m = new RegExp(pat, 'i').exec(t);
+                        if (m) highlights.push({ start: m.index, end: m.index + m[0].length, text: m[0] });
+                    } catch (e) {}
+                };
+                addFirst(parsedData.reg_number);
+                addFirst(parsedData.collection_address);
+                addFirst(parsedData.postcode_delivery);
+                if (parsedData.price && Number(parsedData.price) > 0) {
+                    const val = Number(parsedData.price);
+                    for (const fmt of [`£${val.toFixed(2)}`, `£${val}`, val.toFixed(2), String(Math.round(val))]) {
+                        try {
+                            const m = new RegExp(escR(fmt), 'i').exec(t);
+                            if (m) { highlights.push({ start: m.index, end: m.index + m[0].length, text: m[0] }); break; }
+                        } catch (e) {}
+                    }
+                }
+                highlights.sort((a, b) => b.start - a.start);
+                const span = (txt) => `<span class="px-0.5 rounded bg-green-500/40 border border-green-500/60 text-green-100 font-semibold">${txt}</span>`;
+                highlights.forEach(h => { t = t.substring(0, h.start) + span(h.text) + t.substring(h.end); });
+                return t;
+            }
+
             routeReviewData.forEach((rd, ri) => {
                 const card = document.createElement('div');
                 card.className = 'bg-[#1a1f24] border border-[#283039] rounded-lg p-6 mb-4';
@@ -1903,8 +1973,8 @@
                         <h4 class="text-sm font-semibold text-white mb-3">${getOrdinal(ji + 1)} Job</h4>
                         <div class="grid grid-cols-2 gap-6">
                             <div>
-                                <label class="text-xs text-gray-400 mb-2 block">Complete Task Info</label>
-                                <div class="bg-[#1a1f24] border border-gray-600 rounded p-4 text-sm text-gray-300 whitespace-pre-wrap max-h-64 overflow-y-auto">${esc(job.rawText)}</div>
+                                <label class="text-xs text-gray-400 mb-2 block">Complete Task Info (parsed values highlighted in green)</label>
+                                <div class="bg-[#1a1f24] border border-gray-600 rounded p-4 text-sm text-gray-300 whitespace-pre-wrap max-h-64 overflow-y-auto">${highlightParsedInRaw(job.rawText, job.parsedData)}</div>
                             </div>
                             <div>
                                 <label class="text-xs text-gray-400 mb-2 block">Parsed Details</label>
@@ -2991,7 +3061,6 @@
                 <!-- Driver Info Line -->
                 <div class="flex items-center gap-3 mb-3 text-sm">
                     <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <span class="text-gray-400 font-medium text-xs">REG:</span>
                         <span class="text-white font-bold text-xs" id="firebase-route-${routeNumber}-reg">-</span>
                     </div>
                     <div class="h-4 w-px bg-gray-600"></div>
@@ -5250,14 +5319,14 @@
                     assignment.routeData.route.carryoverPostcode = assignment.carryoverPostcode;
                 }
                 
-                // Get REG number from first job
-                const firstJob = assignment.routeData.jobs[0];
-                const regNumber = firstJob?.parsedData?.reg_number || '-';
-                
-                // Update REG display
+                // Update REG display (all jobs: Job 1: X, Job 2: Y)
                 const regElement = document.getElementById(`firebase-route-${routeNumber}-reg`);
-                if (regElement) {
-                    regElement.textContent = regNumber;
+                if (regElement && assignment.routeData.jobs.length > 0) {
+                    const regParts = assignment.routeData.jobs.map((job, i) => {
+                        const reg = job?.parsedData?.reg_number || '-';
+                        return `Job ${i + 1}: ${reg}`;
+                    });
+                    regElement.textContent = regParts.join('  |  ');
                 }
                 
                 // Update driver name
@@ -6396,11 +6465,13 @@
                         locationElement.textContent = routeData.route.assignedDriverPostcode || '-';
                     }
                     
-                    // Get REG number from first job
+                    // REG for all jobs: Job 1: X, Job 2: Y
                     if (regElement && routeData.jobs.length > 0) {
-                        const firstJob = routeData.jobs[0];
-                        const regNumber = firstJob?.parsedData?.reg_number || '-';
-                        regElement.textContent = regNumber;
+                        const regParts = routeData.jobs.map((job, i) => {
+                            const reg = job?.parsedData?.reg_number || '-';
+                            return `Job ${i + 1}: ${reg}`;
+                        });
+                        regElement.textContent = regParts.join('  |  ');
                     }
                     
                     // Restore carryover information if it exists

@@ -441,6 +441,10 @@
             await loadAvailabilityData();
             await loadUnseenChanges();
             await loadStructureChangeNotifications();
+            if (structureChangeNotifications.length > 0) {
+                await loadDrivers();
+                await loadAvailabilityData();
+            }
             renderCalendar();
             
             // Handle URL parameters for opening specific dates
@@ -468,7 +472,9 @@
             document.addEventListener('DOMContentLoaded', initializeAvailabilityApp);
         }
 
-        // Load all drivers from Firebase
+        // Load all drivers from Firebase.
+        // Availability fields (availabilityType, availabilityWorkingDays, availabilityStandbyDays) live in users collection;
+        // drivers collection may not have them. We merge from users to get correct part-time schedules.
         async function loadDrivers() {
             try {
                 if (!currentSession || !currentSession.officeId) return;
@@ -479,12 +485,13 @@
                 const driversSnapshot = await window.firebaseGetDocs(driversQuery);
                 
                 allDrivers = [];
-                driversSnapshot.forEach((docSnap) => {
+                for (const docSnap of driversSnapshot.docs) {
                     const data = docSnap.data();
                     const driverId = docSnap.id || data.uid || '';
-                    allDrivers.push({
+                    const uid = data.uid || driverId;
+                    let driver = {
                         id: docSnap.id,
-                        uid: data.uid || driverId,
+                        uid,
                         firstName: data.firstName || data.name || '',
                         lastName: data.lastName || '',
                         email: data.email || '',
@@ -492,8 +499,18 @@
                         availabilityType: data.availabilityType || 'full',
                         availabilityWorkingDays: Array.isArray(data.availabilityWorkingDays) ? data.availabilityWorkingDays : [],
                         availabilityStandbyDays: Array.isArray(data.availabilityStandbyDays) ? data.availabilityStandbyDays : []
-                    });
-                });
+                    };
+                    try {
+                        const userSnap = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'users', uid));
+                        if (userSnap.exists()) {
+                            const userData = userSnap.data();
+                            if (userData.availabilityType) driver.availabilityType = userData.availabilityType;
+                            if (Array.isArray(userData.availabilityWorkingDays)) driver.availabilityWorkingDays = userData.availabilityWorkingDays;
+                            if (Array.isArray(userData.availabilityStandbyDays)) driver.availabilityStandbyDays = userData.availabilityStandbyDays;
+                        }
+                    } catch (e) { /* ignore */ }
+                    allDrivers.push(driver);
+                }
 
                 document.getElementById('total-drivers-count').textContent = allDrivers.length;
                 console.log('Loaded drivers:', allDrivers);
@@ -673,6 +690,9 @@
                 }
                 structureChangeNotifications = [];
                 updateStructureChangeBanner();
+                await loadDrivers();
+                await loadAvailabilityData();
+                renderCalendar();
                 document.getElementById('structureChangePanel')?.classList.add('hidden');
                 document.getElementById('structureChangeChevron').style.transform = '';
             } catch (error) {
