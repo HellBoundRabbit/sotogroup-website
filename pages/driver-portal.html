@@ -1237,9 +1237,10 @@
                 }
         }
 
-        function showProfileCompleteModal(needPostcode, needPhoto, needDriverType, needPasswordChange, existingPhotoUrl, existingPostcode) {
+        function showProfileCompleteModal(needPostcode, needPhoto, needDriverType, needPasswordChange, needGdpr, existingPhotoUrl, existingPostcode) {
             if (typeof needDriverType === 'undefined') needDriverType = false;
             if (typeof needPasswordChange === 'undefined') needPasswordChange = false;
+            if (typeof needGdpr === 'undefined') needGdpr = false;
             const modal = document.getElementById('driverProfileCompleteModal');
             const postcodeDisplayWrap = document.getElementById('profileCompletePostcodeDisplayWrap');
             const postcodeInputWrap = document.getElementById('profileCompletePostcodeInputWrap');
