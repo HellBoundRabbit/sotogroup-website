@@ -490,10 +490,10 @@
                     }
                 }
                 
-                // Delete expired batches
+                // Delete expired batches and their photo files in Storage (7-day countdown)
                 for (const batch of batchesToDelete) {
                     try {
-                        // Delete all expenses in this batch
+                        // Delete all photo files for this batch from Storage, then delete the batch document
                         function extractStoragePathFromURL(downloadURL) {
                             try {
                                 // Firebase Storage URLs format: https://firebasestorage.googleapis.com/v0/b/{bucket}/o/{encodedPath}?alt=media&token={token}

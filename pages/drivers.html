@@ -24,6 +24,7 @@
     import { getFirestore, collection, addDoc, getDocs, getDoc, deleteDoc, doc, query, orderBy, setDoc, updateDoc, where } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
     import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
     import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+    import { getStorage, ref, deleteObject } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
     
     // Firebase configuration
     const firebaseConfig = {
@@ -61,6 +62,9 @@
         functions,
         httpsCallable
     };
+    window.storage = storage;
+    window.ref = ref;
+    window.deleteObject = deleteObject;
     window.signInWithEmailAndPassword = signInWithEmailAndPassword;
     window.signOut = signOut;
     window.onAuthStateChanged = onAuthStateChanged;
@@ -1064,6 +1068,19 @@ async function getDriverDataCounts(driverId) {
     return counts;
 }
 
+// Extract Storage path from Firebase Storage download URL (for deleting driver display photo)
+function extractStoragePathFromDriverPhotoURL(downloadURL) {
+    if (!downloadURL || typeof downloadURL !== 'string') return null;
+    try {
+        var url = new URL(downloadURL);
+        var pathMatch = url.pathname.match(/\/o\/(.+)/);
+        if (pathMatch) return decodeURIComponent(pathMatch[1]);
+        return null;
+    } catch (e) {
+        return null;
+    }
+}
+
 async function deleteDriver(driverId) {
     if (!driverId) return;
 
@@ -1097,6 +1114,32 @@ async function deleteDriver(driverId) {
     uiDialogs.showAlert({ title: 'Please wait', message: 'Deleting driver and all associated data...', noButtons: true });
 
     try {
+        // Delete driver display photo from Storage so it does not remain after driver is removed
+        var photoURL = null;
+        try {
+            var driverSnap = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'drivers', driverId));
+            if (driverSnap && driverSnap.exists()) {
+                var d = driverSnap.data();
+                photoURL = d.photoURL || d.photoUrl || d.avatarUrl || null;
+            }
+            if (!photoURL && window.firebaseGetDoc && window.firebaseDoc && window.firestore) {
+                var userSnap = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'users', driverId));
+                if (userSnap && userSnap.exists()) {
+                    var u = userSnap.data();
+                    photoURL = u.photoURL || u.photoUrl || u.avatarUrl || null;
+                }
+            }
+            if (photoURL && typeof photoURL === 'string' && photoURL.indexOf('firebasestorage.googleapis.com') !== -1 && window.storage && window.ref && window.deleteObject) {
+                var storagePath = extractStoragePathFromDriverPhotoURL(photoURL);
+                if (storagePath) {
+                    var photoRef = window.ref(window.storage, storagePath);
+                    await window.deleteObject(photoRef);
+                }
+            }
+        } catch (photoErr) {
+            console.warn('Could not delete driver display photo from Storage:', photoErr);
+        }
+
         var deleteDriverFn = getCallable('deleteDriver');
         var result = await deleteDriverFn({ driverId: driverId });
 
