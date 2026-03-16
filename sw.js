@@ -497,6 +497,24 @@ async function processWaitTimeQueue(authToken) {
               firestoreFields.lastName = { stringValue: waitTimeData.lastName };
             }
 
+            // Coordinate objects { lat, lng, datetime } for office to verify driver didn't move
+            function coordToMapValue(coord) {
+              if (!coord || typeof coord.lat !== 'number' || typeof coord.lng !== 'number') return null;
+              return {
+                mapValue: {
+                  fields: {
+                    lat: { doubleValue: coord.lat },
+                    lng: { doubleValue: coord.lng },
+                    datetime: { stringValue: (coord.datetime != null ? String(coord.datetime) : '') }
+                  }
+                }
+              };
+            }
+            const startCoordMap = coordToMapValue(waitTimeData.startCoordinate);
+            if (startCoordMap) firestoreFields.startCoordinate = startCoordMap;
+            const endCoordMap = coordToMapValue(waitTimeData.endCoordinate);
+            if (endCoordMap) firestoreFields.endCoordinate = endCoordMap;
+
             const response = await fetch(firestoreUrl, {
               method: task.waitTimeDocId ? 'PATCH' : 'POST',
               headers: {
