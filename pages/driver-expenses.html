@@ -1895,9 +1895,13 @@
                                     // Only reload once when transitioning from "has pending" to "no pending"
                                     if (wasUploading && !batchInList.hasPendingUploads && typeof batchIdsGreyedUntilUploadDone !== 'undefined') {
                                         batchIdsGreyedUntilUploadDone.delete(payload.batchId);
-                                        // All uploads complete for this batch - single reload after brief delay
+                                        // Single coalesced refresh: one timer for "all uploads done" (avoids 500ms + 1000ms + 1500ms flicker)
                                         if (typeof window.loadExpenseBatches === 'function') {
-                                            setTimeout(() => window.loadExpenseBatches().catch(() => {}), 1000);
+                                            if (window._uploadCompleteRefreshTimer) clearTimeout(window._uploadCompleteRefreshTimer);
+                                            window._uploadCompleteRefreshTimer = setTimeout(function() {
+                                                window._uploadCompleteRefreshTimer = null;
+                                                window.loadExpenseBatches().catch(function() {});
+                                            }, 800);
                                         }
                                     }
                                     // Don't refresh display during upload - prevents flickering of entire list
@@ -1911,13 +1915,6 @@
                 uploadCompleteUpdateChain.then(function() {
                     if (window.expenseUploadQueue && typeof window.expenseUploadQueue.updateGlobalUploadStatus === 'function') return window.expenseUploadQueue.updateGlobalUploadStatus();
                 }).catch(function() {});
-                if (typeof window.loadExpenseBatches === 'function') {
-                    if (window._uploadCompleteRefreshTimer) clearTimeout(window._uploadCompleteRefreshTimer);
-                    window._uploadCompleteRefreshTimer = setTimeout(function() {
-                        window._uploadCompleteRefreshTimer = null;
-                        window.loadExpenseBatches().catch(function() {});
-                    }, 1500);
-                }
             });
         }
 
@@ -1977,7 +1974,10 @@
                 if (!batchData.lines || typeof batchData.lines !== 'object') {
                     batchData.lines = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.emptyLines) ? EXPENSE_BATCH_SCHEMA.emptyLines() : {};
                 }
-                batchData.hasPendingUploads = Object.values(batchData.lines).some(line => line && line.photosUploading === true);
+                // Do NOT derive hasPendingUploads from Firestore here – it can be stale if the user left
+                // before the page received upload-complete (e.g. tab closed). We set it from the upload
+                // queue below so "greyed out" only shows when this device actually has pending uploads.
+                batchData.hasPendingUploads = false;
                 
                 batchMap.set(batchData.id || `local_${batchData.localId || Math.random()}`, batchData);
                 }
@@ -1996,6 +1996,44 @@
                         if (!loadedIds.has(id)) {
                             const kept = previousBatches.find(b => b.id === id);
                             if (kept) { allBatches.push(kept); loadedIds.add(id); }
+                        }
+                    }
+                }
+
+                // Reconcile upload state: only grey drafts when THIS device's queue has pending uploads.
+                // Fixes "stuck grey" when user saved, left, and returned – Firestore may still have
+                // photosUploading: true because the page wasn't open to receive upload-complete.
+                if (window.expenseUploadQueue && typeof window.expenseUploadQueue.checkPendingUploads === 'function') {
+                    for (const batch of allBatches) {
+                        if (!batch.id) continue;
+                        try {
+                            const check = await window.expenseUploadQueue.checkPendingUploads(batch.id);
+                            batch.hasPendingUploads = check.hasPending;
+                            if (!check.hasPending && batch.id && typeof batchIdsGreyedUntilUploadDone !== 'undefined') {
+                                batchIdsGreyedUntilUploadDone.delete(batch.id);
+                            }
+                            // If queue says no pending but Firestore had photosUploading true, clear stale flag in Firestore
+                            // so other devices / future loads don't show grey.
+                            if (!check.hasPending && batch.lines && typeof batch.lines === 'object') {
+                                const linesWithStaleFlag = Object.entries(batch.lines).filter(([, line]) => line && line.photosUploading === true);
+                                if (linesWithStaleFlag.length > 0) {
+                                    const batchRef = window.doc(window.db, 'expenseBatches', batch.id);
+                                    const updatedLines = {};
+                                    for (const [k, line] of Object.entries(batch.lines)) {
+                                        updatedLines[k] = { ...line, photosUploading: false };
+                                    }
+                                    window.updateDoc(batchRef, { lines: updatedLines, updatedAt: window.serverTimestamp ? window.serverTimestamp() : new Date() }).then(function () {
+                                        if (typeof console !== 'undefined' && console.log) console.log('[loadExpenseBatches] Cleared stale photosUploading for batch', batch.id);
+                                    }).catch(function (err) {
+                                        console.warn('[loadExpenseBatches] Failed to clear stale photosUploading', batch.id, err);
+                                    });
+                                    for (const [k] of linesWithStaleFlag) {
+                                        if (batch.lines[k]) batch.lines[k].photosUploading = false;
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('[loadExpenseBatches] checkPendingUploads failed for batch', batch.id, e);
                         }
                     }
                 }

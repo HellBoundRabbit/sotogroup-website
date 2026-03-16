@@ -419,7 +419,7 @@
         <section id="emptyState" class="hidden text-center py-16 fade-in">
             <span class="material-symbols-outlined text-6xl text-gray-600 mb-4">pending_actions</span>
             <h2 class="text-xl font-semibold mb-2">No wait times yet</h2>
-            <p class="text-gray-500 max-w-sm mx-auto">Use the button below to log your current waiting period.</p>
+            <p class="text-gray-500 max-w-sm mx-auto">Add wait times from the Driver Portal using the Pause button once your day has started.</p>
         </section>
 
         <section id="returnedSection" class="hidden space-y-3 fade-in">
@@ -437,14 +437,7 @@
         </section>
     </main>
 
-    <button onclick="openWaitTimeModal()" class="fixed bottom-6 right-6 z-40">
-        <div class="spinner-wrapper">
-            <div class="spinner"></div>
-            <div class="spinner1">
-                <span class="material-symbols-outlined spinner-icon">add</span>
-            </div>
-        </div>
-    </button>
+    <!-- Manual add disabled: wait times are added via the Pause button on the Driver Portal -->
 
     <div id="waitTimeModal" class="hidden fixed inset-0 bg-black bg-opacity-70 z-50 overflow-y-auto">
         <div class="min-h-screen px-4 flex items-end sm:items-center justify-center">

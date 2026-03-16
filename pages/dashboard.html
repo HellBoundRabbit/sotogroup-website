@@ -65,10 +65,12 @@
         .driver-marker-wrap { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; flex-shrink: 0; }
         .driver-marker-photos { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; max-width: 156px; }
         .driver-marker-photos .driver-marker-single { width: 36px; height: 36px; min-width: 36px; min-height: 36px; }
-        .driver-marker-hline { height: 3px; background: #22c55e; min-width: 24px; width: 100%; max-width: 160px; margin-top: 4px; }
-        .driver-marker-vline { width: 2px; height: 12px; background: #22c55e; margin-top: -1px; }
-        .driver-marker-vline.red { background: #ef4444; }
-        .driver-marker-hline.red { background: #ef4444; }
+        .driver-marker-hline { height: 3px; background: #000; min-width: 24px; width: 100%; max-width: 160px; margin-top: 4px; }
+        .driver-marker-vline { width: 0; height: 0; margin-top: -1px; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 10px solid #000; }
+        .driver-marker-vline.red,
+        .driver-marker-vline.green { border-top-color: #000; }
+        .driver-marker-hline.red,
+        .driver-marker-hline.green { background: #000; }
         .driver-marker-single { width: 36px; height: 36px; min-width: 36px; min-height: 36px; border-radius: 50%; object-fit: cover; border: 2px solid; box-sizing: border-box; flex-shrink: 0; aspect-ratio: 1; }
         .driver-marker-single.green { border-color: #22c55e; }
         .driver-marker-single.red { border-color: #ef4444; }
@@ -85,6 +87,7 @@
         .timeline-icon.collect { color: #22c55e; }
         .timeline-icon.deliver, .timeline-icon.carryover { color: #ef4444; }
         .timeline-icon.ended { color: #6b7280; }
+        .timeline-icon.paused { color: #f97316; }
         .timeline-name { color: #e5e7eb; flex: 1; min-width: 0; }
         .timeline-step-desc { color: #9cabba; font-size: 11px; margin-top: 1px; }
     </style>
@@ -169,7 +172,7 @@
                                 </div>
                                 <span class="material-symbols-outlined text-[#9cabba] text-lg">expand_more</span>
                             </div>
-                            <div id="dropdown-drivers-working" class="hidden absolute left-0 right-0 top-full mt-1 z-20 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                            <div id="dropdown-drivers-working" class="hidden absolute left-0 right-0 top-full mt-1 z-[1100] bg-[#1a1f24] border border-[#283039] rounded-lg shadow-xl max-h-48 overflow-y-auto">
                                 <div id="dropdown-drivers-working-list" class="py-2 text-sm"></div>
                             </div>
                         </div>
@@ -183,7 +186,7 @@
                                 </div>
                                 <span class="material-symbols-outlined text-[#9cabba] text-lg">expand_more</span>
                             </div>
-                            <div id="dropdown-active-drivers" class="hidden absolute left-0 right-0 top-full mt-1 z-20 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                            <div id="dropdown-active-drivers" class="hidden absolute left-0 right-0 top-full mt-1 z-[1100] bg-[#1a1f24] border border-[#283039] rounded-lg shadow-xl max-h-48 overflow-y-auto">
                                 <div id="dropdown-active-drivers-list" class="py-2 text-sm"></div>
                             </div>
                         </div>
@@ -445,11 +448,10 @@
 
         async function loadWaitTimesCount(officeId) {
             try {
-                const dateStr = getTodayDateString();
                 const q = window.firebaseQuery(
                     window.firebaseCollection(window.firestore, 'waitTimes'),
                     window.firebaseWhere('officeId', '==', officeId),
-                    window.firebaseWhere('date', '==', dateStr)
+                    window.firebaseWhere('processingStatus', '==', 'pending')
                 );
                 const snap = await window.firebaseGetDocs(q);
                 return snap.size;
@@ -868,6 +870,12 @@
             return null;
         }
 
+        var WAIT_CATEGORY_LABELS = {
+            awaiting_release: 'Awaiting Release',
+            charging_vehicle: 'Charging Vehicle',
+            car_wash: 'Car Wash'
+        };
+
         async function fetchTimelineSteps(officeId, dateStr) {
             const steps = [];
             const nameCache = {};
@@ -902,6 +910,35 @@
                 }
                 push(data.endDayCoordinate, 'ended');
             }
+
+            try {
+                const wtQ = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'waitTimes'),
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                const wtSnap = await window.firebaseGetDocs(wtQ);
+                const dayStart = new Date(dateStr + 'T00:00:00').getTime();
+                const dayEnd = new Date(dateStr + 'T23:59:59.999').getTime();
+                for (const doc of wtSnap.docs) {
+                    const w = doc.data();
+                    const dt = parseTimestamp(w.createdAt);
+                    if (!dt) continue;
+                    const t = dt.getTime();
+                    if (t < dayStart || t > dayEnd) continue;
+                    const status = w.processingStatus || 'pending';
+                    if (status === 'returned') continue;
+                    const driverId = w.driverId;
+                    let displayName = nameCache[driverId];
+                    if (displayName === undefined) {
+                        displayName = await fetchDriverDisplayName(driverId);
+                        if (!displayName) displayName = (w.driverName && !String(w.driverName).includes('@')) ? w.driverName : 'Driver';
+                        nameCache[driverId] = displayName;
+                    }
+                    const categoryLabel = WAIT_CATEGORY_LABELS[w.category] || w.category || 'Wait';
+                    steps.push({ datetime: t, date: dt, fullName: displayName, type: 'paused', waitCategoryLabel: categoryLabel });
+                }
+            } catch (e) { console.warn('Dashboard: could not load wait times for timeline', e); }
+
             steps.sort((a, b) => b.datetime - a.datetime);
             return steps;
         }
@@ -925,14 +962,18 @@
                 if (step.type === 'carryover') return '<span class="timeline-icon carryover"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle">south</span> CO</span>';
                 if (step.type === 'collect') return '<span class="timeline-icon collect">▲' + (step.job || '') + '</span>';
                 if (step.type === 'deliver') return '<span class="timeline-icon deliver">▼' + (step.job || '') + '</span>';
+                if (step.type === 'paused') return '<span class="material-symbols-outlined timeline-icon paused" title="Paused / Wait time">local_cafe</span>';
                 return '<span class="timeline-icon">•</span>';
             };
             list.innerHTML = steps.map(step => {
                 const name = step.fullName || (step.firstName + ' ' + step.lastName).trim() || 'Driver';
+                const nameBlock = step.type === 'paused' && step.waitCategoryLabel
+                    ? name + ' <span class="text-[#9cabba] text-xs">(' + (step.waitCategoryLabel || 'Wait') + ')</span>'
+                    : name;
                 return '<div class="timeline-step">' +
                     '<span class="timeline-time">' + formatTime(step.date) + '</span>' +
                     iconHtml(step) +
-                    '<div class="timeline-name">' + name + '</div></div>';
+                    '<div class="timeline-name">' + nameBlock + '</div></div>';
             }).join('');
         }
 
