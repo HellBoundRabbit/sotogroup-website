@@ -917,6 +917,8 @@
             }
 
             try {
+                // Wait time start/stop for timeline: stored in waitTimes (delayStartTime, delayEndTime, createdAt).
+                // driverDaySessions only holds live "wait in progress" state for portal buttons; it is cleared on submit.
                 const wtQ = window.firebaseQuery(
                     window.firebaseCollection(window.firestore, 'waitTimes'),
                     window.firebaseWhere('officeId', '==', officeId)
@@ -928,6 +930,8 @@
                     const w = doc.data();
                     const createdDt = parseTimestamp(w.createdAt);
                     if (!createdDt) continue;
+                    const createdDay = createdDt.getFullYear() + '-' + String(createdDt.getMonth() + 1).padStart(2, '0') + '-' + String(createdDt.getDate()).padStart(2, '0');
+                    if (createdDay !== dateStr) continue;
                     const status = w.processingStatus || 'pending';
                     if (status === 'returned') continue;
                     const driverId = w.driverId;
@@ -939,7 +943,7 @@
                     }
                     const categoryLabel = WAIT_CATEGORY_LABELS[w.category] || w.category || 'Wait';
                     const totalMinutes = (typeof w.totalMinutes === 'number' ? w.totalMinutes : 0) || ((w.hours || 0) * 60) + (w.minutes || 0);
-                    const datePart = dateStr + 'T';
+                    const datePart = createdDay + 'T';
                     const parseTime = (timeStr) => {
                         if (!timeStr || typeof timeStr !== 'string') return null;
                         const m = timeStr.trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
