@@ -178,6 +178,40 @@
             background-image: linear-gradient(rgb(75, 85, 99) 35%, rgb(107, 114, 128));
             box-shadow: 0px -2px 10px 0px rgb(75, 85, 99);
         }
+        /* Pause button - slightly smaller, orange */
+        .feature-button-pause .spinner-wrapper {
+            width: 44px;
+            height: 44px;
+        }
+        .feature-button-pause .spinner-wrapper .spinner1 {
+            width: 36px;
+            height: 36px;
+        }
+        .feature-button-pause .spinner-icon {
+            font-size: 1.5rem;
+        }
+        .feature-button-pause .spinner-orange,
+        .feature-button-pause .spinner-red-glow-pulse {
+            width: 44px;
+            height: 44px;
+        }
+        .feature-button-pause h3 {
+            font-size: 0.9375rem;
+        }
+        /* Red glowing pulse when pause is active */
+        .spinner-red-glow-pulse::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(239, 68, 68) 35%, rgb(248, 113, 113));
+            box-shadow: 0px -5px 20px 0px rgb(239, 68, 68), 0px 5px 20px 0px rgb(248, 113, 113);
+            animation: pulse-glow 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse-glow {
+            0%, 100% { opacity: 1; filter: blur(1px); }
+            50% { opacity: 0.85; filter: blur(2px); }
+        }
         .spinner1 {
             background-color: rgb(36, 36, 36);
             width: 44px;
@@ -387,6 +421,22 @@
             margin: 0 auto;
             overflow: visible;
         }
+        .day-session-row {
+            min-height: 0;
+        }
+        .day-session-cell {
+            min-width: 0;
+            display: flex;
+            justify-content: center;
+        }
+        .day-session-pause-center {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 2;
+            pointer-events: auto;
+        }
         .features-grid-single {
             grid-column: 1 / -1;
             display: flex;
@@ -439,6 +489,92 @@
                 <div class="spinner1"></div>
             </div>
             <p id="actionLoadingText" class="text-white text-lg font-semibold">Starting day...</p>
+        </div>
+    </div>
+
+    <!-- Wait Time (Pause) Modal -->
+    <div id="waitTimePauseModal" class="hidden fixed inset-0 bg-black bg-opacity-70 z-[60] overflow-y-auto">
+        <div class="min-h-screen px-4 flex items-end sm:items-center justify-center py-8">
+            <div class="bg-[#1a1f24] rounded-t-3xl sm:rounded-3xl w-full max-w-md transform transition-all border border-gray-800">
+                <div class="sticky top-0 bg-[#1a1f24] border-b border-gray-800 rounded-t-3xl z-10 px-6 py-4">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-lg font-semibold text-white">Record Wait Time</h2>
+                        <button type="button" id="waitTimePauseModalClose" class="touch-target text-gray-400 hover:text-white transition-colors" aria-label="Close">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="p-6 pb-8 space-y-6">
+                    <!-- Step 1: Category + Registration (before starting) -->
+                    <div id="waitTimePauseSetup">
+                        <div class="mb-4">
+                            <label class="text-sm text-gray-400 mb-2 block">REGISTRATION</label>
+                            <input id="waitTimePauseReg" type="text" placeholder="AB12 CDE" maxlength="8"
+                                class="w-full bg-[#283039] text-white text-xl font-mono text-center uppercase px-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="text-sm text-gray-400 mb-3 block">WAIT TYPE</label>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <button type="button" class="wait-pause-category-btn border border-gray-700 rounded-xl p-4 flex flex-col items-center gap-2 hover:border-blue-500 focus:outline-none transition-colors" data-category="awaiting_release">
+                                    <span class="text-3xl">🚦</span>
+                                    <span class="text-sm font-semibold text-white">Awaiting Release</span>
+                                </button>
+                                <button type="button" class="wait-pause-category-btn border border-gray-700 rounded-xl p-4 flex flex-col items-center gap-2 hover:border-green-500 focus:outline-none transition-colors" data-category="charging_vehicle">
+                                    <span class="text-3xl">🔌</span>
+                                    <span class="text-sm font-semibold text-white">Charging Vehicle</span>
+                                </button>
+                                <button type="button" class="wait-pause-category-btn border border-gray-700 rounded-xl p-4 flex flex-col items-center gap-2 hover:border-orange-500 focus:outline-none transition-colors" data-category="car_wash">
+                                    <span class="text-3xl">🧼</span>
+                                    <span class="text-sm font-semibold text-white">Car Wash</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="pt-4">
+                            <button type="button" id="btnStartWaitTimeCard" class="w-full py-4 rounded-xl border-2 border-gray-600 bg-gray-800 text-gray-500 font-semibold flex items-center justify-center gap-2 opacity-60 cursor-not-allowed" disabled>
+                                <span class="material-symbols-outlined">play_circle</span>
+                                <span>Start wait time</span>
+                            </button>
+                            <div id="startWaitTimeProgressBar" class="hold-progress-bar mt-1" style="position: relative; bottom: auto; left: 0; right: 0;"></div>
+                        </div>
+                    </div>
+                    <!-- Step 2: Timer running + End hold (no notes here) -->
+                    <div id="waitTimePauseRunning" class="hidden">
+                        <div class="bg-[#1f2730] border border-[#2f3944] rounded-xl px-6 py-8 text-center">
+                            <p class="text-xs uppercase tracking-wide text-gray-400 mb-2">Elapsed time</p>
+                            <p id="waitTimePauseElapsed" class="text-4xl font-mono font-bold text-white tabular-nums">0:00:00</p>
+                            <p id="waitTimePauseCategoryLabel" class="text-sm text-gray-500 mt-2"></p>
+                        </div>
+                        <div class="pt-2">
+                            <button type="button" id="btnEndWaitTimeCard" class="w-full py-4 rounded-xl border-2 border-gray-600 bg-gray-800 text-white font-semibold flex items-center justify-center gap-2 hover:border-red-500 hover:bg-red-900/20 transition-colors">
+                                <span class="material-symbols-outlined">stop_circle</span>
+                                <span>End wait time</span>
+                            </button>
+                            <div id="endWaitTimeProgressBar" class="hold-progress-bar mt-1" style="position: relative; bottom: auto; left: 0; right: 0;"></div>
+                        </div>
+                    </div>
+                    <!-- Step 3: Review total + notes + Submit / Discard -->
+                    <div id="waitTimePauseReview" class="hidden">
+                        <div class="bg-[#1f2730] border border-[#2f3944] rounded-xl px-6 py-6 text-center">
+                            <p class="text-xs uppercase tracking-wide text-gray-400 mb-2">Total wait time</p>
+                            <p id="waitTimePauseReviewDuration" class="text-3xl font-mono font-bold text-white tabular-nums">0h 0m</p>
+                            <p id="waitTimePauseReviewCategoryLabel" class="text-sm text-gray-500 mt-2"></p>
+                        </div>
+                        <div class="pt-4">
+                            <label class="text-sm text-gray-400 mb-2 block">NOTES (optional)</label>
+                            <textarea id="waitTimePauseReviewNotes" rows="3" placeholder="Details of this delay..."
+                                class="w-full bg-[#283039] text-white px-4 py-3 rounded-lg border border-gray-700 focus:outline-none resize-none"></textarea>
+                        </div>
+                        <div class="pt-4 flex gap-3">
+                            <button type="button" id="btnWaitTimePauseDiscard" class="flex-1 py-3 rounded-xl border-2 border-gray-600 bg-gray-800 text-white font-semibold hover:border-red-500 hover:bg-red-900/20 transition-colors">
+                                Discard
+                            </button>
+                            <button type="button" id="btnWaitTimePauseSubmit" class="flex-1 py-3 rounded-xl border-2 border-green-600 bg-green-900/30 text-green-300 font-semibold hover:bg-green-900/50 transition-colors">
+                                Submit
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -592,28 +728,44 @@
         <!-- Main Options -->
         <div class="w-full max-w-md mx-auto flex-1">
             <div class="features-grid portal-buttons portal-buttons-loading">
-                <!-- Start Day -->
-                <div id="btnStartDayCard" class="feature-button">
-                    <div class="spinner-wrapper">
-                        <div class="spinner-green" id="btnStartDayGlow"></div>
-                        <div class="spinner1">
-                            <span class="material-symbols-outlined spinner-icon" id="btnStartDayIcon">play_circle</span>
+                <!-- Day session row: same 2 columns as rest of grid; Pause centered in the gap when day started -->
+                <div class="day-session-row" id="daySessionRow" style="grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 34px; position: relative;">
+                    <div class="day-session-cell">
+                        <!-- Start Day (column 1 - same width as Expenses, etc.) -->
+                        <div id="btnStartDayCard" class="feature-button">
+                            <div class="spinner-wrapper">
+                                <div class="spinner-green" id="btnStartDayGlow"></div>
+                                <div class="spinner1">
+                                    <span class="material-symbols-outlined spinner-icon" id="btnStartDayIcon">play_circle</span>
+                                </div>
+                            </div>
+                            <h3 class="text-lg font-semibold text-white text-center w-full" id="btnStartDayLabel">Start Day</h3>
+                            <div id="startDayProgressBar" class="hold-progress-bar"></div>
                         </div>
                     </div>
-                    <h3 class="text-lg font-semibold text-white text-center w-full" id="btnStartDayLabel">Start Day</h3>
-                    <div id="startDayProgressBar" class="hold-progress-bar"></div>
-                </div>
-
-                <!-- End Day -->
-                <div id="btnEndDayCard" class="feature-button">
-                    <div class="spinner-wrapper">
-                        <div class="spinner-grey" id="btnEndDayGlow"></div>
-                        <div class="spinner1">
-                            <span class="material-symbols-outlined spinner-icon" style="font-variation-settings: 'FILL' 1;">sports_score</span>
+                    <div class="day-session-cell">
+                        <!-- End Day (column 2 - same width as Wait Times, etc.) -->
+                        <div id="btnEndDayCard" class="feature-button">
+                            <div class="spinner-wrapper">
+                                <div class="spinner-grey" id="btnEndDayGlow"></div>
+                                <div class="spinner1">
+                                    <span class="material-symbols-outlined spinner-icon" style="font-variation-settings: 'FILL' 1;">sports_score</span>
+                                </div>
+                            </div>
+                            <h3 class="text-lg font-semibold text-white">End Day</h3>
+                            <div id="endDayProgressBar" class="hold-progress-bar"></div>
                         </div>
                     </div>
-                    <h3 class="text-lg font-semibold text-white">End Day</h3>
-                    <div id="endDayProgressBar" class="hold-progress-bar"></div>
+                    <!-- Pause (wait time) - absolutely centered between the two columns, visible when day started -->
+                    <div id="btnPauseCard" class="feature-button feature-button-pause day-session-pause-center" style="display: none;">
+                        <div class="spinner-wrapper">
+                            <div class="spinner-orange" id="btnPauseGlow"></div>
+                            <div class="spinner1">
+                                <span class="material-symbols-outlined spinner-icon" id="btnPauseIcon">pause_circle</span>
+                            </div>
+                        </div>
+                        <h3 class="text-lg font-semibold text-white text-center w-full" id="btnPauseLabel">Pause</h3>
+                    </div>
                 </div>
 
                 <!-- Expenses -->
@@ -1396,6 +1548,7 @@
             await checkAndDisableFeatures();
             await loadDriverDaySessionAndUpdateButtons();
             setupHoldToConfirmButtons();
+            setupWaitTimePauseModal();
             const portalBtns = document.querySelector('.portal-buttons');
             if (portalBtns) portalBtns.classList.remove('portal-buttons-loading');
             console.log('Loading complete!');
@@ -1431,23 +1584,54 @@
         function updateDayButtonsUI() {
             const cardStart = document.getElementById('btnStartDayCard');
             const cardEnd = document.getElementById('btnEndDayCard');
+            const cardPause = document.getElementById('btnPauseCard');
             const labelStart = document.getElementById('btnStartDayLabel');
             const iconStart = document.getElementById('btnStartDayIcon');
             const glowStart = document.getElementById('btnStartDayGlow');
             const glowEnd = document.getElementById('btnEndDayGlow');
+            const glowPause = document.getElementById('btnPauseGlow');
+            const row = document.getElementById('daySessionRow');
             if (!cardStart || !cardEnd || !labelStart) return;
 
             const dayStarted = driverDaySession && driverDaySession.dayStartedAt && !driverDaySession.dayEndedAt;
             const hasCarryover = driverDaySession && driverDaySession.carryover === true;
             const jobIndex = Math.min((driverDaySession && driverDaySession.currentJobIndex) || 1, 10);
             const awaitingCollect = driverDaySession ? (driverDaySession.awaitingCollect !== false) : true;
+            const activePause = dayStarted && driverDaySession && driverDaySession.activeWaitTimeStartedAt;
+
+            // Day session row: always 2 cols (same as rest of grid). Pause shown in center when day started.
+            if (row) {
+                row.style.gridTemplateColumns = '1fr 1fr';
+            }
+            if (cardPause) {
+                cardPause.style.display = dayStarted ? 'flex' : 'none';
+                if (dayStarted) cardPause.style.opacity = '1';
+            }
+
+            // When pause is active: grey out Start and End, Pause becomes red and glowing
+            if (cardPause && glowPause) {
+                if (activePause) {
+                    glowPause.className = 'spinner-red-glow-pulse';
+                    glowPause.style.width = '44px';
+                    glowPause.style.height = '44px';
+                } else {
+                    glowPause.className = 'spinner-orange';
+                }
+            }
+            if (activePause) {
+                if (cardStart) cardStart.classList.add('disabled');
+                if (cardEnd) cardEnd.classList.add('disabled');
+            } else {
+                if (cardStart) cardStart.classList.remove('disabled');
+                if (cardEnd) cardEnd.classList.remove('disabled');
+            }
 
             // Toggle End Day enabled/disabled state (grey when disabled)
-            if (dayStarted) {
+            if (dayStarted && !activePause) {
                 cardEnd.classList.remove('disabled');
                 if (glowEnd) glowEnd.className = 'spinner-red';
-            } else {
-                cardEnd.classList.add('disabled');
+            } else if (!dayStarted || activePause) {
+                if (!activePause) cardEnd.classList.add('disabled');
                 if (glowEnd) glowEnd.className = 'spinner-grey';
             }
 
@@ -1789,6 +1973,392 @@
                     endHold(btnEnd, progressEnd, false);
                 });
             }
+        }
+
+        // --- Wait Time (Pause) modal ---
+        const WAIT_CATEGORIES_PAUSE = {
+            awaiting_release: { label: 'Awaiting Release' },
+            charging_vehicle: { label: 'Charging Vehicle' },
+            car_wash: { label: 'Car Wash' }
+        };
+        let waitTimePauseElapsedInterval = null;
+        let selectedPauseCategory = null;
+        let pendingWaitTimeReviewData = null; // { waitTimeData, firestoreData, docId } when review screen is shown
+
+        function getActivePauseStartMs() {
+            if (!driverDaySession || !driverDaySession.activeWaitTimeStartedAt) return 0;
+            const t = driverDaySession.activeWaitTimeStartedAt;
+            if (t && typeof t.toDate === 'function') return t.toDate().getTime();
+            if (typeof t === 'number') return t;
+            if (t && t.seconds) return t.seconds * 1000;
+            return 0;
+        }
+
+        function formatElapsed(ms) {
+            const totalSec = Math.floor(ms / 1000);
+            const h = Math.floor(totalSec / 3600);
+            const m = Math.floor((totalSec % 3600) / 60);
+            const s = totalSec % 60;
+            return [h, m, s].map(function (n) { return String(n).padStart(2, '0'); }).join(':');
+        }
+
+        function formatDurationShort(totalMinutes) {
+            const mins = Math.max(0, totalMinutes);
+            const h = Math.floor(mins / 60);
+            const m = mins % 60;
+            const parts = [];
+            if (h > 0) parts.push(h + 'h');
+            if (m > 0 || parts.length === 0) parts.push(m + 'm');
+            return parts.join(' ');
+        }
+
+        function updateWaitTimePauseElapsedDisplay() {
+            const el = document.getElementById('waitTimePauseElapsed');
+            if (!el) return;
+            const startMs = getActivePauseStartMs();
+            if (!startMs) {
+                el.textContent = '0:00:00';
+                return;
+            }
+            el.textContent = formatElapsed(Date.now() - startMs);
+        }
+
+        function startWaitTimePauseElapsedTimer() {
+            if (waitTimePauseElapsedInterval) clearInterval(waitTimePauseElapsedInterval);
+            updateWaitTimePauseElapsedDisplay();
+            waitTimePauseElapsedInterval = setInterval(updateWaitTimePauseElapsedDisplay, 1000);
+        }
+
+        function stopWaitTimePauseElapsedTimer() {
+            if (waitTimePauseElapsedInterval) {
+                clearInterval(waitTimePauseElapsedInterval);
+                waitTimePauseElapsedInterval = null;
+            }
+        }
+
+        function validateWaitTimePauseStartButton() {
+            const reg = document.getElementById('waitTimePauseReg');
+            const btn = document.getElementById('btnStartWaitTimeCard');
+            if (!btn || !reg) return;
+            const hasReg = (reg.value || '').trim().replace(/\s+/g, ' ').length >= 2;
+            const canStart = hasReg && selectedPauseCategory;
+            btn.disabled = !canStart;
+            btn.classList.toggle('opacity-60', !canStart);
+            btn.classList.toggle('cursor-not-allowed', !canStart);
+            if (canStart) {
+                btn.classList.remove('border-gray-600', 'bg-gray-800', 'text-gray-500');
+                btn.classList.add('border-green-600', 'bg-green-900/30', 'text-green-300');
+            } else {
+                btn.classList.add('border-gray-600', 'bg-gray-800', 'text-gray-500');
+                btn.classList.remove('border-green-600', 'bg-green-900/30', 'text-green-300');
+            }
+        }
+
+        function openWaitTimePauseModal(toRunningView) {
+            const modal = document.getElementById('waitTimePauseModal');
+            const setup = document.getElementById('waitTimePauseSetup');
+            const running = document.getElementById('waitTimePauseRunning');
+            const review = document.getElementById('waitTimePauseReview');
+            if (!modal || !setup || !running) return;
+            if (review) review.classList.add('hidden');
+            modal.classList.remove('hidden');
+            if (toRunningView && driverDaySession && driverDaySession.activeWaitTimeStartedAt) {
+                selectedPauseCategory = driverDaySession.activeWaitTimeCategory || null;
+                setup.classList.add('hidden');
+                running.classList.remove('hidden');
+                document.getElementById('waitTimePauseCategoryLabel').textContent = selectedPauseCategory ? (WAIT_CATEGORIES_PAUSE[selectedPauseCategory] && WAIT_CATEGORIES_PAUSE[selectedPauseCategory].label) || selectedPauseCategory : '';
+                startWaitTimePauseElapsedTimer();
+            } else {
+                setup.classList.remove('hidden');
+                running.classList.add('hidden');
+                stopWaitTimePauseElapsedTimer();
+                selectedPauseCategory = null;
+                const regInput = document.getElementById('waitTimePauseReg');
+                if (regInput) regInput.value = '';
+                document.querySelectorAll('.wait-pause-category-btn').forEach(function (btn) {
+                    btn.classList.toggle('border-blue-500', btn.getAttribute('data-category') === selectedPauseCategory);
+                    btn.classList.toggle('bg-blue-500/10', btn.getAttribute('data-category') === selectedPauseCategory);
+                });
+                validateWaitTimePauseStartButton();
+            }
+        }
+
+        function closeWaitTimePauseModal() {
+            const modal = document.getElementById('waitTimePauseModal');
+            const setup = document.getElementById('waitTimePauseSetup');
+            const running = document.getElementById('waitTimePauseRunning');
+            const review = document.getElementById('waitTimePauseReview');
+            if (modal) modal.classList.add('hidden');
+            if (setup) setup.classList.remove('hidden');
+            if (running) running.classList.add('hidden');
+            if (review) review.classList.add('hidden');
+            stopWaitTimePauseElapsedTimer();
+            selectedPauseCategory = null;
+            pendingWaitTimeReviewData = null;
+            const regEl = document.getElementById('waitTimePauseReg');
+            if (regEl) regEl.value = '';
+            const reviewNotes = document.getElementById('waitTimePauseReviewNotes');
+            if (reviewNotes) reviewNotes.value = '';
+            document.querySelectorAll('.wait-pause-category-btn').forEach(function (btn) {
+                btn.classList.remove('border-blue-500', 'bg-blue-500/10');
+            });
+            const btnStart = document.getElementById('btnStartWaitTimeCard');
+            if (btnStart) {
+                btnStart.disabled = true;
+                btnStart.classList.add('opacity-60', 'cursor-not-allowed', 'border-gray-600', 'bg-gray-800', 'text-gray-500');
+                btnStart.classList.remove('border-green-600', 'bg-green-900/30', 'text-green-300');
+            }
+        }
+
+        function setupHoldForModalButton(buttonId, progressBarId, callback) {
+            const button = document.getElementById(buttonId);
+            const progressBar = document.getElementById(progressBarId);
+            if (!button || !progressBar) return;
+            const HOLD_MS = 1000;
+            let holdTimer = null;
+            let startTime = 0;
+            function endHold(showHint) {
+                if (holdTimer) {
+                    clearInterval(holdTimer);
+                    holdTimer = null;
+                }
+                button.classList.remove('holding');
+                progressBar.classList.remove('active');
+                if (showHint && (Date.now() - startTime) < HOLD_MS * 0.5) {
+                    progressBar.classList.add('visible', 'hint');
+                    setTimeout(function () { progressBar.classList.remove('visible', 'hint'); }, 500);
+                } else {
+                    progressBar.classList.remove('visible');
+                }
+            }
+            function startHold() {
+                if (holdTimer) return;
+                if (button.disabled) return;
+                startTime = Date.now();
+                button.classList.add('holding');
+                progressBar.classList.remove('hint');
+                progressBar.classList.add('visible', 'active');
+                holdTimer = setInterval(function () {
+                    if (Date.now() - startTime >= HOLD_MS) {
+                        endHold(false);
+                        callback();
+                    }
+                }, 50);
+            }
+            button.addEventListener('mousedown', function (e) { e.preventDefault(); startHold(); });
+            button.addEventListener('mouseup', function () { endHold(true); });
+            button.addEventListener('mouseleave', function () { endHold(false); });
+            button.addEventListener('touchstart', function (e) { e.preventDefault(); startHold(); }, { passive: false });
+            button.addEventListener('touchend', function () { endHold(true); });
+            button.addEventListener('touchcancel', function () { endHold(false); });
+        }
+
+        function setupWaitTimePauseModal() {
+            const cardPause = document.getElementById('btnPauseCard');
+            const modal = document.getElementById('waitTimePauseModal');
+            const closeBtn = document.getElementById('waitTimePauseModalClose');
+            const regInput = document.getElementById('waitTimePauseReg');
+            const btnStart = document.getElementById('btnStartWaitTimeCard');
+            const btnEnd = document.getElementById('btnEndWaitTimeCard');
+
+            if (cardPause) {
+                cardPause.addEventListener('click', function () {
+                    if (cardPause.classList.contains('disabled')) return;
+                    const activePause = driverDaySession && driverDaySession.activeWaitTimeStartedAt;
+                    openWaitTimePauseModal(!!activePause);
+                });
+            }
+            if (closeBtn) closeBtn.addEventListener('click', closeWaitTimePauseModal);
+            if (regInput) regInput.addEventListener('input', validateWaitTimePauseStartButton);
+            if (modal) {
+                modal.addEventListener('click', function (e) {
+                    if (e.target === modal) closeWaitTimePauseModal();
+                });
+            }
+
+            document.querySelectorAll('.wait-pause-category-btn').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    selectedPauseCategory = btn.getAttribute('data-category');
+                    document.querySelectorAll('.wait-pause-category-btn').forEach(function (b) {
+                        b.classList.remove('border-blue-500', 'bg-blue-500/10');
+                        if (b.getAttribute('data-category') === selectedPauseCategory) {
+                            b.classList.add('border-blue-500', 'bg-blue-500/10');
+                        }
+                    });
+                    validateWaitTimePauseStartButton();
+                });
+            });
+
+            setupHoldForModalButton('btnStartWaitTimeCard', 'startWaitTimeProgressBar', function () {
+                if (!currentUser || !currentUser.uid || !selectedPauseCategory) return;
+                const reg = (document.getElementById('waitTimePauseReg').value || '').trim().toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+                if (!reg) return;
+                const loadingOverlay = document.getElementById('actionLoadingOverlay');
+                const loadingText = document.getElementById('actionLoadingText');
+                if (loadingOverlay && loadingText) {
+                    loadingText.textContent = 'Recording start...';
+                    loadingOverlay.classList.add('visible');
+                }
+                getGeolocation().then(function (loc) {
+                    const dateStr = getTodayDateString();
+                    const docId = currentUser.uid + '_' + dateStr;
+                    const coord = coordPayload(loc);
+                    window.updateDoc(window.doc(window.db, 'driverDaySessions', docId), {
+                        activeWaitTimeStartedAt: window.serverTimestamp(),
+                        activeWaitTimeCategory: selectedPauseCategory,
+                        activeWaitTimeRegistration: reg,
+                        activeWaitTimeStartCoordinate: coord
+                    }).then(function () {
+                        return loadDriverDaySessionAndUpdateButtons();
+                    }).then(function () {
+                        if (loadingOverlay) loadingOverlay.classList.remove('visible');
+                        document.getElementById('waitTimePauseSetup').classList.add('hidden');
+                        document.getElementById('waitTimePauseRunning').classList.remove('hidden');
+                        document.getElementById('waitTimePauseCategoryLabel').textContent = WAIT_CATEGORIES_PAUSE[selectedPauseCategory] ? WAIT_CATEGORIES_PAUSE[selectedPauseCategory].label : selectedPauseCategory;
+                        startWaitTimePauseElapsedTimer();
+                    }).catch(function (err) {
+                        console.error(err);
+                        if (loadingOverlay) loadingOverlay.classList.remove('visible');
+                        notifyError(err.message || 'Could not start wait time.');
+                    });
+                });
+            });
+
+            setupHoldForModalButton('btnEndWaitTimeCard', 'endWaitTimeProgressBar', function () {
+                if (!currentUser || !driverDaySession || !driverDaySession.activeWaitTimeStartedAt) return;
+                const loadingOverlay = document.getElementById('actionLoadingOverlay');
+                const loadingText = document.getElementById('actionLoadingText');
+                if (loadingOverlay && loadingText) {
+                    loadingText.textContent = 'Recording end...';
+                    loadingOverlay.classList.add('visible');
+                }
+                getGeolocation().then(function (loc) {
+                    const dateStr = getTodayDateString();
+                    const docId = currentUser.uid + '_' + dateStr;
+                    const startMs = getActivePauseStartMs();
+                    const endMs = Date.now();
+                    const totalMinutes = Math.max(0, Math.floor((endMs - startMs) / 60000));
+                    const hours = Math.floor(totalMinutes / 60);
+                    const minutes = totalMinutes % 60;
+                    const registration = driverDaySession.activeWaitTimeRegistration || '';
+                    const category = driverDaySession.activeWaitTimeCategory || selectedPauseCategory || 'awaiting_release';
+                    const categoryLabel = WAIT_CATEGORIES_PAUSE[category] ? WAIT_CATEGORIES_PAUSE[category].label : category;
+                    const startDate = new Date(startMs);
+                    const endDate = new Date(endMs);
+                    const delayStartTime = startDate.getHours().toString().padStart(2, '0') + ':' + startDate.getMinutes().toString().padStart(2, '0');
+                    const delayEndTime = endDate.getHours().toString().padStart(2, '0') + ':' + endDate.getMinutes().toString().padStart(2, '0');
+                    const driverName = getDriverName();
+                    const waitTimeData = {
+                        driverId: currentUser.uid,
+                        driverEmail: currentUser.email || '',
+                        driverName,
+                        officeId: getCurrentOfficeId() || '',
+                        registration,
+                        category,
+                        categoryLabel,
+                        hours,
+                        minutes,
+                        totalMinutes,
+                        delayStartTime,
+                        delayEndTime,
+                        notes: '',
+                        processingStatus: 'pending',
+                        createdAt: Date.now(),
+                        updatedAt: Date.now()
+                    };
+                    const startCoordinate = driverDaySession.activeWaitTimeStartCoordinate || null;
+                    const endCoordinate = loc ? coordPayload(loc) : null;
+                    waitTimeData.startCoordinate = startCoordinate;
+                    waitTimeData.endCoordinate = endCoordinate;
+                    const firestoreData = {
+                        ...waitTimeData,
+                        createdAt: window.serverTimestamp(),
+                        updatedAt: window.serverTimestamp()
+                    };
+                    firestoreData.startCoordinate = startCoordinate;
+                    firestoreData.endCoordinate = endCoordinate;
+                    pendingWaitTimeReviewData = { waitTimeData, firestoreData, docId };
+                    if (loadingOverlay) loadingOverlay.classList.remove('visible');
+                    stopWaitTimePauseElapsedTimer();
+                    document.getElementById('waitTimePauseRunning').classList.add('hidden');
+                    document.getElementById('waitTimePauseReview').classList.remove('hidden');
+                    document.getElementById('waitTimePauseReviewDuration').textContent = formatDurationShort(totalMinutes);
+                    document.getElementById('waitTimePauseReviewCategoryLabel').textContent = categoryLabel;
+                    document.getElementById('waitTimePauseReviewNotes').value = '';
+                });
+            });
+
+            document.getElementById('btnWaitTimePauseSubmit').addEventListener('click', function () {
+                if (!pendingWaitTimeReviewData || !currentUser) return;
+                const notesEl = document.getElementById('waitTimePauseReviewNotes');
+                const notes = (notesEl && notesEl.value) ? notesEl.value.trim() : '';
+                const { waitTimeData, firestoreData, docId } = pendingWaitTimeReviewData;
+                waitTimeData.notes = notes;
+                firestoreData.notes = notes;
+                const loadingOverlay = document.getElementById('actionLoadingOverlay');
+                const loadingText = document.getElementById('actionLoadingText');
+                if (loadingOverlay && loadingText) {
+                    loadingText.textContent = 'Saving...';
+                    loadingOverlay.classList.add('visible');
+                }
+                let waitTimeDocId = null;
+                window.addDoc(window.collection(window.db, 'waitTimes'), firestoreData).then(function (ref) {
+                    waitTimeDocId = ref.id;
+                    return window.updateDoc(window.doc(window.db, 'driverDaySessions', docId), {
+                        activeWaitTimeStartedAt: window.deleteField(),
+                        activeWaitTimeCategory: window.deleteField(),
+                        activeWaitTimeRegistration: window.deleteField(),
+                        activeWaitTimeStartCoordinate: window.deleteField()
+                    });
+                }).then(function () {
+                    if (window.waitTimeUploadQueue && waitTimeDocId) {
+                        return window.waitTimeUploadQueue.enqueueWaitTimeUpload(waitTimeData, waitTimeDocId);
+                    }
+                }).catch(function (e) {
+                    if (e && e.code !== 'not-found') console.error(e);
+                }).then(function () {
+                    if (window.waitTimeUploadQueue && typeof window.waitTimeUploadQueue.updateGlobalUploadStatus === 'function') {
+                        return window.waitTimeUploadQueue.updateGlobalUploadStatus();
+                    }
+                }).then(function () {
+                    return loadDriverDaySessionAndUpdateButtons();
+                }).then(function () {
+                    if (loadingOverlay) loadingOverlay.classList.remove('visible');
+                    pendingWaitTimeReviewData = null;
+                    closeWaitTimePauseModal();
+                }).catch(function (err) {
+                    console.error(err);
+                    if (loadingOverlay) loadingOverlay.classList.remove('visible');
+                    notifyError(err.message || 'Could not save wait time.');
+                });
+            });
+
+            document.getElementById('btnWaitTimePauseDiscard').addEventListener('click', function () {
+                if (!pendingWaitTimeReviewData) return;
+                const docId = pendingWaitTimeReviewData.docId;
+                const loadingOverlay = document.getElementById('actionLoadingOverlay');
+                const loadingText = document.getElementById('actionLoadingText');
+                if (loadingOverlay && loadingText) {
+                    loadingText.textContent = 'Discarding...';
+                    loadingOverlay.classList.add('visible');
+                }
+                window.updateDoc(window.doc(window.db, 'driverDaySessions', docId), {
+                    activeWaitTimeStartedAt: window.deleteField(),
+                    activeWaitTimeCategory: window.deleteField(),
+                    activeWaitTimeRegistration: window.deleteField(),
+                    activeWaitTimeStartCoordinate: window.deleteField()
+                }).then(function () {
+                    return loadDriverDaySessionAndUpdateButtons();
+                }).then(function () {
+                    if (loadingOverlay) loadingOverlay.classList.remove('visible');
+                    pendingWaitTimeReviewData = null;
+                    closeWaitTimePauseModal();
+                }).catch(function (err) {
+                    console.error(err);
+                    if (loadingOverlay) loadingOverlay.classList.remove('visible');
+                    notifyError(err.message || 'Could not discard.');
+                });
+            });
         }
 
         async function getDriverPhotoStoragePath(file) {
