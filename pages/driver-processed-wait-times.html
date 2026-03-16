@@ -302,20 +302,22 @@
 
             unsubscribeWaitTimes = window.onSnapshot(waitTimesQuery, (snapshot) => {
                 const allWaitTimes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                
-                // Filter for processed wait times within last 7 days
                 const now = Date.now();
+
+                // Include both validated and processed (processed within 7 days)
                 processedWaitTimes = allWaitTimes.filter(item => {
-                    if ((item.processingStatus || 'pending') !== 'processed') return false;
+                    const status = item.processingStatus || 'pending';
+                    if (status === 'validated') return true;
+                    if (status !== 'processed') return false;
                     const processedAt = toDate(item.processedAt);
                     if (!processedAt) return false;
                     return now - processedAt.getTime() <= SEVEN_DAYS_MS;
                 });
 
-                // Sort by processed date (newest first)
+                // Sort by processedAt or validatedAt (newest first)
                 processedWaitTimes.sort((a, b) => {
-                    const aTime = toDate(a.processedAt)?.getTime() || 0;
-                    const bTime = toDate(b.processedAt)?.getTime() || 0;
+                    const aTime = toDate(a.processedAt || a.validatedAt)?.getTime() || 0;
+                    const bTime = toDate(b.processedAt || b.validatedAt)?.getTime() || 0;
                     return bTime - aTime;
                 });
 
@@ -353,9 +355,12 @@
                 : ((item.hours || 0) * 60) + (item.minutes || 0);
             const createdAt = toDate(item.createdAt);
             const processedAt = toDate(item.processedAt);
+            const validatedAt = toDate(item.validatedAt);
             const submittedText = createdAt ? `Submitted ${formatRelativeTime(createdAt)}` : 'Submission time unavailable';
-            const processedText = processedAt ? `Processed ${formatRelativeTime(processedAt)}` : '';
-            const expiryLabel = getExpiryLabel(item);
+            const statusText = item.processingStatus === 'validated'
+                ? (validatedAt ? `Validated ${formatRelativeTime(validatedAt)}` : 'Validated')
+                : (processedAt ? `Processed ${formatRelativeTime(processedAt)}` : '');
+            const expiryLabel = item.processingStatus === 'processed' ? getExpiryLabel(item) : '';
 
             return `
                 <article class="animated-border-panel animated-border-processed fade-in">
@@ -399,11 +404,11 @@
                         <p class="leading-relaxed">${escapeHtml(item.officeNotes)}</p>
                     </div>
                     ` : ''}
-                    ${processedText ? `
+                    ${statusText ? `
                     <div class="mt-3 flex flex-wrap items-center gap-4 text-sm text-gray-300">
                         <div class="flex items-center gap-2 text-green-400">
                             <span class="material-symbols-outlined text-base">task_alt</span>
-                            <span>${processedText}</span>
+                            <span>${statusText}</span>
                         </div>
                         ${expiryLabel ? `
                         <div class="flex items-center gap-2 text-amber-400">

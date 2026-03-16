@@ -686,10 +686,13 @@
         async function markAllStructureChangesSeen() {
             try {
                 for (const n of structureChangeNotifications) {
-                    await window.firebaseUpdateDoc(
-                        window.firebaseDoc(window.firestore, 'structureChangeNotifications', n.id),
-                        { seen: true }
-                    );
+                    try {
+                        await window.firebaseDeleteDoc(
+                            window.firebaseDoc(window.firestore, 'structureChangeNotifications', n.id)
+                        );
+                    } catch (delErr) {
+                        console.warn('Could not delete structure change notification:', n.id, delErr);
+                    }
                 }
                 structureChangeNotifications = [];
                 updateStructureChangeBanner();

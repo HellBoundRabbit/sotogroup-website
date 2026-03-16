@@ -820,17 +820,17 @@
 
     <div class="min-h-screen px-6 py-6 max-w-lg mx-auto">
         <div class="training-tabs" role="tablist" aria-label="Training sections">
-            <button type="button" class="training-tab" role="tab" aria-selected="false" aria-controls="tab-training" id="tab-btn-training" onclick="switchTrainingTab('training')">Training</button>
-            <button type="button" class="training-tab active" role="tab" aria-selected="true" aria-controls="tab-progression" id="tab-btn-progression" onclick="switchTrainingTab('progression')">Progression</button>
+            <button type="button" class="training-tab active" role="tab" aria-selected="true" aria-controls="tab-training" id="tab-btn-training" onclick="switchTrainingTab('training')">Training</button>
+            <button type="button" class="training-tab" role="tab" aria-selected="false" aria-controls="tab-progression" id="tab-btn-progression" onclick="switchTrainingTab('progression')">Progression</button>
         </div>
 
         <!-- Training tab panel (default) -->
-        <div id="tab-training" class="training-tab-panel" role="tabpanel" aria-labelledby="tab-btn-training">
+        <div id="tab-training" class="training-tab-panel is-active" role="tabpanel" aria-labelledby="tab-btn-training">
         <div id="trainingCategoriesList" class="training-list" aria-label="Training"></div>
         </div>
 
         <!-- Progression tab panel -->
-        <div id="tab-progression" class="training-tab-panel is-active" role="tabpanel" aria-labelledby="tab-btn-progression">
+        <div id="tab-progression" class="training-tab-panel" role="tabpanel" aria-labelledby="tab-btn-progression">
         <section class="mb-8" aria-label="Your progression">
             <div class="stepper-box">
                 <div id="stepper-step-1" class="stepper-step stepper-completed">

@@ -18,6 +18,8 @@
     <script src="/js/session-manager.js"></script>
     <script src="../js/ui-dialogs.js"></script>
     <script src="/js/settings.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <script>
         tailwind.config = {
             plugins: {
@@ -30,6 +32,10 @@
         .tab-active {
             border-bottom: 3px solid #3b82f6;
             color: #3b82f6;
+        }
+        .tab-active.tab-validated-active {
+            border-bottom-color: #22c55e;
+            color: #22c55e;
         }
         .tab-content {
             display: block;
@@ -245,14 +251,14 @@
         </div>
     </div>
 
-    <!-- Tabs -->
+    <!-- Tabs (office: Pending + Validated only; Processed tab removed) -->
     <div class="border-b border-gray-800 mb-6">
         <div class="flex gap-8 justify-center">
             <button onclick="switchTab('pending')" id="tab-pending" class="tab-active py-3 px-1 font-semibold transition-colors">
                 Pending <span id="pending-count" class="ml-2 px-2 py-0.5 bg-orange-500 text-white text-xs rounded-full">0</span>
             </button>
-            <button onclick="switchTab('processed')" id="tab-processed" class="py-3 px-1 text-gray-400 hover:text-white font-semibold transition-colors">
-                Processed <span id="processed-count" class="ml-2 px-2 py-0.5 bg-green-500 text-white text-xs rounded-full">0</span>
+            <button onclick="switchTab('validated')" id="tab-validated" class="py-3 px-1 text-gray-400 hover:text-white font-semibold transition-colors">
+                Validated <span id="validated-count" class="ml-2 px-2 py-0.5 bg-green-500 text-white text-xs rounded-full">0</span>
             </button>
         </div>
     </div>
@@ -267,14 +273,22 @@
         <div id="pendingList" class="flex flex-col items-center space-y-4"></div>
     </div>
 
-    <div id="content-processed" class="tab-content hidden">
-        <div id="processedEmpty" class="hidden text-center py-16 text-gray-500">
-            <span class="material-symbols-outlined text-6xl mb-4 text-gray-600">history</span>
-            <p class="text-lg">No recently processed wait times</p>
-            <p class="text-sm text-gray-500 mt-2">Once processed, wait times remain visible for 7 days.</p>
+    <div id="content-validated" class="tab-content hidden">
+        <div id="validatedHeader" class="hidden mb-4 flex flex-wrap items-center justify-between gap-3">
+            <p class="text-sm text-gray-400">Save PDFs to a folder (Wait Times / date / driver) and mark as processed.</p>
+            <button type="button" onclick="transferAllValidatedWaitTimes()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm flex items-center gap-2">
+                <span class="material-symbols-outlined text-base">folder_zip</span>
+                Transfer all
+            </button>
         </div>
-        <div id="processedList" class="flex flex-col items-center space-y-4"></div>
+        <div id="validatedEmpty" class="hidden text-center py-16 text-gray-500">
+            <span class="material-symbols-outlined text-6xl mb-4 text-gray-600">task_alt</span>
+            <p class="text-lg">No validated wait times</p>
+            <p class="text-sm text-gray-500 mt-2">Validate wait times from the Pending tab, then use Transfer to save PDFs and mark as processed.</p>
+        </div>
+        <div id="validatedList" class="flex flex-col items-center space-y-4"></div>
     </div>
+
 </main>
 
 <div id="processModal" class="hidden fixed inset-0 bg-black bg-opacity-70 z-50 overflow-y-auto">
@@ -311,9 +325,25 @@
                                 </select>
                             </div>
                         </div>
-                        <div class="bg-[#1f2730] border border-[#2f3944] rounded-xl px-4 py-3">
-                            <p class="text-xs uppercase tracking-wide text-gray-400 mb-1">Resulting Wait Time</p>
-                            <p id="processResultDuration" class="text-lg font-semibold text-white">--</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div class="bg-[#1f2730] border border-[#2f3944] rounded-xl px-3 py-2 min-w-0">
+                                <p class="text-xs uppercase tracking-wide text-gray-400 mb-0.5">Resulting Wait Time</p>
+                                <p id="processResultDuration" class="text-base font-semibold text-white">--</p>
+                            </div>
+                            <div id="processLocationSection" class="hidden bg-[#1b222b] border border-[#27313c] rounded-xl px-3 py-2 min-w-0">
+                                <p class="text-xs font-semibold text-gray-400 mb-1">LOCATION</p>
+                                <div class="text-xs text-gray-200 space-y-0.5 font-mono leading-tight">
+                                    <div>
+                                        <p class="text-[10px] text-gray-500">Coor A</p>
+                                        <p id="processCoorA" class="text-gray-200 truncate">--</p>
+                                    </div>
+                                    <p id="processDistance" class="text-center text-blue-400 font-semibold text-xs hidden"></p>
+                                    <div>
+                                        <p class="text-[10px] text-gray-500">Coor B</p>
+                                        <p id="processCoorB" class="text-gray-200 truncate">--</p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <p id="processReductionWarning" class="text-sm text-red-400 hidden">Reduction exceeds the original wait time.</p>
                     </div>
@@ -362,7 +392,7 @@
                         <button onclick="handleProcessBack()" class="w-full sm:w-auto px-5 py-3 bg-[#283039] hover:bg-[#3a444e] text-white rounded-lg transition-colors">Back</button>
                         <div class="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
                             <button onclick="closeProcessModal()" class="w-full sm:w-auto px-5 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors">Discard</button>
-                            <button onclick="finalizeProcessWaitTime()" class="w-full sm:w-auto px-5 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors">Mark as Processed</button>
+                            <button onclick="finalizeProcessWaitTime()" class="w-full sm:w-auto px-5 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors">Mark as Validated</button>
                     </div>
                 </div>
             </div>
@@ -581,27 +611,20 @@
         const now = Date.now();
         let pending = allWaitTimes.filter(item => {
             const status = item.processingStatus || 'pending';
-            return status !== 'processed' && status !== 'returned';
+            return status !== 'processed' && status !== 'returned' && status !== 'validated';
         });
-        let processed = allWaitTimes.filter(item => {
-            if ((item.processingStatus || 'pending') !== 'processed') return false;
-            const processedAt = toDate(item.processedAt);
-            if (!processedAt) return false;
-            return now - processedAt.getTime() <= SEVEN_DAYS_MS;
-        });
-
+        let validated = allWaitTimes.filter(item => (item.processingStatus || 'pending') === 'validated');
         // Sort pending: oldest first (by createdAt)
         pending.sort((a, b) => {
             const aTime = toDate(a.createdAt)?.getTime() || 0;
             const bTime = toDate(b.createdAt)?.getTime() || 0;
             return aTime - bTime; // Oldest first
         });
-
-        // Sort processed: newest first (by processedAt)
-        processed.sort((a, b) => {
-            const aTime = toDate(a.processedAt)?.getTime() || 0;
-            const bTime = toDate(b.processedAt)?.getTime() || 0;
-            return bTime - aTime; // Newest first
+        // Sort validated: oldest first (by validatedAt or createdAt)
+        validated.sort((a, b) => {
+            const aTime = toDate(a.validatedAt || a.createdAt)?.getTime() || 0;
+            const bTime = toDate(b.validatedAt || b.createdAt)?.getTime() || 0;
+            return aTime - bTime;
         });
 
         // Apply search filter if active
@@ -612,25 +635,27 @@
                 const driverName = (item.driverName || '').toLowerCase();
                 return reg.includes(query) || driverName.includes(query);
             });
-            processed = processed.filter(item => {
+            validated = validated.filter(item => {
                 const reg = (item.registration || '').toLowerCase();
                 const driverName = (item.driverName || '').toLowerCase();
                 return reg.includes(query) || driverName.includes(query);
             });
         }
 
-        // Show/hide tab content based on active tab
+        // Show/hide tab content based on active tab (office: pending + validated only)
         const contentPending = document.getElementById('content-pending');
-        const contentProcessed = document.getElementById('content-processed');
-        
+        const contentValidated = document.getElementById('content-validated');
+        if (contentPending) contentPending.classList.add('hidden');
+        if (contentValidated) contentValidated.classList.add('hidden');
+
         if (activeTab === 'pending') {
             renderWaitTimeList(pending, 'pendingList', 'pendingEmpty');
             if (contentPending) contentPending.classList.remove('hidden');
-            if (contentProcessed) contentProcessed.classList.add('hidden');
         } else {
-            renderWaitTimeList(processed, 'processedList', 'processedEmpty', { processed: true });
-            if (contentPending) contentPending.classList.add('hidden');
-            if (contentProcessed) contentProcessed.classList.remove('hidden');
+            const validatedHeader = document.getElementById('validatedHeader');
+            if (validatedHeader) validatedHeader.classList.toggle('hidden', validated.length === 0);
+            renderWaitTimeList(validated, 'validatedList', 'validatedEmpty', { validated: true });
+            if (contentValidated) contentValidated.classList.remove('hidden');
         }
 
         updateTabCounts();
@@ -639,38 +664,37 @@
     function switchTab(tab) {
         activeTab = tab;
         
-        // Update tab buttons
+        // Update tab buttons (pending = blue, validated = green)
         document.querySelectorAll('[id^="tab-"]').forEach(btn => {
-            btn.classList.remove('tab-active', 'text-blue-500');
+            btn.classList.remove('tab-active', 'tab-validated-active', 'text-blue-500', 'text-green-500');
             btn.classList.add('text-gray-400');
         });
         
         const activeBtn = document.getElementById(`tab-${tab}`);
         if (activeBtn) {
-            activeBtn.classList.add('tab-active', 'text-blue-500');
+            activeBtn.classList.add('tab-active');
             activeBtn.classList.remove('text-gray-400');
+            if (tab === 'validated') {
+                activeBtn.classList.add('tab-validated-active', 'text-green-500');
+            } else {
+                activeBtn.classList.add('text-blue-500');
+            }
         }
         
         renderWaitTimes();
     }
 
     function updateTabCounts() {
-        const now = Date.now();
         const pending = allWaitTimes.filter(item => {
             const status = item.processingStatus || 'pending';
-            return status !== 'processed' && status !== 'returned';
+            return status !== 'processed' && status !== 'returned' && status !== 'validated';
         });
-        const processed = allWaitTimes.filter(item => {
-            if ((item.processingStatus || 'pending') !== 'processed') return false;
-            const processedAt = toDate(item.processedAt);
-            if (!processedAt) return false;
-            return now - processedAt.getTime() <= SEVEN_DAYS_MS;
-        });
+        const validated = allWaitTimes.filter(item => (item.processingStatus || 'pending') === 'validated');
 
         const pendingCount = document.getElementById('pending-count');
-        const processedCount = document.getElementById('processed-count');
+        const validatedCount = document.getElementById('validated-count');
         if (pendingCount) pendingCount.textContent = pending.length;
-        if (processedCount) processedCount.textContent = processed.length;
+        if (validatedCount) validatedCount.textContent = validated.length;
     }
 
     function renderWaitTimeList(items, listId, emptyId, options = {}) {
@@ -780,25 +804,59 @@
         return (hours * 60) + minutes;
     }
 
+    /** Format lat/lng for display */
+    function formatCoord(coord) {
+        if (!coord || typeof coord.lat !== 'number' || typeof coord.lng !== 'number') return '—';
+        return coord.lat.toFixed(5) + ', ' + coord.lng.toFixed(5);
+    }
+
+    /** Distance in miles between two { lat, lng } points (Haversine). Returns null if invalid. */
+    function distanceMiles(a, b) {
+        if (!a || !b || typeof a.lat !== 'number' || typeof a.lng !== 'number' || typeof b.lat !== 'number' || typeof b.lng !== 'number') return null;
+        const R = 3958.8; // Earth radius in miles
+        const dLat = (b.lat - a.lat) * Math.PI / 180;
+        const dLon = (b.lng - a.lng) * Math.PI / 180;
+        const lat1 = a.lat * Math.PI / 180;
+        const lat2 = b.lat * Math.PI / 180;
+        const x = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2);
+        const c = 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+        return R * c;
+    }
+
+    /** Format distance for display: "0.00 miles" */
+    function formatDistanceMiles(miles) {
+        if (miles == null || typeof miles !== 'number') return '';
+        return miles.toFixed(2) + ' miles';
+    }
+
     function renderWaitTimeCard(item, options = {}) {
         const category = WAIT_CATEGORIES[item.category] || { label: item.category || 'Other', icon: '⏱️', badge: 'bg-gray-500/10 text-gray-300' };
         const totalMinutes = getTotalMinutes(item);
         const createdAt = toDate(item.createdAt);
         const processedAt = toDate(item.processedAt);
+        const validatedAt = toDate(item.validatedAt);
         const expiryLabel = options.processed ? getExpiryLabel(item) : '';
 
-        const actions = options.processed
-            ? ''
-            : `
+        let actions = '';
+        if (options.validated) {
+            actions = `
+                <button onclick="transferWaitTime('${item.id}'); return false;" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm flex items-center gap-2">
+                    <span class="material-symbols-outlined text-base">folder_zip</span>
+                    Transfer
+                </button>
+            `;
+        } else if (!options.processed) {
+            actions = `
                 <button onclick="openReturnModal('${item.id}'); return false;" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm flex items-center gap-2">
                     <span class="material-symbols-outlined text-base">undo</span>
                     Return
                 </button>
                 <button onclick="openProcessModal('${item.id}')" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm flex items-center gap-2">
                     <span class="material-symbols-outlined text-base">task_alt</span>
-                    Process
+                    Validate
                 </button>
             `;
+        }
 
         return `
             <article data-wait-time-id="${item.id}" class="rounded-2xl border border-[#283039] bg-[#151b21] p-5 transition-all shadow-sm hover:border-[#3a444e] w-full max-w-md">
@@ -825,19 +883,44 @@
                     </div>
                 </div>
                 
+                ${(item.delayStartTime && item.delayEndTime) || item.startCoordinate || item.endCoordinate ? `
+                <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 ${item.delayStartTime && item.delayEndTime ? `
-                <div class="mt-3 bg-[#1b222b] border border-[#27313c] rounded-xl p-4">
-                    <p class="text-xs font-semibold text-gray-400 mb-2">WAIT TIME DETAILS</p>
-                    <div class="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                            <p class="text-xs text-gray-500 mb-1">Start Time</p>
-                            <p class="text-gray-200 font-medium">${escapeHtml(item.delayStartTime)}</p>
-                        </div>
-                        <div>
-                            <p class="text-xs text-gray-500 mb-1">End Time</p>
-                            <p class="text-gray-200 font-medium">${escapeHtml(item.delayEndTime)}</p>
+                    <div class="bg-[#1b222b] border border-[#27313c] rounded-xl px-3 py-2 min-w-0">
+                        <p class="text-xs font-semibold text-gray-400 mb-1">WAIT TIME DETAILS</p>
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                                <p class="text-[10px] text-gray-500 mb-0.5">Start</p>
+                                <p class="text-gray-200 font-medium">${escapeHtml(item.delayStartTime)}</p>
+                            </div>
+                            <div>
+                                <p class="text-[10px] text-gray-500 mb-0.5">End</p>
+                                <p class="text-gray-200 font-medium">${escapeHtml(item.delayEndTime)}</p>
+                            </div>
                         </div>
                     </div>
+                ` : ''}
+                ${(item.startCoordinate || item.endCoordinate) ? (() => {
+                    const start = item.startCoordinate;
+                    const end = item.endCoordinate;
+                    const distMiles = (start && end) ? distanceMiles(start, end) : null;
+                    return `
+                    <div class="bg-[#1b222b] border border-[#27313c] rounded-xl px-3 py-2 min-w-0">
+                        <p class="text-xs font-semibold text-gray-400 mb-1">LOCATION</p>
+                        <div class="text-xs text-gray-200 space-y-0.5 font-mono leading-tight">
+                            <div>
+                                <p class="text-[10px] text-gray-500">Coor A</p>
+                                <p class="text-gray-200 truncate">${formatCoord(start)}</p>
+                            </div>
+                            ${distMiles !== null ? `<p class="text-center text-blue-400 font-semibold text-xs">${formatDistanceMiles(distMiles)}</p>` : ''}
+                            <div>
+                                <p class="text-[10px] text-gray-500">Coor B</p>
+                                <p class="text-gray-200 truncate">${formatCoord(end)}</p>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                })() : ''}
                 </div>
                 ` : ''}
 
@@ -898,10 +981,17 @@
                 </div>
         ` : ''}
 
+        ${options.validated && validatedAt ? `
+                <div class="mt-3 flex items-center gap-2 text-sm text-blue-400">
+                    <span class="material-symbols-outlined text-base">task_alt</span>
+                    <span>Validated ${formatRelativeTime(validatedAt)}</span>
+                </div>
+            ` : ''}
+
         ${options.processed && processedAt ? `
                 <div class="mt-3 grid gap-3 md:grid-cols-3 text-sm text-gray-300">
                     <div class="flex items-center gap-2 text-green-400">
-                        <span class="material-symbols-outlined text-base">task_alt</span>
+                        <span class="material-symbols-outlined text-base">check_circle</span>
                         <span>Processed ${formatRelativeTime(processedAt)}</span>
                     </div>
                     <div class="flex items-center gap-2">
@@ -1037,6 +1127,30 @@
             }
         }
 
+        // Update location (Coor A / distance / Coor B) in process modal
+        const locationSection = document.getElementById('processLocationSection');
+        const processCoorA = document.getElementById('processCoorA');
+        const processCoorB = document.getElementById('processCoorB');
+        const processDistance = document.getElementById('processDistance');
+        if (locationSection && processCoorA && processCoorB && processDistance && waitTimeToProcess) {
+            const start = waitTimeToProcess.startCoordinate || null;
+            const end = waitTimeToProcess.endCoordinate || null;
+            if (start || end) {
+                locationSection.classList.remove('hidden');
+                processCoorA.textContent = formatCoord(start);
+                processCoorB.textContent = formatCoord(end);
+                const distMiles = (start && end) ? distanceMiles(start, end) : null;
+                if (distMiles !== null) {
+                    processDistance.textContent = formatDistanceMiles(distMiles);
+                    processDistance.classList.remove('hidden');
+                } else {
+                    processDistance.classList.add('hidden');
+                }
+            } else {
+                locationSection.classList.add('hidden');
+            }
+        }
+
         const resultLabel = document.getElementById('processResultDuration');
         if (resultLabel) resultLabel.textContent = formatDuration(updatedMinutes);
 
@@ -1144,22 +1258,19 @@
             officeNote: officeNote // Include the note in adjustments
         };
 
-        const processed = await markWaitTimeProcessed(waitTimeToProcess.id, adjustments);
-        if (processed) {
+        const done = await markWaitTimeValidated(waitTimeToProcess.id, adjustments);
+        if (done) {
             closeProcessModal();
-            // Clear the office note input
-            if (officeNoteInput) {
-                officeNoteInput.value = '';
-            }
+            if (officeNoteInput) officeNoteInput.value = '';
         }
     }
 
-    async function markWaitTimeProcessed(waitTimeId, adjustment = null) {
+    async function markWaitTimeValidated(waitTimeId, adjustment = null) {
         try {
             const waitTime = allWaitTimes.find(item => item.id === waitTimeId);
             if (!waitTime) {
                 notifyWarning('Wait time not found.');
-                return;
+                return false;
             }
 
             const originalTotal = getTotalMinutes(waitTime);
@@ -1171,13 +1282,63 @@
                 : `Wait time total: ${formatDuration(originalTotal)}`;
 
             const confirmed = await showConfirmation({
-                title: 'Mark as processed?',
-                message: `Confirm this wait time for ${waitTime.registration || 'the vehicle'} has been handled.\n\n${summaryMessage}`,
-                confirmText: 'Yes, processed',
+                title: 'Mark as validated?',
+                message: `Confirm this wait time for ${waitTime.registration || 'the vehicle'}.\n\n${summaryMessage}`,
+                confirmText: 'Yes, validated',
                 cancelText: 'Cancel',
                 tone: 'success'
             });
             if (!confirmed) return false;
+
+            const validatedByName = currentUser?.name ||
+                `${currentUser?.firstName || ''} ${currentUser?.lastName || ''}`.trim() ||
+                currentUser?.email ||
+                'Office';
+
+            const updatePayload = {
+                processingStatus: 'validated',
+                validatedAt: window.serverTimestamp(),
+                validatedBy: currentUser.uid,
+                validatedByName,
+                updatedAt: window.serverTimestamp(),
+                officeId: waitTime.officeId || getCurrentOfficeId()
+            };
+
+            if (adjustment) {
+                updatePayload.totalMinutes = adjustment.updatedTotalMinutes;
+                updatePayload.hours = adjustment.updatedHours;
+                updatePayload.minutes = adjustment.updatedMinutes;
+
+                if (adjustment.originalTotalMinutes !== undefined &&
+                    adjustment.originalTotalMinutes !== adjustment.updatedTotalMinutes) {
+                    updatePayload.originalTotalMinutes = adjustment.originalTotalMinutes;
+                    updatePayload.originalHours = adjustment.originalHours;
+                    updatePayload.originalMinutes = adjustment.originalMinutes;
+                    updatePayload.adjustedByMinutes = changeMinutes;
+                    updatePayload.adjustedAt = window.serverTimestamp();
+                }
+                if (adjustment.officeNote !== undefined) {
+                    updatePayload.officeNotes = adjustment.officeNote || '';
+                }
+            }
+
+            await window.updateDoc(window.doc(window.db, 'waitTimes', waitTimeId), updatePayload);
+            notifySuccess('Wait time validated. Use Transfer on the Validated tab to save PDF and mark as processed.');
+            return true;
+        } catch (error) {
+            console.error('Error validating wait time:', error);
+            notifyError('Unable to mark wait time as validated.');
+            return false;
+        }
+    }
+
+    async function markWaitTimeProcessed(waitTimeId, adjustment = null) {
+        try {
+            const waitTime = allWaitTimes.find(item => item.id === waitTimeId);
+            if (!waitTime) {
+                notifyWarning('Wait time not found.');
+                return false;
+            }
 
             const processedByName = currentUser?.name ||
                 `${currentUser?.firstName || ''} ${currentUser?.lastName || ''}`.trim() ||
@@ -1200,17 +1361,12 @@
                 updatePayload.totalMinutes = adjustment.updatedTotalMinutes;
                 updatePayload.hours = adjustment.updatedHours;
                 updatePayload.minutes = adjustment.updatedMinutes;
-
                 if (adjustment.originalTotalMinutes !== undefined &&
                     adjustment.originalTotalMinutes !== adjustment.updatedTotalMinutes) {
                     updatePayload.originalTotalMinutes = adjustment.originalTotalMinutes;
                     updatePayload.originalHours = adjustment.originalHours;
                     updatePayload.originalMinutes = adjustment.originalMinutes;
-                    updatePayload.adjustedByMinutes = changeMinutes;
-                    updatePayload.adjustedAt = window.serverTimestamp();
                 }
-
-                // Add office note if provided
                 if (adjustment.officeNote !== undefined) {
                     updatePayload.officeNotes = adjustment.officeNote || '';
                 }
@@ -1226,6 +1382,382 @@
             console.error('Error processing wait time:', error);
             notifyError('Unable to mark wait time as processed.');
             return false;
+        }
+    }
+
+    function sanitizeFolderName(name) {
+        if (!name || typeof name !== 'string') return 'Unknown';
+        return name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '').replace(/\s+/g, '_').trim() || 'Unknown';
+    }
+
+    async function getOrCreateFolder(parentHandle, folderName) {
+        const finalName = sanitizeFolderName(folderName);
+        return await parentHandle.getDirectoryHandle(finalName, { create: true });
+    }
+
+    /** Generate a PDF blob for a single wait time (for transfer). Professional layout with table and optional map. */
+    async function generateWaitTimePDF(item) {
+        const { jsPDF } = window.jspdf;
+        if (!jsPDF) throw new Error('PDF library not loaded');
+        const doc = new jsPDF();
+        const ptToMm = 0.352778;
+        const pageW = 210;
+        const leftMargin = 48 * ptToMm;
+        const category = WAIT_CATEGORIES[item.category] || { label: item.category || 'Other' };
+        const totalMinutes = getTotalMinutes(item);
+        const createdAt = toDate(item.createdAt);
+        const validatedAt = toDate(item.validatedAt);
+        const formatDate = (d) => d ? d.toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+        let y = 28 * ptToMm;
+
+        // —— Title (centered, like expense)
+        doc.setFontSize(28);
+        doc.setFont(undefined, 'bold');
+        doc.setTextColor(0, 0, 0);
+        const titleW = doc.getTextWidth('Wait Time Report');
+        doc.text('Wait Time Report', (pageW - titleW) / 2, y);
+        y += 10;
+
+        // Horizontal rule under title
+        doc.setDrawColor(180, 180, 180);
+        doc.setLineWidth(0.4);
+        doc.line(leftMargin, y, pageW - leftMargin, y);
+        y += 14;
+
+        // —— Details table (gray header, bordered) — 25% smaller than previous size
+        const tableCol1 = 39;
+        const tableCol2 = 90;
+        const details = [
+            ['Registration', item.registration || '—'],
+            ['Driver', formatDriverName(item)],
+            ['Category', category.label],
+            ['Duration', formatDuration(totalMinutes)],
+            ['Submitted', formatDate(createdAt)],
+            ['Validated', formatDate(validatedAt)]
+        ];
+        doc.autoTable({
+            startY: y,
+            head: [['Field', 'Details']],
+            body: details,
+            theme: 'grid',
+            headStyles: { fillColor: [217, 217, 217], textColor: 0, fontStyle: 'bold', fontSize: 11 },
+            bodyStyles: { fontSize: 10, textColor: 0, cellPadding: 3 },
+            columnStyles: { 0: { cellWidth: tableCol1, fontStyle: 'bold' }, 1: { cellWidth: tableCol2 } },
+            margin: { left: leftMargin },
+            tableWidth: tableCol1 + tableCol2
+        });
+        y = doc.lastAutoTable.finalY + 12;
+
+        // —— Wait period box: start (left) — line — full time (middle) — end (right); Grace Period Adjustment underneath if adjusted
+        if (item.delayStartTime || item.delayEndTime) {
+            const boxW = pageW - 2 * leftMargin;
+            const hasAdjustment = item.originalTotalMinutes != null && item.originalTotalMinutes !== item.totalMinutes;
+            const boxH = hasAdjustment ? 34 : 26;
+            const lineY = y + 18;
+            doc.setDrawColor(0, 0, 0);
+            doc.setLineWidth(0.3);
+            doc.setFillColor(248, 248, 248);
+            doc.roundedRect(leftMargin, y, boxW, boxH, 2, 2, 'FD');
+            doc.setFontSize(10);
+            doc.setFont(undefined, 'bold');
+            doc.setTextColor(60, 60, 60);
+            doc.text('Wait period', leftMargin + 4, y + 8);
+            doc.setFont(undefined, 'normal');
+            doc.setTextColor(0, 0, 0);
+            const startStr = item.delayStartTime || '—';
+            const endStr = item.delayEndTime || '—';
+            const fullMinutes = hasAdjustment && item.originalTotalMinutes != null ? item.originalTotalMinutes : totalMinutes;
+            const fullTimeStr = formatDuration(fullMinutes);
+            const pad = 8;
+            const lineLeft = leftMargin + pad + doc.getTextWidth(startStr) + 4;
+            const lineRight = leftMargin + boxW - pad - doc.getTextWidth(endStr) - 4;
+            const midX = (lineLeft + lineRight) / 2;
+            const centerX = leftMargin + boxW / 2;
+            doc.setDrawColor(100, 100, 100);
+            doc.setLineWidth(0.35);
+            doc.line(lineLeft, lineY, lineRight, lineY);
+            doc.setTextColor(0, 0, 0);
+            doc.setFont(undefined, 'normal');
+            doc.text(startStr, leftMargin + pad, lineY);
+            doc.text(endStr, leftMargin + boxW - pad - doc.getTextWidth(endStr), lineY);
+            doc.setFont(undefined, 'bold');
+            doc.text(fullTimeStr, midX, lineY, { align: 'center' });
+            if (hasAdjustment) {
+                doc.setFontSize(8);
+                doc.setFont(undefined, 'normal');
+                doc.setTextColor(120, 80, 0);
+                const adjustedStr = formatDuration(totalMinutes);
+                const calcStr = `Grace Period Adjustment : ${fullTimeStr} > ${adjustedStr}`;
+                doc.text(calcStr, centerX, lineY + 10, { align: 'center' });
+            }
+            y += boxH + 6;
+        }
+
+        // —— Location map (schematic, black & white) when we have coordinates
+        const startCoord = item.startCoordinate && typeof item.startCoordinate.lat === 'number' && typeof item.startCoordinate.lng === 'number' ? item.startCoordinate : null;
+        const endCoord = item.endCoordinate && typeof item.endCoordinate.lat === 'number' && typeof item.endCoordinate.lng === 'number' ? item.endCoordinate : null;
+        if (startCoord || endCoord) {
+            const mapX = leftMargin;
+            const mapW = pageW - 2 * leftMargin;
+            const mapH = 48;
+            const pad = 8;
+            const innerW = mapW - 2 * pad;
+            const innerH = mapH - 2 * pad;
+
+            doc.setDrawColor(0, 0, 0);
+            doc.setLineWidth(0.4);
+            doc.setFillColor(252, 252, 252);
+            doc.roundedRect(mapX, y, mapW, mapH, 2, 2, 'FD');
+            doc.setFontSize(9);
+            doc.setFont(undefined, 'bold');
+            doc.setTextColor(0, 0, 0);
+            doc.text('Location', mapX + 4, y + 6);
+
+            const allLats = [startCoord?.lat, endCoord?.lat].filter(n => typeof n === 'number');
+            const allLngs = [startCoord?.lng, endCoord?.lng].filter(n => typeof n === 'number');
+            const minLat = Math.min(...allLats);
+            const maxLat = Math.max(...allLats);
+            const minLng = Math.min(...allLngs);
+            const maxLng = Math.max(...allLngs);
+            const latRange = maxLat - minLat || 0.0001;
+            const lngRange = maxLng - minLng || 0.0001;
+            const extra = 0.15;
+            const scaleLat = (lat) => (maxLat + extra * latRange - lat) / (latRange * (1 + 2 * extra));
+            const scaleLng = (lng) => (lng - minLng + extra * lngRange) / (lngRange * (1 + 2 * extra));
+
+            const toMapX = (lng) => mapX + pad + scaleLng(lng) * innerW;
+            const toMapY = (lat) => y + pad + 4 + scaleLat(lat) * (innerH - 4);
+
+            doc.setDrawColor(200, 200, 200);
+            doc.setLineWidth(0.15);
+            for (let i = 1; i <= 3; i++) {
+                const gx = mapX + pad + (innerW * i) / 3;
+                doc.line(gx, y + pad, gx, y + mapH - pad);
+            }
+            for (let i = 1; i <= 2; i++) {
+                const gy = y + pad + (innerH - 4) * i / 2;
+                doc.line(mapX + pad, gy, mapX + mapW - pad, gy);
+            }
+
+            let x1, y1, x2, y2;
+            if (startCoord) {
+                x1 = toMapX(startCoord.lng);
+                y1 = toMapY(startCoord.lat);
+            }
+            if (endCoord) {
+                x2 = toMapX(endCoord.lng);
+                y2 = toMapY(endCoord.lat);
+            }
+            if (startCoord && endCoord) {
+                doc.setDrawColor(0, 0, 0);
+                doc.setLineWidth(0.5);
+                doc.line(x1, y1, x2, y2);
+                const midX = (x1 + x2) / 2;
+                const midY = (y1 + y2) / 2;
+                const distMiles = distanceMiles(startCoord, endCoord);
+                const distanceStr = distMiles != null ? formatDistanceMiles(distMiles) : '';
+                if (distanceStr) {
+                    doc.setFontSize(6);
+                    doc.setFont(undefined, 'normal');
+                    doc.setTextColor(0, 0, 0);
+                    const dx = x2 - x1, dy = y2 - y1;
+                    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                    const off = 5;
+                    const labelX = midX + (-dy / len) * off;
+                    const labelY = midY + (dx / len) * off;
+                    doc.text(distanceStr, labelX, labelY, { align: 'center' });
+                    doc.setFontSize(7);
+                }
+                doc.setFillColor(255, 255, 255);
+                doc.circle(x1, y1, 2.5, 'FD');
+                doc.setDrawColor(0, 0, 0);
+                doc.circle(x1, y1, 2.5, 'S');
+                doc.setFillColor(40, 40, 40);
+                doc.circle(x2, y2, 3, 'FD');
+                doc.setDrawColor(0, 0, 0);
+                doc.circle(x2, y2, 3, 'S');
+                doc.setFontSize(7);
+                doc.setFont(undefined, 'normal');
+                doc.setTextColor(0, 0, 0);
+                doc.text('Start', x1 - doc.getTextWidth('Start') - 6, y1 + 1);
+                doc.text('End', x2 + 4, y2 + 1);
+            } else if (startCoord) {
+                doc.setFillColor(60, 60, 60);
+                doc.circle(x1, y1, 2.5, 'FD');
+                doc.setDrawColor(0, 0, 0);
+                doc.circle(x1, y1, 2.5, 'S');
+                doc.setFontSize(7);
+                doc.text('Location', x1 + 4, y1 + 1);
+            } else if (endCoord) {
+                doc.setFillColor(60, 60, 60);
+                doc.circle(x2, y2, 2.5, 'FD');
+                doc.setDrawColor(0, 0, 0);
+                doc.circle(x2, y2, 2.5, 'S');
+                doc.setFontSize(7);
+                doc.text('Location', x2 + 4, y2 + 1);
+            }
+            doc.setFontSize(8);
+            doc.setTextColor(80, 80, 80);
+            doc.text(`Start: ${formatCoord(item.startCoordinate)}`, mapX + 4, y + mapH - 2);
+            doc.text(`End: ${formatCoord(item.endCoordinate)}`, mapX + mapW - 4 - doc.getTextWidth(`End: ${formatCoord(item.endCoordinate)}`), y + mapH - 2);
+            y += mapH + 10;
+        }
+
+        // —— Notes (below Location): original/driver notes and office notes
+        const hasOriginalNotes = item.notes && String(item.notes).trim();
+        const hasOfficeNotes = item.officeNotes && String(item.officeNotes).trim();
+        if (hasOriginalNotes || hasOfficeNotes) {
+            const notesMaxW = pageW - 2 * leftMargin - 8;
+            const lineH = 5;
+            let notesContentY = y + 8;
+            doc.setFontSize(9);
+            doc.setFont(undefined, 'bold');
+            const origLines = hasOriginalNotes ? doc.splitTextToSize(item.notes.trim(), notesMaxW) : [];
+            const officeLines = hasOfficeNotes ? doc.splitTextToSize(item.officeNotes.trim(), notesMaxW) : [];
+            const origBlockH = hasOriginalNotes ? lineH + origLines.length * lineH + 4 : 0;
+            const officeBlockH = hasOfficeNotes ? lineH + officeLines.length * lineH + 4 : 0;
+            const notesH = Math.max(22, 8 + origBlockH + officeBlockH + 4);
+            doc.setDrawColor(0, 0, 0);
+            doc.setLineWidth(0.3);
+            doc.setFillColor(248, 250, 252);
+            doc.roundedRect(leftMargin, y, pageW - 2 * leftMargin, notesH, 2, 2, 'FD');
+            doc.setTextColor(0, 0, 0);
+            doc.text('Notes', leftMargin + 4, y + 6);
+            doc.setFont(undefined, 'normal');
+            if (hasOriginalNotes) {
+                doc.setFont(undefined, 'bold');
+                doc.setTextColor(60, 60, 60);
+                doc.text('Original notes', leftMargin + 4, notesContentY);
+                notesContentY += lineH;
+                doc.setFont(undefined, 'normal');
+                doc.setTextColor(0, 0, 0);
+                doc.text(origLines, leftMargin + 4, notesContentY);
+                notesContentY += origLines.length * lineH + 4;
+            }
+            if (hasOfficeNotes) {
+                doc.setFont(undefined, 'bold');
+                doc.setTextColor(60, 60, 60);
+                doc.text('Office notes', leftMargin + 4, notesContentY);
+                notesContentY += lineH;
+                doc.setFont(undefined, 'normal');
+                doc.setTextColor(0, 0, 0);
+                doc.text(officeLines, leftMargin + 4, notesContentY);
+            }
+            y += notesH + 10;
+        }
+
+        // —— Footer (like expense)
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'italic');
+        doc.setTextColor(105, 105, 105);
+        doc.text('This record is for client files. Retain for your records.', leftMargin, 275, { maxWidth: pageW - 2 * leftMargin });
+        doc.setFontSize(11);
+        doc.setFont(undefined, 'normal');
+        doc.setTextColor(128, 128, 128);
+        doc.text('Wait time report generated by — SOTORoutes', pageW / 2, 285, { align: 'center' });
+
+        return doc.output('blob');
+    }
+
+    async function transferWaitTime(waitTimeId) {
+        const item = allWaitTimes.find(w => w.id === waitTimeId);
+        if (!item) {
+            notifyWarning('Wait time not found.');
+            return;
+        }
+        if (item.processingStatus !== 'validated') {
+            notifyWarning('Only validated wait times can be transferred.');
+            return;
+        }
+        if (!('showDirectoryPicker' in window)) {
+            notifyWarning('Folder selection is not supported in this browser. Please use Chrome or Edge.');
+            return;
+        }
+        try {
+            const rootHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+            const validatedDate = item.validatedAt ? (item.validatedAt.toDate ? item.validatedAt.toDate() : new Date(item.validatedAt)) : new Date();
+            const d = validatedDate;
+            const dateFolderName = `${String(d.getDate()).padStart(2, '0')}_${String(d.getMonth() + 1).padStart(2, '0')}_${d.getFullYear()}`;
+            const driverName = (formatDriverName(item) || 'Unknown_Driver').replace(/[\/\\:]/g, '-').replace(/\s+/g, '_');
+            let currentHandle = await getOrCreateFolder(rootHandle, 'Wait Times');
+            currentHandle = await getOrCreateFolder(currentHandle, dateFolderName);
+            currentHandle = await getOrCreateFolder(currentHandle, driverName);
+            const pdfBlob = await generateWaitTimePDF(item);
+            const safeReg = (item.registration || 'unknown').replace(/[\/\\:]/g, '-').replace(/\s+/g, '_');
+            const fileName = `wait_time_${safeReg}_${item.id.slice(-8)}.pdf`;
+            const fileHandle = await currentHandle.getFileHandle(fileName, { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(pdfBlob);
+            await writable.close();
+            const processedByName = currentUser?.name || `${currentUser?.firstName || ''} ${currentUser?.lastName || ''}`.trim() || currentUser?.email || 'Office';
+            const expiresAt = window.Timestamp.fromDate(new Date(Date.now() + SEVEN_DAYS_MS));
+            await window.updateDoc(window.doc(window.db, 'waitTimes', waitTimeId), {
+                processingStatus: 'processed',
+                processedAt: window.serverTimestamp(),
+                processedBy: currentUser.uid,
+                processedByName,
+                expiresAt,
+                updatedAt: window.serverTimestamp(),
+                officeId: item.officeId || getCurrentOfficeId()
+            });
+            notifySuccess('Wait time transferred and marked as processed.');
+            renderWaitTimes();
+            updateTabCounts();
+        } catch (err) {
+            if (err.name === 'AbortError') return;
+            console.error('Transfer wait time error:', err);
+            notifyError('Transfer failed: ' + (err.message || String(err)));
+        }
+    }
+
+    async function transferAllValidatedWaitTimes() {
+        const validated = allWaitTimes.filter(w => w.processingStatus === 'validated');
+        if (validated.length === 0) {
+            notifyInfo('No validated wait times to transfer.');
+            return;
+        }
+        if (!('showDirectoryPicker' in window)) {
+            notifyWarning('Folder selection is not supported in this browser. Please use Chrome or Edge.');
+            return;
+        }
+        try {
+            const rootHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+            const processedByName = currentUser?.name || `${currentUser?.firstName || ''} ${currentUser?.lastName || ''}`.trim() || currentUser?.email || 'Office';
+            const expiresAt = window.Timestamp.fromDate(new Date(Date.now() + SEVEN_DAYS_MS));
+            let done = 0;
+            for (const item of validated) {
+                const validatedDate = item.validatedAt ? (item.validatedAt.toDate ? item.validatedAt.toDate() : new Date(item.validatedAt)) : new Date();
+                const d = validatedDate;
+                const dateFolderName = `${String(d.getDate()).padStart(2, '0')}_${String(d.getMonth() + 1).padStart(2, '0')}_${d.getFullYear()}`;
+                const driverName = (formatDriverName(item) || 'Unknown_Driver').replace(/[\/\\:]/g, '-').replace(/\s+/g, '_');
+                let currentHandle = await getOrCreateFolder(rootHandle, 'Wait Times');
+                currentHandle = await getOrCreateFolder(currentHandle, dateFolderName);
+                currentHandle = await getOrCreateFolder(currentHandle, driverName);
+                const pdfBlob = await generateWaitTimePDF(item);
+                const safeReg = (item.registration || 'unknown').replace(/[\/\\:]/g, '-').replace(/\s+/g, '_');
+                const fileName = `wait_time_${safeReg}_${item.id.slice(-8)}.pdf`;
+                const fileHandle = await currentHandle.getFileHandle(fileName, { create: true });
+                const writable = await fileHandle.createWritable();
+                await writable.write(pdfBlob);
+                await writable.close();
+                await window.updateDoc(window.doc(window.db, 'waitTimes', item.id), {
+                    processingStatus: 'processed',
+                    processedAt: window.serverTimestamp(),
+                    processedBy: currentUser.uid,
+                    processedByName,
+                    expiresAt,
+                    updatedAt: window.serverTimestamp(),
+                    officeId: item.officeId || getCurrentOfficeId()
+                });
+                done++;
+            }
+            notifySuccess(`${done} wait time(s) transferred and marked as processed.`);
+            renderWaitTimes();
+            updateTabCounts();
+        } catch (err) {
+            if (err.name === 'AbortError') return;
+            console.error('Transfer all wait times error:', err);
+            notifyError('Transfer failed: ' + (err.message || String(err)));
         }
     }
 
@@ -1959,6 +2491,7 @@
                 const status = item.processingStatus || 'pending';
                 const statusColors = {
                     pending: 'bg-orange-500',
+                    validated: 'bg-green-500',
                     processed: 'bg-green-500',
                     returned: 'bg-red-500'
                 };
@@ -1992,10 +2525,10 @@
         const waitTime = allWaitTimes.find(w => w.id === waitTimeId);
         if (!waitTime) return;
         
-        // Switch to the appropriate tab
+        // Switch to the appropriate tab (office has no Processed tab)
         const status = waitTime.processingStatus || 'pending';
-        if (status === 'processed') {
-            switchTab('processed');
+        if (status === 'validated') {
+            switchTab('validated');
         } else {
             switchTab('pending');
         }
