@@ -1276,7 +1276,7 @@
                 // Listen for Service Worker messages (auth token requests and photo uploads)
                 if ('serviceWorker' in navigator && navigator.serviceWorker) {
                     navigator.serviceWorker.addEventListener('message', async (event) => {
-                        const { type, blob, path, expenseDocId } = event.data || {};
+                        const { type, blob, path, expenseDocId, batchId, lineKey } = event.data || {};
                         const ports = event.ports || [];
                         
                         if (type === 'get-auth-token') {
@@ -1292,18 +1292,31 @@
                                 console.warn('[Driver Portal] Failed to get auth token for Service Worker:', error);
                             }
                         } else if (type === 'upload-photo-request' && ports.length > 0 && blob && path) {
-                            // Service Worker requesting main thread to upload photo using Firebase SDK
                             try {
-                                console.log('[Driver Portal] Received upload request from Service Worker:', { path, expenseDocId });
-                                
-                                // Upload using Firebase SDK (same as successful uploads)
+                                console.log('[Driver Portal] Received upload request from Service Worker:', { path, expenseDocId, batchId, lineKey });
                                 const photoRef = window.ref(window.storage, path);
                                 await window.uploadBytes(photoRef, blob);
                                 const downloadURL = await window.getDownloadURL(photoRef);
-                                
                                 console.log('[Driver Portal] Upload successful:', downloadURL);
-                                
-                                // Send success back to Service Worker
+                                if (batchId && lineKey && window.db && window.doc && window.getDoc && window.updateDoc) {
+                                    try {
+                                        const batchRef = window.doc(window.db, 'expenseBatches', batchId);
+                                        const batchSnap = await window.getDoc(batchRef);
+                                        if (batchSnap.exists()) {
+                                            const snapData = batchSnap.data();
+                                            const lines = (snapData.lines && typeof snapData.lines === 'object') ? { ...snapData.lines } : {};
+                                            const line = lines[lineKey] || { amount: 0, photos: [] };
+                                            const existing = Array.isArray(line.photos) ? line.photos.filter(p => typeof p === 'string' && (window.isValidPhotoURL ? window.isValidPhotoURL(p) : p.startsWith('http'))) : [];
+                                            const storagePathKey = url => (url || '').replace(/\&token=[^&]*/i, '').trim();
+                                            if (!existing.some(p => storagePathKey(p) === storagePathKey(downloadURL))) {
+                                                const merged = (window.dedupePhotoURLsByPath ? window.dedupePhotoURLsByPath([...existing, downloadURL]) : [...existing, downloadURL]);
+                                                lines[lineKey] = { ...line, photos: merged };
+                                                await window.updateDoc(batchRef, { lines, updatedAt: window.serverTimestamp ? window.serverTimestamp() : new Date() });
+                                                console.log('[Driver Portal] Persisted photo URL to Firestore:', batchId, lineKey);
+                                            }
+                                        }
+                                    } catch (e) { console.warn('[Driver Portal] Failed to persist URL to Firestore:', e); }
+                                }
                                 ports[0].postMessage({ success: true, downloadURL });
                             } catch (error) {
                                 console.error('[Driver Portal] Upload failed:', error);

@@ -153,18 +153,40 @@
                                 }
                             }
                         } else if (type === 'upload-photo-request' && ports.length > 0 && blob && path) {
-                            // Service Worker requesting main thread to upload photo using Firebase SDK
+                            // Service Worker requesting main thread to upload photo (batchId/lineKey from event.data for Firestore persist)
                             try {
-                                console.log('[Main Thread] Received upload request from Service Worker:', { path, expenseDocId });
+                                console.log('[Main Thread] Received upload request from Service Worker:', { path, expenseDocId, batchId, lineKey });
                                 
-                                // Upload using Firebase SDK (same as successful uploads)
                                 const photoRef = window.ref(window.storage, path);
                                 await window.uploadBytes(photoRef, blob);
                                 const downloadURL = await window.getDownloadURL(photoRef);
                                 
                                 console.log('[Main Thread] Upload successful:', downloadURL);
                                 
-                                // Send success back to Service Worker
+                                // Bulletproof: persist URL to Firestore immediately so we never lose it if upload-complete never runs
+                                if (batchId && lineKey && window.db && window.doc && window.getDoc && window.updateDoc) {
+                                    try {
+                                        const batchRef = window.doc(window.db, 'expenseBatches', batchId);
+                                        const batchSnap = await window.getDoc(batchRef);
+                                        if (batchSnap.exists()) {
+                                            const data = batchSnap.data();
+                                            const lines = (data.lines && typeof data.lines === 'object') ? { ...data.lines } : {};
+                                            const line = lines[lineKey] || { amount: 0, photos: [] };
+                                            const existing = Array.isArray(line.photos) ? line.photos.filter(function(p) { return typeof p === 'string' && (window.isValidPhotoURL ? window.isValidPhotoURL(p) : p.startsWith('http')); }) : [];
+                                            const storagePathKey = function(url) { return (url || '').replace(/\&token=[^&]*/i, '').trim(); };
+                                            const hasSame = existing.some(function(p) { return storagePathKey(p) === storagePathKey(downloadURL); });
+                                            if (!hasSame) {
+                                                const merged = (window.dedupePhotoURLsByPath ? window.dedupePhotoURLsByPath([...existing, downloadURL]) : [...existing, downloadURL]);
+                                                lines[lineKey] = { ...line, photos: merged };
+                                                await window.updateDoc(batchRef, { lines: lines, updatedAt: window.serverTimestamp ? window.serverTimestamp() : new Date() });
+                                                console.log('[Main Thread] Persisted photo URL to Firestore:', batchId, lineKey);
+                                            }
+                                        }
+                                    } catch (persistErr) {
+                                        console.warn('[Main Thread] Failed to persist URL to Firestore (upload-complete will retry):', persistErr);
+                                    }
+                                }
+                                
                                 ports[0].postMessage({ success: true, downloadURL });
                             } catch (error) {
                                 console.error('[Main Thread] Upload failed:', error);
@@ -984,6 +1006,19 @@
         let batchIdsGreyedUntilUploadDone = new Set();
         /** Debounce timer for displayBatches to prevent flickering */
         let displayBatchesTimer = null;
+        /** Enable grey-debug: add ?greyDebug=1 to URL or set window.__driverExpensesGreyDebug = true, then open console */
+        function greyDebugEnabled() {
+            if (typeof window === 'undefined') return false;
+            if (window.__driverExpensesGreyDebug === true) return true;
+            try {
+                const params = new URLSearchParams(window.location.search);
+                if (params.get('greyDebug') === '1' || params.get('greyDebug') === 'true') {
+                    window.__driverExpensesGreyDebug = true;
+                    return true;
+                }
+            } catch (e) {}
+            return false;
+        }
 
         // Helper function to safely escape HTML for display
         function escapeHtml(s) {
@@ -1671,6 +1706,9 @@
                 }
                 
                 console.log('Loading complete!');
+                if (greyDebugEnabled()) {
+                    console.log('[GreyDebug] Enabled. Look for [GreyDebug] logs above (load) and when rendering drafts. Add ?greyDebug=1 to URL or set window.__driverExpensesGreyDebug = true.');
+                }
                 window.__driverExpensesDebug.step = 'after-load-batches';
                 if (overlay) {
                 overlay.setAttribute('data-step', 'after-load-batches');
@@ -1978,7 +2016,13 @@
                 // before the page received upload-complete (e.g. tab closed). We set it from the upload
                 // queue below so "greyed out" only shows when this device actually has pending uploads.
                 batchData.hasPendingUploads = false;
-                
+                if (greyDebugEnabled()) {
+                    const fromFirestore = Object.entries(batchData.lines || {}).reduce((acc, [k, line]) => {
+                        acc[k] = line && line.photosUploading === true ? 'photosUploading:true' : (line ? 'photosUploading:false' : 'no line');
+                        return acc;
+                    }, {});
+                    console.log('[GreyDebug] From Firestore', batchData.id, batchData.localId, batchData.status, { linesFromFirestore: fromFirestore });
+                }
                 batchMap.set(batchData.id || `local_${batchData.localId || Math.random()}`, batchData);
                 }
 
@@ -2012,11 +2056,27 @@
                             if (!check.hasPending && batch.id && typeof batchIdsGreyedUntilUploadDone !== 'undefined') {
                                 batchIdsGreyedUntilUploadDone.delete(batch.id);
                             }
+                            if (greyDebugEnabled()) {
+                                let byLocalId = { hasPending: false, count: 0 };
+                                if (batch.localId && typeof window.expenseUploadQueue.checkPendingUploads === 'function') {
+                                    try {
+                                        byLocalId = await window.expenseUploadQueue.checkPendingUploads(batch.localId, true);
+                                    } catch (e) {}
+                                }
+                                console.log('[GreyDebug] After reconcile', batch.id, batch.localId, batch.status, {
+                                    byBatchId: { queueHasPending: check.hasPending, queueCount: check.count },
+                                    byLocalId: batch.localId ? { queueHasPending: byLocalId.hasPending, queueCount: byLocalId.count } : 'no localId',
+                                    setHasPendingUploads: batch.hasPendingUploads,
+                                    inGreyedSet: batch.id && batchIdsGreyedUntilUploadDone.has(batch.id),
+                                    greyedSetSize: batchIdsGreyedUntilUploadDone.size
+                                });
+                            }
                             // If queue says no pending but Firestore had photosUploading true, clear stale flag in Firestore
                             // so other devices / future loads don't show grey.
                             if (!check.hasPending && batch.lines && typeof batch.lines === 'object') {
                                 const linesWithStaleFlag = Object.entries(batch.lines).filter(([, line]) => line && line.photosUploading === true);
                                 if (linesWithStaleFlag.length > 0) {
+                                    if (greyDebugEnabled()) console.log('[GreyDebug] Clearing stale photosUploading in Firestore for batch', batch.id, 'lines', linesWithStaleFlag.map(([k]) => k));
                                     const batchRef = window.doc(window.db, 'expenseBatches', batch.id);
                                     const updatedLines = {};
                                     for (const [k, line] of Object.entries(batch.lines)) {
@@ -2032,10 +2092,53 @@
                                     }
                                 }
                             }
+                            // Recovery: lines with photosUploading true but no URLs (photos in Storage, Firestore never updated)
+                            if (batch.status === 'draft' && batch.lines && typeof batch.lines === 'object' && typeof window.expenseUploadQueue.getCompletedTaskURLsForBatch === 'function') {
+                                const linesNeedingRecovery = Object.entries(batch.lines).filter(([, line]) => {
+                                    if (!line || line.photosUploading !== true) return false;
+                                    const urls = (line.photos || []).filter(function(p) { return typeof p === 'string' && (window.isValidPhotoURL ? window.isValidPhotoURL(p) : p.startsWith('http')); });
+                                    return urls.length === 0;
+                                });
+                                if (linesNeedingRecovery.length > 0) {
+                                    try {
+                                        const completedByLine = await window.expenseUploadQueue.getCompletedTaskURLsForBatch(batch.id);
+                                        if (Object.keys(completedByLine).length > 0) {
+                                            const batchRef = window.doc(window.db, 'expenseBatches', batch.id);
+                                            const batchSnap = await window.getDoc(batchRef);
+                                            if (batchSnap.exists()) {
+                                                const data = batchSnap.data();
+                                                const lines = (data.lines && typeof data.lines === 'object') ? { ...data.lines } : {};
+                                                let patched = false;
+                                                for (const [lineKey, urls] of Object.entries(completedByLine)) {
+                                                    if (!urls || urls.length === 0) continue;
+                                                    const line = lines[lineKey] || { amount: 0, photos: [] };
+                                                    const existing = Array.isArray(line.photos) ? line.photos.filter(function(p) { return typeof p === 'string'; }) : [];
+                                                    const merged = (window.dedupePhotoURLsByPath ? window.dedupePhotoURLsByPath([...existing, ...urls]) : [...new Set([...existing, ...urls])]);
+                                                    lines[lineKey] = { ...line, photos: merged, photosUploading: false };
+                                                    if (batch.lines[lineKey]) {
+                                                        batch.lines[lineKey].photos = merged;
+                                                        batch.lines[lineKey].photosUploading = false;
+                                                    }
+                                                    patched = true;
+                                                }
+                                                if (patched) {
+                                                    await window.updateDoc(batchRef, { lines: lines, updatedAt: window.serverTimestamp ? window.serverTimestamp() : new Date() });
+                                                    console.log('[loadExpenseBatches] Recovery: patched photo URLs from queue for batch', batch.id);
+                                                }
+                                            }
+                                        }
+                                    } catch (recoveryErr) {
+                                        console.warn('[loadExpenseBatches] Recovery from queue failed for batch', batch.id, recoveryErr);
+                                    }
+                                }
+                            }
                         } catch (e) {
                             console.warn('[loadExpenseBatches] checkPendingUploads failed for batch', batch.id, e);
                         }
                     }
+                }
+                if (greyDebugEnabled()) {
+                    console.log('[GreyDebug] batchIdsGreyedUntilUploadDone', Array.from(batchIdsGreyedUntilUploadDone));
                 }
 
                 // Sort by updatedAt descending (client-side)
@@ -2181,7 +2284,8 @@
                 }
                 
                 const forceGreyed = batch.id && batchIdsGreyedUntilUploadDone.has(batch.id);
-                const hasPendingUploads = forceGreyed || batch.hasPendingUploads || (batch.lines && typeof batch.lines === 'object' && Object.values(batch.lines).some(line => line && line.photosUploading === true));
+                const lineHasPhotosUploading = !!(batch.lines && typeof batch.lines === 'object' && Object.values(batch.lines).some(line => line && line.photosUploading === true));
+                const hasPendingUploads = forceGreyed || batch.hasPendingUploads || lineHasPhotosUploading;
                 // Also check if batch is in submission queue (offline or processing)
                 let isInQueue = false;
                 if (batch.localId && typeof loadSubmissionQueue === 'function') {
@@ -2193,6 +2297,17 @@
                     }
                 }
                 const greyedOut = (hasPendingUploads || isInQueue) ? 'opacity-50 cursor-not-allowed' : '';
+                if (greyDebugEnabled() && batch.status === 'draft') {
+                    console.log('[GreyDebug] Render draft', batch.id, batch.registration, {
+                        forceGreyed,
+                        batchHasPendingUploads: batch.hasPendingUploads,
+                        lineHasPhotosUploading,
+                        hasPendingUploads,
+                        isInQueue,
+                        greyedOut: !!greyedOut,
+                        reason: greyedOut ? (forceGreyed ? 'forceGreyed (in batchIdsGreyedUntilUploadDone)' : batch.hasPendingUploads ? 'batch.hasPendingUploads' : lineHasPhotosUploading ? 'line.photosUploading' : isInQueue ? 'isInQueue' : '?') : 'not greyed'
+                    });
+                }
                 const uploadIndicator = hasPendingUploads ? `
                 <div class="mt-2 text-orange-400 text-xs flex items-center gap-1">
                 <span class="material-symbols-outlined text-sm animate-pulse">cloud_upload</span>
