@@ -1158,6 +1158,32 @@ class ExpenseUploadQueue {
     }
 
     /**
+     * Get completed task download URLs by lineKey for a batch (for recovery: patch Firestore when batch has photosUploading but no URLs).
+     * @param {string} batchId - Firestore batch ID
+     * @returns {Promise<Object.<string, string[]>>} { [lineKey]: downloadURLs }
+     */
+    async getCompletedTaskURLsForBatch(batchId) {
+        await this.init();
+        if (!this.db || !batchId) return {};
+        const store = this.db.transaction(['expenseUploadQueue'], 'readonly').objectStore('expenseUploadQueue');
+        const allTasks = await new Promise((resolve, reject) => {
+            const req = store.getAll();
+            req.onsuccess = () => resolve(req.result || []);
+            req.onerror = () => reject(req.error);
+        });
+        const byLine = {};
+        for (const task of allTasks) {
+            if (task.batchId !== batchId || task.status !== 'completed' || !Array.isArray(task.downloadURLs) || task.downloadURLs.length === 0) continue;
+            const key = task.lineKey || task.uploadId;
+            if (!byLine[key]) byLine[key] = [];
+            for (const u of task.downloadURLs) {
+                if (typeof u === 'string' && u.trim()) byLine[key].push(u);
+            }
+        }
+        return byLine;
+    }
+
+    /**
      * Update global upload status banner
      */
     async updateGlobalUploadStatus() {
