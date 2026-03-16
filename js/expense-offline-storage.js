@@ -865,19 +865,7 @@ class UploadQueue {
             if (typeof window !== 'undefined') {
                 window.isUploadingExpense = false;
             }
-            
-            // If banner was visible before and now it's hidden, refresh the expense list
-            if (wasUploading && typeof window.loadExpenseBatches === 'function') {
-                console.log('[UploadQueue] All uploads complete, refreshing expense list');
-                // Small delay to ensure Firestore has propagated
-                setTimeout(async () => {
-                    try {
-                        await window.loadExpenseBatches();
-                    } catch (error) {
-                        console.error('[UploadQueue] Error refreshing expense list:', error);
-                    }
-                }, 500);
-            }
+            // Refresh is handled by the page's upload-complete handler (single coalesced 800ms) to avoid list flicker.
         }
     }
     
@@ -1297,15 +1285,8 @@ class ExpenseUploadQueue {
             if (typeof window !== 'undefined') {
                 window.isUploadingExpense = false;
             }
-            if (wasUploading && typeof window.loadExpenseBatches === 'function') {
-                setTimeout(async () => {
-                    try {
-                        await window.loadExpenseBatches();
-                    } catch (error) {
-                        console.error('[ExpenseUploadQueue] Error refreshing expense list:', error);
-                    }
-                }, 500);
-            }
+            // Don't call loadExpenseBatches here – the page's upload-complete handler schedules a single
+            // coalesced refresh (800ms) to avoid list flicker from multiple refreshes.
         }
     }
 
