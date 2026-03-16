@@ -42,7 +42,8 @@ async function getAuthToken() {
 
 // Request main thread to upload photo using Firebase SDK
 // Service Workers can't use Firebase SDK, so we delegate to the main thread
-async function requestMainThreadUpload(blob, path, expenseDocId) {
+// batchId and lineKey are passed so the main thread can persist the URL to Firestore immediately (bulletproof)
+async function requestMainThreadUpload(blob, path, expenseDocId, batchId, lineKey) {
   return new Promise((resolve, reject) => {
     const messageChannel = new MessageChannel();
     
@@ -67,7 +68,9 @@ async function requestMainThreadUpload(blob, path, expenseDocId) {
         type: 'upload-photo-request',
         blob: blob,
         path: path,
-        expenseDocId: expenseDocId
+        expenseDocId: expenseDocId,
+        batchId: batchId || null,
+        lineKey: lineKey || null
       };
 
       clients[0].postMessage(uploadRequest, [messageChannel.port2]);
@@ -278,7 +281,7 @@ async function processUploadQueue(authToken) {
                 req.onerror = () => rej(req.error);
               });
               if (!blobRecord || !blobRecord.blob) return null;
-              return requestMainThreadUpload(blobRecord.blob, filename, task.expenseDocId);
+              return requestMainThreadUpload(blobRecord.blob, filename, task.expenseDocId, task.batchId, task.lineKey || null);
             });
 
             const uploadResults = await Promise.allSettled(uploadPromises);
