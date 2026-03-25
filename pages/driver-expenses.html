@@ -2284,8 +2284,10 @@
                 }
                 
                 const forceGreyed = batch.id && batchIdsGreyedUntilUploadDone.has(batch.id);
-                const lineHasPhotosUploading = !!(batch.lines && typeof batch.lines === 'object' && Object.values(batch.lines).some(line => line && line.photosUploading === true));
-                const hasPendingUploads = forceGreyed || batch.hasPendingUploads || lineHasPhotosUploading;
+                // IMPORTANT: Do not grey based on Firestore's `line.photosUploading` flag.
+                // That flag can be stale if the page was closed before upload-complete updated Firestore.
+                // We only grey when THIS device's upload queue says there is pending work.
+                const hasPendingUploads = forceGreyed || batch.hasPendingUploads;
                 // Also check if batch is in submission queue (offline or processing)
                 let isInQueue = false;
                 if (batch.localId && typeof loadSubmissionQueue === 'function') {
@@ -2297,15 +2299,14 @@
                     }
                 }
                 const greyedOut = (hasPendingUploads || isInQueue) ? 'opacity-50 cursor-not-allowed' : '';
-                if (greyDebugEnabled() && batch.status === 'draft') {
-                    console.log('[GreyDebug] Render draft', batch.id, batch.registration, {
+                if (greyDebugEnabled() && greyedOut) {
+                    console.log('[GreyDebug] Render greyed batch', batch.id, batch.registration, {
                         forceGreyed,
                         batchHasPendingUploads: batch.hasPendingUploads,
-                        lineHasPhotosUploading,
                         hasPendingUploads,
                         isInQueue,
                         greyedOut: !!greyedOut,
-                        reason: greyedOut ? (forceGreyed ? 'forceGreyed (in batchIdsGreyedUntilUploadDone)' : batch.hasPendingUploads ? 'batch.hasPendingUploads' : lineHasPhotosUploading ? 'line.photosUploading' : isInQueue ? 'isInQueue' : '?') : 'not greyed'
+                        reason: greyedOut ? (forceGreyed ? 'forceGreyed (in batchIdsGreyedUntilUploadDone)' : batch.hasPendingUploads ? 'batch.hasPendingUploads' : isInQueue ? 'isInQueue' : '?') : 'not greyed'
                     });
                 }
                 const uploadIndicator = hasPendingUploads ? `
