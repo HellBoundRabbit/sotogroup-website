@@ -29,7 +29,7 @@
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { getFirestore, collection, getDocs, query, where, deleteDoc, doc, getDoc, getDocFromServer, updateDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
-        import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getAuth, onAuthStateChanged, authStateReady } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         import { getStorage, ref, deleteObject, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
         
@@ -52,6 +52,7 @@
         window.firebaseApp = app;
         window.db = db;
         window.auth = auth;
+        window.ensureFirebaseAuthReady = function () { return authStateReady(auth); };
         window.functions = functions;
         window.storage = storage;
         window.ref = ref;
@@ -284,6 +285,13 @@
         const getCurrentOfficeId = () => currentUser?.officeId || currentSession?.officeId || null;
 
         async function refreshPaidExpensePhotoDownloadUrl(photoURL) {
+            if (window.ensureFirebaseAuthReady) {
+                try {
+                    await window.ensureFirebaseAuthReady();
+                } catch (e) {
+                    /* PWA / standalone: auth can restore after UI paints; getDownloadURL needs a ready user */
+                }
+            }
             if (!window.storage || typeof window.ref !== 'function' || typeof window.getDownloadURL !== 'function') return null;
             const path = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.extractStoragePathFromDownloadURL)
                 ? EXPENSE_BATCH_SCHEMA.extractStoragePathFromDownloadURL(photoURL)
@@ -1300,7 +1308,7 @@
                 const img = document.createElement('img');
                 img.alt = 'Expense photo ' + (index + 1);
                 img.className = 'w-full h-auto rounded-lg shadow-lg object-contain max-h-[70vh] mx-auto';
-                img.loading = 'lazy';
+                img.loading = 'eager';
                 img.style.display = 'block';
                 const cap = document.createElement('div');
                 cap.className = 'text-center mt-3 text-sm text-gray-400';
