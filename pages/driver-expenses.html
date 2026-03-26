@@ -3986,6 +3986,17 @@
             }
         }
 
+        async function refreshDriverExpensePhotoDownloadUrl(photoURL) {
+            if (!window.storage || typeof window.ref !== 'function' || typeof window.getDownloadURL !== 'function') return null;
+            const path = extractStoragePathFromURL(photoURL);
+            if (!path) return null;
+            try {
+                return await window.getDownloadURL(window.ref(window.storage, path));
+            } catch (e) {
+                return null;
+            }
+        }
+
         const FIREBASE_STORAGE_URL_PREFIX = 'https://firebasestorage.googleapis.com/v0/b/soto-routes.firebasestorage.app/';
         // Refresh Firebase Storage photo URLs (getDownloadURL gives fresh token). Needed because tokens can be revoked in Firebase Console; we also only persist URLs with token in upload-complete.
         async function refreshFirebasePhotoURLs(batch) {
@@ -4415,6 +4426,28 @@
             window.location.href = '/pages/driver-portal.html';
         }
 
+        // Console diagnostics for paid-batch photos (view = <img> browser load; download = fetchPhotoBlob)
+        var PAID_EXPENSES_PHOTO_LOG = '[DriverPaidExpenses:Photos]';
+        function summarizePhotoUrlForLog(url) {
+            try {
+                var u = new URL(url);
+                return {
+                    host: u.host,
+                    pathStart: u.pathname.slice(0, 80),
+                    hasAltMedia: u.searchParams.has('alt'),
+                    hasToken: u.search.indexOf('token=') >= 0
+                };
+            } catch (e) {
+                return { parseError: true, length: url ? url.length : 0 };
+            }
+        }
+        function paidExpensesPhotoLog(phase, payload) {
+            if (typeof console !== 'undefined' && console.log) console.log(PAID_EXPENSES_PHOTO_LOG, phase, payload == null ? '' : payload);
+        }
+        function paidExpensesPhotoLogWarn(phase, payload) {
+            if (typeof console !== 'undefined' && console.warn) console.warn(PAID_EXPENSES_PHOTO_LOG, phase, payload == null ? '' : payload);
+        }
+
         // Render paid batch list with PDF/photo options
         function renderPaidBatchList(batches, containerId) {
             const container = document.getElementById(containerId);
@@ -4696,6 +4729,7 @@
             }
 
             try {
+                paidExpensesPhotoLog('download:start', { batchId: batchId, registration: batch.registration, status: batch.status });
                 const zip = new JSZip();
                 
                 // Get current date for folder structure
@@ -4719,17 +4753,56 @@
                 zip.file(folderPath + pdfFileName, pdfBlob);
                 
                 // Download and add photos (valid URLs only) from batch.lines
+                const usedLineKeysDriver = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)) ? (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)(batch) : Object.keys(batch.lines || {});
+                const getLineLabelDriver = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getCategoryLabel) ? EXPENSE_BATCH_SCHEMA.getCategoryLabel.bind(null) : function (k) { return k; };
                 let photoIndex = 1;
+                let downloadFetchOk = 0;
                 const photoFailures = [];
-                for (const line of Object.values(batch.lines || {})) {
+                for (const lineKey of usedLineKeysDriver) {
+                    const line = (batch.lines || {})[lineKey];
                     if (!line || !Array.isArray(line.photos)) continue;
+                    const lineLabelDriver = getLineLabelDriver(lineKey);
                     for (const photoURL of line.photos) {
                         if (typeof photoURL !== 'string' || !photoURL.startsWith('http')) continue;
-                        const result = await (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.fetchPhotoBlob ? EXPENSE_BATCH_SCHEMA.fetchPhotoBlob : fetchPhotoBlob)(photoURL);
-                        if (result.error) { photoFailures.push(result.error); continue; }
-                        zip.file(folderPath + `photo_${photoIndex}.jpg`, result.blob);
+                        paidExpensesPhotoLog('download:fetchPhotoBlob-start', {
+                            zipSlot: photoIndex,
+                            lineKey: lineKey,
+                            lineLabel: lineLabelDriver,
+                            urlSummary: summarizePhotoUrlForLog(photoURL)
+                        });
+                        const result = await (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.fetchPhotoBlob ? EXPENSE_BATCH_SCHEMA.fetchPhotoBlob : fetchPhotoBlob)(photoURL, 2, refreshDriverExpensePhotoDownloadUrl);
+                        if (result.error) {
+                            paidExpensesPhotoLogWarn('download:fetchPhotoBlob-fail', {
+                                zipSlot: photoIndex,
+                                lineKey: lineKey,
+                                lineLabel: lineLabelDriver,
+                                reason: result.error.reason,
+                                status: result.error.status,
+                                urlSummary: summarizePhotoUrlForLog(photoURL)
+                            });
+                            photoFailures.push(Object.assign({}, result.error, { lineKey: lineKey, lineLabel: lineLabelDriver }));
+                            continue;
+                        }
+                        paidExpensesPhotoLog('download:fetchPhotoBlob-ok', {
+                            zipSlot: photoIndex,
+                            lineKey: lineKey,
+                            ext: result.ext || '.jpg',
+                            bytes: result.blob && result.blob.size,
+                            blobType: result.blob && result.blob.type
+                        });
+                        zip.file(folderPath + `photo_${photoIndex}${result.ext || '.jpg'}`, result.blob);
+                        downloadFetchOk++;
                         photoIndex++;
                     }
+                }
+                paidExpensesPhotoLog('download:photos-summary', {
+                    okCount: downloadFetchOk,
+                    failCount: photoFailures.length,
+                    registration: batch.registration
+                });
+                if (photoFailures.length > 0 && EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.buildPhotoFailureFolderReport) {
+                    const zName = EXPENSE_BATCH_SCHEMA.PHOTO_TRANSFER_FAILURE_FILENAME || 'PHOTOS_NOT_DOWNLOADED.txt';
+                    zip.file(folderPath + zName, EXPENSE_BATCH_SCHEMA.buildPhotoFailureFolderReport(photoFailures, batch.registration));
                 }
                 
                 // Generate and download ZIP
@@ -4744,59 +4817,149 @@
                 setTimeout(() => URL.revokeObjectURL(url), 100);
                 
                 notifySuccess('Successfully downloaded PDF and photos as ZIP file!', 'Download Complete');
+                paidExpensesPhotoLog('download:zip-complete', { fileName: `${cleanedReg}_${dateFolderName}.zip`, okCount: downloadFetchOk, failCount: photoFailures.length });
                 if (photoFailures.length > 0) {
-                    const msg = photoFailures.length + ' photo(s) could not be downloaded.\n\nClick "Copy debug info" to copy details you can send for support.';
-                    const copied = await (window.uiDialogs && window.uiDialogs.showConfirmation ? window.uiDialogs.showConfirmation({ title: 'Some Photos Failed', message: msg, confirmText: 'Copy debug info', cancelText: 'Close', tone: 'warning' }) : Promise.resolve(false));
-                    if (copied) {
-                        const debugText = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.buildPhotoFetchDebugText ? EXPENSE_BATCH_SCHEMA.buildPhotoFetchDebugText : (f) => JSON.stringify(f, null, 2))(photoFailures, batch.registration);
+                    const fn = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.PHOTO_TRANSFER_FAILURE_FILENAME) ? EXPENSE_BATCH_SCHEMA.PHOTO_TRANSFER_FAILURE_FILENAME : 'PHOTOS_NOT_DOWNLOADED.txt';
+                    const msg = photoFailures.length + ' photo(s) could not be downloaded.\n\nThe ZIP includes ' + fn + ' listing missing images.\n\nYou can copy details here for support.';
+                    const copied = await (window.uiDialogs && window.uiDialogs.showConfirmation ? window.uiDialogs.showConfirmation({ title: 'Some Photos Failed', message: msg, confirmText: 'Copy details', cancelText: 'Close', tone: 'warning' }) : Promise.resolve(false));
+                    if (copied && EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.buildPhotoFailureFolderReport) {
+                        const debugText = EXPENSE_BATCH_SCHEMA.buildPhotoFailureFolderReport(photoFailures, batch.registration);
                         await navigator.clipboard.writeText(debugText);
-                        if (window.uiDialogs && window.uiDialogs.showToast) window.uiDialogs.showToast({ title: 'Copied', message: 'Debug info copied. Paste and send for support.', tone: 'success' });
+                        if (window.uiDialogs && window.uiDialogs.showToast) window.uiDialogs.showToast({ title: 'Copied', message: 'Details copied.', tone: 'success' });
                     }
                 }
             } catch (error) {
+                paidExpensesPhotoLogWarn('download:error', { message: error && error.message, batchId: batchId });
                 console.error('Error downloading PDF and photos:', error);
                 notifyError('Failed to download files. Please try again.');
             }
         }
 
-        // View all photos for a paid expense batch
-        function viewPaidExpensePhotos(batchId) {
-            const batch = allBatches.find(b => b.id === batchId && b.status === 'paid');
+        // View all photos for a paid expense batch (browser loads each URL via <img>; failures show as broken image + console)
+        async function viewPaidExpensePhotos(batchId) {
+            paidExpensesPhotoLog('view:open-click', { batchId: batchId });
+            let batch = allBatches.find(b => b.id === batchId && b.status === 'paid');
             if (!batch || !batch.lines) {
+                paidExpensesPhotoLogWarn('view:batch-missing', { batchId: batchId, found: !!batch });
                 notifyError('Batch not found.', 'Missing Batch');
                 return;
             }
 
-            const allPhotos = [];
-            for (const line of Object.values(batch.lines)) {
-                if (!line || !Array.isArray(line.photos)) continue;
-                line.photos.filter(p => typeof p === 'string' && p.startsWith('http')).forEach(photoURL => allPhotos.push(photoURL));
+            const grid = document.getElementById('photoViewerGrid');
+            grid.innerHTML = '<div class="text-center text-gray-400 p-8">Loading photos…</div>';
+            document.getElementById('photoViewerModal').classList.remove('hidden');
+
+            try {
+                const batchRef = window.doc(window.db, 'expenseBatches', batchId);
+                var serverSnap = null;
+                if (typeof window.getDocFromServer === 'function') {
+                    serverSnap = await window.getDocFromServer(batchRef);
+                } else {
+                    serverSnap = await window.getDoc(batchRef);
+                }
+                if (serverSnap && serverSnap.exists()) {
+                    batch = { id: serverSnap.id, ...serverSnap.data() };
+                    var listIdx = allBatches.findIndex(b => b.id === batchId);
+                    if (listIdx >= 0) allBatches[listIdx] = batch;
+                    paidExpensesPhotoLog('view:refetched-batch-from-firestore', { batchId: batchId, registration: batch.registration });
+                } else {
+                    paidExpensesPhotoLogWarn('view:firestore-miss', { batchId: batchId });
+                }
+            } catch (refetchErr) {
+                paidExpensesPhotoLogWarn('view:refetch-failed-using-cache', { batchId: batchId, message: refetchErr && refetchErr.message });
             }
 
+            const linePhotoDebug = [];
+            const allPhotos = [];
+            const usedKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines))
+                ? (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)(batch)
+                : Object.keys(batch.lines || {});
+            const getLbl = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getCategoryLabel) ? EXPENSE_BATCH_SCHEMA.getCategoryLabel.bind(null) : function (k) { return k; };
+            for (const lk of usedKeys) {
+                const line = (batch.lines || {})[lk];
+                if (!line || !Array.isArray(line.photos)) continue;
+                const httpUrls = line.photos.filter(p => typeof p === 'string' && p.startsWith('http'));
+                if (httpUrls.length === 0) continue;
+                linePhotoDebug.push({
+                    lineKey: lk,
+                    lineLabel: getLbl(lk),
+                    count: httpUrls.length,
+                    urls: httpUrls.map(function (u) { return summarizePhotoUrlForLog(u); })
+                });
+                httpUrls.forEach(function (u) { allPhotos.push(u); });
+            }
+
+            paidExpensesPhotoLog('view:collected-urls', {
+                batchId: batchId,
+                registration: batch.registration,
+                totalImages: allPhotos.length,
+                byLine: linePhotoDebug
+            });
+
             if (allPhotos.length === 0) {
+                paidExpensesPhotoLogWarn('view:no-http-urls-after-refetch', { batchId: batchId, lineSummary: linePhotoDebug });
+                grid.innerHTML = '';
+                document.getElementById('photoViewerModal').classList.add('hidden');
                 notifyInfo('No photos available for this expense batch.', 'No Photos');
                 return;
             }
 
-            const grid = document.getElementById('photoViewerGrid');
-            grid.innerHTML = allPhotos.map((url, index) => `
-                <div class="w-full max-w-4xl mx-auto mb-6">
-                    <div class="bg-[#1a1f24] rounded-xl p-4 shadow-2xl border border-[#283039]">
-                        <img 
-                            src="${url}" 
-                            alt="Expense photo ${index + 1}" 
-                            class="w-full h-auto rounded-lg shadow-lg object-contain max-h-[70vh] mx-auto"
-                            loading="lazy"
-                            style="display: block;"
-                        >
-                        <div class="text-center mt-3 text-sm text-gray-400">
-                            Photo ${index + 1} of ${allPhotos.length}
-                        </div>
-                    </div>
-                </div>
-            `).join('');
+            paidExpensesPhotoLog('view:refreshing-tokens-via-getDownloadURL', { count: allPhotos.length });
+            var displayUrls = await Promise.all(allPhotos.map(async function (storedUrl, i) {
+                var fresh = await refreshDriverExpensePhotoDownloadUrl(storedUrl);
+                var chosen = (typeof fresh === 'string' && fresh.length > 0) ? fresh : storedUrl;
+                if (chosen !== storedUrl) {
+                    paidExpensesPhotoLog('view:display-url-refreshed', { index: i + 1, of: allPhotos.length });
+                } else if (fresh == null && storedUrl.indexOf('firebasestorage.googleapis.com') >= 0) {
+                    paidExpensesPhotoLogWarn('view:getDownloadURL-returned-null', { index: i + 1, urlSummary: summarizePhotoUrlForLog(storedUrl) });
+                }
+                return chosen;
+            }));
 
-            document.getElementById('photoViewerModal').classList.remove('hidden');
+            grid.innerHTML = '';
+            displayUrls.forEach(function (url, index) {
+                var outer = document.createElement('div');
+                outer.className = 'w-full max-w-4xl mx-auto mb-6';
+                var card = document.createElement('div');
+                card.className = 'bg-[#1a1f24] rounded-xl p-4 shadow-2xl border border-[#283039]';
+                var img = document.createElement('img');
+                img.alt = 'Expense photo ' + (index + 1);
+                img.className = 'w-full h-auto rounded-lg shadow-lg object-contain max-h-[70vh] mx-auto';
+                img.loading = 'lazy';
+                img.style.display = 'block';
+                var cap = document.createElement('div');
+                cap.className = 'text-center mt-3 text-sm text-gray-400';
+                cap.textContent = 'Photo ' + (index + 1) + ' of ' + displayUrls.length;
+                card.appendChild(img);
+                card.appendChild(cap);
+                outer.appendChild(card);
+                grid.appendChild(outer);
+
+                paidExpensesPhotoLog('view:img-assign-src', {
+                    index: index + 1,
+                    of: displayUrls.length,
+                    urlSummary: summarizePhotoUrlForLog(url)
+                });
+                img.addEventListener('load', function () {
+                    paidExpensesPhotoLog('view:img-browser-load-ok', {
+                        index: index + 1,
+                        naturalWidth: img.naturalWidth,
+                        naturalHeight: img.naturalHeight,
+                        complete: img.complete
+                    });
+                });
+                img.addEventListener('error', function () {
+                    paidExpensesPhotoLogWarn('view:img-browser-load-failed', {
+                        index: index + 1,
+                        of: displayUrls.length,
+                        urlSummary: summarizePhotoUrlForLog(url),
+                        hint: 'Still failing after getDownloadURL — Storage rules, missing object, or bad path in Firestore'
+                    });
+                });
+                img.src = url;
+            });
+
+            paidExpensesPhotoLog('view:modal-rendered', { batchId: batchId, slots: displayUrls.length });
         }
     </script>
 </body>

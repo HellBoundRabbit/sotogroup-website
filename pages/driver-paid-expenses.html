@@ -28,10 +28,10 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, getDocs, query, where, deleteDoc, doc, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, getDocs, query, where, deleteDoc, doc, getDoc, getDocFromServer, updateDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
-        import { getStorage, ref, deleteObject } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
+        import { getStorage, ref, deleteObject, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
         
         const firebaseConfig = {
             apiKey: "AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA",
@@ -56,6 +56,7 @@
         window.storage = storage;
         window.ref = ref;
         window.deleteObject = deleteObject;
+        window.getDownloadURL = getDownloadURL;
         window.firebase = {
             functions,
             httpsCallable
@@ -67,6 +68,7 @@
         window.deleteDoc = deleteDoc;
         window.doc = doc;
         window.getDoc = getDoc;
+        window.getDocFromServer = getDocFromServer;
         window.updateDoc = updateDoc;
         
         initializePaidExpensesApp();
@@ -280,6 +282,41 @@
         let allPaidBatches = [];
         let visibleBatchCount = 5;
         const getCurrentOfficeId = () => currentUser?.officeId || currentSession?.officeId || null;
+
+        async function refreshPaidExpensePhotoDownloadUrl(photoURL) {
+            if (!window.storage || typeof window.ref !== 'function' || typeof window.getDownloadURL !== 'function') return null;
+            const path = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.extractStoragePathFromDownloadURL)
+                ? EXPENSE_BATCH_SCHEMA.extractStoragePathFromDownloadURL(photoURL)
+                : null;
+            if (!path) return null;
+            try {
+                return await window.getDownloadURL(window.ref(window.storage, path));
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // Console diagnostics (filter DevTools console: DriverPaidExpenses) — view = <img> load; download = fetchPhotoBlob
+        var PAID_PORTAL_PHOTO_LOG = '[DriverPaidExpenses:Photos]';
+        function summarizePhotoUrlForLogPortal(url) {
+            try {
+                const u = new URL(url);
+                return {
+                    host: u.host,
+                    pathStart: u.pathname.slice(0, 80),
+                    hasAltMedia: u.searchParams.has('alt'),
+                    hasToken: u.search.indexOf('token=') >= 0
+                };
+            } catch (e) {
+                return { parseError: true, length: url ? url.length : 0 };
+            }
+        }
+        function paidPortalPhotoLog(phase, payload) {
+            if (typeof console !== 'undefined' && console.log) console.log(PAID_PORTAL_PHOTO_LOG, phase, payload == null ? '' : payload);
+        }
+        function paidPortalPhotoLogWarn(phase, payload) {
+            if (typeof console !== 'undefined' && console.warn) console.warn(PAID_PORTAL_PHOTO_LOG, phase, payload == null ? '' : payload);
+        }
 
         // Check for unread messages
         async function checkForUnreadMessages() {
@@ -895,7 +932,7 @@
 
         // Download PDF and Photos with folder structure
         async function downloadExpensePDFAndPhotos(batchId) {
-            const batch = allPaidBatches.find(b => b.id === batchId);
+            let batch = allPaidBatches.find(b => b.id === batchId);
             if (!batch) {
                 notifyError('Batch not found.', 'Missing Batch');
                 return;
@@ -919,6 +956,7 @@
             }
 
             try {
+                paidPortalPhotoLog('download-folder:open', { batchId: batchId, registration: batch.registration });
                 // Ask user to select a folder
                 const directoryHandle = await window.showDirectoryPicker({
                     mode: 'readwrite'
@@ -948,38 +986,88 @@
                 const pdfWritable = await pdfFileHandle.createWritable();
                 await pdfWritable.write(pdfBlob);
                 await pdfWritable.close();
+
+                try {
+                    const batchRef = window.doc(window.db, 'expenseBatches', batchId);
+                    const snap = (typeof window.getDocFromServer === 'function')
+                        ? await window.getDocFromServer(batchRef)
+                        : await window.getDoc(batchRef);
+                    if (snap && snap.exists()) {
+                        batch = { id: snap.id, ...snap.data() };
+                        const li = allPaidBatches.findIndex(b => b.id === batchId);
+                        if (li >= 0) allPaidBatches[li] = batch;
+                        paidPortalPhotoLog('download-folder:refetched-batch-before-photos', { batchId: batchId, registration: batch.registration });
+                    }
+                } catch (refErr) {
+                    paidPortalPhotoLogWarn('download-folder:refetch-before-photos-failed', { message: refErr && refErr.message });
+                }
                 
                 const usedLineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)) ? (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)(batch) : [];
-                const expensesForPhotos = usedLineKeys.map(k => (batch.lines || {})[k]).filter(Boolean);
+                const getLineLabelPaid = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getCategoryLabel) ? EXPENSE_BATCH_SCHEMA.getCategoryLabel.bind(null) : function (k) { return k; };
                 let photoIndex = 1;
+                let folderFetchOk = 0;
                 const photoFailures = [];
-                for (const line of expensesForPhotos) {
-                    if (line && Array.isArray(line.photos)) {
-                        for (const photoURL of line.photos) {
-                            if (typeof photoURL !== 'string') continue;
-                            const result = await (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.fetchPhotoBlob ? EXPENSE_BATCH_SCHEMA.fetchPhotoBlob : fetchPhotoBlob)(photoURL);
-                            if (result.error) { photoFailures.push(result.error); continue; }
-                            try {
-                                const photoFileName = `photo_${photoIndex}.jpg`;
-                                const photoFileHandle = await currentHandle.getFileHandle(photoFileName, { create: true });
-                                const photoWritable = await photoFileHandle.createWritable();
-                                await photoWritable.write(result.blob);
-                                await photoWritable.close();
-                                photoIndex++;
-                            } catch (error) {
-                                photoFailures.push({ url: photoURL, reason: (error && error.message) || String(error) });
-                            }
+                for (const lineKey of usedLineKeys) {
+                    const line = (batch.lines || {})[lineKey];
+                    if (!line || !Array.isArray(line.photos)) continue;
+                    const lineLabelPaid = getLineLabelPaid(lineKey);
+                    for (const photoURL of line.photos) {
+                        if (typeof photoURL !== 'string') continue;
+                        paidPortalPhotoLog('download-folder:fetchPhotoBlob-start', {
+                            slot: photoIndex,
+                            lineKey: lineKey,
+                            lineLabel: lineLabelPaid,
+                            urlSummary: summarizePhotoUrlForLogPortal(photoURL)
+                        });
+                        const result = await (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.fetchPhotoBlob ? EXPENSE_BATCH_SCHEMA.fetchPhotoBlob : fetchPhotoBlob)(photoURL, 2, refreshPaidExpensePhotoDownloadUrl);
+                        if (result.error) {
+                            paidPortalPhotoLogWarn('download-folder:fetchPhotoBlob-fail', {
+                                slot: photoIndex,
+                                lineKey: lineKey,
+                                reason: result.error.reason,
+                                status: result.error.status,
+                                urlSummary: summarizePhotoUrlForLogPortal(photoURL)
+                            });
+                            photoFailures.push(Object.assign({}, result.error, { lineKey: lineKey, lineLabel: lineLabelPaid }));
+                            continue;
+                        }
+                        paidPortalPhotoLog('download-folder:fetchPhotoBlob-ok', { slot: photoIndex, ext: result.ext, bytes: result.blob && result.blob.size });
+                        try {
+                            const photoFileName = `photo_${photoIndex}${result.ext || '.jpg'}`;
+                            const photoFileHandle = await currentHandle.getFileHandle(photoFileName, { create: true });
+                            const photoWritable = await photoFileHandle.createWritable();
+                            await photoWritable.write(result.blob);
+                            await photoWritable.close();
+                            folderFetchOk++;
+                            photoIndex++;
+                        } catch (error) {
+                            paidPortalPhotoLogWarn('download-folder:disk-write-fail', { slot: photoIndex, message: error && error.message });
+                            photoFailures.push({ url: photoURL, reason: (error && error.message) || String(error), lineKey: lineKey, lineLabel: lineLabelPaid });
                         }
                     }
                 }
+                paidPortalPhotoLog('download-folder:photos-summary', { okCount: folderFetchOk, failCount: photoFailures.length, registration: batch.registration });
                 notifySuccess(`Successfully saved PDF and photos to ${dateFolderName}/${cleanedReg}/`, 'Files Saved');
                 if (photoFailures.length > 0) {
-                    const msg = photoFailures.length + ' photo(s) could not be downloaded for batch ' + batch.registration + '.\n\nClick "Copy debug info" to copy details you can send for support.';
-                    const copied = await (window.uiDialogs && window.uiDialogs.showConfirmation ? window.uiDialogs.showConfirmation({ title: 'Some Photos Failed', message: msg, confirmText: 'Copy debug info', cancelText: 'Close', tone: 'warning' }) : Promise.resolve(false));
-                    if (copied) {
-                        const debugText = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.buildPhotoFetchDebugText ? EXPENSE_BATCH_SCHEMA.buildPhotoFetchDebugText : (f) => JSON.stringify(f, null, 2))(photoFailures, batch.registration);
+                    try {
+                        const reportName = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.PHOTO_TRANSFER_FAILURE_FILENAME) ? EXPENSE_BATCH_SCHEMA.PHOTO_TRANSFER_FAILURE_FILENAME : 'PHOTOS_NOT_DOWNLOADED.txt';
+                        const reportBody = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.buildPhotoFailureFolderReport) ? EXPENSE_BATCH_SCHEMA.buildPhotoFailureFolderReport(photoFailures, batch.registration) : '';
+                        if (reportBody) {
+                            const reportFileHandle = await currentHandle.getFileHandle(reportName, { create: true });
+                            const reportWritable = await reportFileHandle.createWritable();
+                            await reportWritable.write(new Blob([reportBody], { type: 'text/plain;charset=utf-8' }));
+                            await reportWritable.close();
+                        }
+                    } catch (reportErr) {
+                        console.warn('Could not write photo failure report file', reportErr);
+                    }
+                    const reportNameShort = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.PHOTO_TRANSFER_FAILURE_FILENAME) ? EXPENSE_BATCH_SCHEMA.PHOTO_TRANSFER_FAILURE_FILENAME : 'PHOTOS_NOT_DOWNLOADED.txt';
+                    const msg = photoFailures.length + ' photo(s) could not be downloaded for batch ' + batch.registration + '.\n\n' + reportNameShort + ' was saved in this folder listing what is missing.\n\nYou can copy details for support.';
+                    const copied = await (window.uiDialogs && window.uiDialogs.showConfirmation ? window.uiDialogs.showConfirmation({ title: 'Some Photos Failed', message: msg, confirmText: 'Copy details', cancelText: 'Close', tone: 'warning' }) : Promise.resolve(false));
+                    if (copied && EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.buildPhotoFailureFolderReport) {
+                        const debugText = EXPENSE_BATCH_SCHEMA.buildPhotoFailureFolderReport(photoFailures, batch.registration);
                         await navigator.clipboard.writeText(debugText);
-                        if (window.uiDialogs && window.uiDialogs.showToast) window.uiDialogs.showToast({ title: 'Copied', message: 'Debug info copied. Paste and send for support.', tone: 'success' });
+                        if (window.uiDialogs && window.uiDialogs.showToast) window.uiDialogs.showToast({ title: 'Copied', message: 'Details copied.', tone: 'success' });
                     }
                 }
             } catch (error) {
@@ -997,14 +1085,31 @@
                     }
                     return;
                 }
+                paidPortalPhotoLogWarn('download-folder:error', { batchId: batchId, message: error && error.message });
                 console.error('Error downloading expense:', error);
                 notifyError('Error downloading expense: ' + error.message);
             }
         }
 
         // Download expense as ZIP (fallback)
-        async function downloadExpenseAsZIP(batch) {
+        async function downloadExpenseAsZIP(batchParam) {
+            let batch = batchParam;
             try {
+                paidPortalPhotoLog('download-zip:start', { batchId: batch.id, registration: batch.registration });
+                try {
+                    const batchRef = window.doc(window.db, 'expenseBatches', batch.id);
+                    const snap = (typeof window.getDocFromServer === 'function')
+                        ? await window.getDocFromServer(batchRef)
+                        : await window.getDoc(batchRef);
+                    if (snap && snap.exists()) {
+                        batch = { id: snap.id, ...snap.data() };
+                        const li = allPaidBatches.findIndex(b => b.id === batch.id);
+                        if (li >= 0) allPaidBatches[li] = batch;
+                        paidPortalPhotoLog('download-zip:refetched-batch', { batchId: batch.id, registration: batch.registration });
+                    }
+                } catch (zRefErr) {
+                    paidPortalPhotoLogWarn('download-zip:refetch-failed', { message: zRefErr && zRefErr.message });
+                }
                 const zip = new JSZip();
                 
                 // Get current date for folder structure
@@ -1028,19 +1133,44 @@
                 zip.file(folderPath + pdfFileName, pdfBlob);
                 
                 const usedLineKeys = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)) ? (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)(batch) : [];
-                const expensesForPhotos = usedLineKeys.map(k => (batch.lines || {})[k]).filter(Boolean);
+                const getLineLabelZipPaid = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.getCategoryLabel) ? EXPENSE_BATCH_SCHEMA.getCategoryLabel.bind(null) : function (k) { return k; };
                 let photoIndex = 1;
+                let zipFetchOk = 0;
                 const photoFailures = [];
-                for (const line of expensesForPhotos) {
-                    if (line && Array.isArray(line.photos)) {
-                        for (const photoURL of line.photos) {
-                            if (typeof photoURL !== 'string') continue;
-                            const result = await (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.fetchPhotoBlob ? EXPENSE_BATCH_SCHEMA.fetchPhotoBlob : fetchPhotoBlob)(photoURL);
-                            if (result.error) { photoFailures.push(result.error); continue; }
-                            zip.file(folderPath + `photo_${photoIndex}.jpg`, result.blob);
-                            photoIndex++;
+                for (const lineKey of usedLineKeys) {
+                    const line = (batch.lines || {})[lineKey];
+                    if (!line || !Array.isArray(line.photos)) continue;
+                    const lineLabelZipPaid = getLineLabelZipPaid(lineKey);
+                    for (const photoURL of line.photos) {
+                        if (typeof photoURL !== 'string') continue;
+                        paidPortalPhotoLog('download-zip:fetchPhotoBlob-start', {
+                            zipSlot: photoIndex,
+                            lineKey: lineKey,
+                            lineLabel: lineLabelZipPaid,
+                            urlSummary: summarizePhotoUrlForLogPortal(photoURL)
+                        });
+                        const result = await (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.fetchPhotoBlob ? EXPENSE_BATCH_SCHEMA.fetchPhotoBlob : fetchPhotoBlob)(photoURL, 2, refreshPaidExpensePhotoDownloadUrl);
+                        if (result.error) {
+                            paidPortalPhotoLogWarn('download-zip:fetchPhotoBlob-fail', {
+                                zipSlot: photoIndex,
+                                lineKey: lineKey,
+                                reason: result.error.reason,
+                                status: result.error.status,
+                                urlSummary: summarizePhotoUrlForLogPortal(photoURL)
+                            });
+                            photoFailures.push(Object.assign({}, result.error, { lineKey: lineKey, lineLabel: lineLabelZipPaid }));
+                            continue;
                         }
+                        paidPortalPhotoLog('download-zip:fetchPhotoBlob-ok', { zipSlot: photoIndex, ext: result.ext, bytes: result.blob && result.blob.size });
+                        zip.file(folderPath + `photo_${photoIndex}${result.ext || '.jpg'}`, result.blob);
+                        zipFetchOk++;
+                        photoIndex++;
                     }
+                }
+                paidPortalPhotoLog('download-zip:photos-summary', { okCount: zipFetchOk, failCount: photoFailures.length, registration: batch.registration });
+                if (photoFailures.length > 0 && EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.buildPhotoFailureFolderReport) {
+                    const zName = EXPENSE_BATCH_SCHEMA.PHOTO_TRANSFER_FAILURE_FILENAME || 'PHOTOS_NOT_DOWNLOADED.txt';
+                    zip.file(folderPath + zName, EXPENSE_BATCH_SCHEMA.buildPhotoFailureFolderReport(photoFailures, batch.registration));
                 }
                 
                 // Generate and download ZIP
@@ -1055,16 +1185,19 @@
                 URL.revokeObjectURL(url);
                 
                 notifySuccess('Successfully downloaded PDF and photos as ZIP file!', 'ZIP Downloaded');
+                paidPortalPhotoLog('download-zip:complete', { fileName: `${cleanedReg}_${dateFolderName}.zip`, okCount: zipFetchOk, failCount: photoFailures.length });
                 if (photoFailures.length > 0) {
-                    const msg = photoFailures.length + ' photo(s) could not be downloaded.\n\nClick "Copy debug info" to copy details you can send for support.';
-                    const copied = await (window.uiDialogs && window.uiDialogs.showConfirmation ? window.uiDialogs.showConfirmation({ title: 'Some Photos Failed', message: msg, confirmText: 'Copy debug info', cancelText: 'Close', tone: 'warning' }) : Promise.resolve(false));
-                    if (copied) {
-                        const debugText = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.buildPhotoFetchDebugText ? EXPENSE_BATCH_SCHEMA.buildPhotoFetchDebugText : (f) => JSON.stringify(f, null, 2))(photoFailures, batch.registration);
+                    const fn = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.PHOTO_TRANSFER_FAILURE_FILENAME) ? EXPENSE_BATCH_SCHEMA.PHOTO_TRANSFER_FAILURE_FILENAME : 'PHOTOS_NOT_DOWNLOADED.txt';
+                    const msg = photoFailures.length + ' photo(s) could not be downloaded.\n\nThe ZIP includes ' + fn + ' with the list of failures.\n\nYou can copy details here for support.';
+                    const copied = await (window.uiDialogs && window.uiDialogs.showConfirmation ? window.uiDialogs.showConfirmation({ title: 'Some Photos Failed', message: msg, confirmText: 'Copy details', cancelText: 'Close', tone: 'warning' }) : Promise.resolve(false));
+                    if (copied && EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.buildPhotoFailureFolderReport) {
+                        const debugText = EXPENSE_BATCH_SCHEMA.buildPhotoFailureFolderReport(photoFailures, batch.registration);
                         await navigator.clipboard.writeText(debugText);
-                        if (window.uiDialogs && window.uiDialogs.showToast) window.uiDialogs.showToast({ title: 'Copied', message: 'Debug info copied. Paste and send for support.', tone: 'success' });
+                        if (window.uiDialogs && window.uiDialogs.showToast) window.uiDialogs.showToast({ title: 'Copied', message: 'Details copied.', tone: 'success' });
                     }
                 }
             } catch (error) {
+                paidPortalPhotoLogWarn('download-zip:error', { message: error && error.message, batchId: batch && batch.id });
                 console.error('Error generating ZIP:', error);
                 notifyError('Error generating ZIP: ' + error.message);
             }
@@ -1080,41 +1213,123 @@
             }
         }
 
-        function viewExpensePhotos(batchId) {
-            const batch = allPaidBatches.find(b => b.id === batchId);
-            if (!batch) return;
-            const allPhotos = [];
-            if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)) {
-                (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)(batch).forEach(k => {
-                    const line = batch.lines[k];
-                    if (line && line.photos) line.photos.forEach(url => { if (typeof url === 'string' && url.startsWith('http')) allPhotos.push(url); });
-                });
-            }
-
-            if (allPhotos.length === 0) {
-        notifyInfo('No photos available for this expense batch.', 'No Photos');
+        async function viewExpensePhotos(batchId) {
+            paidPortalPhotoLog('view:open-click', { batchId: batchId, page: 'driver-paid-expenses.html' });
+            let batch = allPaidBatches.find(b => b.id === batchId);
+            if (!batch) {
+                paidPortalPhotoLogWarn('view:batch-missing', { batchId: batchId });
                 return;
             }
 
             const grid = document.getElementById('photoViewerGrid');
-            grid.innerHTML = allPhotos.map((url, index) => `
-                <div class="w-full max-w-4xl mx-auto mb-6">
-                    <div class="bg-[#1a1f24] rounded-xl p-4 shadow-2xl border border-[#283039]">
-                        <img 
-                            src="${url}" 
-                            alt="Expense photo ${index + 1}" 
-                            class="w-full h-auto rounded-lg shadow-lg object-contain max-h-[70vh] mx-auto"
-                            loading="lazy"
-                            style="display: block;"
-                        >
-                        <div class="text-center mt-3 text-sm text-gray-400">
-                            Photo ${index + 1} of ${allPhotos.length}
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-
+            grid.innerHTML = '<div class="text-center text-gray-400 p-8">Loading photos…</div>';
             document.getElementById('photoViewerModal').classList.remove('hidden');
+
+            try {
+                const batchRef = window.doc(window.db, 'expenseBatches', batchId);
+                let serverSnap = null;
+                if (typeof window.getDocFromServer === 'function') {
+                    serverSnap = await window.getDocFromServer(batchRef);
+                } else {
+                    serverSnap = await window.getDoc(batchRef);
+                }
+                if (serverSnap && serverSnap.exists()) {
+                    batch = { id: serverSnap.id, ...serverSnap.data() };
+                    const listIdx = allPaidBatches.findIndex(b => b.id === batchId);
+                    if (listIdx >= 0) allPaidBatches[listIdx] = batch;
+                    paidPortalPhotoLog('view:refetched-batch-from-firestore', { batchId: batchId, registration: batch.registration });
+                } else {
+                    paidPortalPhotoLogWarn('view:firestore-miss', { batchId: batchId });
+                }
+            } catch (refetchErr) {
+                paidPortalPhotoLogWarn('view:refetch-failed-using-cache', { batchId: batchId, message: refetchErr && refetchErr.message });
+            }
+
+            const linePhotoDebug = [];
+            const allPhotos = [];
+            if (batch.lines && typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)) {
+                const getLbl = EXPENSE_BATCH_SCHEMA.getCategoryLabel ? EXPENSE_BATCH_SCHEMA.getCategoryLabel.bind(null) : function (k) { return k; };
+                (EXPENSE_BATCH_SCHEMA.getUsedLinesInOrder || EXPENSE_BATCH_SCHEMA.getUsedLines)(batch).forEach(k => {
+                    const line = batch.lines[k];
+                    if (!line || !Array.isArray(line.photos)) return;
+                    const httpUrls = line.photos.filter(u => typeof u === 'string' && u.startsWith('http'));
+                    if (httpUrls.length === 0) return;
+                    linePhotoDebug.push({
+                        lineKey: k,
+                        lineLabel: getLbl(k),
+                        count: httpUrls.length,
+                        urls: httpUrls.map(u => summarizePhotoUrlForLogPortal(u))
+                    });
+                    httpUrls.forEach(u => allPhotos.push(u));
+                });
+            }
+
+            paidPortalPhotoLog('view:collected-urls', {
+                batchId: batchId,
+                registration: batch.registration,
+                totalImages: allPhotos.length,
+                byLine: linePhotoDebug
+            });
+
+            if (allPhotos.length === 0) {
+                paidPortalPhotoLogWarn('view:no-http-urls', { batchId: batchId, lineSummary: linePhotoDebug });
+                grid.innerHTML = '';
+                document.getElementById('photoViewerModal').classList.add('hidden');
+                notifyInfo('No photos available for this expense batch.', 'No Photos');
+                return;
+            }
+
+            paidPortalPhotoLog('view:refreshing-tokens-via-getDownloadURL', { count: allPhotos.length });
+            const displayUrls = await Promise.all(allPhotos.map(async (storedUrl, i) => {
+                const fresh = await refreshPaidExpensePhotoDownloadUrl(storedUrl);
+                const chosen = (typeof fresh === 'string' && fresh.length > 0) ? fresh : storedUrl;
+                if (chosen !== storedUrl) {
+                    paidPortalPhotoLog('view:display-url-refreshed', { index: i + 1, of: allPhotos.length });
+                } else if (fresh == null && storedUrl.indexOf('firebasestorage.googleapis.com') >= 0) {
+                    paidPortalPhotoLogWarn('view:getDownloadURL-returned-null', { index: i + 1, urlSummary: summarizePhotoUrlForLogPortal(storedUrl) });
+                }
+                return chosen;
+            }));
+
+            grid.innerHTML = '';
+            displayUrls.forEach((url, index) => {
+                const outer = document.createElement('div');
+                outer.className = 'w-full max-w-4xl mx-auto mb-6';
+                const card = document.createElement('div');
+                card.className = 'bg-[#1a1f24] rounded-xl p-4 shadow-2xl border border-[#283039]';
+                const img = document.createElement('img');
+                img.alt = 'Expense photo ' + (index + 1);
+                img.className = 'w-full h-auto rounded-lg shadow-lg object-contain max-h-[70vh] mx-auto';
+                img.loading = 'lazy';
+                img.style.display = 'block';
+                const cap = document.createElement('div');
+                cap.className = 'text-center mt-3 text-sm text-gray-400';
+                cap.textContent = 'Photo ' + (index + 1) + ' of ' + displayUrls.length;
+                card.appendChild(img);
+                card.appendChild(cap);
+                outer.appendChild(card);
+                grid.appendChild(outer);
+
+                paidPortalPhotoLog('view:img-assign-src', { index: index + 1, of: displayUrls.length, urlSummary: summarizePhotoUrlForLogPortal(url) });
+                img.addEventListener('load', function () {
+                    paidPortalPhotoLog('view:img-browser-load-ok', {
+                        index: index + 1,
+                        naturalWidth: img.naturalWidth,
+                        naturalHeight: img.naturalHeight
+                    });
+                });
+                img.addEventListener('error', function () {
+                    paidPortalPhotoLogWarn('view:img-browser-load-failed', {
+                        index: index + 1,
+                        of: displayUrls.length,
+                        urlSummary: summarizePhotoUrlForLogPortal(url),
+                        hint: 'Still failing after getDownloadURL — check Storage rules, object exists, or duplicate/wrong path in Firestore'
+                    });
+                });
+                img.src = url;
+            });
+
+            paidPortalPhotoLog('view:modal-rendered', { batchId: batchId, slots: displayUrls.length });
         }
 
         // Close photo viewer
