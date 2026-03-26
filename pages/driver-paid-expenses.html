@@ -29,7 +29,7 @@
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { getFirestore, collection, getDocs, query, where, deleteDoc, doc, getDoc, getDocFromServer, updateDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
-        import { getAuth, onAuthStateChanged, authStateReady } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         import { getStorage, ref, deleteObject, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
         
@@ -52,7 +52,30 @@
         window.firebaseApp = app;
         window.db = db;
         window.auth = auth;
-        window.ensureFirebaseAuthReady = function () { return authStateReady(auth); };
+        window.ensureFirebaseAuthReady = function () {
+            return new Promise(function (resolve) {
+                if (auth.currentUser) {
+                    resolve();
+                    return;
+                }
+                var unsub = onAuthStateChanged(auth, function () {
+                    try {
+                        unsub();
+                    } catch (e) {
+                        /* ignore */
+                    }
+                    resolve();
+                });
+                setTimeout(function () {
+                    try {
+                        unsub();
+                    } catch (e) {
+                        /* ignore */
+                    }
+                    resolve();
+                }, 10000);
+            });
+        };
         window.functions = functions;
         window.storage = storage;
         window.ref = ref;
