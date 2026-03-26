@@ -24,6 +24,11 @@
     window.location.href = `${LOGIN_PATH}?redirect=${redirectParam}`;
   }
 
+  /**
+   * Wait until Firebase Auth has resolved persistence (modular SDK has no auth.onAuthStateChanged).
+   * Many driver pages use modular auth but do not set window.onAuthStateChanged — without a listener
+   * we must poll currentUser so PWA / slow storage does not get an immediate null and a login redirect.
+   */
   async function resolveCurrentUser() {
     const auth = window.auth;
     if (!auth) {
@@ -35,27 +40,77 @@
     }
 
     return new Promise((resolve) => {
-      let unsubscribed = false;
-      const unsubscribe = auth.onAuthStateChanged ?
-        auth.onAuthStateChanged((user) => {
-          if (!unsubscribed) {
-            unsubscribed = true;
-            unsubscribe();
-            resolve(user);
-          }
-        }) :
-        window.onAuthStateChanged ?
-          window.onAuthStateChanged(auth, (user) => {
-            if (!unsubscribed) {
-              unsubscribed = true;
-              resolve(user);
-            }
-          }) :
-          null;
+      let settled = false;
+      const settle = (explicitUser) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        const u = explicitUser != null ? explicitUser : auth.currentUser;
+        resolve(u != null ? u : null);
+      };
 
-      if (!unsubscribe) {
-        resolve(null);
+      let unsub = null;
+      const detachListener = () => {
+        if (typeof unsub === 'function') {
+          try {
+            unsub();
+          } catch (e) {
+            /* ignore */
+          }
+          unsub = null;
+        }
+      };
+
+      if (typeof window.onAuthStateChanged === 'function') {
+        try {
+          unsub = window.onAuthStateChanged(auth, (user) => {
+            const resolved = user != null ? user : auth.currentUser;
+            if (resolved) {
+              detachListener();
+              settle(resolved);
+            }
+          });
+        } catch (e) {
+          detachListener();
+          settle(auth.currentUser);
+          return;
+        }
+      } else if (typeof auth.onAuthStateChanged === 'function') {
+        try {
+          unsub = auth.onAuthStateChanged((user) => {
+            const resolved = user != null ? user : auth.currentUser;
+            if (resolved) {
+              detachListener();
+              settle(resolved);
+            }
+          });
+        } catch (e) {
+          detachListener();
+          settle(auth.currentUser);
+          return;
+        }
       }
+
+      const capMs = 10000;
+      const deadline = Date.now() + capMs;
+      const poll = () => {
+        if (settled) {
+          return;
+        }
+        if (auth.currentUser) {
+          detachListener();
+          settle(auth.currentUser);
+          return;
+        }
+        if (Date.now() >= deadline) {
+          detachListener();
+          settle(null);
+          return;
+        }
+        setTimeout(poll, 50);
+      };
+      poll();
     });
   }
 
