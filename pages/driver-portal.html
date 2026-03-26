@@ -1085,7 +1085,7 @@
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { getFirestore, collection, getDocs, query, where, doc, getDoc, updateDoc, setDoc, addDoc, serverTimestamp, deleteField } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
-        import { getAuth, signOut, updatePassword, reauthenticateWithCredential, EmailAuthProvider, deleteUser } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getAuth, signOut, updatePassword, reauthenticateWithCredential, EmailAuthProvider, deleteUser, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
         
@@ -1111,6 +1111,7 @@
         window.firebaseApp = app;
         window.db = db;
         window.auth = auth;
+        window.onAuthStateChanged = onAuthStateChanged;
         window.functions = functions;
         window.firebase = {
             functions,

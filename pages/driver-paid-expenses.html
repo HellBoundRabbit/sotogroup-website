@@ -52,6 +52,7 @@
         window.firebaseApp = app;
         window.db = db;
         window.auth = auth;
+        window.onAuthStateChanged = onAuthStateChanged;
         window.ensureFirebaseAuthReady = function () {
             return new Promise(function (resolve) {
                 if (auth.currentUser) {
