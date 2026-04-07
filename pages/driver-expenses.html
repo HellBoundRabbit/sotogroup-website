@@ -30,6 +30,7 @@
     <script src="/js/expense-batch-schema.js"></script>
     <!-- Offline Storage & Upload Queue System -->
     <script src="/js/expense-offline-storage.js"></script>
+    <script src="/js/driver-expenses-debug-log.js"></script>
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
@@ -280,6 +281,15 @@
             background: #FFD500 !important;
             background-color: #FFD500 !important;
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+        }
+
+        /* Collection date: match read-only / greyed state when disabled (e.g. pending validation) */
+        #collectionDateInput:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            color: #9ca3af !important;
+            background-color: #1f252b !important;
+            border-color: #4b5563 !important;
         }
         
         /* Status badge colors */
@@ -2401,6 +2411,7 @@
             document.getElementById('regInput').value = '';
             document.getElementById('regInput').disabled = false;
             document.getElementById('collectionDateInput').value = today;
+            document.getElementById('collectionDateInput').disabled = false;
             const notesSection = document.getElementById('notesSection');
             notesSection.classList.remove('hidden');
             const notesLabel = document.getElementById('notesLabel');
@@ -4234,13 +4245,15 @@
                 const newReg = await getUniqueReg(baseReg);
 
                 const emptyLines = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.emptyLines) ? EXPENSE_BATCH_SCHEMA.emptyLines() : {};
+                const todayStr = new Date().toISOString().split('T')[0];
                 currentBatch = {
                     id: null,
                     localId: null,
                     registration: newReg,
                     status: 'draft',
                     lines: emptyLines,
-                    totalAmount: 0
+                    totalAmount: 0,
+                    collectionDate: todayStr
                 };
                 window.currentBatch = currentBatch;
 
@@ -4248,6 +4261,9 @@
                 setStatusTitle('draft');
                 document.getElementById('regInput').value = newReg;
                 document.getElementById('regInput').disabled = false;
+                const collectionDateEl = document.getElementById('collectionDateInput');
+                collectionDateEl.value = todayStr;
+                collectionDateEl.disabled = false;
                 const notesSection = document.getElementById('notesSection');
                 notesSection.classList.remove('hidden');
                 const notesLabel = document.getElementById('notesLabel');
@@ -4994,5 +5010,9 @@
             paidExpensesPhotoLog('view:modal-rendered', { batchId: batchId, slots: displayUrls.length });
         }
     </script>
+
+    <button type="button" id="driverExpensesBugReportBtn" class="fixed bottom-4 left-4 z-[85] flex h-11 w-11 items-center justify-center rounded-full bg-[#283039] border border-gray-600 text-amber-400/90 shadow-lg hover:bg-[#3a4552] active:scale-95 touch-manipulation" aria-label="Report a problem — upload today’s log for support" title="Sends a paste-friendly log to Firebase for support (same reportGroupId = one report)">
+        <span class="material-symbols-outlined text-xl">bug_report</span>
+    </button>
 </body>
 </html>

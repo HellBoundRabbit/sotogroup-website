@@ -1084,7 +1084,7 @@
 
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, getDocs, query, where, doc, getDoc, updateDoc, setDoc, addDoc, serverTimestamp, deleteField } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, getDocs, query, where, doc, getDoc, updateDoc, setDoc, addDoc, serverTimestamp, deleteField, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, signOut, updatePassword, reauthenticateWithCredential, EmailAuthProvider, deleteUser, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
@@ -1137,6 +1137,7 @@
         window.getDocs = getDocs;
         window.query = query;
         window.where = where;
+        window.deleteDoc = deleteDoc;
         
         console.log('Firebase initialized successfully!');
         
@@ -1700,7 +1701,10 @@
             };
         }
 
-        async function findLastDriverDayWithData() {
+        /**
+         * Most recent calendar day before today that has a started session (one doc to evaluate for carryover / retention).
+         */
+        async function findMostRecentPastSession() {
             if (!currentUser || !currentUser.uid) return null;
             const uid = currentUser.uid;
             const today = getTodayDateString();
@@ -1714,26 +1718,74 @@
                     const snap = await window.getDoc(window.doc(window.db, 'driverDaySessions', docId));
                     if (snap.exists()) {
                         const data = snap.data();
-                        if (!data.dayStartedAt) continue;
-                        // Already closed (manual or auto): check carryover flag
-                        if (data.dayEndedAt && data.endedWithVehicleInPossession === true) {
+                        if (data.dayStartedAt) {
                             return { dateStr, docId, data };
                         }
-                        // Stale past session (day ended at midnight): auto-close and return carryover if had car
-                        if (!data.dayEndedAt) {
-                            const hadVehicle = data.inPossessionOfVehicle === true;
-                            await window.updateDoc(window.doc(window.db, 'driverDaySessions', docId), {
-                                dayEndedAt: window.serverTimestamp(),
-                                dayEndedAtMidnight: true,
-                                endedWithVehicleInPossession: hadVehicle,
-                                inPossessionOfVehicle: false
-                            });
-                            if (hadVehicle) return { dateStr, docId, data };
-                        }
                     }
-                } catch (e) { console.warn('[Carryover] Check failed for', dateStr, e); }
+                } catch (e) { console.warn('[Carryover] Load failed for', dateStr, e); }
             }
             return null;
+        }
+
+        /** True if this closed session still requires a carryover delivery (legacy: endedWithVehicleInPossession without cleared pending). */
+        function sessionNeedsPendingCarryoverDelivery(data) {
+            if (!data || !data.dayEndedAt) return false;
+            if (data.pendingCarryoverDeliver === false) return false;
+            if (data.pendingCarryoverDeliver === true) return true;
+            return data.endedWithVehicleInPossession === true;
+        }
+
+        /**
+         * Carryover only from the most recent past session — not older days (fixes false carryover from stale flags).
+         * Open days: auto-close at midnight rollover; carryover if driver still had the vehicle.
+         */
+        async function findCarryoverForStartDay() {
+            if (!currentUser || !currentUser.uid) return null;
+            const last = await findMostRecentPastSession();
+            if (!last) return null;
+            const { dateStr, docId, data } = last;
+            try {
+                if (!data.dayEndedAt) {
+                    const hadVehicle = data.inPossessionOfVehicle === true;
+                    await window.updateDoc(window.doc(window.db, 'driverDaySessions', docId), {
+                        dayEndedAt: window.serverTimestamp(),
+                        dayEndedAtMidnight: true,
+                        endedWithVehicleInPossession: hadVehicle,
+                        inPossessionOfVehicle: false,
+                        pendingCarryoverDeliver: hadVehicle
+                    });
+                    if (hadVehicle) return { dateStr, docId, data };
+                    return null;
+                }
+                if (sessionNeedsPendingCarryoverDelivery(data)) {
+                    return { dateStr, docId, data };
+                }
+            } catch (e) {
+                console.warn('[Carryover] findCarryoverForStartDay failed', e);
+            }
+            return null;
+        }
+
+        /** Delete driverDaySessions for this user where date string is strictly before keepDateStr (YYYY-MM-DD). */
+        async function cleanupDriverSessionsOlderThan(uid, keepDateStr) {
+            if (!uid || !keepDateStr || !window.deleteDoc || !window.query || !window.where || !window.getDocs) return;
+            try {
+                const q = window.query(
+                    window.collection(window.db, 'driverDaySessions'),
+                    window.where('driverId', '==', uid)
+                );
+                const snap = await window.getDocs(q);
+                for (const d of snap.docs) {
+                    const row = d.data();
+                    const date = row.date;
+                    if (typeof date !== 'string' || date.length < 10) continue;
+                    if (date < keepDateStr) {
+                        await window.deleteDoc(d.ref);
+                    }
+                }
+            } catch (e) {
+                console.warn('[Driver Day] Cleanup old sessions failed:', e);
+            }
         }
 
         async function handleStartDayOrCollect() {
@@ -1760,8 +1812,10 @@
 
             try {
                 if (!dayStarted) {
-                    const carryoverInfo = await findLastDriverDayWithData();
+                    const carryoverInfo = await findCarryoverForStartDay();
                     const carryover = !!carryoverInfo;
+                    const lastPast = await findMostRecentPastSession();
+                    const keepCutoff = lastPast ? lastPast.dateStr : dateStr;
                     await window.setDoc(window.doc(window.db, 'driverDaySessions', docId), {
                         driverId: currentUser.uid,
                         officeId: getCurrentOfficeId() || null,
@@ -1769,22 +1823,36 @@
                         email,
                         date: dateStr,
                         carryover,
+                        carryoverSourceDocId: carryoverInfo ? carryoverInfo.docId : null,
                         dayStartedAt: window.serverTimestamp(),
                         startDayCoordinate: coordPayload(loc),
                         dayEndedAt: null,
                         inPossessionOfVehicle: false,
-                        currentJobIndex: carryover ? 1 : 1,
+                        currentJobIndex: 1,
                         awaitingCollect: carryover ? false : true
                     });
+                    await cleanupDriverSessionsOlderThan(currentUser.uid, keepCutoff);
                     notifySuccess('Day started.', 'Start Day');
                 } else if (hasCarryover && !awaitingCollect) {
+                    const sourceDocId = driverDaySession && driverDaySession.carryoverSourceDocId;
                     await window.updateDoc(window.doc(window.db, 'driverDaySessions', docId), {
                         carryoverDeliverCoordinate: coordPayload(loc),
                         carryover: false,
+                        carryoverSourceDocId: null,
                         inPossessionOfVehicle: false,
                         awaitingCollect: true,
                         currentJobIndex: 1
                     });
+                    if (sourceDocId) {
+                        try {
+                            await window.updateDoc(window.doc(window.db, 'driverDaySessions', sourceDocId), {
+                                pendingCarryoverDeliver: false,
+                                endedWithVehicleInPossession: false
+                            });
+                        } catch (resolveErr) {
+                            console.warn('[Carryover] Could not clear source session flags:', resolveErr);
+                        }
+                    }
                     notifySuccess('Carryover delivered. Proceed to Collect Job 1.', 'Deliver Carryover');
                 } else if (awaitingCollect) {
                     const collectKey = 'job' + jobIndex + 'CollectCoordinate';
@@ -1850,7 +1918,13 @@
                     dayEndedAt: window.serverTimestamp(),
                     inPossessionOfVehicle: false
                 };
-                if (inPossession) updatePayload.endedWithVehicleInPossession = true;
+                if (inPossession) {
+                    updatePayload.endedWithVehicleInPossession = true;
+                    updatePayload.pendingCarryoverDeliver = true;
+                } else {
+                    updatePayload.endedWithVehicleInPossession = false;
+                    updatePayload.pendingCarryoverDeliver = false;
+                }
                 await window.updateDoc(window.doc(window.db, 'driverDaySessions', docId), updatePayload);
                 notifySuccess('Day ended.', 'End Day');
                 await loadDriverDaySessionAndUpdateButtons();
