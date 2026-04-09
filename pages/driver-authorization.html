@@ -606,7 +606,7 @@
             const fromInput = document.getElementById('fromAddress');
             fromAutocomplete = new google.maps.places.Autocomplete(fromInput, {
                 componentRestrictions: { country: 'gb' },
-                fields: AUTocomplete_FIELDS
+                fields: AUTOCOMPLETE_FIELDS
             });
             
             fromAutocomplete.addListener('place_changed', () => {
