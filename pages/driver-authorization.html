@@ -18,7 +18,13 @@
     <script src="/assets/js/tailwind-runtime.js"></script>
     <script src="/js/session-manager.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
-    <!-- Google Maps API with Places library -->
+    <!--
+      Google Cloud (same project as this API key) must have enabled:
+      - Maps JavaScript API
+      - Places API (legacy Autocomplete)
+      - Geocoding API (Use current location → reverse geocode)
+      Billing must be active for Maps Platform usage.
+    -->
     <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDTbiSXo9tg1Tx8SlZCZKsR_R0zIQ4N1VA&libraries=places,geometry&loading=async&callback=initGoogleMaps"></script>
     <!-- Firebase SDK -->
     <script type="module">
@@ -339,60 +345,51 @@
             cursor: not-allowed;
         }
         
+        /*
+         * Places autocomplete panel: use a light panel with dark text.
+         * Do NOT force white text on all .pac-* nodes — Google’s rows often stay white,
+         * which made suggestions look “empty” (white on white).
+         */
         .pac-container {
-            background: #1a1f24 !important;
-            border: 1px solid #374151 !important;
+            background: #ffffff !important;
+            border: 1px solid #e5e7eb !important;
             border-radius: 8px;
-            z-index: 10000;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+            z-index: 10050 !important;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.15);
         }
-        
-        .pac-container * {
-            color: #ffffff !important;
-        }
-        
+
         .pac-item {
-            padding: 12px;
-            border-bottom: 1px solid #374151;
-            color: #ffffff !important;
+            padding: 10px 12px;
+            border-top: 1px solid #f3f4f6;
             cursor: pointer;
+            color: #111827 !important;
         }
-        
-        .pac-item * {
-            color: #ffffff !important;
+
+        .pac-item:first-child {
+            border-top: none;
         }
-        
-        .pac-item:hover {
-            background: #283039;
-        }
-        
-        .pac-item:hover * {
-            color: #ffffff !important;
-        }
-        
+
+        .pac-item:hover,
         .pac-item-selected {
-            background: #283039;
+            background: #f3f4f6 !important;
         }
-        
-        .pac-item-selected * {
-            color: #ffffff !important;
+
+        .pac-item-query {
+            color: #111827 !important;
+            font-weight: 500;
         }
-        
+
         .pac-matched {
-            color: #3b82f6 !important;
+            color: #2563eb !important;
             font-weight: 600;
         }
-        
+
         .pac-icon {
             background-color: transparent !important;
         }
-        
-        .pac-item-query {
-            color: #ffffff !important;
-        }
-        
-        .pac-item-query * {
-            color: #ffffff !important;
+
+        .hdpi.pac-logo::after {
+            opacity: 1;
         }
     </style>
 </head>
@@ -561,39 +558,16 @@
         let toPlace = null;
         let googleMapsLoaded = false;
 
-        /** Place-shaped object for lat/lng-only origins (e.g. current location) so Proceed matches legacy Autocomplete results. */
-        function createLatLngPlaceResult(lat, lng, formattedAddress) {
-            const label = formattedAddress || `${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}`;
-            return {
-                formatted_address: label,
-                geometry: {
-                    location: {
-                        lat: () => lat,
-                        lng: () => lng
-                    }
-                },
-                name: label
-            };
-        }
+        const AUTOCOMPLETE_FIELDS = ['geometry', 'formatted_address', 'name', 'address_components'];
 
-        /** Reverse geocode without Google Geocoding API (uses OSM Nominatim; falls back to coordinates). */
-        async function reverseGeocodeLatLng(lat, lng) {
-            const coordFallback = `${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}`;
-            try {
-                const url = `https://nominatim.openstreetmap.org/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&format=json`;
-                const res = await fetch(url, {
-                    headers: { Accept: 'application/json', 'Accept-Language': 'en-GB' },
-                    referrerPolicy: 'strict-origin-when-cross-origin'
-                });
-                if (!res.ok) return coordFallback;
-                const data = await res.json();
-                if (data && typeof data.display_name === 'string' && data.display_name.trim()) {
-                    return data.display_name.trim();
-                }
-            } catch (e) {
-                console.warn('[driver-authorization] Reverse geocode failed, using coordinates.', e);
-            }
-            return coordFallback;
+        /** Minimal Place result when Geocoder returns a result (same shape as Places Autocomplete). */
+        function geocoderResultToPlace(result) {
+            return {
+                formatted_address: result.formatted_address,
+                geometry: result.geometry,
+                name: result.formatted_address,
+                address_components: result.address_components
+            };
         }
         
         // Initialize Google Maps
@@ -631,7 +605,8 @@
             // From address autocomplete
             const fromInput = document.getElementById('fromAddress');
             fromAutocomplete = new google.maps.places.Autocomplete(fromInput, {
-                componentRestrictions: { country: 'gb' } // Restrict to UK
+                componentRestrictions: { country: 'gb' },
+                fields: AUTocomplete_FIELDS
             });
             
             fromAutocomplete.addListener('place_changed', () => {
@@ -642,7 +617,8 @@
             // To address autocomplete
             const toInput = document.getElementById('toAddress');
             toAutocomplete = new google.maps.places.Autocomplete(toInput, {
-                componentRestrictions: { country: 'gb' } // Restrict to UK
+                componentRestrictions: { country: 'gb' },
+                fields: AUTOCOMPLETE_FIELDS
             });
             
             toAutocomplete.addListener('place_changed', () => {
@@ -665,27 +641,47 @@
             
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
-                    async (position) => {
+                    (position) => {
                         const lat = position.coords.latitude;
                         const lng = position.coords.longitude;
 
-                        try {
-                            const label = await reverseGeocodeLatLng(lat, lng);
-                            input.value = label;
-                            const placeObj = createLatLngPlaceResult(lat, lng, label);
-                            if (type === 'from') {
-                                fromPlace = placeObj;
-                            } else {
-                                toPlace = placeObj;
-                            }
-                            validateForm();
-                        } catch (error) {
-                            console.error('Error resolving address for location:', error);
-                            alert('Could not resolve your location to an address. Please enter manually.');
-                        } finally {
-                            button.disabled = false;
-                            button.innerHTML = `<span class="material-symbols-outlined" style="font-size: 18px;">my_location</span> Use Current Location`;
-                        }
+                        waitForGoogleMaps()
+                            .then(() => {
+                                const geocoder = new google.maps.Geocoder();
+                                geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+                                    const resetBtn = () => {
+                                        button.disabled = false;
+                                        button.innerHTML = `<span class="material-symbols-outlined" style="font-size: 18px;">my_location</span> Use Current Location`;
+                                    };
+
+                                    if (status === 'OK' && results && results[0]) {
+                                        input.value = results[0].formatted_address;
+                                        const placeObj = geocoderResultToPlace(results[0]);
+                                        if (type === 'from') {
+                                            fromPlace = placeObj;
+                                        } else {
+                                            toPlace = placeObj;
+                                        }
+                                        validateForm();
+                                        resetBtn();
+                                        return;
+                                    }
+
+                                    console.error('[driver-authorization] Geocoder failed:', status);
+                                    let msg = 'Could not get an address for your location. Please enter it manually.';
+                                    if (status === 'REQUEST_DENIED' || status === 'INVALID_REQUEST') {
+                                        msg = 'Google Geocoding is not available for this app. In Google Cloud Console, enable Geocoding API for your Maps key’s project, ensure billing is on, and check API key restrictions.';
+                                    }
+                                    alert(msg);
+                                    resetBtn();
+                                });
+                            })
+                            .catch((err) => {
+                                console.error('Maps not ready for geocoding:', err);
+                                alert('Maps failed to load. Please refresh and try again.');
+                                button.disabled = false;
+                                button.innerHTML = `<span class="material-symbols-outlined" style="font-size: 18px;">my_location</span> Use Current Location`;
+                            });
                     },
                     (error) => {
                         console.error('Error getting location:', error);
