@@ -4321,57 +4321,260 @@
             }
         }
         
+        /** Console filter: [OPT-USAGE-DEBUG] — Firestore rules vs auth for optimization_usage writes */
+        const OPT_USAGE_DEBUG = '[OPT-USAGE-DEBUG]';
+
+        async function collectOptimizationUsageAuthSnapshot(officeIdForWrite) {
+            const out = {
+                authUid: null,
+                idTokenClaims: null,
+                idTokenError: null,
+                sessionFromBootstrap: null,
+                currentUserMerged: null,
+                usersDoc: null,
+                usersDocReadError: null,
+                officeDoc: null,
+                officeDocReadError: null,
+                ruleHints: {
+                    jwtOfficeIdMatchesWrite: null,
+                    usersDocOfficeIdMatchesWrite: null,
+                    adminUidMatchesAuth: null,
+                    sessionOfficeIdMatchesWrite: null,
+                    jwtHasOfficeIdClaim: null,
+                    /** If true, UI has office context but token has no officeId — rules ignore session; fix claims or users/{uid}.officeId */
+                    likelyJwtSessionMismatch: null
+                }
+            };
+
+            try {
+                const u = window.auth && window.auth.currentUser;
+                out.authUid = u ? u.uid : null;
+                if (u) {
+                    try {
+                        const tr = await u.getIdTokenResult(true);
+                        const c = tr.claims || {};
+                        out.idTokenClaims = {
+                            role: c.role,
+                            officeId: c.officeId,
+                            admin: c.admin
+                        };
+                    } catch (e) {
+                        out.idTokenError = (e && e.message) ? e.message : String(e);
+                    }
+                }
+            } catch (e) {
+                out.idTokenError = (e && e.message) ? e.message : String(e);
+            }
+
+            if (currentSession) {
+                out.sessionFromBootstrap = {
+                    role: currentSession.role,
+                    officeId: currentSession.officeId
+                };
+            }
+            if (currentUser) {
+                out.currentUserMerged = {
+                    role: currentUser.role,
+                    officeId: currentUser.officeId
+                };
+            }
+
+            const uid = out.authUid;
+            if (uid && window.firestore && window.firebaseDoc && window.firebaseGetDoc) {
+                try {
+                    const userRef = window.firebaseDoc(window.firestore, 'users', uid);
+                    const userSnap = await window.firebaseGetDoc(userRef);
+                    if (userSnap.exists()) {
+                        const d = userSnap.data();
+                        out.usersDoc = {
+                            exists: true,
+                            officeId: d.officeId,
+                            role: d.role
+                        };
+                    } else {
+                        out.usersDoc = { exists: false, officeId: null, role: null };
+                    }
+                } catch (e) {
+                    out.usersDocReadError = e.code ? `${e.code}: ${e.message}` : String(e);
+                }
+
+                if (officeIdForWrite) {
+                    try {
+                        const offRef = window.firebaseDoc(window.firestore, 'offices', officeIdForWrite);
+                        const offSnap = await window.firebaseGetDoc(offRef);
+                        if (offSnap.exists()) {
+                            const od = offSnap.data();
+                            out.officeDoc = {
+                                exists: true,
+                                adminUid: od.adminUid,
+                                name: od.name
+                            };
+                        } else {
+                            out.officeDoc = { exists: false, adminUid: null };
+                        }
+                    } catch (e) {
+                        out.officeDocReadError = e.code ? `${e.code}: ${e.message}` : String(e);
+                    }
+                }
+            }
+
+            if (officeIdForWrite) {
+                const jwtOid = out.idTokenClaims && out.idTokenClaims.officeId;
+                out.ruleHints.jwtHasOfficeIdClaim = jwtOid != null && jwtOid !== '';
+                out.ruleHints.jwtOfficeIdMatchesWrite =
+                    jwtOid != null && jwtOid === officeIdForWrite;
+                const uOid = out.usersDoc && out.usersDoc.officeId;
+                out.ruleHints.usersDocOfficeIdMatchesWrite =
+                    uOid != null && uOid === officeIdForWrite;
+                const adm = out.officeDoc && out.officeDoc.adminUid;
+                out.ruleHints.adminUidMatchesAuth =
+                    adm != null && out.authUid != null && adm === out.authUid;
+                const sessOid =
+                    (out.sessionFromBootstrap && out.sessionFromBootstrap.officeId) ||
+                    (out.currentUserMerged && out.currentUserMerged.officeId);
+                out.ruleHints.sessionOfficeIdMatchesWrite =
+                    sessOid != null && sessOid === officeIdForWrite;
+                const anyRulePathOk =
+                    out.ruleHints.jwtOfficeIdMatchesWrite ||
+                    out.ruleHints.usersDocOfficeIdMatchesWrite ||
+                    out.ruleHints.adminUidMatchesAuth ||
+                    (out.idTokenClaims && out.idTokenClaims.role === 'admin');
+                out.ruleHints.likelyJwtSessionMismatch =
+                    !!out.ruleHints.sessionOfficeIdMatchesWrite &&
+                    !out.ruleHints.jwtHasOfficeIdClaim &&
+                    !anyRulePathOk;
+            }
+
+            return out;
+        }
+
+        function logOptimizationUsageDebug(stage, payload) {
+            if (payload !== undefined) {
+                console.log(OPT_USAGE_DEBUG, stage, payload);
+            } else {
+                console.log(OPT_USAGE_DEBUG, stage);
+            }
+        }
+
+        /** Rules evaluate request.auth.token — refresh so claims match bootstrapSession / Cloud Function updates */
+        async function usageSetDocWithTokenRetry(usageDocRef, writePayload, fullPath) {
+            try {
+                await window.firebaseSetDoc(usageDocRef, writePayload);
+            } catch (e) {
+                if (e && e.code === 'permission-denied' && window.auth && window.auth.currentUser) {
+                    logOptimizationUsageDebug('setDoc_permission_denied_retrying_after_getIdToken_true', { path: fullPath });
+                    await window.auth.currentUser.getIdToken(true);
+                    await window.firebaseSetDoc(usageDocRef, writePayload);
+                } else {
+                    throw e;
+                }
+            }
+        }
+
         // Track optimization usage for billing
         async function trackOptimizationUsage() {
+            const officeId = getCurrentOfficeId();
+            logOptimizationUsageDebug('start', {
+                getCurrentOfficeId: officeId,
+                note: 'Firestore rules use request.auth.token + users/{uid} + offices.adminUid — not session JSON. If ruleHints.likelyJwtSessionMismatch is true, add officeId to custom claims or ensure users/{authUid}.officeId matches.'
+            });
+
             try {
-                const officeId = getCurrentOfficeId();
-                
                 if (!officeId) {
-                    console.warn('No office ID found for tracking');
+                    console.warn(OPT_USAGE_DEBUG, 'abort: no office ID (session/currentUser)');
                     return;
                 }
-                
-                // Get current date
+
+                if (window.auth && window.auth.currentUser) {
+                    await window.auth.currentUser.getIdToken(true);
+                    logOptimizationUsageDebug('refreshed_id_token_before_usage_tracking');
+                }
+
                 const now = new Date();
                 const year = now.getFullYear();
-                const month = now.getMonth() + 1; // 1-12
+                const month = now.getMonth() + 1;
                 const day = now.getDate();
-                
-                // Create document ID based on office, year, month, day
                 const docId = `${officeId}_${year}_${String(month).padStart(2, '0')}_${String(day).padStart(2, '0')}`;
-                
-                // Check if document exists for today
-                const usageDocRef = window.firebaseDoc(window.firestore, 'optimization_usage', docId);
-                const usageDoc = await window.firebaseGetDoc(usageDocRef);
-                
+                const collectionPath = 'optimization_usage';
+                const fullPath = `${collectionPath}/${docId}`;
+
+                const snapPre = await collectOptimizationUsageAuthSnapshot(officeId);
+                logOptimizationUsageDebug('auth_snapshot_before_read', snapPre);
+
+                const usageDocRef = window.firebaseDoc(window.firestore, collectionPath, docId);
+                let usageDoc;
+                try {
+                    usageDoc = await window.firebaseGetDoc(usageDocRef);
+                } catch (readErr) {
+                    logOptimizationUsageDebug('getDoc_FAILED', {
+                        path: fullPath,
+                        code: readErr.code,
+                        message: readErr.message
+                    });
+                    throw readErr;
+                }
+
+                logOptimizationUsageDebug('after_getDoc', {
+                    path: fullPath,
+                    exists: usageDoc.exists(),
+                    existingOfficeId: usageDoc.exists() ? (usageDoc.data().officeId || null) : null
+                });
+
+                const payloadBase = {
+                    officeId: officeId,
+                    year: year,
+                    month: month,
+                    day: day,
+                    lastOptimization: now
+                };
+
                 if (usageDoc.exists()) {
-                    // Increment count
                     const currentCount = usageDoc.data().count || 0;
-                    await window.firebaseSetDoc(usageDocRef, {
-                        officeId: officeId,
-                        year: year,
-                        month: month,
-                        day: day,
-                        count: currentCount + 1,
-                        lastOptimization: now
+                    const nextCount = currentCount + 1;
+                    const writePayload = {
+                        ...payloadBase,
+                        count: nextCount
+                    };
+                    logOptimizationUsageDebug('write_attempt', {
+                        operation: 'setDoc (replace doc; rules treat as update if exists)',
+                        path: fullPath,
+                        previousCount: currentCount,
+                        nextCount: nextCount,
+                        payloadOfficeId: writePayload.officeId
                     });
-                    console.log(`📊 Usage tracked: ${officeId} - Day ${day}/${month}/${year} - Count: ${currentCount + 1}`);
+                    await usageSetDocWithTokenRetry(usageDocRef, writePayload, fullPath);
+                    console.log(`📊 Usage tracked: ${officeId} - Day ${day}/${month}/${year} - Count: ${nextCount}`);
                 } else {
-                    // Create new document with count = 1
-                    await window.firebaseSetDoc(usageDocRef, {
-                        officeId: officeId,
-                        year: year,
-                        month: month,
-                        day: day,
+                    const writePayload = {
+                        ...payloadBase,
                         count: 1,
-                        firstOptimization: now,
-                        lastOptimization: now
+                        firstOptimization: now
+                    };
+                    logOptimizationUsageDebug('write_attempt', {
+                        operation: 'setDoc (new doc; rules treat as create)',
+                        path: fullPath,
+                        payloadOfficeId: writePayload.officeId
                     });
+                    await usageSetDocWithTokenRetry(usageDocRef, writePayload, fullPath);
                     console.log(`📊 Usage tracked: ${officeId} - Day ${day}/${month}/${year} - Count: 1 (first)`);
                 }
+
+                logOptimizationUsageDebug('write_OK', { path: fullPath });
             } catch (error) {
+                const errObj = {
+                    name: error && error.name,
+                    code: error && error.code,
+                    message: error && error.message,
+                    customData: error && error.customData
+                };
                 console.error('Error tracking optimization usage:', error);
-                // Don't throw error - tracking shouldn't block optimization
+                logOptimizationUsageDebug('FAILED', errObj);
+                try {
+                    const snapPost = await collectOptimizationUsageAuthSnapshot(getCurrentOfficeId());
+                    logOptimizationUsageDebug('auth_snapshot_on_error', snapPost);
+                } catch (e2) {
+                    logOptimizationUsageDebug('auth_snapshot_on_error_secondary_failed', String(e2));
+                }
             }
         }
         
