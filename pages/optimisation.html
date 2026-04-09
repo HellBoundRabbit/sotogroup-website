@@ -26,8 +26,8 @@
             }
         }
     </script>
-    <!-- Google Maps API -->
-    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDTbiSXo9tg1Tx8SlZCZKsR_R0zIQ4N1VA&libraries=geometry&callback=initGoogleMaps"></script>
+    <!-- Google Maps API (key must match APIs & Services → Credentials; also enable Distance Matrix for calculateDistance Cloud Function) -->
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA&libraries=geometry&loading=async&callback=initGoogleMaps"></script>
     
     <!-- Firebase SDK -->
     <script type="module">
@@ -4839,15 +4839,34 @@
                 });
                 
                 console.log(`✅ Travel options result:`, result.data);
-                return result.data;
+                const data = result.data;
+                const dur = data && Number(data.duration);
+                if (!data || !Number.isFinite(dur)) {
+                    return {
+                        success: false,
+                        duration: 999,
+                        mode: 'transit',
+                        error: (data && data.error) || 'Missing travel time'
+                    };
+                }
+                return data;
             } catch (error) {
                 console.error('❌ Error calculating travel options:', error);
                 console.error('Error details:', error.message, error.stack);
                 return {
                     success: false,
+                    duration: 999,
+                    mode: 'transit',
                     error: error.message
                 };
             }
+        }
+
+        /** Avoid NaN when combining leg durations (Firestore cannot encode NaN). */
+        function safeTravelMinutes(travelOptions, fallbackMinutes = 999) {
+            if (!travelOptions || typeof travelOptions !== 'object') return fallbackMinutes;
+            const d = Number(travelOptions.duration);
+            return Number.isFinite(d) ? d : fallbackMinutes;
         }
 
         // Start optimization after alterations
@@ -5159,8 +5178,8 @@
             for (const calc of routeCalculations) {
                 const useMixedMode = routeNeedsMixedMode[calc.routeIndex];
                 
-                let effectiveToWorkDuration = calc.toWorkOptions.duration;
-                let effectiveFromWorkDuration = calc.fromWorkOptions.duration;
+                let effectiveToWorkDuration = safeTravelMinutes(calc.toWorkOptions);
+                let effectiveFromWorkDuration = safeTravelMinutes(calc.fromWorkOptions);
                 let useMixedModeToWork = false;
                 let useMixedModeFromWork = false;
                 
@@ -5390,8 +5409,8 @@
                 
                 // Display travel options - check EACH DIRECTION separately
                 // TO work: Show mixed mode only if TO work time > 2 hours
-                const toWorkOriginalTime = assignment.toWorkOptions.duration;
-                const fromWorkOriginalTime = assignment.fromWorkOptions.duration;
+                const toWorkOriginalTime = safeTravelMinutes(assignment.toWorkOptions, 0);
+                const fromWorkOriginalTime = safeTravelMinutes(assignment.fromWorkOptions, 0);
                 const shouldShowMixedModeToWork = toWorkOriginalTime > 120;
                 const shouldShowMixedModeFromWork = fromWorkOriginalTime > 120;
                 
@@ -5628,9 +5647,13 @@
         // Calculate route score based on travel time and mode (out of 100)
         function calculateTravelScore(toWork, fromWork) {
             // Handle requires_authorization mode - use totalDuration if available
-            const toWorkDuration = toWork.mode === 'requires_authorization' && toWork.totalDuration ? toWork.totalDuration : toWork.duration;
-            const fromWorkDuration = fromWork.mode === 'requires_authorization' && fromWork.totalDuration ? fromWork.totalDuration : fromWork.duration;
-            
+            let toWorkDuration = toWork.mode === 'requires_authorization' && toWork.totalDuration ? toWork.totalDuration : toWork.duration;
+            let fromWorkDuration = fromWork.mode === 'requires_authorization' && fromWork.totalDuration ? fromWork.totalDuration : fromWork.duration;
+            toWorkDuration = Number(toWorkDuration);
+            fromWorkDuration = Number(fromWorkDuration);
+            if (!Number.isFinite(toWorkDuration)) toWorkDuration = 999;
+            if (!Number.isFinite(fromWorkDuration)) fromWorkDuration = 999;
+
             const totalMinutes = toWorkDuration + fromWorkDuration;
             const bothTaxi = toWork.mode === 'taxi' && fromWork.mode === 'taxi';
             const oneTaxi = (toWork.mode === 'taxi') !== (fromWork.mode === 'taxi');
