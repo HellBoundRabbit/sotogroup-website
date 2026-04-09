@@ -32,7 +32,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, enableNetwork, collection, addDoc, getDocs, getDoc, doc, query, orderBy, limit, where, setDoc, updateDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, enableNetwork, collection, addDoc, getDocs, getDoc, getDocFromServer, doc, query, orderBy, limit, where, setDoc, updateDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         
@@ -4467,14 +4467,19 @@
             });
         }
 
-        /** getDoc with retries — "unavailable" / offline often resolves after enableNetwork + backoff (not a rules issue) */
-        async function getDocWithTransientRetry(docRef, fullPath) {
+        /** Server read + retries — avoids cache saying "missing" while server has a doc (setDoc would UPDATE and old rules could deny) */
+        async function getDocFromServerWithTransientRetry(docRef, fullPath) {
             let triedEnableNetwork = false;
             const maxAttempts = 6;
             let lastErr;
+            const fetchFn =
+                window.firebaseGetDocFromServer ||
+                function (ref) {
+                    return window.firebaseGetDoc(ref);
+                };
             for (let attempt = 1; attempt <= maxAttempts; attempt++) {
                 try {
-                    return await window.firebaseGetDoc(docRef);
+                    return await fetchFn(docRef);
                 } catch (e) {
                     lastErr = e;
                     if (!e || !isFirestoreTransientError(e.code)) {
@@ -4577,7 +4582,7 @@
                 const usageDocRef = window.firebaseDoc(window.firestore, collectionPath, docId);
                 let usageDoc;
                 try {
-                    usageDoc = await getDocWithTransientRetry(usageDocRef, fullPath);
+                    usageDoc = await getDocFromServerWithTransientRetry(usageDocRef, fullPath);
                 } catch (readErr) {
                     logOptimizationUsageDebug('getDoc_FAILED', {
                         path: fullPath,
@@ -4593,6 +4598,7 @@
 
                 logOptimizationUsageDebug('after_getDoc', {
                     path: fullPath,
+                    source: window.firebaseGetDocFromServer ? 'getDocFromServer' : 'getDoc',
                     exists: usageDoc.exists(),
                     existingOfficeId: usageDoc.exists() ? (usageDoc.data().officeId || null) : null
                 });
