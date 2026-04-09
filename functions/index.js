@@ -16,6 +16,11 @@ const admin = require("firebase-admin");
 
 const RESEND_API_KEY = defineSecret("RESEND_API_KEY");
 
+/** Server Maps key: `GOOGLE_MAPS_API_KEY` in `functions/.env` or Cloud Functions runtime env. NOT the browser key. */
+function getMapsApiKey() {
+  return (process.env.GOOGLE_MAPS_API_KEY || "").trim();
+}
+
 admin.initializeApp();
 const db = admin.firestore();
 
@@ -129,15 +134,13 @@ exports.checkOverdueExpenses = onSchedule(
             lastOverdueCount: count,
             lastCheckedAt: now,
           }, { merge: true });
-          }
-        } else {
-        if (state.emailSentAt) {
-          await stateRef.set({
-            emailSentAt: null,
-            lastOverdueCount: 0,
-            lastCheckedAt: now,
-          }, { merge: true });
         }
+      } else if (state.emailSentAt) {
+        await stateRef.set({
+          emailSentAt: null,
+          lastOverdueCount: 0,
+          lastCheckedAt: now,
+        }, { merge: true });
       }
     }
 
@@ -192,4 +195,130 @@ exports.sendDriverLoginEmail = onCall(
     }
     return { ok: true };
   }
+);
+
+// —— Google Maps (callable; uses GOOGLE_MAPS_API_KEY secret — NOT the browser/referrer-restricted key) ——
+
+/**
+ * Distance Matrix: driving distance between two addresses/postcodes.
+ * Set secret: `firebase functions:secrets:set GOOGLE_MAPS_API_KEY` (paste a key with Distance Matrix + Directions APIs enabled;
+ * Application restrictions: None; API restrictions: restrict to those APIs only.)
+ */
+exports.calculateDistance = onCall(
+  { region: "us-central1", cors: true },
+  async (request) => {
+    const apiKey = getMapsApiKey();
+    if (!apiKey) {
+      throw new HttpsError(
+        "failed-precondition",
+        "GOOGLE_MAPS_API_KEY is not set. Add functions/.env with GOOGLE_MAPS_API_KEY=<key> and redeploy, or set runtime env in Google Cloud.",
+      );
+    }
+    const { origin, destination } = request.data || {};
+    if (!origin || !destination) {
+      throw new HttpsError("invalid-argument", "origin and destination are required.");
+    }
+    const params = new URLSearchParams({
+      origins: String(origin),
+      destinations: String(destination),
+      units: "imperial",
+      key: apiKey,
+    });
+    const url = `https://maps.googleapis.com/maps/api/distancematrix/json?${params.toString()}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.status !== "OK") {
+      functions.logger.warn("distancematrix", { status: data.status, err: data.error_message });
+      return {
+        success: false,
+        error: `Google Maps API error: ${data.status}${data.error_message ? ` — ${data.error_message}` : ""}`,
+      };
+    }
+    const el = data.rows && data.rows[0] && data.rows[0].elements && data.rows[0].elements[0];
+    if (!el || el.status !== "OK") {
+      const st = el && el.status ? el.status : "NO_ELEMENT";
+      return { success: false, error: `Google Maps API error: ${st}` };
+    }
+    const meters = el.distance && el.distance.value;
+    if (typeof meters !== "number") {
+      return { success: false, error: "Google Maps API error: NO_DISTANCE" };
+    }
+    const miles = meters * 0.000621371;
+    return { success: true, distance: miles };
+  },
+);
+
+/**
+ * Directions API (transit) for optimisation travel times.
+ */
+exports.calculateTravelOptions = onCall(
+  { region: "us-central1", cors: true },
+  async (request) => {
+    const apiKey = getMapsApiKey();
+    if (!apiKey) {
+      throw new HttpsError(
+        "failed-precondition",
+        "GOOGLE_MAPS_API_KEY is not set. Add functions/.env with GOOGLE_MAPS_API_KEY=<key> and redeploy, or set runtime env in Google Cloud.",
+      );
+    }
+    const { origin, destination, departureTime } = request.data || {};
+    if (!origin || !destination) {
+      throw new HttpsError("invalid-argument", "origin and destination are required.");
+    }
+    const dep = typeof departureTime === "number" ? departureTime : Math.floor(Date.now() / 1000);
+    const params = new URLSearchParams({
+      origin: String(origin),
+      destination: String(destination),
+      mode: "transit",
+      departure_time: String(dep),
+      region: "uk",
+      key: apiKey,
+    });
+    const url = `https://maps.googleapis.com/maps/api/directions/json?${params.toString()}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.status !== "OK") {
+      functions.logger.warn("directions_transit", { status: data.status, err: data.error_message });
+      return {
+        success: false,
+        duration: 999,
+        mode: "transit",
+        error: `Google Maps API error: ${data.status}${data.error_message ? ` — ${data.error_message}` : ""}`,
+      };
+    }
+    const route = data.routes && data.routes[0];
+    if (!route || !route.legs || !route.legs[0]) {
+      return { success: false, duration: 999, mode: "transit", error: "No route" };
+    }
+    const leg = route.legs[0];
+    const durationMinutes = Math.max(1, Math.ceil(leg.duration.value / 60));
+    const allSteps = [];
+    for (const step of leg.steps || []) {
+      if (step.travel_mode === "WALKING") {
+        allSteps.push({
+          type: "walk",
+          duration: Math.max(1, Math.round(step.duration.value / 60)),
+        });
+      } else if (step.travel_mode === "TRANSIT" && step.transit_details) {
+        const td = step.transit_details;
+        const line = td.line || {};
+        const vehicle = line.vehicle || {};
+        const vtype = (vehicle.type || "").toUpperCase();
+        const mode = vtype === "BUS" ? "BUS" : "TRAIN";
+        const depStop = td.departure_stop && td.departure_stop.name;
+        allSteps.push({
+          type: "transit",
+          mode,
+          duration: Math.max(1, Math.round(step.duration.value / 60)),
+          departure: depStop || undefined,
+        });
+      }
+    }
+    return {
+      success: true,
+      duration: durationMinutes,
+      mode: "transit",
+      allSteps,
+    };
+  },
 );
