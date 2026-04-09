@@ -5067,7 +5067,7 @@
                             const toWorkOptions = await calculateTravelOptions(toWorkOrigin, collectionAddress, true);
                             const fromWorkOptions = await calculateTravelOptions(deliveryAddress, driverHomePostcode, false);
                             
-                            const originalTotalTime = toWorkOptions.duration + fromWorkOptions.duration;
+                            const originalTotalTime = safeTravelMinutes(toWorkOptions) + safeTravelMinutes(fromWorkOptions);
                             routeDriverTimes.push(originalTotalTime);
                             
                             routeCalculations.push({
@@ -5133,7 +5133,7 @@
                             const toWorkOptions = await calculateTravelOptions(driverHomePostcode, collectionAddress, true);
                             const fromWorkOptions = await calculateTravelOptions(deliveryAddress, driverHomePostcode, false);
                             
-                            const originalTotalTime = toWorkOptions.duration + fromWorkOptions.duration;
+                            const originalTotalTime = safeTravelMinutes(toWorkOptions) + safeTravelMinutes(fromWorkOptions);
                             routeDriverTimes.push(originalTotalTime);
                             
                             routeCalculations.push({
@@ -5218,6 +5218,9 @@
                 } else {
                     priorityScore = 1000 - totalTime;
                 }
+                if (!Number.isFinite(priorityScore)) {
+                    priorityScore = -5000;
+                }
                 
                 // Note: No longer boosting carryover drivers - they get shortest routes assigned separately
                             
@@ -5249,19 +5252,23 @@
             updateOptimizationProgress(5, 85, 'Running optimization algorithm...');
             
             // Prepare assignments data for Firebase (minimize data sent - only what's needed for optimization)
-            const assignmentsForFirebase = allAssignments.map((calc, idx) => ({
-                index: idx, // Keep original index for mapping back
-                routeIndex: calc.routeIndex,
-                driverIndex: calc.driverIndex,
-                totalTime: calc.totalTime,
-                priorityScore: calc.priorityScore,
-                bothTaxi: calc.bothTaxi,
-                oneTaxi: calc.oneTaxi,
-                useMixedModeToWork: calc.useMixedModeToWork,
-                useMixedModeFromWork: calc.useMixedModeFromWork,
-                hasCarryover: calc.hasCarryover,
-                isCarryoverRoute: calc.isCarryoverRoute
-            }));
+            const assignmentsForFirebase = allAssignments.map((calc, idx) => {
+                const tt = Number(calc.totalTime);
+                const ps = Number(calc.priorityScore);
+                return {
+                    index: idx,
+                    routeIndex: calc.routeIndex,
+                    driverIndex: calc.driverIndex,
+                    totalTime: Number.isFinite(tt) ? tt : 1998,
+                    priorityScore: Number.isFinite(ps) ? ps : -5000,
+                    bothTaxi: !!calc.bothTaxi,
+                    oneTaxi: !!calc.oneTaxi,
+                    useMixedModeToWork: !!calc.useMixedModeToWork,
+                    useMixedModeFromWork: !!calc.useMixedModeFromWork,
+                    hasCarryover: !!calc.hasCarryover,
+                    isCarryoverRoute: !!calc.isCarryoverRoute
+                };
+            });
             
             // Separate assignments by type
             const carryoverAssignments = assignmentsForFirebase.filter(a => a.isCarryoverRoute);
