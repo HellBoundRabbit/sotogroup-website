@@ -1675,8 +1675,8 @@
         }
         try {
             const rootHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-            const validatedDate = item.validatedAt ? (item.validatedAt.toDate ? item.validatedAt.toDate() : new Date(item.validatedAt)) : new Date();
-            const d = validatedDate;
+            const submittedDate = toDate(item.createdAt) || new Date();
+            const d = submittedDate;
             const dateFolderName = `${String(d.getDate()).padStart(2, '0')}_${String(d.getMonth() + 1).padStart(2, '0')}_${d.getFullYear()}`;
             const driverName = (formatDriverName(item) || 'Unknown_Driver').replace(/[\/\\:]/g, '-').replace(/\s+/g, '_');
             let currentHandle = await getOrCreateFolder(rootHandle, 'Wait Times');
@@ -1726,8 +1726,8 @@
             const expiresAt = window.Timestamp.fromDate(new Date(Date.now() + SEVEN_DAYS_MS));
             let done = 0;
             for (const item of validated) {
-                const validatedDate = item.validatedAt ? (item.validatedAt.toDate ? item.validatedAt.toDate() : new Date(item.validatedAt)) : new Date();
-                const d = validatedDate;
+                const submittedDate = toDate(item.createdAt) || new Date();
+                const d = submittedDate;
                 const dateFolderName = `${String(d.getDate()).padStart(2, '0')}_${String(d.getMonth() + 1).padStart(2, '0')}_${d.getFullYear()}`;
                 const driverName = (formatDriverName(item) || 'Unknown_Driver').replace(/[\/\\:]/g, '-').replace(/\s+/g, '_');
                 let currentHandle = await getOrCreateFolder(rootHandle, 'Wait Times');

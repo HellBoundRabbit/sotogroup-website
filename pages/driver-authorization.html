@@ -560,6 +560,41 @@
         let fromPlace = null;
         let toPlace = null;
         let googleMapsLoaded = false;
+
+        /** Place-shaped object for lat/lng-only origins (e.g. current location) so Proceed matches legacy Autocomplete results. */
+        function createLatLngPlaceResult(lat, lng, formattedAddress) {
+            const label = formattedAddress || `${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}`;
+            return {
+                formatted_address: label,
+                geometry: {
+                    location: {
+                        lat: () => lat,
+                        lng: () => lng
+                    }
+                },
+                name: label
+            };
+        }
+
+        /** Reverse geocode without Google Geocoding API (uses OSM Nominatim; falls back to coordinates). */
+        async function reverseGeocodeLatLng(lat, lng) {
+            const coordFallback = `${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}`;
+            try {
+                const url = `https://nominatim.openstreetmap.org/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&format=json`;
+                const res = await fetch(url, {
+                    headers: { Accept: 'application/json', 'Accept-Language': 'en-GB' },
+                    referrerPolicy: 'strict-origin-when-cross-origin'
+                });
+                if (!res.ok) return coordFallback;
+                const data = await res.json();
+                if (data && typeof data.display_name === 'string' && data.display_name.trim()) {
+                    return data.display_name.trim();
+                }
+            } catch (e) {
+                console.warn('[driver-authorization] Reverse geocode failed, using coordinates.', e);
+            }
+            return coordFallback;
+        }
         
         // Initialize Google Maps
         window.initGoogleMaps = function() {
@@ -588,7 +623,11 @@
         // Initialize autocomplete for address inputs
         async function initializeAutocomplete() {
             await waitForGoogleMaps();
-            
+            if (fromAutocomplete && toAutocomplete) {
+                validateForm();
+                return;
+            }
+
             // From address autocomplete
             const fromInput = document.getElementById('fromAddress');
             fromAutocomplete = new google.maps.places.Autocomplete(fromInput, {
@@ -629,31 +668,21 @@
                     async (position) => {
                         const lat = position.coords.latitude;
                         const lng = position.coords.longitude;
-                        
+
                         try {
-                            await waitForGoogleMaps();
-                            const geocoder = new google.maps.Geocoder();
-                            geocoder.geocode(
-                                { location: { lat, lng } },
-                                (results, status) => {
-                                    if (status === 'OK' && results[0]) {
-                                        input.value = results[0].formatted_address;
-                                        if (type === 'from') {
-                                            fromPlace = results[0];
-                                        } else {
-                                            toPlace = results[0];
-                                        }
-                                        validateForm();
-                                    } else {
-                                        alert('Could not get address for your location. Please enter manually.');
-                                    }
-                                    button.disabled = false;
-                                    button.innerHTML = `<span class="material-symbols-outlined" style="font-size: 18px;">my_location</span> Use Current Location`;
-                                }
-                            );
+                            const label = await reverseGeocodeLatLng(lat, lng);
+                            input.value = label;
+                            const placeObj = createLatLngPlaceResult(lat, lng, label);
+                            if (type === 'from') {
+                                fromPlace = placeObj;
+                            } else {
+                                toPlace = placeObj;
+                            }
+                            validateForm();
                         } catch (error) {
-                            console.error('Error geocoding location:', error);
-                            alert('Error getting address. Please enter manually.');
+                            console.error('Error resolving address for location:', error);
+                            alert('Could not resolve your location to an address. Please enter manually.');
+                        } finally {
                             button.disabled = false;
                             button.innerHTML = `<span class="material-symbols-outlined" style="font-size: 18px;">my_location</span> Use Current Location`;
                         }
