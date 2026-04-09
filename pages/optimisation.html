@@ -32,7 +32,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, addDoc, getDocs, getDoc, doc, query, orderBy, limit, where, setDoc, updateDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, enableNetwork, collection, addDoc, getDocs, getDoc, doc, query, orderBy, limit, where, setDoc, updateDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         
@@ -57,6 +57,7 @@
         window.firebaseApp = app;
         window.firebase = { functions: functions, httpsCallable: httpsCallable };
         window.firestore = db;
+        window.firebaseEnableNetwork = () => enableNetwork(db);
         window.auth = auth;
         window.firebaseCollection = collection;
         window.firebaseAddDoc = addDoc;
@@ -4456,19 +4457,91 @@
             }
         }
 
+        function isFirestoreTransientError(code) {
+            return code === 'unavailable' || code === 'deadline-exceeded' || code === 'resource-exhausted';
+        }
+
+        function sleepMs(ms) {
+            return new Promise(function (resolve) {
+                setTimeout(resolve, ms);
+            });
+        }
+
+        /** getDoc with retries — "unavailable" / offline often resolves after enableNetwork + backoff (not a rules issue) */
+        async function getDocWithTransientRetry(docRef, fullPath) {
+            let triedEnableNetwork = false;
+            const maxAttempts = 6;
+            let lastErr;
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                try {
+                    return await window.firebaseGetDoc(docRef);
+                } catch (e) {
+                    lastErr = e;
+                    if (!e || !isFirestoreTransientError(e.code)) {
+                        throw e;
+                    }
+                    logOptimizationUsageDebug('getDoc_transient_retry', {
+                        attempt: attempt,
+                        maxAttempts: maxAttempts,
+                        path: fullPath,
+                        code: e.code,
+                        message: e.message
+                    });
+                    if (!triedEnableNetwork && window.firebaseEnableNetwork) {
+                        triedEnableNetwork = true;
+                        try {
+                            await window.firebaseEnableNetwork();
+                            logOptimizationUsageDebug('enableNetwork_called_after_transient_error');
+                        } catch (ignore) {
+                            /* empty */
+                        }
+                    }
+                    if (attempt >= maxAttempts) {
+                        throw e;
+                    }
+                    await sleepMs(350 * attempt);
+                }
+            }
+            throw lastErr;
+        }
+
         /** Rules evaluate request.auth.token — refresh so claims match bootstrapSession / Cloud Function updates */
         async function usageSetDocWithTokenRetry(usageDocRef, writePayload, fullPath) {
-            try {
-                await window.firebaseSetDoc(usageDocRef, writePayload);
-            } catch (e) {
-                if (e && e.code === 'permission-denied' && window.auth && window.auth.currentUser) {
-                    logOptimizationUsageDebug('setDoc_permission_denied_retrying_after_getIdToken_true', { path: fullPath });
-                    await window.auth.currentUser.getIdToken(true);
+            const maxAttempts = 6;
+            let lastErr;
+            let didTokenRefreshForPermission = false;
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                try {
                     await window.firebaseSetDoc(usageDocRef, writePayload);
-                } else {
+                    return;
+                } catch (e) {
+                    lastErr = e;
+                    if (e && e.code === 'permission-denied' && window.auth && window.auth.currentUser && !didTokenRefreshForPermission) {
+                        didTokenRefreshForPermission = true;
+                        logOptimizationUsageDebug('setDoc_permission_denied_retrying_after_getIdToken_true', { path: fullPath });
+                        await window.auth.currentUser.getIdToken(true);
+                        continue;
+                    }
+                    if (e && isFirestoreTransientError(e.code) && attempt < maxAttempts) {
+                        logOptimizationUsageDebug('setDoc_transient_retry', {
+                            attempt: attempt,
+                            path: fullPath,
+                            code: e.code
+                        });
+                        if (attempt === 1 && window.firebaseEnableNetwork) {
+                            try {
+                                await window.firebaseEnableNetwork();
+                            } catch (ignore) {
+                                /* empty */
+                            }
+                        }
+                        await sleepMs(350 * attempt);
+                        continue;
+                    }
                     throw e;
                 }
             }
+            throw lastErr;
         }
 
         // Track optimization usage for billing
@@ -4504,12 +4577,16 @@
                 const usageDocRef = window.firebaseDoc(window.firestore, collectionPath, docId);
                 let usageDoc;
                 try {
-                    usageDoc = await window.firebaseGetDoc(usageDocRef);
+                    usageDoc = await getDocWithTransientRetry(usageDocRef, fullPath);
                 } catch (readErr) {
                     logOptimizationUsageDebug('getDoc_FAILED', {
                         path: fullPath,
                         code: readErr.code,
-                        message: readErr.message
+                        message: readErr.message,
+                        hint:
+                            readErr.code === 'unavailable'
+                                ? 'Client reported offline — not a security-rules failure. Check network/VPN; retries already attempted.'
+                                : undefined
                     });
                     throw readErr;
                 }
@@ -4567,6 +4644,12 @@
                     message: error && error.message,
                     customData: error && error.customData
                 };
+                if (error && error.code === 'unavailable') {
+                    errObj.hint =
+                        'Firestore offline/unavailable — rules were not evaluated. Fix connectivity or try again; see getDoc_transient_retry logs.';
+                } else if (error && error.code === 'permission-denied') {
+                    errObj.hint = 'Security rules rejected the write — compare ruleHints in auth_snapshot_on_error.';
+                }
                 console.error('Error tracking optimization usage:', error);
                 logOptimizationUsageDebug('FAILED', errObj);
                 try {
