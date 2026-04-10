@@ -249,12 +249,55 @@ exports.calculateDistance = onCall(
 );
 
 /**
- * Directions API (transit) for optimisation travel times.
+ * Parse transit leg into step list for the optimisation UI.
+ */
+function transitLegToSteps(leg) {
+  const allSteps = [];
+  for (const step of leg.steps || []) {
+    if (step.travel_mode === "WALKING") {
+      allSteps.push({
+        type: "walk",
+        duration: Math.max(1, Math.round(step.duration.value / 60)),
+      });
+    } else if (step.travel_mode === "TRANSIT" && step.transit_details) {
+      const td = step.transit_details;
+      const line = td.line || {};
+      const vehicle = line.vehicle || {};
+      const vtype = (vehicle.type || "").toUpperCase();
+      const mode = vtype === "BUS" ? "BUS" : "TRAIN";
+      const depStop = td.departure_stop && td.departure_stop.name;
+      allSteps.push({
+        type: "transit",
+        mode,
+        duration: Math.max(1, Math.round(step.duration.value / 60)),
+        departure: depStop || undefined,
+      });
+    }
+  }
+  return allSteps;
+}
+
+/**
+ * Driving vs PT rule (same as optimisation.html “How it works”):
+ * ≤TAXI_MAX_DRIVE_MIN minutes by car → mode "taxi" (use driving duration).
+ * Longer drive → mode "transit" (public transport duration + steps) when a transit route exists.
+ * Optional: set TAXI_MAX_DRIVE_MIN in functions/.env (default 18).
+ */
+const DEFAULT_TAXI_MAX_DRIVE_MINUTES = 18;
+
+/**
+ * Directions API: driving time vs transit; threshold picks taxi vs PT (not “whichever is faster”).
  */
 exports.calculateTravelOptions = onCall(
   { region: "us-central1", cors: true },
   async (request) => {
     const apiKey = getMapsApiKey();
+    const taxiMaxDriveMin = (() => {
+      const raw = process.env.TAXI_MAX_DRIVE_MIN;
+      if (raw === undefined || raw === "") return DEFAULT_TAXI_MAX_DRIVE_MINUTES;
+      const n = Number.parseInt(String(raw), 10);
+      return Number.isFinite(n) && n > 0 ? n : DEFAULT_TAXI_MAX_DRIVE_MINUTES;
+    })();
     if (!apiKey) {
       throw new HttpsError(
         "failed-precondition",
@@ -266,59 +309,105 @@ exports.calculateTravelOptions = onCall(
       throw new HttpsError("invalid-argument", "origin and destination are required.");
     }
     const dep = typeof departureTime === "number" ? departureTime : Math.floor(Date.now() / 1000);
-    const params = new URLSearchParams({
-      origin: String(origin),
-      destination: String(destination),
+    const originStr = String(origin);
+    const destStr = String(destination);
+
+    const drivingParams = new URLSearchParams({
+      origin: originStr,
+      destination: destStr,
+      mode: "driving",
+      departure_time: String(dep),
+      traffic_model: "best_guess",
+      region: "uk",
+      key: apiKey,
+    });
+    const transitParams = new URLSearchParams({
+      origin: originStr,
+      destination: destStr,
       mode: "transit",
       departure_time: String(dep),
       region: "uk",
       key: apiKey,
     });
-    const url = `https://maps.googleapis.com/maps/api/directions/json?${params.toString()}`;
-    const res = await fetch(url);
-    const data = await res.json();
-    if (data.status !== "OK") {
-      functions.logger.warn("directions_transit", { status: data.status, err: data.error_message });
+
+    const base = "https://maps.googleapis.com/maps/api/directions/json";
+    const [drivingRes, transitRes] = await Promise.all([
+      fetch(`${base}?${drivingParams.toString()}`),
+      fetch(`${base}?${transitParams.toString()}`),
+    ]);
+    const drivingData = await drivingRes.json();
+    const transitData = await transitRes.json();
+
+    let drivingMins = null;
+    if (drivingData.status === "OK" && drivingData.routes && drivingData.routes[0] && drivingData.routes[0].legs && drivingData.routes[0].legs[0]) {
+      const dleg = drivingData.routes[0].legs[0];
+      const sec = (dleg.duration_in_traffic && dleg.duration_in_traffic.value) || dleg.duration.value;
+      drivingMins = Math.max(1, Math.ceil(sec / 60));
+    } else if (drivingData.status !== "ZERO_RESULTS") {
+      functions.logger.warn("directions_driving", { status: drivingData.status, err: drivingData.error_message });
+    }
+
+    let transitMins = null;
+    let transitLeg = null;
+    if (transitData.status === "OK" && transitData.routes && transitData.routes[0] && transitData.routes[0].legs && transitData.routes[0].legs[0]) {
+      transitLeg = transitData.routes[0].legs[0];
+      transitMins = Math.max(1, Math.ceil(transitLeg.duration.value / 60));
+    } else if (transitData.status !== "ZERO_RESULTS" && transitData.status !== "NOT_FOUND") {
+      functions.logger.warn("directions_transit", { status: transitData.status, err: transitData.error_message });
+    }
+
+    // ≤18min (configurable) drive → taxi; else prefer public transport when available
+    if (drivingMins != null && drivingMins <= taxiMaxDriveMin) {
       return {
-        success: false,
-        duration: 999,
-        mode: "transit",
-        error: `Google Maps API error: ${data.status}${data.error_message ? ` — ${data.error_message}` : ""}`,
+        success: true,
+        duration: drivingMins,
+        mode: "taxi",
+        allSteps: [],
+        drivingDurationMinutes: drivingMins,
+        transitDurationMinutes: transitMins,
+        taxiMaxDriveMinutes: taxiMaxDriveMin,
       };
     }
-    const route = data.routes && data.routes[0];
-    if (!route || !route.legs || !route.legs[0]) {
-      return { success: false, duration: 999, mode: "transit", error: "No route" };
+
+    if (transitMins != null && transitLeg) {
+      return {
+        success: true,
+        duration: transitMins,
+        mode: "transit",
+        allSteps: transitLegToSteps(transitLeg),
+        drivingDurationMinutes: drivingMins,
+        transitDurationMinutes: transitMins,
+        taxiMaxDriveMinutes: taxiMaxDriveMin,
+      };
     }
-    const leg = route.legs[0];
-    const durationMinutes = Math.max(1, Math.ceil(leg.duration.value / 60));
-    const allSteps = [];
-    for (const step of leg.steps || []) {
-      if (step.travel_mode === "WALKING") {
-        allSteps.push({
-          type: "walk",
-          duration: Math.max(1, Math.round(step.duration.value / 60)),
-        });
-      } else if (step.travel_mode === "TRANSIT" && step.transit_details) {
-        const td = step.transit_details;
-        const line = td.line || {};
-        const vehicle = line.vehicle || {};
-        const vtype = (vehicle.type || "").toUpperCase();
-        const mode = vtype === "BUS" ? "BUS" : "TRAIN";
-        const depStop = td.departure_stop && td.departure_stop.name;
-        allSteps.push({
-          type: "transit",
-          mode,
-          duration: Math.max(1, Math.round(step.duration.value / 60)),
-          departure: depStop || undefined,
-        });
-      }
+
+    if (drivingMins != null) {
+      return {
+        success: true,
+        duration: drivingMins,
+        mode: "taxi",
+        allSteps: [],
+        drivingDurationMinutes: drivingMins,
+        taxiMaxDriveMinutes: taxiMaxDriveMin,
+      };
     }
+
+    if (transitMins != null) {
+      return {
+        success: true,
+        duration: transitMins,
+        mode: "transit",
+        allSteps: transitLegToSteps(transitLeg),
+        transitDurationMinutes: transitMins,
+      };
+    }
+
+    const errStatus = transitData.status !== "OK" ? transitData : drivingData;
     return {
-      success: true,
-      duration: durationMinutes,
+      success: false,
+      duration: 999,
       mode: "transit",
-      allSteps,
+      error: `Google Maps API error: ${errStatus.status}${errStatus.error_message ? ` — ${errStatus.error_message}` : ""}`,
     };
   },
 );
