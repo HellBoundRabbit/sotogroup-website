@@ -248,8 +248,242 @@ exports.calculateDistance = onCall(
   },
 );
 
+const DEFAULT_LONG_BUS_TAXI_MINUTES = 45;
+const DEFAULT_MIXED_MODE_EDGE_MINUTES = 45;
+
+const TRAIN_VEHICLE_TYPES = new Set([
+  "HEAVY_RAIL",
+  "RAIL",
+  "SUBWAY",
+  "COMMUTER_TRAIN",
+  "TRAM",
+  "LIGHT_RAIL",
+  "MONORAIL",
+  "HIGH_SPEED_TRAIN",
+  "FUNICULAR",
+]);
+
+function isBusVehicleType(vt) {
+  const t = (vt || "").toUpperCase();
+  return t === "BUS" || t.includes("BUS");
+}
+
+function isTrainVehicleType(vt) {
+  return TRAIN_VEHICLE_TYPES.has((vt || "").toUpperCase());
+}
+
+function latLngParam(loc) {
+  if (!loc) return null;
+  const lat = loc.lat != null ? loc.lat : loc.latitude;
+  const lng = loc.lng != null ? loc.lng : loc.longitude;
+  if (typeof lat !== "number" || typeof lng !== "number") return null;
+  return `${lat},${lng}`;
+}
+
+function sumStepDurationSec(steps, fromIdx, toIdx) {
+  let s = 0;
+  for (let i = fromIdx; i <= toIdx; i++) {
+    const v = steps[i] && steps[i].duration && steps[i].duration.value;
+    if (typeof v === "number") s += v;
+  }
+  return s;
+}
+
+function findFirstLastTrainStepIndices(steps) {
+  let first = -1;
+  let last = -1;
+  const arr = steps || [];
+  for (let i = 0; i < arr.length; i++) {
+    const step = arr[i];
+    if (step.travel_mode !== "TRANSIT" || !step.transit_details) continue;
+    const vt = step.transit_details.line && step.transit_details.line.vehicle && step.transit_details.line.vehicle.type;
+    if (!isTrainVehicleType(vt)) continue;
+    if (first < 0) first = i;
+    last = i;
+  }
+  return { first, last };
+}
+
 /**
- * Parse transit leg into step list for the optimisation UI.
+ * Driving minutes between two addresses or lat,lng pairs (UK, traffic-aware).
+ */
+async function fetchDrivingMinutes(apiKey, origin, destination, departureTime) {
+  const params = new URLSearchParams({
+    origin: String(origin),
+    destination: String(destination),
+    mode: "driving",
+    departure_time: String(departureTime),
+    traffic_model: "best_guess",
+    region: "uk",
+    key: apiKey,
+  });
+  const url = `https://maps.googleapis.com/maps/api/directions/json?${params.toString()}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (data.status !== "OK" || !data.routes || !data.routes[0] || !data.routes[0].legs || !data.routes[0].legs[0]) {
+    return null;
+  }
+  const dleg = data.routes[0].legs[0];
+  const sec = (dleg.duration_in_traffic && dleg.duration_in_traffic.value) || dleg.duration.value;
+  return Math.max(1, Math.ceil(sec / 60));
+}
+
+/**
+ * Convert a slice of Google Directions steps to optimisation UI steps.
+ * BUS legs longer than longBusThresholdMin are replaced with a drive (taxi) leg using Directions driving time for that segment.
+ */
+async function convertGoogleLegSliceToSteps(apiKey, steps, startIdx, endIdx, departureTime, longBusThresholdMin) {
+  const thresholdSec = longBusThresholdMin * 60;
+  const out = [];
+  let totalSec = 0;
+  for (let i = startIdx; i <= endIdx; i++) {
+    const step = steps[i];
+    if (!step) continue;
+    if (step.travel_mode === "WALKING" && step.duration && typeof step.duration.value === "number") {
+      const durSec = step.duration.value;
+      totalSec += durSec;
+      out.push({
+        type: "walk",
+        duration: Math.max(1, Math.round(durSec / 60)),
+      });
+    } else if (step.travel_mode === "TRANSIT" && step.transit_details && step.duration && typeof step.duration.value === "number") {
+      const td = step.transit_details;
+      const vehicleType = td.line && td.line.vehicle && td.line.vehicle.type;
+      const isBus = isBusVehicleType(vehicleType);
+      const durSec = step.duration.value;
+      if (isBus && durSec > thresholdSec) {
+        const o = latLngParam(step.start_location);
+        const d = latLngParam(step.end_location);
+        if (o && d) {
+          const driveMins = await fetchDrivingMinutes(apiKey, o, d, departureTime);
+          if (driveMins != null) {
+            totalSec += driveMins * 60;
+            out.push({ type: "drive", mode: "CAR", duration: driveMins });
+            continue;
+          }
+        }
+      }
+      totalSec += durSec;
+      const mode = isBus ? "BUS" : "TRAIN";
+      const depStop = td.departure_stop && td.departure_stop.name;
+      out.push({
+        type: "transit",
+        mode,
+        duration: Math.max(1, Math.round(durSec / 60)),
+        departure: depStop || undefined,
+      });
+    }
+  }
+  return { steps: out, totalSec };
+}
+
+async function buildAdjustedTransitFromLeg(apiKey, leg, departureTime, longBusThresholdMin) {
+  const steps = leg.steps || [];
+  if (steps.length === 0) {
+    const fallback = Math.max(1, Math.ceil(leg.duration.value / 60));
+    return { steps: [], durationMinutes: fallback, totalSec: leg.duration.value };
+  }
+  const { steps: outSteps, totalSec } = await convertGoogleLegSliceToSteps(
+      apiKey,
+      steps,
+      0,
+      steps.length - 1,
+      departureTime,
+      longBusThresholdMin,
+  );
+  return {
+    steps: outSteps,
+    durationMinutes: Math.max(1, Math.ceil(totalSec / 60)),
+    totalSec,
+  };
+}
+
+/**
+ * If access to the first train or from the last train exceeds edgeThresholdMin, offer drive+taxi legs on those ends.
+ * Only returned when total time improves vs adjusted full-transit minutes.
+ */
+async function tryBuildMixedModeRoute(
+    apiKey,
+    originStr,
+    destStr,
+    leg,
+    departureTime,
+    edgeThresholdMin,
+    longBusThresholdMin,
+    adjustedFullTransitMinutes,
+) {
+  const steps = leg.steps || [];
+  if (steps.length === 0) return null;
+
+  const { first, last } = findFirstLastTrainStepIndices(steps);
+  if (first < 0) return null;
+
+  const n = steps.length;
+  const edgeSec = edgeThresholdMin * 60;
+
+  const prefixSec = first > 0 ? sumStepDurationSec(steps, 0, first - 1) : 0;
+  const suffixSec = last < n - 1 ? sumStepDurationSec(steps, last + 1, n - 1) : 0;
+
+  const needPrefix = first > 0 && prefixSec > edgeSec;
+  const needSuffix = last < n - 1 && suffixSec > edgeSec;
+
+  if (!needPrefix && !needSuffix) return null;
+
+  const firstTrainStep = steps[first];
+  const lastTrainStep = steps[last];
+  const depLoc =
+    latLngParam(firstTrainStep.transit_details && firstTrainStep.transit_details.departure_stop &&
+        firstTrainStep.transit_details.departure_stop.location) ||
+    latLngParam(firstTrainStep.start_location);
+  const arrLoc =
+    latLngParam(lastTrainStep.transit_details && lastTrainStep.transit_details.arrival_stop &&
+        lastTrainStep.transit_details.arrival_stop.location) ||
+    latLngParam(lastTrainStep.end_location);
+
+  if (!depLoc) return null;
+  if (needSuffix && !arrLoc) return null;
+
+  let combinedSteps = [];
+  let totalSec = 0;
+  let drivingToStation = false;
+  let drivingFromStation = false;
+
+  if (needPrefix) {
+    const dm = await fetchDrivingMinutes(apiKey, originStr, depLoc, departureTime);
+    if (dm == null) return null;
+    totalSec += dm * 60;
+    combinedSteps.push({ type: "drive", mode: "CAR", duration: dm });
+    drivingToStation = true;
+  }
+
+  const sliceStart = needPrefix ? first : 0;
+  const sliceEnd = needSuffix ? last : n - 1;
+  const mid = await convertGoogleLegSliceToSteps(apiKey, steps, sliceStart, sliceEnd, departureTime, longBusThresholdMin);
+  combinedSteps = combinedSteps.concat(mid.steps);
+  totalSec += mid.totalSec;
+
+  if (needSuffix) {
+    const dm2 = await fetchDrivingMinutes(apiKey, arrLoc, destStr, departureTime);
+    if (dm2 == null) return null;
+    totalSec += dm2 * 60;
+    combinedSteps.push({ type: "drive", mode: "CAR", duration: dm2 });
+    drivingFromStation = true;
+  }
+
+  const durationMinutes = Math.max(1, Math.ceil(totalSec / 60));
+  if (durationMinutes >= adjustedFullTransitMinutes) return null;
+
+  return {
+    mode: "mixed",
+    duration: durationMinutes,
+    allSteps: combinedSteps,
+    drivingToStation,
+    drivingFromStation,
+  };
+}
+
+/**
+ * Parse transit leg into step list for the optimisation UI (sync, no long-bus substitution).
  */
 function transitLegToSteps(leg) {
   const allSteps = [];
@@ -264,7 +498,7 @@ function transitLegToSteps(leg) {
       const line = td.line || {};
       const vehicle = line.vehicle || {};
       const vtype = (vehicle.type || "").toUpperCase();
-      const mode = vtype === "BUS" ? "BUS" : "TRAIN";
+      const mode = isBusVehicleType(vtype) ? "BUS" : "TRAIN";
       const depStop = td.departure_stop && td.departure_stop.name;
       allSteps.push({
         type: "transit",
@@ -280,8 +514,11 @@ function transitLegToSteps(leg) {
 /**
  * Driving vs PT rule (same as optimisation.html “How it works”):
  * ≤TAXI_MAX_DRIVE_MIN minutes by car → mode "taxi" (use driving duration).
- * Longer drive → mode "transit" (public transport duration + steps) when a transit route exists.
- * Optional: set TAXI_MAX_DRIVE_MIN in functions/.env (default 18).
+ * Longer drive → mode "transit" when a transit route exists, with:
+ *   - LONG_BUS_TAXI_MINUTES (default 45): each BUS leg longer than this is modelled as taxi (driving time for that segment).
+ *   - MIXED_MODE_EDGE_MINUTES (default 45): if a rail leg exists and time before first train or after last train exceeds
+ *     this, add optional mixedModeRoute (drive to/from station) when it beats the adjusted full-transit time.
+ * Optional env: TAXI_MAX_DRIVE_MIN, LONG_BUS_TAXI_MINUTES, MIXED_MODE_EDGE_MINUTES in functions/.env.
  */
 const DEFAULT_TAXI_MAX_DRIVE_MINUTES = 18;
 
@@ -297,6 +534,18 @@ exports.calculateTravelOptions = onCall(
       if (raw === undefined || raw === "") return DEFAULT_TAXI_MAX_DRIVE_MINUTES;
       const n = Number.parseInt(String(raw), 10);
       return Number.isFinite(n) && n > 0 ? n : DEFAULT_TAXI_MAX_DRIVE_MINUTES;
+    })();
+    const longBusTaxiMin = (() => {
+      const raw = process.env.LONG_BUS_TAXI_MINUTES;
+      if (raw === undefined || raw === "") return DEFAULT_LONG_BUS_TAXI_MINUTES;
+      const n = Number.parseInt(String(raw), 10);
+      return Number.isFinite(n) && n > 0 ? n : DEFAULT_LONG_BUS_TAXI_MINUTES;
+    })();
+    const mixedModeEdgeMin = (() => {
+      const raw = process.env.MIXED_MODE_EDGE_MINUTES;
+      if (raw === undefined || raw === "") return DEFAULT_MIXED_MODE_EDGE_MINUTES;
+      const n = Number.parseInt(String(raw), 10);
+      return Number.isFinite(n) && n > 0 ? n : DEFAULT_MIXED_MODE_EDGE_MINUTES;
     })();
     if (!apiKey) {
       throw new HttpsError(
@@ -370,15 +619,30 @@ exports.calculateTravelOptions = onCall(
     }
 
     if (transitMins != null && transitLeg) {
-      return {
+      const adjusted = await buildAdjustedTransitFromLeg(apiKey, transitLeg, dep, longBusTaxiMin);
+      const mixedModeRoute = await tryBuildMixedModeRoute(
+          apiKey,
+          originStr,
+          destStr,
+          transitLeg,
+          dep,
+          mixedModeEdgeMin,
+          longBusTaxiMin,
+          adjusted.durationMinutes,
+      );
+      const payload = {
         success: true,
-        duration: transitMins,
+        duration: adjusted.durationMinutes,
         mode: "transit",
-        allSteps: transitLegToSteps(transitLeg),
+        allSteps: adjusted.steps,
         drivingDurationMinutes: drivingMins,
         transitDurationMinutes: transitMins,
         taxiMaxDriveMinutes: taxiMaxDriveMin,
+        longBusTaxiMinutesThreshold: longBusTaxiMin,
+        mixedModeEdgeMinutesThreshold: mixedModeEdgeMin,
       };
+      if (mixedModeRoute) payload.mixedModeRoute = mixedModeRoute;
+      return payload;
     }
 
     if (drivingMins != null) {
