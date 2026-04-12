@@ -2992,12 +2992,19 @@
                             locationElement.textContent = routeData.route.assignedDriverPostcode || '-';
                         }
                         
-                        // Restore carryover information if it exists
-                        if (routeData.route.carryoverPostcode) {
-                            const carryoverDisplay = document.getElementById(`firebase-route-${routeNumber}-carryover-display`);
-                            const carryoverPostcode = document.getElementById(`firebase-route-${routeNumber}-carryover-postcode`);
+                        // Restore carryover only if saved postcode differs from driver home
+                        const homePc = routeData.route.assignedDriverPostcode || '';
+                        const coPc = routeData.route.carryoverPostcode;
+                        const carryoverDisplay = document.getElementById(`firebase-route-${routeNumber}-carryover-display`);
+                        const carryoverPostcodeEl = document.getElementById(`firebase-route-${routeNumber}-carryover-postcode`);
+                        const toWorkLabelEl = document.getElementById(`firebase-route-${routeNumber}-to-work-label`);
+                        if (coPc && isDistinctCarryoverPostcode(coPc, homePc)) {
                             if (carryoverDisplay) carryoverDisplay.classList.remove('hidden');
-                            if (carryoverPostcode) carryoverPostcode.textContent = routeData.route.carryoverPostcode;
+                            if (carryoverPostcodeEl) carryoverPostcodeEl.textContent = coPc;
+                            if (toWorkLabelEl) toWorkLabelEl.textContent = 'From Carryover';
+                        } else {
+                            if (carryoverDisplay) carryoverDisplay.classList.add('hidden');
+                            if (toWorkLabelEl) toWorkLabelEl.textContent = 'To First Job';
                         }
                         
                         // Restore route score if it exists
@@ -5053,6 +5060,18 @@
             return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
         }
 
+        function normalizePostcodeForCompare(pc) {
+            if (pc == null || pc === '') return '';
+            return String(pc).replace(/\s+/g, '').toUpperCase();
+        }
+
+        /** Carryover row only when a different start postcode than home (spacing/case ignored). */
+        function isDistinctCarryoverPostcode(carryoverPc, homePc) {
+            const c = normalizePostcodeForCompare(carryoverPc);
+            const h = normalizePostcodeForCompare(homePc);
+            return c.length > 0 && c !== h;
+        }
+
         // Format travel option for display (collapsed by default)
         function formatTravelOptionForRoute(option, routeNumber, direction, useMixedMode = false) {
             if (!option || !option.success) {
@@ -5962,9 +5981,12 @@
                 assignment.routeData.route.assignedDriverName = driverName;
                 assignment.routeData.route.assignedDriverPostcode = driverHome;
                 
-                // Store carryover information if it exists
-                if (assignment.hasCarryover) {
+                // Persist carryover only when it differs from home (avoid duplicate B77 5NZ vs B775NZ rows)
+                if (assignment.hasCarryover && assignment.carryoverPostcode &&
+                        isDistinctCarryoverPostcode(assignment.carryoverPostcode, driverHome)) {
                     assignment.routeData.route.carryoverPostcode = assignment.carryoverPostcode;
+                } else {
+                    delete assignment.routeData.route.carryoverPostcode;
                 }
                 
                 // Update REG display (all jobs: Job 1: X, Job 2: Y)
@@ -5993,23 +6015,18 @@
                     locationElement.textContent = driverHome;
                 }
                 
-                // Show carryover if driver has one
-                if (assignment.hasCarryover && assignment.carryoverPostcode) {
-                    const carryoverDisplay = document.getElementById(`firebase-route-${routeNumber}-carryover-display`);
-                    const carryoverPostcodeElement = document.getElementById(`firebase-route-${routeNumber}-carryover-postcode`);
-                    
-                    if (carryoverDisplay) {
-                        carryoverDisplay.classList.remove('hidden');
-                    }
-                    if (carryoverPostcodeElement) {
-                        carryoverPostcodeElement.textContent = assignment.carryoverPostcode;
-                    }
-                    
-                    // Change "To First Job" label to "From Carryover"
-                    const toWorkLabel = document.getElementById(`firebase-route-${routeNumber}-to-work-label`);
-                    if (toWorkLabel) {
-                        toWorkLabel.textContent = 'From Carryover';
-                    }
+                const showCarryoverRow = assignment.hasCarryover && assignment.carryoverPostcode &&
+                    isDistinctCarryoverPostcode(assignment.carryoverPostcode, driverHome);
+                const carryoverDisplay = document.getElementById(`firebase-route-${routeNumber}-carryover-display`);
+                const carryoverPostcodeElement = document.getElementById(`firebase-route-${routeNumber}-carryover-postcode`);
+                const toWorkLabel = document.getElementById(`firebase-route-${routeNumber}-to-work-label`);
+                if (showCarryoverRow) {
+                    if (carryoverDisplay) carryoverDisplay.classList.remove('hidden');
+                    if (carryoverPostcodeElement) carryoverPostcodeElement.textContent = assignment.carryoverPostcode;
+                    if (toWorkLabel) toWorkLabel.textContent = 'From Carryover';
+                } else {
+                    if (carryoverDisplay) carryoverDisplay.classList.add('hidden');
+                    if (toWorkLabel) toWorkLabel.textContent = 'To First Job';
                 }
                 
                 // Display travel options - check EACH DIRECTION separately
@@ -7126,12 +7143,18 @@
                         regElement.textContent = regParts.join('  |  ');
                     }
                     
-                    // Restore carryover information if it exists
-                    if (routeData.route.carryoverPostcode) {
-                        const carryoverDisplay = document.getElementById(`firebase-route-${routeNumber}-carryover-display`);
-                        const carryoverPostcode = document.getElementById(`firebase-route-${routeNumber}-carryover-postcode`);
-                        if (carryoverDisplay) carryoverDisplay.classList.remove('hidden');
-                        if (carryoverPostcode) carryoverPostcode.textContent = routeData.route.carryoverPostcode;
+                    const homePcRestore = routeData.route.assignedDriverPostcode || '';
+                    const coPcRestore = routeData.route.carryoverPostcode;
+                    const carryoverDisplayRestore = document.getElementById(`firebase-route-${routeNumber}-carryover-display`);
+                    const carryoverPostcodeRestore = document.getElementById(`firebase-route-${routeNumber}-carryover-postcode`);
+                    const toWorkLabelRestore = document.getElementById(`firebase-route-${routeNumber}-to-work-label`);
+                    if (coPcRestore && isDistinctCarryoverPostcode(coPcRestore, homePcRestore)) {
+                        if (carryoverDisplayRestore) carryoverDisplayRestore.classList.remove('hidden');
+                        if (carryoverPostcodeRestore) carryoverPostcodeRestore.textContent = coPcRestore;
+                        if (toWorkLabelRestore) toWorkLabelRestore.textContent = 'From Carryover';
+                    } else {
+                        if (carryoverDisplayRestore) carryoverDisplayRestore.classList.add('hidden');
+                        if (toWorkLabelRestore) toWorkLabelRestore.textContent = 'To First Job';
                     }
                     
                     // Restore route score if it exists
