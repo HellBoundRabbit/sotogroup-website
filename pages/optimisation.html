@@ -7405,7 +7405,7 @@
                                             <span class="text-blue-400 font-bold">5.</span>
                                             <div>
                                                 <p class="font-semibold">Determine Travel Mode</p>
-                                                <p class="text-sm text-gray-400">≤18min drive = Taxi | >18min = Public Transport | No transit = Find train station | >2hrs = Mixed mode (drive + train)</p>
+                                                <p class="text-sm text-gray-400">Server: ≤18min drive = taxi; longer = transit with BUS legs over 45min modelled as taxi per segment; if rail exists and access before/after train over 45min, optional mixedModeRoute (taxi to/from station) when faster. UI: routes where every driver is over 2h each way may use mixed mode times for assignment.</p>
                                             </div>
                                         </div>
                                         <div class="flex gap-3">
