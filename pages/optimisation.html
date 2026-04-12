@@ -3359,6 +3359,13 @@
                             <div id="weekDaysOptimise" class="grid grid-cols-2 gap-2 mt-3">
                                 <!-- Days will be populated here -->
                             </div>
+                            <div class="mt-4 pt-4 border-t border-gray-700">
+                                <p class="text-xs text-gray-400 mb-2">Test optimisation without real driver accounts</p>
+                                <button type="button" onclick="openOfficeTestDriversModal()" class="w-full py-2 px-3 rounded-md text-sm font-medium bg-[#283039] border border-amber-600/40 text-amber-100 hover:bg-[#323a44] transition-colors">
+                                    Import drivers from office list
+                                </button>
+                                <p id="officeTestDriversStatus" class="hidden mt-2 text-xs text-amber-400/90"></p>
+                            </div>
                         </div>
 
                         <!-- Driver Overview Section (hidden initially) -->
@@ -3470,6 +3477,282 @@
         let selectedOptimiseDay = null;
         let tempDriversOff = []; // Temporary list of drivers marked as off
         let allDrivers = []; // All drivers for the office
+        /** When true, roster for optimise comes from OPTESTUsers (office test list), not `drivers`. */
+        let optimisationUsesOfficeTestList = false;
+        /** Snapshot of mapped driver objects from last "Use selected" in office test modal */
+        let opTestAppliedDrivers = null;
+        let opTestModalRows = [];
+        let opTestEditingDocId = null;
+
+        function escapeHtmlOpTest(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function mapOpTestRowToDriver(row) {
+            const name = (row.name || '').trim() || 'Unnamed';
+            const pc = (row.postcode || '').trim();
+            return {
+                id: row.id,
+                uid: row.id,
+                name,
+                firstName: name,
+                lastName: '',
+                homePostcode: pc,
+                email: '',
+                officeId: row.officeId,
+                isOpTestDriver: true
+            };
+        }
+
+        function updateOfficeTestDriversStatusInModal() {
+            const el = document.getElementById('officeTestDriversStatus');
+            if (!el) return;
+            if (optimisationUsesOfficeTestList && opTestAppliedDrivers && opTestAppliedDrivers.length) {
+                el.classList.remove('hidden');
+                el.innerHTML =
+                    `Using office test list (${opTestAppliedDrivers.length} driver${opTestAppliedDrivers.length === 1 ? '' : 's'}). ` +
+                    `<button type="button" class="underline text-amber-200 hover:text-white" onclick="clearOfficeTestDriverList()">Switch back to live drivers</button>`;
+            } else {
+                el.classList.add('hidden');
+                el.textContent = '';
+            }
+        }
+
+        function closeOfficeTestDriversOverlay() {
+            const o = document.getElementById('optest-drivers-overlay');
+            if (o) o.remove();
+        }
+
+        async function openOfficeTestDriversModal() {
+            const officeId = getCurrentOfficeId();
+            if (!officeId) {
+                alert('No office context available.');
+                return;
+            }
+            closeOfficeTestDriversOverlay();
+            const overlay = document.createElement('div');
+            overlay.id = 'optest-drivers-overlay';
+            overlay.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-[120] p-4';
+            overlay.innerHTML = `
+                <div class="bg-[#1a1f24] rounded-lg border border-[#283039] w-full max-w-lg max-h-[90vh] flex flex-col shadow-xl" role="dialog" onclick="event.stopPropagation()">
+                    <div class="flex justify-between items-center px-4 py-3 border-b border-gray-700 shrink-0">
+                        <h3 class="text-lg font-bold text-white">Office test driver list</h3>
+                        <button type="button" class="text-gray-400 hover:text-white" onclick="closeOfficeTestDriversOverlay()" aria-label="Close">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
+                    <div class="px-4 py-3 text-xs text-gray-400 shrink-0">
+                        Names are required; home postcodes are optional. Selected drivers are used for this optimisation run only.
+                    </div>
+                    <div class="px-4 flex gap-2 shrink-0 pb-2">
+                        <button type="button" onclick="opTestSelectAllRows(true)" class="flex-1 py-1.5 text-xs rounded-md bg-[#283039] text-white hover:bg-[#3a4049]">Select all</button>
+                        <button type="button" onclick="opTestSelectAllRows(false)" class="flex-1 py-1.5 text-xs rounded-md bg-[#283039] text-white hover:bg-[#3a4049]">Deselect all</button>
+                        <button type="button" onclick="opTestStartAddDriver()" class="flex-1 py-1.5 text-xs rounded-md bg-green-700 text-white hover:bg-green-600 font-medium">+ Add</button>
+                    </div>
+                    <div id="optestRowsContainer" class="flex-1 overflow-y-auto px-4 min-h-[120px] space-y-2 pb-2"></div>
+                    <div id="optestFormPanel" class="hidden border-t border-gray-700 px-4 py-3 space-y-2 shrink-0 bg-[#151a1f]">
+                        <p id="optestFormTitle" class="text-sm font-medium text-white">Add driver</p>
+                        <input type="text" id="optestFormName" placeholder="Full name (required)" class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white text-sm" />
+                        <input type="text" id="optestFormPostcode" placeholder="Home postcode (optional)" class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white text-sm" />
+                        <div class="flex gap-2">
+                            <button type="button" onclick="cancelOpTestDriverForm()" class="flex-1 py-2 rounded-md bg-gray-600 text-white text-sm">Cancel</button>
+                            <button type="button" onclick="saveOpTestDriverForm()" class="flex-1 py-2 rounded-md bg-blue-600 text-white text-sm font-medium">Save</button>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 p-4 border-t border-gray-700 shrink-0">
+                        <button type="button" onclick="closeOfficeTestDriversOverlay()" class="flex-1 py-2 rounded-md bg-gray-600 text-white text-sm">Close</button>
+                        <button type="button" onclick="applyOpTestDriverSelectionFromModal()" class="flex-1 py-2 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium">Use selected for optimisation</button>
+                    </div>
+                </div>
+            `;
+            overlay.addEventListener('click', () => closeOfficeTestDriversOverlay());
+            document.body.appendChild(overlay);
+            await opTestRefreshRows(officeId);
+        }
+
+        async function opTestRefreshRows(officeId) {
+            try {
+                const col = window.firebaseCollection(window.firestore, 'OPTESTUsers');
+                const q = window.firebaseQuery(col, window.firebaseWhere('officeId', '==', officeId));
+                const snap = await window.firebaseGetDocs(q);
+                opTestModalRows = snap.docs.map((d) => {
+                    const data = d.data();
+                    return {
+                        id: d.id,
+                        officeId: data.officeId || officeId,
+                        name: (data.name || '').trim(),
+                        postcode: (data.homePostcode != null ? String(data.homePostcode) : '').trim()
+                    };
+                });
+                opTestModalRows.sort((a, b) => a.name.localeCompare(b.name));
+            } catch (err) {
+                console.error('[OPTEST] Load failed:', err);
+                alert('Could not load office test list. Check you are signed in as office staff and rules are deployed.');
+                opTestModalRows = [];
+            }
+            opTestRenderRows();
+        }
+
+        function opTestRenderRows() {
+            const container = document.getElementById('optestRowsContainer');
+            if (!container) return;
+            if (opTestModalRows.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-sm text-center py-6">No drivers yet. Use + Add to create entries.</p>';
+                return;
+            }
+            container.innerHTML = opTestModalRows
+                .map((row) => {
+                    const pc = row.postcode ? escapeHtmlOpTest(row.postcode) : '<span class="text-gray-500">No postcode</span>';
+                    return `
+                    <div class="flex items-center gap-2 bg-[#283039] rounded-md px-2 py-2 border border-gray-600/50">
+                        <input type="checkbox" class="optest-row-check h-4 w-4 rounded border-gray-500" data-doc-id="${escapeHtmlOpTest(row.id)}" checked aria-label="Select ${escapeHtmlOpTest(row.name)}" />
+                        <div class="flex-1 min-w-0">
+                            <div class="text-white text-sm font-medium truncate">${escapeHtmlOpTest(row.name || 'Unnamed')}</div>
+                            <div class="text-xs text-gray-400">${pc}</div>
+                        </div>
+                        <button type="button" class="text-blue-400 hover:text-blue-300 text-xs px-2 py-1 shrink-0" data-optest-edit="${escapeHtmlOpTest(row.id)}">Edit</button>
+                        <button type="button" class="text-red-400 hover:text-red-300 text-xs px-2 py-1 shrink-0" data-optest-del="${escapeHtmlOpTest(row.id)}">Delete</button>
+                    </div>`;
+                })
+                .join('');
+            container.querySelectorAll('[data-optest-edit]').forEach((btn) => {
+                btn.addEventListener('click', () => opTestStartEditDriver(btn.getAttribute('data-optest-edit')));
+            });
+            container.querySelectorAll('[data-optest-del]').forEach((btn) => {
+                btn.addEventListener('click', () => opTestDeleteDriver(btn.getAttribute('data-optest-del')));
+            });
+        }
+
+        function opTestSelectAllRows(checked) {
+            document.querySelectorAll('#optestRowsContainer .optest-row-check').forEach((cb) => {
+                cb.checked = checked;
+            });
+        }
+
+        function opTestStartAddDriver() {
+            opTestEditingDocId = null;
+            const panel = document.getElementById('optestFormPanel');
+            const title = document.getElementById('optestFormTitle');
+            if (panel) panel.classList.remove('hidden');
+            if (title) title.textContent = 'Add driver';
+            const n = document.getElementById('optestFormName');
+            const p = document.getElementById('optestFormPostcode');
+            if (n) {
+                n.value = '';
+                n.focus();
+            }
+            if (p) p.value = '';
+        }
+
+        function opTestStartEditDriver(docId) {
+            const row = opTestModalRows.find((r) => r.id === docId);
+            if (!row) return;
+            opTestEditingDocId = docId;
+            const panel = document.getElementById('optestFormPanel');
+            const title = document.getElementById('optestFormTitle');
+            if (panel) panel.classList.remove('hidden');
+            if (title) title.textContent = 'Edit driver';
+            const n = document.getElementById('optestFormName');
+            const p = document.getElementById('optestFormPostcode');
+            if (n) n.value = row.name;
+            if (p) p.value = row.postcode;
+            if (n) n.focus();
+        }
+
+        function cancelOpTestDriverForm() {
+            opTestEditingDocId = null;
+            const panel = document.getElementById('optestFormPanel');
+            if (panel) panel.classList.add('hidden');
+        }
+
+        async function saveOpTestDriverForm() {
+            const officeId = getCurrentOfficeId();
+            if (!officeId) return;
+            const nameEl = document.getElementById('optestFormName');
+            const pcEl = document.getElementById('optestFormPostcode');
+            const name = (nameEl && nameEl.value.trim()) || '';
+            const postcode = pcEl ? pcEl.value.trim() : '';
+            if (!name) {
+                alert('Please enter a name.');
+                return;
+            }
+            try {
+                if (opTestEditingDocId) {
+                    const ref = window.firebaseDoc(window.firestore, 'OPTESTUsers', opTestEditingDocId);
+                    await window.firebaseUpdateDoc(ref, {
+                        name,
+                        homePostcode: postcode
+                    });
+                } else {
+                    await window.firebaseAddDoc(window.firebaseCollection(window.firestore, 'OPTESTUsers'), {
+                        officeId,
+                        name,
+                        homePostcode: postcode
+                    });
+                }
+                cancelOpTestDriverForm();
+                await opTestRefreshRows(officeId);
+            } catch (err) {
+                console.error('[OPTEST] Save failed:', err);
+                alert('Could not save. Check permissions or try again.');
+            }
+        }
+
+        async function opTestDeleteDriver(docId) {
+            if (!confirm('Remove this driver from the office test list?')) return;
+            const officeId = getCurrentOfficeId();
+            try {
+                await window.firebaseDeleteDoc(window.firebaseDoc(window.firestore, 'OPTESTUsers', docId));
+                await opTestRefreshRows(officeId);
+            } catch (err) {
+                console.error('[OPTEST] Delete failed:', err);
+                alert('Could not delete.');
+            }
+        }
+
+        async function applyOpTestDriverSelectionFromModal() {
+            const officeId = getCurrentOfficeId();
+            const checks = document.querySelectorAll('#optestRowsContainer .optest-row-check:checked');
+            if (!checks.length) {
+                alert('Select at least one driver, or add drivers to the list first.');
+                return;
+            }
+            const ids = new Set(Array.from(checks).map((cb) => cb.getAttribute('data-doc-id')));
+            const selectedRows = opTestModalRows.filter((r) => ids.has(r.id));
+            opTestAppliedDrivers = selectedRows.map((row) => mapOpTestRowToDriver(row));
+            optimisationUsesOfficeTestList = true;
+            closeOfficeTestDriversOverlay();
+            updateOfficeTestDriversStatusInModal();
+            if (selectedOptimiseDay) {
+                allDrivers = opTestAppliedDrivers.map((d) => ({ ...d }));
+                await loadDriversOffForOptimise();
+                updateDriversOffDisplay();
+                const dd = document.getElementById('driverSelectionDropdown');
+                if (dd && !dd.classList.contains('hidden')) {
+                    populateAllDriversList();
+                }
+            }
+        }
+
+        async function clearOfficeTestDriverList() {
+            optimisationUsesOfficeTestList = false;
+            opTestAppliedDrivers = null;
+            updateOfficeTestDriversStatusInModal();
+            if (selectedOptimiseDay) {
+                await loadDriversForOptimise();
+                await loadDriversOffForOptimise();
+                updateDriversOffDisplay();
+                const dd = document.getElementById('driverSelectionDropdown');
+                if (dd && !dd.classList.contains('hidden')) {
+                    populateAllDriversList();
+                }
+            }
+        }
 
         // Initialize day selection for optimise settings
         function initializeOptimiseDaySelection() {
@@ -3870,6 +4153,17 @@
                 
                 // Load office logo
                 await loadOfficeLogo(officeId);
+
+                if (optimisationUsesOfficeTestList && opTestAppliedDrivers && opTestAppliedDrivers.length > 0) {
+                    allDrivers = opTestAppliedDrivers.map((d) => ({ ...d }));
+                    allDrivers.sort((a, b) => {
+                        const nameA = a.name || `${a.firstName || ''} ${a.lastName || ''}`.trim() || 'Unknown';
+                        const nameB = b.name || `${b.firstName || ''} ${b.lastName || ''}`.trim() || 'Unknown';
+                        return nameA.localeCompare(nameB);
+                    });
+                    console.log(`[OPTIMISATION] Using office test list: ${allDrivers.length} drivers`);
+                    return;
+                }
                 
                 console.log('Loading drivers for office:', officeId);
                 
@@ -4117,7 +4411,7 @@
                 const isOff = tempDriversOff.some(off => off.id === driver.id);
                 const driverName = driver.name || (driver.firstName + ' ' + driver.lastName) || 'Unknown Driver';
                 return `
-                    <button onclick="event.stopPropagation(); toggleDriverOffStatus('${driver.id}', '${driverName}', '${driver.email}')" 
+                    <button onclick="event.stopPropagation(); toggleDriverOffStatus('${driver.id}', '${driverName.replace(/'/g, "\\'")}', '${(driver.email || '').replace(/'/g, "\\'")}')" 
                             class="w-full flex items-center justify-between p-2 rounded-lg text-left transition-colors ${
                                 isOff ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-[#1a1f24] hover:bg-[#3a4049] text-white'
                             }">
@@ -4171,6 +4465,8 @@
             selectedOptimiseDay = null;
             tempDriversOff = [];
             allDrivers = [];
+            optimisationUsesOfficeTestList = false;
+            opTestAppliedDrivers = null;
         }
 
         // Start optimisation with settings
