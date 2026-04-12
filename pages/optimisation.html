@@ -3547,7 +3547,7 @@
                         </button>
                     </div>
                     <div class="px-4 py-3 text-xs text-gray-400 shrink-0">
-                        Names are required; home postcodes are optional. Selected drivers are used for this optimisation run only.
+                        Names are required. Every <strong class="text-gray-300">selected</strong> driver must have a home postcode before you can use them for optimisation (you can still save a name only and add the postcode later).
                     </div>
                     <div class="px-4 flex gap-2 shrink-0 pb-2">
                         <button type="button" onclick="opTestSelectAllRows(true)" class="flex-1 py-1.5 text-xs rounded-md bg-[#283039] text-white hover:bg-[#3a4049]">Select all</button>
@@ -3558,7 +3558,7 @@
                     <div id="optestFormPanel" class="hidden border-t border-gray-700 px-4 py-3 space-y-2 shrink-0 bg-[#151a1f]">
                         <p id="optestFormTitle" class="text-sm font-medium text-white">Add driver</p>
                         <input type="text" id="optestFormName" placeholder="Full name (required)" class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white text-sm" />
-                        <input type="text" id="optestFormPostcode" placeholder="Home postcode (optional)" class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white text-sm" />
+                        <input type="text" id="optestFormPostcode" placeholder="Home postcode (needed for optimisation)" class="w-full px-3 py-2 bg-[#283039] border border-gray-600 rounded-md text-white text-sm" />
                         <div class="flex gap-2">
                             <button type="button" onclick="cancelOpTestDriverForm()" class="flex-1 py-2 rounded-md bg-gray-600 text-white text-sm">Cancel</button>
                             <button type="button" onclick="saveOpTestDriverForm()" class="flex-1 py-2 rounded-md bg-blue-600 text-white text-sm font-medium">Save</button>
@@ -3724,6 +3724,16 @@
             }
             const ids = new Set(Array.from(checks).map((cb) => cb.getAttribute('data-doc-id')));
             const selectedRows = opTestModalRows.filter((r) => ids.has(r.id));
+            const missingPostcode = selectedRows.filter((r) => !(r.postcode && String(r.postcode).trim()));
+            if (missingPostcode.length > 0) {
+                const names = missingPostcode.map((r) => r.name || 'Unnamed').join(', ');
+                alert(
+                    'Every selected driver needs a home postcode for optimisation.\n\n' +
+                        'Add a postcode (Edit) or deselect:\n' +
+                        names
+                );
+                return;
+            }
             opTestAppliedDrivers = selectedRows.map((row) => mapOpTestRowToDriver(row));
             optimisationUsesOfficeTestList = true;
             closeOfficeTestDriversOverlay();
