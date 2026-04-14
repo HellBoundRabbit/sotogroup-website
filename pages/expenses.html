@@ -123,6 +123,7 @@
         window.where = where;
         window.orderBy = orderBy;
         window.doc = doc;
+        window.deleteDoc = deleteDoc;
         window.getDoc = getDoc;
         window.getDocFromServer = getDocFromServer;
         window.setDoc = setDoc;
@@ -810,7 +811,11 @@
                                 var storagePath = extractStoragePathFromURL(photoURL);
                                 if (storagePath) {
                                     var photoRef = window.ref(window.storage, storagePath);
-                                    photoDeletePromises.push(window.deleteObject(photoRef).catch(function (err) { console.warn('Expired batch photo delete failed', err); }));
+                                    photoDeletePromises.push(window.deleteObject(photoRef).catch(function (err) {
+                                        // Missing objects are expected for some historical batches.
+                                        if (err && err.code === 'storage/object-not-found') return;
+                                        console.warn('Expired batch photo delete failed', err);
+                                    }));
                                 }
                             }
                         }
@@ -822,7 +827,6 @@
                     console.error('Error deleting expired batch ' + (batch.id || ''), err);
                 }
             }
-            if (expired.length > 0) await loadAllBatches();
         }
 
         // Update counts
