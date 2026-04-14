@@ -788,6 +788,10 @@
                 var deleteAt = b.deleteAt.toDate ? b.deleteAt.toDate() : new Date(b.deleteAt);
                 return now >= deleteAt;
             });
+            console.log('[expired-cleanup] scan', {
+                totalLoadedBatches: allBatches.length,
+                expiredCount: expired.length
+            });
             if (expired.length === 0) return;
             function extractStoragePathFromURL(downloadURL) {
                 try {
@@ -801,7 +805,16 @@
                 var batch = expired[i];
                 try {
                     var photoDeletePromises = [];
+                    var photoPathsForBatch = [];
                     var lines = batch.lines || {};
+                    var deleteAtDebug = batch.deleteAt && batch.deleteAt.toDate ? batch.deleteAt.toDate() : batch.deleteAt;
+                    console.log('[expired-cleanup] processing batch', {
+                        batchId: batch.id,
+                        registration: batch.registration || null,
+                        status: batch.status,
+                        deleteAt: deleteAtDebug,
+                        lineKeys: Object.keys(lines || {})
+                    });
                     for (var lineKey in lines) {
                         var line = lines[lineKey];
                         if (!line || !Array.isArray(line.photos)) continue;
@@ -811,6 +824,13 @@
                                 var storagePath = extractStoragePathFromURL(photoURL);
                                 if (storagePath) {
                                     var photoRef = window.ref(window.storage, storagePath);
+                                    photoPathsForBatch.push(storagePath);
+                                    console.log('[expired-cleanup] photo delete attempt', {
+                                        batchId: batch.id,
+                                        lineKey: lineKey,
+                                        photoIndex: p,
+                                        storagePath: storagePath
+                                    });
                                     photoDeletePromises.push(window.deleteObject(photoRef).catch(function (err) {
                                         // Missing objects are expected for some historical batches.
                                         if (err && err.code === 'storage/object-not-found') return;
@@ -820,7 +840,17 @@
                             }
                         }
                     }
+                    console.log('[expired-cleanup] batch photo path summary', {
+                        batchId: batch.id,
+                        registration: batch.registration || null,
+                        photoPathsFound: photoPathsForBatch.length,
+                        photoPaths: photoPathsForBatch
+                    });
                     await Promise.allSettled(photoDeletePromises);
+                    console.log('[expired-cleanup] deleting Firestore batch doc', {
+                        batchId: batch.id,
+                        registration: batch.registration || null
+                    });
                     await window.deleteDoc(window.doc(window.db, 'expenseBatches', batch.id));
                     console.log('Auto-deleted expired transferred batch and photos:', batch.registration || batch.id);
                 } catch (err) {
