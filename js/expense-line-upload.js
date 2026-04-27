@@ -156,15 +156,16 @@
             cancelLine(lineKey);
         } catch (e) { /* ignore */ }
 
+        clearStallTimer(lineKey);
+        // So the batch list / UI can show the bar immediately (no gap waiting on auth / token)
+        setState(lineKey, { status: 'uploading', error: null, progress: 0, uploadTask: null });
+
         if (global.ensureFirebaseAuthReady) {
             try { await global.ensureFirebaseAuthReady(); } catch (e) { /* continue */ }
         }
         if (global.auth && global.auth.currentUser) {
             try { await global.auth.currentUser.getIdToken(true); } catch (e) { console.warn('[ExpenseLineUpload] getIdToken', e); }
         }
-
-        clearStallTimer(lineKey);
-        setState(lineKey, { status: 'uploading', error: null, progress: 0, uploadTask: null });
 
         var regFolder = (global.sanitizeRegForStoragePath && global.sanitizeRegForStoragePath(registration)) || batchId;
         var collectedUrls = [];
@@ -258,6 +259,16 @@
         return stateByLine[lineKey] || null;
     }
 
+    /** Synchronous: set uploading state before any await so the batch list can paint the bar immediately. */
+    function setLineUploadingImmediate(lineKey) {
+        if (!lineKey) return;
+        try {
+            cancelLine(lineKey);
+        } catch (e) { /* ignore */ }
+        clearStallTimer(lineKey);
+        setState(lineKey, { status: 'uploading', error: null, progress: 0, uploadTask: null });
+    }
+
     function clearLineState(lineKey) {
         cancelLine(lineKey);
     }
@@ -269,6 +280,7 @@
 
     global.ExpenseLineUpload = {
         startUploadForLine: startUploadForLine,
+        setLineUploadingImmediate: setLineUploadingImmediate,
         cancelLine: cancelLine,
         cancelAll: cancelAll,
         hasActive: hasActive,
