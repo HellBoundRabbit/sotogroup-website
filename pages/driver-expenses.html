@@ -1646,6 +1646,7 @@
             if (!window.USE_EXPENSE_DIRECT_UPLOAD) return;
             if (!currentBatch || !currentBatch.id) return;
             var el = document.getElementById('collectionDateInput');
+            if (el && el.disabled) return;
             if (!el || !el.value) return;
             currentBatch.collectionDate = el.value;
             incBatchFieldSync('date');
@@ -2897,11 +2898,21 @@
             // Set collection date (default to today if not set)
             const collectionDateInput = document.getElementById('collectionDateInput');
             if (batch.collectionDate) {
-                collectionDateInput.value = batch.collectionDate;
+                const raw = batch.collectionDate;
+                if (raw && typeof raw.toDate === 'function') {
+                    collectionDateInput.value = raw.toDate().toISOString().split('T')[0];
+                } else {
+                    const s = typeof raw === 'string' ? raw.split('T')[0] : new Date().toISOString().split('T')[0];
+                    collectionDateInput.value = s;
+                }
             } else {
                 const today = new Date().toISOString().split('T')[0];
                 collectionDateInput.value = today;
                 batch.collectionDate = today;
+            }
+            {
+                const dateEditable = batch.status === 'draft' || batch.status === 'returned';
+                collectionDateInput.disabled = !dateEditable;
             }
             
             // Show communications thread for returned batches
@@ -2999,15 +3010,14 @@
                 <span class="text-white font-semibold">Submit for Processing</span>
                 </button>
                 `;
-            } else if (batch.status === 'pending' || batch.status === 'validated') {
-                // For submitted batches, show "Add Additional Expenses" button
+            } else if (batch.status === 'pending' || batch.status === 'validated' || batch.status === 'paid') {
+                // For submitted or paid: new draft with same reg + ! and same collection date
                 actionButtons.innerHTML = `
-                <button onclick="addAdditionalExpenses()" class="w-full animated-button animated-button-add touch-target">
+                <button type="button" onclick="addAdditionalExpenses()" class="w-full animated-button animated-button-add touch-target">
                 <span class="text-white font-semibold">Add Additional Expenses</span>
                 </button>
                 `;
             } else {
-                // For other statuses (paid, etc), no action buttons
                 actionButtons.innerHTML = '';
             }
 
@@ -4771,8 +4781,24 @@
             }
         }
 
-        // Add additional expenses (creates new batch with same reg + *)
+        function getCollectionDateYyyyMmDd(batch) {
+            if (!batch || batch.collectionDate == null) {
+                return new Date().toISOString().split('T')[0];
+            }
+            const c = batch.collectionDate;
+            if (c && typeof c.toDate === 'function') {
+                return c.toDate().toISOString().split('T')[0];
+            }
+            if (typeof c === 'string') {
+                return c.split('T')[0];
+            }
+            return new Date().toISOString().split('T')[0];
+        }
+
+        // Add additional expenses (creates new draft: unique reg with !, same collection date as this batch)
         async function addAdditionalExpenses() {
+            if (!currentBatch) return;
+            const sourceBatch = currentBatch;
             const confirmed = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
                 title: 'Add Additional Expenses',
                 message: 'Create a new expense batch with the same registration? This will allow you to add additional expenses.',
@@ -4786,31 +4812,47 @@
 
             try {
                 // Get the base registration (remove asterisk if present)
-                let baseReg = normalizeReg(currentBatch.registration);
+                let baseReg = normalizeReg(sourceBatch.registration);
                 baseReg = baseReg.replace(/[*!]\d*$/, ''); // Remove trailing suffix if present
-                
+
                 // Get unique reg (will add ! if needed)
                 const newReg = await getUniqueReg(baseReg);
 
+                const sameCollectionDate = getCollectionDateYyyyMmDd(sourceBatch);
                 const emptyLines = (typeof EXPENSE_BATCH_SCHEMA !== 'undefined' && EXPENSE_BATCH_SCHEMA.emptyLines) ? EXPENSE_BATCH_SCHEMA.emptyLines() : {};
-                const todayStr = new Date().toISOString().split('T')[0];
                 currentBatch = {
                     id: null,
                     localId: null,
                     registration: newReg,
                     status: 'draft',
                     lines: emptyLines,
+                    lineOrder: [],
                     totalAmount: 0,
-                    collectionDate: todayStr
+                    collectionDate: sameCollectionDate
                 };
+                if (currentUser) {
+                    currentBatch.driverId = currentUser.uid;
+                    currentBatch.officeId = currentUser.officeId;
+                }
                 window.currentBatch = currentBatch;
 
                 // Update UI
                 setStatusTitle('draft');
+                const modalContent = document.getElementById('batchModalContent');
+                if (modalContent) {
+                    modalContent.classList.remove(
+                        'animated-border-modal-draft',
+                        'animated-border-modal-pending',
+                        'animated-border-modal-validated',
+                        'animated-border-modal-paid',
+                        'animated-border-modal-returned'
+                    );
+                    modalContent.classList.add('animated-border-modal-draft');
+                }
                 document.getElementById('regInput').value = newReg;
                 document.getElementById('regInput').disabled = false;
                 const collectionDateEl = document.getElementById('collectionDateInput');
-                collectionDateEl.value = todayStr;
+                collectionDateEl.value = sameCollectionDate;
                 collectionDateEl.disabled = false;
                 const notesSection = document.getElementById('notesSection');
                 notesSection.classList.remove('hidden');
@@ -5136,27 +5178,30 @@
                 }
                 return `
                 <div class="animated-border-panel animated-border-paid fade-in">
-                <div class="flex items-start justify-between mb-2">
-                <div class="license-plate">${batch.registration}</div>
+                <div class="flex items-start justify-between gap-2 mb-2">
+                <div class="license-plate flex-1 min-w-0 cursor-pointer" onclick="openBatch('${batch.id}')">${batch.registration}</div>
+                <div class="flex items-center gap-1 flex-shrink-0">
+                <button type="button" onclick="event.stopPropagation(); openBatch('${batch.id}')" class="text-xs text-orange-400 hover:text-orange-300 underline touch-target">Details</button>
                 <span class="bg-green-500 px-3 py-1 rounded-full text-xs font-semibold uppercase">PAID</span>
                 </div>
-                <div class="flex items-center justify-between mt-3 mb-2">
+                </div>
+                <div class="flex items-center justify-between mt-3 mb-2 cursor-pointer" onclick="openBatch('${batch.id}')">
                 <span class="text-gray-400 text-sm">${itemCount} Expense${itemCount !== 1 ? 's' : ''}</span>
                 <span class="text-green-500 font-semibold text-lg">£${batch.totalAmount?.toFixed(2) || '0.00'}</span>
                 </div>
                 <div class="flex gap-2 mt-3">
-                <button onclick="event.stopPropagation(); viewPaidExpensePDF('${batch.id}')" 
+                <button type="button" onclick="event.stopPropagation(); viewPaidExpensePDF('${batch.id}')" 
                 class="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 touch-target">
                 <span class="material-symbols-outlined text-sm">description</span>
                 View PDF
                 </button>
-                <button onclick="event.stopPropagation(); downloadPaidExpensePDF('${batch.id}')" 
+                <button type="button" onclick="event.stopPropagation(); downloadPaidExpensePDF('${batch.id}')" 
                 class="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 touch-target">
                 <span class="material-symbols-outlined text-sm">download</span>
                 Download
                 </button>
                 ${totalPhotos > 0 ? `
-                <button onclick="event.stopPropagation(); viewPaidExpensePhotos('${batch.id}')" 
+                <button type="button" onclick="event.stopPropagation(); viewPaidExpensePhotos('${batch.id}')" 
                 class="py-2 px-4 bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 touch-target">
                 <span class="material-symbols-outlined text-sm">photo_camera</span>
                 ${totalPhotos}
