@@ -37,7 +37,7 @@
         import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, where, updateDoc, doc, deleteDoc, getDoc, getDocFromServer, setDoc, serverTimestamp, arrayUnion } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
-        import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
+        import { getStorage, ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
         
         // Firebase configuration
         const firebaseConfig = {
@@ -121,11 +121,13 @@
         window.signOut = signOut;
         window.ref = ref;
         window.uploadBytes = uploadBytes;
+        window.uploadBytesResumable = uploadBytesResumable;
         window.getDownloadURL = getDownloadURL;
         window.deleteObject = deleteObject;
         
         console.log('Firebase initialized successfully!');
     </script>
+    <script src="/js/expense-line-upload.js"></script>
     <script>
         // Helpers for photo display: only count/show valid image URLs (avoids wrong counts and black images)
         function getValidPhotoCount(exp) {
@@ -820,6 +822,7 @@
                 placeholder="AB12 ABC"
                 class="reg-input"
                 maxlength="9"
+                onblur="handleRegInputBlur()"
                 >
                 </div>
                 
@@ -830,6 +833,7 @@
                 type="date" 
                 id="collectionDateInput" 
                 class="w-full bg-[#283039] text-white text-center px-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none"
+                onchange="handleCollectionDateInputChange()"
                 >
                 </div>
 
@@ -1041,6 +1045,8 @@
         let batchIdsGreyedUntilUploadDone = new Set();
         /** Debounce timer for displayBatches to prevent flickering */
         let displayBatchesTimer = null;
+        /** Resumable main-thread uploads; legacy SW/IndexedDB queue is bypassed. */
+        window.USE_EXPENSE_DIRECT_UPLOAD = true;
         /** Enable grey-debug: add ?greyDebug=1 to URL or set window.__driverExpensesGreyDebug = true, then open console */
         function greyDebugEnabled() {
             if (typeof window === 'undefined') return false;
@@ -1432,10 +1438,10 @@
                     await window.updateDoc(window.doc(window.db, 'expenseBatches', batchId), batchData);
                     console.log('[syncDraftToFirestore] Updated batch with lines:', batchId);
                 }
-                // Enqueue photo uploads only AFTER batch exists (atomic: all-or-nothing)
+                // Enqueue photo uploads (legacy SW queue) — skipped when using direct resumable uploads
                 let enqueuedUploadCount = 0;
                 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                if (!isLocalhost && window.expenseUploadQueue) {
+                if (!window.USE_EXPENSE_DIRECT_UPLOAD && !isLocalhost && window.expenseUploadQueue) {
                     const reg = (draft.registration || '').trim();
                     const submissionDate = targetStatus === 'pending' ? (() => {
                         const d = draft.submittedAt ? new Date(typeof draft.submittedAt.toDate === 'function' ? draft.submittedAt.toDate() : draft.submittedAt) : new Date();
@@ -1499,6 +1505,176 @@
                 throw syncError;
             }
         }
+
+        var _ensureDraftPromise = null;
+        async function ensureServerDraftForCurrentBatch() {
+            if (!window.USE_EXPENSE_DIRECT_UPLOAD) return;
+            if (!currentUser || !currentBatch) return;
+            if (currentBatch.id) return;
+            var regEl = document.getElementById('regInput');
+            var reg = regEl ? regEl.value.trim().toUpperCase() : '';
+            if (reg.length < 2) {
+                notifyWarning('Enter a valid registration (at least 2 characters) before adding expenses.', 'Registration required');
+                throw new Error('Registration required');
+            }
+            if (!navigator.onLine) {
+                notifyError('You need an internet connection to save this expense batch.', 'Offline');
+                throw new Error('offline');
+            }
+            if (_ensureDraftPromise) return _ensureDraftPromise;
+            _ensureDraftPromise = (async function () {
+                try {
+                    currentBatch.registration = reg;
+                    var dateEl = document.getElementById('collectionDateInput');
+                    if (dateEl && dateEl.value) currentBatch.collectionDate = dateEl.value;
+                    await syncDraftToFirestore(currentBatch, 'draft');
+                } finally {
+                    _ensureDraftPromise = null;
+                }
+            })();
+            return _ensureDraftPromise;
+        }
+
+        async function handleRegInputBlur() {
+            if (!window.USE_EXPENSE_DIRECT_UPLOAD) return;
+            if (!currentBatch || currentBatch.id) return;
+            var regEl = document.getElementById('regInput');
+            var reg = regEl ? regEl.value.trim().toUpperCase() : '';
+            if (!reg || reg.length < 2) return;
+            if (!navigator.onLine) return;
+            try {
+                currentBatch.registration = reg;
+                var dateEl = document.getElementById('collectionDateInput');
+                if (dateEl && dateEl.value) currentBatch.collectionDate = dateEl.value;
+                await syncDraftToFirestore(currentBatch, 'draft');
+            } catch (e) {
+                console.warn('[handleRegInputBlur]', e);
+            }
+        }
+
+        async function handleCollectionDateInputChange() {
+            if (!window.USE_EXPENSE_DIRECT_UPLOAD) return;
+            if (!currentBatch || !currentBatch.id) return;
+            var el = document.getElementById('collectionDateInput');
+            if (!el || !el.value) return;
+            currentBatch.collectionDate = el.value;
+            try {
+                if (window.ensureFirebaseAuthReady) await window.ensureFirebaseAuthReady();
+                if (window.auth && window.auth.currentUser) await window.auth.currentUser.getIdToken(true);
+                await window.updateDoc(window.doc(window.db, 'expenseBatches', currentBatch.id), {
+                    collectionDate: el.value,
+                    updatedAt: window.serverTimestamp()
+                });
+            } catch (e) {
+                console.warn('[handleCollectionDateInputChange]', e);
+            }
+        }
+
+        function markLineUploadActive() {
+            window.isUploadingExpense = !!(window.ExpenseLineUpload && window.ExpenseLineUpload.hasActive && window.ExpenseLineUpload.hasActive());
+        }
+
+        function stripLinesWithPendingFileUploads() {
+            if (!currentBatch || !currentBatch.lines) return;
+            var keys = Object.keys(currentBatch.lines);
+            for (var i = 0; i < keys.length; i++) {
+                var k = keys[i];
+                var line = currentBatch.lines[k];
+                if (!line || !Array.isArray(line.photos)) continue;
+                var hasBlob = line.photos.some(function (p) { return p instanceof File || p instanceof Blob; });
+                var hasUrl = line.photos.some(function (p) { return typeof p === 'string' && p.indexOf('http') === 0; });
+                if (hasBlob && hasUrl) {
+                    currentBatch.lines[k].photos = line.photos.filter(function (p) { return typeof p === 'string'; });
+                } else if (hasBlob && !hasUrl) {
+                    currentBatch.lines[k] = { amount: 0, photos: [] };
+                    if (currentBatch.lineOrder) {
+                        currentBatch.lineOrder = currentBatch.lineOrder.filter(function (x) { return x !== k; });
+                    }
+                }
+            }
+        }
+
+        async function pushLineMetadataForDirectUpload(lineKey) {
+            if (!currentBatch || !currentBatch.id || !lineKey) return;
+            var line = currentBatch.lines[lineKey];
+            if (!line) return;
+            var batchRef = window.doc(window.db, 'expenseBatches', currentBatch.id);
+            var snap;
+            try {
+                snap = typeof window.getDocFromServer === 'function' ? await window.getDocFromServer(batchRef) : await window.getDoc(batchRef);
+            } catch (e) {
+                snap = await window.getDoc(batchRef);
+            }
+            if (!snap.exists()) return;
+            var data = snap.data();
+            var lines = {};
+            var k;
+            for (k in (data.lines || {})) {
+                if (Object.prototype.hasOwnProperty.call(data.lines, k)) {
+                    lines[k] = Object.assign({}, data.lines[k]);
+                }
+            }
+            var amount = typeof line.amount === 'number' && !isNaN(line.amount) ? line.amount : 0;
+            var urlOnly = (line.photos || []).filter(function (p) { return typeof p === 'string' && (window.isValidPhotoURL ? window.isValidPhotoURL(p) : p.indexOf('http') === 0); });
+            var prev = lines[lineKey] || { amount: 0, photos: [] };
+            lines[lineKey] = Object.assign({}, prev, { amount: amount, photos: (window.dedupePhotoURLsByPath ? window.dedupePhotoURLsByPath(urlOnly) : urlOnly), photosUploading: true });
+            await window.updateDoc(batchRef, { lines: lines, updatedAt: window.serverTimestamp() });
+        }
+
+        async function startDirectUploadForLineKey(lineKey) {
+            if (!window.USE_EXPENSE_DIRECT_UPLOAD || !window.ExpenseLineUpload) return;
+            var line = currentBatch && currentBatch.lines && currentBatch.lines[lineKey];
+            if (!line) return;
+            var origUrls = (line.photos || []).filter(function (p) { return typeof p === 'string' && (window.isValidPhotoURL ? window.isValidPhotoURL(p) : (p && p.indexOf('http') === 0)); });
+            var fileBlobs = (line.photos || []).filter(function (p) { return p instanceof File || p instanceof Blob; });
+            if (fileBlobs.length === 0) return;
+            try {
+                await ensureServerDraftForCurrentBatch();
+            } catch (e) {
+                return;
+            }
+            if (!currentBatch || !currentBatch.id) return;
+            try {
+                if (window.ensureFirebaseAuthReady) await window.ensureFirebaseAuthReady();
+                if (window.auth && window.auth.currentUser) await window.auth.currentUser.getIdToken(true);
+                await pushLineMetadataForDirectUpload(lineKey);
+            } catch (metaErr) {
+                console.warn('[startDirectUploadForLineKey] metadata', metaErr);
+            }
+            var cat = (EXPENSE_BATCH_SCHEMA && EXPENSE_BATCH_SCHEMA.getCategoryGroup) ? EXPENSE_BATCH_SCHEMA.getCategoryGroup(lineKey) : 'other';
+            var reg = (currentBatch.registration || '').trim();
+            window.ExpenseLineUpload.startUploadForLine({
+                batchId: currentBatch.id,
+                lineKey: lineKey,
+                registration: reg,
+                categorySlug: cat || 'other',
+                blobs: fileBlobs,
+                onLineUpdated: function (allUrls) {
+                    if (!currentBatch || !currentBatch.lines[lineKey]) return;
+                    if (allUrls.length >= fileBlobs.length) {
+                        currentBatch.lines[lineKey].photos = origUrls.concat(allUrls);
+                    } else {
+                        currentBatch.lines[lineKey].photos = origUrls.concat(allUrls).concat(fileBlobs.slice(allUrls.length));
+                    }
+                    markLineUploadActive();
+                    if (typeof renderLines === 'function') renderLines();
+                }
+            });
+            markLineUploadActive();
+        }
+
+        window.onExpenseLineUploadStateChange = function () {
+            markLineUploadActive();
+            if (typeof renderLines === 'function') renderLines();
+        };
+
+        window.retryLineUpload = function (lineKey) {
+            if (!lineKey) return;
+            if (window.ExpenseLineUpload && window.ExpenseLineUpload.clearLineState) {
+                window.ExpenseLineUpload.clearLineState(lineKey);
+            }
+            startDirectUploadForLineKey(lineKey);
+        };
 
         async function processSubmissionQueue(options = {}) {
             const { showToast = true } = options;
@@ -1999,6 +2175,11 @@
         document.addEventListener('touchstart', markUserInteracted, { once: true });
         window.addEventListener('beforeunload', (e) => {
             if (!userHasInteracted) return;
+            if (window.USE_EXPENSE_DIRECT_UPLOAD && window.ExpenseLineUpload && window.ExpenseLineUpload.hasActive && window.ExpenseLineUpload.hasActive()) {
+                e.preventDefault();
+                e.returnValue = 'Receipt photos are still uploading. Leave anyway?';
+                return e.returnValue;
+            }
             const banner = document.getElementById('uploadBanner');
             if (banner && !banner.classList.contains('hidden')) {
                 e.preventDefault();
@@ -2440,6 +2621,10 @@
             `;
             const totalEl = document.getElementById('totalAmount');
             if (totalEl) totalEl.textContent = '£0.00';
+            if (window.USE_EXPENSE_DIRECT_UPLOAD && window.ExpenseLineUpload && window.ExpenseLineUpload.hasActive && window.ExpenseLineUpload.hasActive()) {
+                notifyWarning('Please wait for receipt photos to finish uploading before starting a new batch.', 'Upload in Progress');
+                return;
+            }
             if (window.isUploadingExpense) {
                 notifyWarning('Please wait for the current upload to complete before creating a new batch.', 'Upload in Progress');
                 return;
@@ -2450,6 +2635,10 @@
 
         // Open existing batch (supports merged .lines and legacy .expenses)
         async function openBatch(batchId) {
+            if (window.USE_EXPENSE_DIRECT_UPLOAD && window.ExpenseLineUpload && window.ExpenseLineUpload.hasActive && window.ExpenseLineUpload.hasActive()) {
+                notifyWarning('Please wait for receipt uploads to finish before opening another batch.', 'Upload in Progress');
+                return;
+            }
             if (window.isUploadingExpense) {
                 notifyWarning('Please wait for the current upload to complete before opening this batch.', 'Upload in Progress');
                 return;
@@ -2767,10 +2956,17 @@
                 })
                 : window.confirm('Remove "' + label + '" and its photos from this batch?');
             if (!confirmed) return;
+            if (window.ExpenseLineUpload && typeof window.ExpenseLineUpload.clearLineState === 'function') {
+                window.ExpenseLineUpload.clearLineState(lineKey);
+            }
             currentBatch.lines[lineKey] = { amount: 0, photos: [] };
             if (currentBatch.lineOrder) currentBatch.lineOrder = currentBatch.lineOrder.filter(k => k !== lineKey);
             renderLines();
-            if (window.scheduleAutoSave) window.scheduleAutoSave();
+            if (currentBatch.id && window.USE_EXPENSE_DIRECT_UPLOAD) {
+                void syncDraftToFirestore(currentBatch, 'draft').catch(function (e) { console.warn('[clearLine] sync', e); });
+            } else if (window.scheduleAutoSave) {
+                window.scheduleAutoSave();
+            }
         }
         function openLinePhotoGallery(lineKey) {
             var line = currentBatch && currentBatch.lines && currentBatch.lines[lineKey];
@@ -2832,7 +3028,10 @@
                 var prefix = getCategoryGroup(lineKey) || 'other';
                 var emoji = categoryEmojisLines[prefix] || '📝';
                 var label = getCategoryLabel(lineKey);
-                html += '<div class="bg-[#283039] rounded-lg p-3 flex items-center justify-between gap-2" data-line-key="' + lineKey + '">';
+                var up = (window.USE_EXPENSE_DIRECT_UPLOAD && window.ExpenseLineUpload) ? window.ExpenseLineUpload.getState(lineKey) : null;
+                var stalled = up && (up.status === 'stalled' || up.status === 'error');
+                var lineWrapClass = 'bg-[#283039] rounded-lg p-3 flex items-center justify-between gap-2' + (stalled ? ' opacity-50' : '');
+                html += '<div class="' + lineWrapClass + '" data-line-key="' + lineKey + '">';
                 html += '<div class="flex items-center gap-3 min-w-0 flex-shrink-0">';
                 html += '<span class="text-2xl flex-shrink-0">' + emoji + '</span>';
                 html += '<div class="min-w-0">';
@@ -2859,6 +3058,14 @@
                     html += '<button type="button" onclick="clearLine(\'' + lineKey + '\')" class="text-red-500 hover:text-red-400 transition-colors" title="Clear line"><span class="material-symbols-outlined">delete</span></button>';
                 }
                 html += '</div></div>';
+                if (window.USE_EXPENSE_DIRECT_UPLOAD && up && up.status === 'uploading') {
+                    var pct = (typeof up.progress === 'number' ? up.progress : 0);
+                    html += '<div class="w-full h-1.5 bg-gray-800 rounded overflow-hidden" data-line-upload-bar="' + lineKey + '"><div class="h-full bg-blue-500 transition-all duration-150" style="width:' + pct + '%"></div></div>';
+                }
+                if (window.USE_EXPENSE_DIRECT_UPLOAD && stalled) {
+                    html += '<div class="flex items-center justify-between gap-2 mt-1 w-full flex-wrap"><span class="text-xs text-amber-400">Upload failed or timed out. You can retry.</span>';
+                    html += '<button type="button" onclick="retryLineUpload(\'' + lineKey + '\')" class="text-xs font-semibold px-3 py-1 rounded bg-amber-600 text-white">Retry upload</button></div>';
+                }
             });
             if (html === '') {
                 container.innerHTML = '<p class="text-gray-500 text-center py-4">No expenses added yet</p>';
@@ -2967,7 +3174,11 @@
             }
             currentBatch.lines[pending.lineKey].photos = photos.filter(Boolean);
             renderLines();
-            if (window.scheduleAutoSave) window.scheduleAutoSave();
+            if (window.USE_EXPENSE_DIRECT_UPLOAD) {
+                void startDirectUploadForLineKey(pending.lineKey);
+            } else if (window.scheduleAutoSave) {
+                window.scheduleAutoSave();
+            }
         }
 
         // Helper function to ensure expense modal has no border classes
@@ -3399,7 +3610,7 @@
         }
 
         // Save expense
-        function saveExpense() {
+        async function saveExpense() {
             if (!currentExpense.category) {
         notifyWarning('Please select a category.', 'Missing Category');
                 return;
@@ -3436,6 +3647,17 @@
                     notifyWarning('Please add at least one receipt photo.', 'Photo Required');
                     return;
                 }
+                if (window.USE_EXPENSE_DIRECT_UPLOAD) {
+                    if (!navigator.onLine) {
+                        notifyError('An internet connection is required to add expenses with receipt photos.', 'Offline');
+                        return;
+                    }
+                    try {
+                        await ensureServerDraftForCurrentBatch();
+                    } catch (e) {
+                        return;
+                    }
+                }
                 var catMap = { fuel: 'fuel', charge: 'charge', train: 'train', bus: 'bus', taxi: 'taxi', 'car wash': 'carWash', tolls: 'toll', toll: 'toll', other: 'other' };
                 var norm = (currentExpense.category || '').trim().toLowerCase().replace(/\s+/g, ' ');
                 var prefix = catMap[norm] || catMap[norm.replace(/\s+/g, '')] || 'other';
@@ -3464,7 +3686,11 @@
                 window.isUserTyping = false;
                 closeExpenseModal();
                 renderLines();
-                if (window.scheduleAutoSave) window.scheduleAutoSave();
+                if (window.USE_EXPENSE_DIRECT_UPLOAD) {
+                    void startDirectUploadForLineKey(lineKey);
+                } else if (window.scheduleAutoSave) {
+                    window.scheduleAutoSave();
+                }
                 return;
             }
 
@@ -3585,6 +3811,25 @@
             
             // Get collection date
             const collectionDate = document.getElementById('collectionDateInput').value;
+
+            if (window.USE_EXPENSE_DIRECT_UPLOAD && window.ExpenseLineUpload && window.ExpenseLineUpload.hasActive()) {
+                const lose = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
+                    title: 'Uploads in progress',
+                    message: 'Some receipt photos are still uploading. If you save the draft now, in-flight uploads will be cancelled. Any photos that have not finished uploading will be lost.\n\nYou can wait for the progress bars, or continue and keep only what has already been uploaded to the server.',
+                    confirmText: 'Continue without in-flight photos',
+                    cancelText: 'Wait',
+                    tone: 'danger'
+                }) : window.confirm('Uploads in progress. Continue and lose in-flight photos?');
+                if (!lose) {
+                    return;
+                }
+                window.ExpenseLineUpload.cancelAll();
+                stripLinesWithPendingFileUploads();
+                if (typeof renderLines === 'function') renderLines();
+                if (window.ExpenseLineUpload && typeof window.ExpenseLineUpload.resetAll === 'function') {
+                    window.ExpenseLineUpload.resetAll();
+                }
+            }
 
             // Confirmation dialog (skip when closing with "Save Draft" - user already confirmed)
             if (!skipConfirmation) {
@@ -3770,8 +4015,25 @@
                 return;
             }
 
-            // Photos will be uploaded synchronously in saveExpenses before expenses are saved
-            // No need to check for pending uploads here
+            if (window.USE_EXPENSE_DIRECT_UPLOAD) {
+                if (window.ExpenseLineUpload && window.ExpenseLineUpload.hasActive()) {
+                    notifyError('Not all receipt photos have finished uploading. Please wait for the progress bars to complete, then try again.', 'Uploads in progress');
+                    return;
+                }
+                var hasLocalBlob = false;
+                if (currentBatch.lines) {
+                    Object.keys(currentBatch.lines).forEach(function (k) {
+                        var ln = currentBatch.lines[k];
+                        if (ln && ln.photos && ln.photos.some(function (p) { return p instanceof File || p instanceof Blob; })) {
+                            hasLocalBlob = true;
+                        }
+                    });
+                }
+                if (hasLocalBlob) {
+                    notifyError('Some receipt photos are still on this device. Wait for uploads to finish, then submit.', 'Uploads not complete');
+                    return;
+                }
+            }
 
             const confirmed = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
                 title: 'Submit for Processing',
@@ -4004,6 +4266,9 @@
             if (!reg || typeof reg !== 'string') return '';
             return reg.replace(/[/\\]/g, '_').trim() || '';
         }
+        if (typeof window !== 'undefined') {
+            window.sanitizeRegForStoragePath = sanitizeRegForStoragePath;
+        }
 
         // Helper function to extract storage path from Firebase Storage download URL
         function extractStoragePathFromURL(downloadURL) {
@@ -4068,83 +4333,96 @@
             if (updated && currentBatch === batch && typeof renderLines === 'function') renderLines();
         }
 
-        // Delete batch
-        async function deleteBatch() {
-             const confirmed = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
-                title: 'Delete Expense Batch',
-                message: 'Delete this expense batch? This cannot be undone.',
-                confirmText: 'Delete Batch',
-                cancelText: 'Cancel',
-                tone: 'danger'
-             }) : window.confirm('Delete this expense batch? This cannot be undone.');
-             if (!confirmed) {
-                return;
-             }
- 
-             try {
-                const deletedId = currentBatch?.id || null;
-                const deletedLocalId = currentBatch?.localId || null;
-                const localCopy = currentBatch;
-                const photoDeletePromises = [];
+        /**
+         * Delete a batch document and its Storage images; update local list. Does not clear currentBatch.
+         * Used by Delete button and by close (X) discard flow. Clarifying copy is left to the caller.
+         */
+        async function runDeleteBatchCore(batch) {
+            if (!batch || !batch.id) return;
+            const deletedId = batch.id;
+            const deletedLocalId = batch.localId || null;
+            const localCopy = batch;
+            if (window.ExpenseLineUpload && typeof window.ExpenseLineUpload.cancelAll === 'function') {
+                window.ExpenseLineUpload.cancelAll();
+            }
+            const photoDeletePromises = [];
 
-                for (const line of Object.values(currentBatch.lines || {})) {
-                    if (line && Array.isArray(line.photos)) {
-                        for (const photoURL of line.photos) {
-                            if (typeof photoURL === 'string' && photoURL.startsWith('http')) {
-                                try {
-                                    const storagePath = extractStoragePathFromURL(photoURL);
-                                    if (storagePath) {
-                                        const photoRef = window.ref(window.storage, storagePath);
-                                        photoDeletePromises.push(window.deleteObject(photoRef).catch(err => { console.warn('[deleteBatch] Photo delete failed', err); }));
-                                    }
-                                } catch (e) { console.warn('[deleteBatch] URL parse failed', e); }
-                            }
+            for (const line of Object.values(batch.lines || {})) {
+                if (line && Array.isArray(line.photos)) {
+                    for (const photoURL of line.photos) {
+                        if (typeof photoURL === 'string' && photoURL.startsWith('http')) {
+                            try {
+                                const storagePath = extractStoragePathFromURL(photoURL);
+                                if (storagePath) {
+                                    const photoRef = window.ref(window.storage, storagePath);
+                                    photoDeletePromises.push(window.deleteObject(photoRef).catch(err => { console.warn('[deleteBatch] Photo delete failed', err); }));
+                                }
+                            } catch (e) { console.warn('[deleteBatch] URL parse failed', e); }
                         }
                     }
                 }
+            }
 
-                await Promise.allSettled(photoDeletePromises);
-                await window.deleteDoc(window.doc(window.db, 'expenseBatches', currentBatch.id));
+            await Promise.allSettled(photoDeletePromises);
+            await window.deleteDoc(window.doc(window.db, 'expenseBatches', batch.id));
 
-                // Clean up upload queue for this batch
-                if (window.expenseUploadQueue && deletedId) {
-                    try {
-                        await window.expenseUploadQueue.cleanupBatchUploads(deletedId);
-                        console.log('[deleteDraft] Cleaned up upload queue for batch:', deletedId);
-                    } catch (error) {
-                        console.warn('[deleteDraft] Failed to cleanup upload queue:', error);
-                    }
-                }
- 
-                if (deletedLocalId) {
-                removeSubmissionQueueEntry(deletedLocalId);
-                }
-                if (window.expenseDraftDB && deletedLocalId) {
+            if (window.expenseUploadQueue && deletedId) {
                 try {
-                await window.expenseDraftDB.deleteDraft(deletedLocalId);
+                    await window.expenseUploadQueue.cleanupBatchUploads(deletedId);
                 } catch (error) {
-                console.warn('Unable to remove draft from offline storage:', error);
+                    console.warn('[deleteDraft] Failed to cleanup upload queue:', error);
                 }
+            }
+
+            if (deletedLocalId) {
+                removeSubmissionQueueEntry(deletedLocalId);
+            }
+            if (window.expenseDraftDB && deletedLocalId) {
+                try {
+                    await window.expenseDraftDB.deleteDraft(deletedLocalId);
+                } catch (error) {
+                    console.warn('Unable to remove draft from offline storage:', error);
                 }
-                if (localCopy) {
-                allBatches = allBatches.filter((batch) => {
-                if (deletedId && batch.id) {
-                return batch.id !== deletedId;
-                }
-                if (deletedLocalId && batch.localId) {
-                return batch.localId !== deletedLocalId;
-                }
-                return batch.id !== localCopy.id;
+            }
+            if (localCopy) {
+                allBatches = allBatches.filter((b) => {
+                    if (deletedId && b.id) {
+                        return b.id !== deletedId;
+                    }
+                    if (deletedLocalId && b.localId) {
+                        return b.localId !== deletedLocalId;
+                    }
+                    return b.id !== localCopy.id;
                 });
                 displayBatches();
-                }
- 
+            }
+        }
+
+        // Delete batch
+        async function deleteBatch() {
+            const confirmed = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
+                title: 'Delete Expense Batch',
+                message: 'This will permanently remove this batch and delete all receipt images stored in Firebase for it. This cannot be undone.',
+                confirmText: 'Delete batch',
+                cancelText: 'Cancel',
+                tone: 'danger'
+            }) : window.confirm('Delete this expense batch? This cannot be undone.');
+            if (!confirmed) {
+                return;
+            }
+
+            try {
+                await runDeleteBatchCore(currentBatch);
                 notifySuccess('Batch deleted successfully.', 'Batch Deleted');
-                closeBatchModal();
+                document.getElementById('batchModal').classList.add('hidden');
+                document.body.style.overflow = '';
+                currentBatch = null;
+                window.currentBatch = null;
+                window.isUploadingExpense = false;
                 await loadExpenseBatches();
-             } catch (error) {
+            } catch (error) {
                 console.error('Error deleting batch:', error);
-             notifyError('Error deleting batch. Please try again.');
+                notifyError('Error deleting batch. Please try again.');
             }
         }
 
@@ -4384,39 +4662,71 @@
             return false;
         }
 
-        // Close modals
+        // Close modals (X) — user chose to always discard: unsaved = drop local; saved batch = delete from server and Storage
         async function closeBatchModal() {
-            // Prevent closing during upload
-            if (window.isUploadingExpense) {
+            if (window.USE_EXPENSE_DIRECT_UPLOAD && window.ExpenseLineUpload && window.ExpenseLineUpload.hasActive()) {
+                const stop = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
+                    title: 'Stop uploads?',
+                    message: 'Receipt photos are still uploading. Close anyway? In-flight uploads will be cancelled.',
+                    confirmText: 'Close and cancel uploads',
+                    cancelText: 'Wait',
+                    tone: 'warning'
+                }) : window.confirm('Uploads in progress. Close anyway?');
+                if (!stop) {
+                    return;
+                }
+                window.ExpenseLineUpload.cancelAll();
+            } else if (window.isUploadingExpense) {
                 notifyWarning('Please wait for the upload to complete before closing.', 'Upload in Progress');
                 return;
             }
 
-            // Check if there are unsaved changes
-            if (hasUnsavedChanges()) {
-                // Show custom modal: grey Save Draft, red Discard
-                const shouldSave = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
-                    title: 'Save Draft?',
-                    message: 'You have unsaved changes. Save them as a draft before closing?',
-                    confirmText: 'Save Draft',
-                    cancelText: 'Discard',
-                    tone: 'saveDraftOrDiscard'
-                }) : window.confirm('You have unsaved changes. Save them as a draft before closing?');
-                if (shouldSave) {
-                    // User chose Save Draft: save directly without showing the "Are you sure?" dialog again
-                    await saveDraft(true);
-                    return;
-                } else {
-                    // User wants to discard - close without saving
-                    document.getElementById('batchModal').classList.add('hidden');
-                    document.body.style.overflow = '';
-                    currentBatch = null;
-                }
-            } else {
-                // No unsaved changes, just close
+            if (!currentBatch) {
                 document.getElementById('batchModal').classList.add('hidden');
                 document.body.style.overflow = '';
+                return;
+            }
+
+            const hasServer = !!currentBatch.id;
+            const message = hasServer
+                ? 'This will permanently delete this expense batch and all receipt images stored in Firebase for it. The office will not see it. This cannot be undone. Are you sure you want to discard?'
+                : 'Discard this batch? Nothing has been saved to the server yet, or you can save as draft using the button below instead.';
+
+            const ok = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
+                title: 'Discard batch?',
+                message: message,
+                confirmText: 'Discard',
+                cancelText: 'Keep editing',
+                tone: 'danger'
+            }) : window.confirm(message);
+            if (!ok) {
+                return;
+            }
+
+            try {
+                if (hasServer) {
+                    if (window.ExpenseLineUpload && typeof window.ExpenseLineUpload.resetAll === 'function') {
+                        window.ExpenseLineUpload.resetAll();
+                    }
+                    await runDeleteBatchCore(currentBatch);
+                } else {
+                    if (window.ExpenseLineUpload && typeof window.ExpenseLineUpload.resetAll === 'function') {
+                        window.ExpenseLineUpload.resetAll();
+                    }
+                }
                 currentBatch = null;
+                window.currentBatch = null;
+                document.getElementById('batchModal').classList.add('hidden');
+                document.body.style.overflow = '';
+                window.isUploadingExpense = false;
+                if (hasServer) {
+                    await loadExpenseBatches();
+                } else {
+                    displayBatches();
+                }
+            } catch (e) {
+                console.error('closeBatchModal discard failed', e);
+                notifyError('Could not discard the batch. Please try again.');
             }
         }
         
