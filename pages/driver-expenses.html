@@ -824,6 +824,10 @@
                 maxlength="9"
                 onblur="handleRegInputBlur()"
                 >
+                <div id="regFieldSyncBar" class="hidden w-full h-1.5 bg-gray-800 rounded overflow-hidden mt-2" title="Saving registration to server...">
+                <div class="h-full w-full bg-orange-500 animate-pulse" style="animation-duration:1.2s"></div>
+                </div>
+                <p id="regFieldSyncHint" class="hidden text-xs text-orange-400/90 mt-1">Saving registration…</p>
                 </div>
                 
                 <!-- Collection Date -->
@@ -835,6 +839,10 @@
                 class="w-full bg-[#283039] text-white text-center px-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none"
                 onchange="handleCollectionDateInputChange()"
                 >
+                <div id="dateFieldSyncBar" class="hidden w-full h-1.5 bg-gray-800 rounded overflow-hidden mt-2" title="Saving collection date...">
+                <div class="h-full w-full bg-orange-500 animate-pulse" style="animation-duration:1.2s"></div>
+                </div>
+                <p id="dateFieldSyncHint" class="hidden text-xs text-orange-400/90 mt-1">Saving collection date…</p>
                 </div>
 
                 <!-- Communications Thread (if returned) -->
@@ -989,6 +997,14 @@
                 </div>
                 </div>
 
+                <!-- Shown on Save so upload progress is visible before this modal closes -->
+                <div id="expenseSaveProgressWrap" class="hidden mb-3 w-full" aria-live="polite">
+                <p class="text-xs text-orange-400/90 mb-1.5">Uploading receipt…</p>
+                <div class="w-full h-1.5 bg-gray-800 rounded overflow-hidden">
+                <div id="expenseSaveProgressBar" class="h-full w-full bg-orange-500 animate-pulse" style="animation-duration:1.2s"></div>
+                </div>
+                </div>
+
                 <!-- Save Button -->
                 <button id="saveExpenseBtn" onclick="saveExpense()" class="w-full animated-button animated-button-save touch-target">
                 <span class="text-white font-semibold">Save Expense</span>
@@ -1047,6 +1063,71 @@
         let displayBatchesTimer = null;
         /** Resumable main-thread uploads; legacy SW/IndexedDB queue is bypassed. */
         window.USE_EXPENSE_DIRECT_UPLOAD = true;
+        /** REG / collection date Firestore sync in flight (for orange bars + leave warnings). */
+        window.__batchFieldSyncing = { reg: 0, date: 0 };
+        function incBatchFieldSync(which) {
+            if (!window.__batchFieldSyncing) window.__batchFieldSyncing = { reg: 0, date: 0 };
+            if (which === 'reg' || which === 'date') window.__batchFieldSyncing[which] += 1;
+            updateBatchModalFieldProgressUI();
+        }
+        function decBatchFieldSync(which) {
+            if (!window.__batchFieldSyncing) return;
+            if (which === 'reg' || which === 'date') {
+                window.__batchFieldSyncing[which] = Math.max(0, window.__batchFieldSyncing[which] - 1);
+            }
+            updateBatchModalFieldProgressUI();
+        }
+        function isBatchFieldSyncing() {
+            var s = window.__batchFieldSyncing;
+            return !!(s && (s.reg > 0 || s.date > 0));
+        }
+        function updateBatchModalFieldProgressUI() {
+            var s = window.__batchFieldSyncing || { reg: 0, date: 0 };
+            var r = s.reg > 0;
+            var d = s.date > 0;
+            var barR = document.getElementById('regFieldSyncBar');
+            var barD = document.getElementById('dateFieldSyncBar');
+            var hintR = document.getElementById('regFieldSyncHint');
+            var hintD = document.getElementById('dateFieldSyncHint');
+            if (barR) barR.classList.toggle('hidden', !r);
+            if (barD) barD.classList.toggle('hidden', !d);
+            if (hintR) hintR.classList.toggle('hidden', !r);
+            if (hintD) hintD.classList.toggle('hidden', !d);
+        }
+        function hideDriverExpenseUploadBanner() {
+            var b = document.getElementById('uploadBanner');
+            if (b) b.classList.add('hidden');
+        }
+        function getDriverExpensesLeaveWarning() {
+            if (!window.USE_EXPENSE_DIRECT_UPLOAD) return null;
+            var line = window.ExpenseLineUpload && window.ExpenseLineUpload.hasActive && window.ExpenseLineUpload.hasActive();
+            var field = isBatchFieldSyncing();
+            if (!line && !field) return null;
+            if (line && field) {
+                return 'Receipt photos are still uploading and registration or collection date is still saving. If you leave now, the current upload or save may be lost.';
+            }
+            if (line) {
+                return 'Receipt photos are still uploading. If you leave now, the current upload may be lost.';
+            }
+            return 'Registration or collection date is still saving. If you leave now, that save may not complete.';
+        }
+        function waitForBatchFieldSyncSettled(maxMs) {
+            return new Promise(function (resolve) {
+                if (typeof isBatchFieldSyncing !== 'function' || !isBatchFieldSyncing()) {
+                    resolve();
+                    return;
+                }
+                var t = 0;
+                var step = 100;
+                var id = setInterval(function () {
+                    t += step;
+                    if (!isBatchFieldSyncing() || t >= maxMs) {
+                        clearInterval(id);
+                        resolve();
+                    }
+                }, step);
+            });
+        }
         /** Enable grey-debug: add ?greyDebug=1 to URL or set window.__driverExpensesGreyDebug = true, then open console */
         function greyDebugEnabled() {
             if (typeof window === 'undefined') return false;
@@ -1523,12 +1604,16 @@
             }
             if (_ensureDraftPromise) return _ensureDraftPromise;
             _ensureDraftPromise = (async function () {
+                incBatchFieldSync('reg');
+                incBatchFieldSync('date');
                 try {
                     currentBatch.registration = reg;
                     var dateEl = document.getElementById('collectionDateInput');
                     if (dateEl && dateEl.value) currentBatch.collectionDate = dateEl.value;
                     await syncDraftToFirestore(currentBatch, 'draft');
                 } finally {
+                    decBatchFieldSync('reg');
+                    decBatchFieldSync('date');
                     _ensureDraftPromise = null;
                 }
             })();
@@ -1542,6 +1627,8 @@
             var reg = regEl ? regEl.value.trim().toUpperCase() : '';
             if (!reg || reg.length < 2) return;
             if (!navigator.onLine) return;
+            incBatchFieldSync('reg');
+            incBatchFieldSync('date');
             try {
                 currentBatch.registration = reg;
                 var dateEl = document.getElementById('collectionDateInput');
@@ -1549,6 +1636,9 @@
                 await syncDraftToFirestore(currentBatch, 'draft');
             } catch (e) {
                 console.warn('[handleRegInputBlur]', e);
+            } finally {
+                decBatchFieldSync('reg');
+                decBatchFieldSync('date');
             }
         }
 
@@ -1558,6 +1648,7 @@
             var el = document.getElementById('collectionDateInput');
             if (!el || !el.value) return;
             currentBatch.collectionDate = el.value;
+            incBatchFieldSync('date');
             try {
                 if (window.ensureFirebaseAuthReady) await window.ensureFirebaseAuthReady();
                 if (window.auth && window.auth.currentUser) await window.auth.currentUser.getIdToken(true);
@@ -1567,6 +1658,8 @@
                 });
             } catch (e) {
                 console.warn('[handleCollectionDateInputChange]', e);
+            } finally {
+                decBatchFieldSync('date');
             }
         }
 
@@ -1628,6 +1721,11 @@
             var origUrls = (line.photos || []).filter(function (p) { return typeof p === 'string' && (window.isValidPhotoURL ? window.isValidPhotoURL(p) : (p && p.indexOf('http') === 0)); });
             var fileBlobs = (line.photos || []).filter(function (p) { return p instanceof File || p instanceof Blob; });
             if (fileBlobs.length === 0) return;
+            if (window.ExpenseLineUpload.setLineUploadingImmediate) {
+                window.ExpenseLineUpload.setLineUploadingImmediate(lineKey);
+            }
+            markLineUploadActive();
+            if (typeof renderLines === 'function') renderLines();
             try {
                 await ensureServerDraftForCurrentBatch();
             } catch (e) {
@@ -2175,16 +2273,25 @@
         document.addEventListener('touchstart', markUserInteracted, { once: true });
         window.addEventListener('beforeunload', (e) => {
             if (!userHasInteracted) return;
-            if (window.USE_EXPENSE_DIRECT_UPLOAD && window.ExpenseLineUpload && window.ExpenseLineUpload.hasActive && window.ExpenseLineUpload.hasActive()) {
-                e.preventDefault();
-                e.returnValue = 'Receipt photos are still uploading. Leave anyway?';
-                return e.returnValue;
-            }
-            const banner = document.getElementById('uploadBanner');
-            if (banner && !banner.classList.contains('hidden')) {
-                e.preventDefault();
-                e.returnValue = 'You have expenses uploading. Are you sure you want to leave?';
-                return e.returnValue;
+            if (window.USE_EXPENSE_DIRECT_UPLOAD && typeof getDriverExpensesLeaveWarning === 'function') {
+                const w = getDriverExpensesLeaveWarning();
+                if (w) {
+                    e.preventDefault();
+                    e.returnValue = w;
+                    return e.returnValue;
+                }
+            } else {
+                if (window.ExpenseLineUpload && window.ExpenseLineUpload.hasActive && window.ExpenseLineUpload.hasActive()) {
+                    e.preventDefault();
+                    e.returnValue = 'Receipt photos are still uploading. Leave anyway?';
+                    return e.returnValue;
+                }
+                const banner = document.getElementById('uploadBanner');
+                if (banner && !banner.classList.contains('hidden')) {
+                    e.preventDefault();
+                    e.returnValue = 'You have expenses uploading. Are you sure you want to leave?';
+                    return e.returnValue;
+                }
             }
         });
  
@@ -2625,6 +2732,10 @@
                 notifyWarning('Please wait for receipt photos to finish uploading before starting a new batch.', 'Upload in Progress');
                 return;
             }
+            if (window.USE_EXPENSE_DIRECT_UPLOAD && typeof isBatchFieldSyncing === 'function' && isBatchFieldSyncing()) {
+                notifyWarning('Please wait for registration or collection date to finish saving before starting a new batch.', 'Save in Progress');
+                return;
+            }
             if (window.isUploadingExpense) {
                 notifyWarning('Please wait for the current upload to complete before creating a new batch.', 'Upload in Progress');
                 return;
@@ -2637,6 +2748,10 @@
         async function openBatch(batchId) {
             if (window.USE_EXPENSE_DIRECT_UPLOAD && window.ExpenseLineUpload && window.ExpenseLineUpload.hasActive && window.ExpenseLineUpload.hasActive()) {
                 notifyWarning('Please wait for receipt uploads to finish before opening another batch.', 'Upload in Progress');
+                return;
+            }
+            if (window.USE_EXPENSE_DIRECT_UPLOAD && typeof isBatchFieldSyncing === 'function' && isBatchFieldSyncing()) {
+                notifyWarning('Please wait for registration or collection date to finish saving before opening another batch.', 'Save in Progress');
                 return;
             }
             if (window.isUploadingExpense) {
@@ -3030,7 +3145,8 @@
                 var label = getCategoryLabel(lineKey);
                 var up = (window.USE_EXPENSE_DIRECT_UPLOAD && window.ExpenseLineUpload) ? window.ExpenseLineUpload.getState(lineKey) : null;
                 var stalled = up && (up.status === 'stalled' || up.status === 'error');
-                var lineWrapClass = 'bg-[#283039] rounded-lg p-3 flex items-center justify-between gap-2' + (stalled ? ' opacity-50' : '');
+                var pendingUpload = up && up.status === 'uploading';
+                var lineWrapClass = 'bg-[#283039] rounded-lg p-3 flex items-center justify-between gap-2' + ((stalled || pendingUpload) ? ' opacity-50' : '');
                 html += '<div class="' + lineWrapClass + '" data-line-key="' + lineKey + '">';
                 html += '<div class="flex items-center gap-3 min-w-0 flex-shrink-0">';
                 html += '<span class="text-2xl flex-shrink-0">' + emoji + '</span>';
@@ -3048,7 +3164,7 @@
                     var count = Math.min(photoCount, 4);
                     html += '<button type="button" onclick="openLinePhotoGallery(\'' + lineKey + '\')" class="w-9 h-9 rounded-lg border border-gray-600 flex-shrink-0 flex items-center justify-center bg-[#1e252b] hover:bg-[#283039] focus:outline-none focus:ring-2 focus:ring-blue-400 relative" title="' + count + ' photo' + (count !== 1 ? 's' : '') + '">';
                     html += '<span class="material-symbols-outlined text-gray-400 text-xl">photo_camera</span>';
-                    html += '<span class="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] rounded-full bg-blue-500 text-white text-[10px] font-semibold flex items-center justify-center">' + count + '</span>';
+                    html += '<span class="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] rounded-full bg-orange-500 text-white text-[10px] font-semibold flex items-center justify-center">' + count + '</span>';
                     html += '</button>';
                 }
                 if (currentBatch.status === 'returned') {
@@ -3060,7 +3176,7 @@
                 html += '</div></div>';
                 if (window.USE_EXPENSE_DIRECT_UPLOAD && up && up.status === 'uploading') {
                     var pct = (typeof up.progress === 'number' ? up.progress : 0);
-                    html += '<div class="w-full h-1.5 bg-gray-800 rounded overflow-hidden" data-line-upload-bar="' + lineKey + '"><div class="h-full bg-blue-500 transition-all duration-150" style="width:' + pct + '%"></div></div>';
+                    html += '<div class="w-full h-1.5 bg-gray-800 rounded overflow-hidden" data-line-upload-bar="' + lineKey + '"><div class="h-full bg-orange-500 transition-all duration-150" style="width:' + pct + '%"></div></div>';
                 }
                 if (window.USE_EXPENSE_DIRECT_UPLOAD && stalled) {
                     html += '<div class="flex items-center justify-between gap-2 mt-1 w-full flex-wrap"><span class="text-xs text-amber-400">Upload failed or timed out. You can retry.</span>';
@@ -3684,12 +3800,31 @@
                 if (!currentBatch.lineOrder.includes(lineKey)) currentBatch.lineOrder.push(lineKey);
                 window.currentBatch = currentBatch;
                 window.isUserTyping = false;
-                closeExpenseModal();
-                renderLines();
                 if (window.USE_EXPENSE_DIRECT_UPLOAD) {
-                    void startDirectUploadForLineKey(lineKey);
-                } else if (window.scheduleAutoSave) {
-                    window.scheduleAutoSave();
+                    var pwrap = document.getElementById('expenseSaveProgressWrap');
+                    var sbtn = document.getElementById('saveExpenseBtn');
+                    if (pwrap) pwrap.classList.remove('hidden');
+                    if (sbtn) sbtn.disabled = true;
+                    if (window.ExpenseLineUpload && window.ExpenseLineUpload.setLineUploadingImmediate) {
+                        window.ExpenseLineUpload.setLineUploadingImmediate(lineKey);
+                    }
+                    markLineUploadActive();
+                    renderLines();
+                    requestAnimationFrame(function () {
+                        requestAnimationFrame(function () {
+                            if (pwrap) pwrap.classList.add('hidden');
+                            if (sbtn) sbtn.disabled = false;
+                            closeExpenseModal();
+                            renderLines();
+                            void startDirectUploadForLineKey(lineKey);
+                        });
+                    });
+                } else {
+                    closeExpenseModal();
+                    renderLines();
+                    if (window.scheduleAutoSave) {
+                        window.scheduleAutoSave();
+                    }
                 }
                 return;
             }
@@ -3808,11 +3943,142 @@
                 return;
             }
             // Allow draft with no expenses (user may add later); submit still requires ≥1 expense
-            
+
             // Get collection date
             const collectionDate = document.getElementById('collectionDateInput').value;
 
-            if (window.USE_EXPENSE_DIRECT_UPLOAD && window.ExpenseLineUpload && window.ExpenseLineUpload.hasActive()) {
+            if (window.USE_EXPENSE_DIRECT_UPLOAD) {
+                if (window.ExpenseLineUpload && window.ExpenseLineUpload.hasActive && window.ExpenseLineUpload.hasActive()) {
+                    const lose = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
+                        title: 'Uploads in progress',
+                        message: 'Some receipt photos are still uploading. If you save the draft now, in-flight uploads will be cancelled. Any photos that have not finished uploading will be lost.\n\nYou can wait for the progress bars, or continue and keep only what has already been uploaded to the server.',
+                        confirmText: 'Continue without in-flight photos',
+                        cancelText: 'Wait',
+                        tone: 'danger'
+                    }) : window.confirm('Uploads in progress. Continue and lose in-flight photos?');
+                    if (!lose) {
+                        return;
+                    }
+                    window.ExpenseLineUpload.cancelAll();
+                    stripLinesWithPendingFileUploads();
+                    if (typeof renderLines === 'function') renderLines();
+                    if (window.ExpenseLineUpload && typeof window.ExpenseLineUpload.resetAll === 'function') {
+                        window.ExpenseLineUpload.resetAll();
+                    }
+                }
+                if (typeof waitForBatchFieldSyncSettled === 'function') {
+                    await waitForBatchFieldSyncSettled(20000);
+                }
+                if (typeof isBatchFieldSyncing === 'function' && isBatchFieldSyncing()) {
+                    const cont = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
+                        title: 'Still saving',
+                        message: 'Registration or collection date is still saving. If you close now, the latest changes might not be saved. Continue anyway?',
+                        confirmText: 'Close anyway',
+                        cancelText: 'Wait',
+                        tone: 'warning'
+                    }) : window.confirm('Registration or date is still saving. Close anyway?');
+                    if (!cont) {
+                        return;
+                    }
+                }
+                if (!skipConfirmation) {
+                    const confirmed = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
+                        title: 'Save Draft',
+                        message: 'Are you sure you want to save this draft?',
+                        confirmText: 'Save as Draft',
+                        cancelText: 'Cancel',
+                        tone: 'draft'
+                    }) : window.confirm('Are you sure you want to save this draft?');
+                    if (!confirmed) {
+                        return;
+                    }
+                }
+                const saveBtn = document.querySelector('button[onclick="saveDraft()"]');
+                const submitBtn = document.querySelector('button[onclick="submitBatch()"]');
+                if (saveBtn) saveBtn.disabled = true;
+                if (submitBtn) submitBtn.disabled = true;
+                if (!currentBatch) {
+                    if (saveBtn) saveBtn.disabled = false;
+                    if (submitBtn) submitBtn.disabled = false;
+                    return;
+                }
+                currentBatch.registration = registration;
+                currentBatch.collectionDate = collectionDate;
+                currentBatch.driverId = currentUser.uid;
+                currentBatch.driverEmail = currentUser.email;
+                currentBatch.driverName =
+                    currentUser.name || `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || 'Unknown Driver';
+                currentBatch.officeId = currentUser.officeId;
+                currentBatch.status = 'draft';
+                const notes = document.getElementById('notesInput').value.trim();
+                currentBatch.notes = notes || '';
+                try {
+                    if (!currentBatch.id) {
+                        incBatchFieldSync('reg');
+                        incBatchFieldSync('date');
+                        try {
+                            await syncDraftToFirestore(currentBatch, 'draft');
+                        } finally {
+                            decBatchFieldSync('reg');
+                            decBatchFieldSync('date');
+                        }
+                    } else {
+                        incBatchFieldSync('reg');
+                        incBatchFieldSync('date');
+                        try {
+                            if (window.ensureFirebaseAuthReady) await window.ensureFirebaseAuthReady();
+                            if (window.auth && window.auth.currentUser) await window.auth.currentUser.getIdToken(true);
+                            const totalAmount = (EXPENSE_BATCH_SCHEMA && currentBatch.lines) ? EXPENSE_BATCH_SCHEMA.getTotalFromLines(currentBatch.lines) : 0;
+                            await window.updateDoc(window.doc(window.db, 'expenseBatches', currentBatch.id), {
+                                notes: currentBatch.notes || '',
+                                registration: registration,
+                                collectionDate: collectionDate || currentBatch.collectionDate,
+                                totalAmount: totalAmount,
+                                updatedAt: window.serverTimestamp()
+                            });
+                            currentBatch.totalAmount = totalAmount;
+                        } catch (err) {
+                            console.warn('[saveDraft] direct update', err);
+                        } finally {
+                            decBatchFieldSync('reg');
+                            decBatchFieldSync('date');
+                        }
+                    }
+                } catch (syncErr) {
+                    console.error('[saveDraft] direct sync', syncErr);
+                    notifyError(syncErr.message || 'Failed to save draft.', 'Save Failed');
+                    if (saveBtn) saveBtn.disabled = false;
+                    if (submitBtn) submitBtn.disabled = false;
+                    return;
+                }
+                if (typeof hideDriverExpenseUploadBanner === 'function') {
+                    hideDriverExpenseUploadBanner();
+                }
+                document.getElementById('batchModal').classList.add('hidden');
+                document.body.style.overflow = '';
+                window.isUploadingExpense = false;
+                if (window.ExpenseLineUpload && typeof window.ExpenseLineUpload.resetAll === 'function') {
+                    window.ExpenseLineUpload.resetAll();
+                }
+                const tot = (EXPENSE_BATCH_SCHEMA && currentBatch.lines) ? EXPENSE_BATCH_SCHEMA.getTotalFromLines(currentBatch.lines) : 0;
+                const bid = currentBatch.id;
+                const lid = currentBatch.localId;
+                const idx = allBatches.findIndex(b => b && ((bid && b.id === bid) || (lid && b.localId === lid)));
+                const merged = Object.assign({}, currentBatch, { totalAmount: tot, status: 'draft' });
+                if (idx >= 0) {
+                    allBatches[idx] = Object.assign({}, allBatches[idx], merged);
+                } else {
+                    allBatches.unshift(merged);
+                }
+                currentBatch = null;
+                window.currentBatch = null;
+                displayBatches();
+                if (saveBtn) saveBtn.disabled = false;
+                if (submitBtn) submitBtn.disabled = false;
+                return;
+            }
+
+            if (window.ExpenseLineUpload && window.ExpenseLineUpload.hasActive && window.ExpenseLineUpload.hasActive()) {
                 const lose = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
                     title: 'Uploads in progress',
                     message: 'Some receipt photos are still uploading. If you save the draft now, in-flight uploads will be cancelled. Any photos that have not finished uploading will be lost.\n\nYou can wait for the progress bars, or continue and keep only what has already been uploaded to the server.',
@@ -3906,7 +4172,7 @@
                     createdAt: new Date(),
                     updatedAt: new Date()
                 };
-                
+
                 // Add to allBatches if not already there
                 const existingIndex = allBatches.findIndex(b => b.localId === currentBatch.localId);
                 if (existingIndex >= 0) {
@@ -3922,10 +4188,10 @@
             // CRITICAL FIX: In PWA mode (especially iOS), navigator.onLine can be unreliable
             // Always try to sync first, and only queue if sync actually fails
             // This ensures PWA mode works correctly even when navigator.onLine reports false
-            
+
             try {
                 const savedBatch = await syncDraftToFirestore(currentBatch, 'draft');
-                
+
                 // Ensure currentBatch.id is updated from syncDraftToFirestore
                 if (savedBatch && savedBatch.id) {
                     currentBatch.id = savedBatch.id;
@@ -3968,14 +4234,14 @@
                 if (submitBtn) submitBtn.disabled = false;
             } catch (error) {
                 console.error('Error syncing draft:', error);
-                
+
                 const isNetworkError = error.message && (
-                    error.message.includes('network') || 
+                    error.message.includes('network') ||
                     error.message.includes('Failed to fetch') ||
                     error.message.includes('offline') ||
                     !navigator.onLine
                 );
-                
+
                 if (!isNetworkError) {
                     notifyError(error.message || 'Failed to save draft.', 'Save Failed');
                 }
@@ -3989,7 +4255,7 @@
                         console.error('[saveDraft] Failed to queue after sync error:', queueError);
                     }
                 }
-                
+
                 currentBatch = null;
                 window.currentBatch = null;
                 window.isUploadingExpense = false;
@@ -4016,8 +4282,12 @@
             }
 
             if (window.USE_EXPENSE_DIRECT_UPLOAD) {
-                if (window.ExpenseLineUpload && window.ExpenseLineUpload.hasActive()) {
+                if (window.ExpenseLineUpload && window.ExpenseLineUpload.hasActive && window.ExpenseLineUpload.hasActive()) {
                     notifyError('Not all receipt photos have finished uploading. Please wait for the progress bars to complete, then try again.', 'Uploads in progress');
+                    return;
+                }
+                if (typeof isBatchFieldSyncing === 'function' && isBatchFieldSyncing()) {
+                    notifyError('Registration or collection date is still saving. Please wait, then try again.', 'Save in progress');
                     return;
                 }
                 var hasLocalBlob = false;
@@ -4662,71 +4932,108 @@
             return false;
         }
 
-        // Close modals (X) — user chose to always discard: unsaved = drop local; saved batch = delete from server and Storage
+        // Close modal (X): only dismiss UI — warn if line uploads or REG/date save in progress; never delete the batch
         async function closeBatchModal() {
-            if (window.USE_EXPENSE_DIRECT_UPLOAD && window.ExpenseLineUpload && window.ExpenseLineUpload.hasActive()) {
-                const stop = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
-                    title: 'Stop uploads?',
-                    message: 'Receipt photos are still uploading. Close anyway? In-flight uploads will be cancelled.',
-                    confirmText: 'Close and cancel uploads',
-                    cancelText: 'Wait',
-                    tone: 'warning'
-                }) : window.confirm('Uploads in progress. Close anyway?');
-                if (!stop) {
+            if (!window.USE_EXPENSE_DIRECT_UPLOAD) {
+                if (window.ExpenseLineUpload && window.ExpenseLineUpload.hasActive && window.ExpenseLineUpload.hasActive()) {
+                    const stop = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
+                        title: 'Stop uploads?',
+                        message: 'Receipt photos are still uploading. Close anyway? In-flight uploads will be cancelled.',
+                        confirmText: 'Close and cancel uploads',
+                        cancelText: 'Wait',
+                        tone: 'warning'
+                    }) : window.confirm('Uploads in progress. Close anyway?');
+                    if (!stop) {
+                        return;
+                    }
+                    window.ExpenseLineUpload.cancelAll();
+                } else if (window.isUploadingExpense) {
+                    notifyWarning('Please wait for the upload to complete before closing.', 'Upload in Progress');
                     return;
                 }
-                window.ExpenseLineUpload.cancelAll();
+                if (!currentBatch) {
+                    document.getElementById('batchModal').classList.add('hidden');
+                    document.body.style.overflow = '';
+                    return;
+                }
+                const hasServer = !!currentBatch.id;
+                const message = hasServer
+                    ? 'This will permanently delete this expense batch and all receipt images stored in Firebase for it. The office will not see it. This cannot be undone. Are you sure you want to discard?'
+                    : 'Discard this batch? Nothing has been saved to the server yet, or you can save as draft using the button below instead.';
+
+                const ok = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
+                    title: 'Discard batch?',
+                    message: message,
+                    confirmText: 'Discard',
+                    cancelText: 'Keep editing',
+                    tone: 'danger'
+                }) : window.confirm(message);
+                if (!ok) {
+                    return;
+                }
+
+                try {
+                    if (hasServer) {
+                        if (window.ExpenseLineUpload && typeof window.ExpenseLineUpload.resetAll === 'function') {
+                            window.ExpenseLineUpload.resetAll();
+                        }
+                        await runDeleteBatchCore(currentBatch);
+                    } else {
+                        if (window.ExpenseLineUpload && typeof window.ExpenseLineUpload.resetAll === 'function') {
+                            window.ExpenseLineUpload.resetAll();
+                        }
+                    }
+                    currentBatch = null;
+                    window.currentBatch = null;
+                    document.getElementById('batchModal').classList.add('hidden');
+                    document.body.style.overflow = '';
+                    window.isUploadingExpense = false;
+                    if (hasServer) {
+                        await loadExpenseBatches();
+                    } else {
+                        displayBatches();
+                    }
+                } catch (e) {
+                    console.error('closeBatchModal discard failed', e);
+                    notifyError('Could not discard the batch. Please try again.');
+                }
+                return;
+            }
+
+            const w = typeof getDriverExpensesLeaveWarning === 'function' ? getDriverExpensesLeaveWarning() : null;
+            if (w) {
+                const ok = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
+                    title: 'Leave editor?',
+                    message: w,
+                    confirmText: 'Leave anyway',
+                    cancelText: 'Stay',
+                    tone: 'warning'
+                }) : window.confirm(w);
+                if (!ok) {
+                    return;
+                }
+                if (window.ExpenseLineUpload && window.ExpenseLineUpload.hasActive && window.ExpenseLineUpload.hasActive()) {
+                    window.ExpenseLineUpload.cancelAll();
+                    stripLinesWithPendingFileUploads();
+                    if (typeof renderLines === 'function') renderLines();
+                }
             } else if (window.isUploadingExpense) {
                 notifyWarning('Please wait for the upload to complete before closing.', 'Upload in Progress');
                 return;
             }
-
-            if (!currentBatch) {
-                document.getElementById('batchModal').classList.add('hidden');
-                document.body.style.overflow = '';
-                return;
+            if (typeof hideDriverExpenseUploadBanner === 'function') {
+                hideDriverExpenseUploadBanner();
             }
-
-            const hasServer = !!currentBatch.id;
-            const message = hasServer
-                ? 'This will permanently delete this expense batch and all receipt images stored in Firebase for it. The office will not see it. This cannot be undone. Are you sure you want to discard?'
-                : 'Discard this batch? Nothing has been saved to the server yet, or you can save as draft using the button below instead.';
-
-            const ok = dialogApi.showConfirmation ? await dialogApi.showConfirmation({
-                title: 'Discard batch?',
-                message: message,
-                confirmText: 'Discard',
-                cancelText: 'Keep editing',
-                tone: 'danger'
-            }) : window.confirm(message);
-            if (!ok) {
-                return;
+            if (window.ExpenseLineUpload && typeof window.ExpenseLineUpload.resetAll === 'function') {
+                window.ExpenseLineUpload.resetAll();
             }
-
-            try {
-                if (hasServer) {
-                    if (window.ExpenseLineUpload && typeof window.ExpenseLineUpload.resetAll === 'function') {
-                        window.ExpenseLineUpload.resetAll();
-                    }
-                    await runDeleteBatchCore(currentBatch);
-                } else {
-                    if (window.ExpenseLineUpload && typeof window.ExpenseLineUpload.resetAll === 'function') {
-                        window.ExpenseLineUpload.resetAll();
-                    }
-                }
-                currentBatch = null;
-                window.currentBatch = null;
-                document.getElementById('batchModal').classList.add('hidden');
-                document.body.style.overflow = '';
-                window.isUploadingExpense = false;
-                if (hasServer) {
-                    await loadExpenseBatches();
-                } else {
-                    displayBatches();
-                }
-            } catch (e) {
-                console.error('closeBatchModal discard failed', e);
-                notifyError('Could not discard the batch. Please try again.');
+            document.getElementById('batchModal').classList.add('hidden');
+            document.body.style.overflow = '';
+            window.isUploadingExpense = false;
+            currentBatch = null;
+            window.currentBatch = null;
+            if (typeof displayBatches === 'function') {
+                displayBatches();
             }
         }
         
@@ -4756,6 +5063,9 @@
             const expenseModal = document.getElementById('expenseModal');
             if (expenseModal) expenseModal.classList.add('hidden');
             
+            const pwrap = document.getElementById('expenseSaveProgressWrap');
+            if (pwrap) pwrap.classList.add('hidden');
+            
             currentExpense = { category: null, amount: 0, photos: [] };
             
             // Reset modal state
@@ -4771,6 +5081,7 @@
             if (saveBtn) {
                 saveBtn.textContent = 'Save Expense';
                 saveBtn.onclick = saveExpense;
+                saveBtn.disabled = false;
             }
             
             const photoPreview = document.getElementById('photoPreview');
@@ -4781,6 +5092,12 @@
 
         // Go back to portal
         function goToPortal() {
+            if (window.USE_EXPENSE_DIRECT_UPLOAD && typeof getDriverExpensesLeaveWarning === 'function') {
+                const w = getDriverExpensesLeaveWarning();
+                if (w && !window.confirm(w)) {
+                    return;
+                }
+            }
             window.location.href = '/pages/driver-portal.html';
         }
 
