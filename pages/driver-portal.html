@@ -514,7 +514,7 @@
                         </div>
                         <div>
                             <label class="text-sm text-gray-400 mb-3 block">WAIT TYPE</label>
-                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                                 <button type="button" class="wait-pause-category-btn border border-gray-700 rounded-xl p-4 flex flex-col items-center gap-2 hover:border-blue-500 focus:outline-none transition-colors" data-category="awaiting_release">
                                     <span class="text-3xl">🚦</span>
                                     <span class="text-sm font-semibold text-white">Awaiting Release</span>
@@ -526,6 +526,10 @@
                                 <button type="button" class="wait-pause-category-btn border border-gray-700 rounded-xl p-4 flex flex-col items-center gap-2 hover:border-orange-500 focus:outline-none transition-colors" data-category="car_wash">
                                     <span class="text-3xl">🧼</span>
                                     <span class="text-sm font-semibold text-white">Car Wash</span>
+                                </button>
+                                <button type="button" class="wait-pause-category-btn border border-gray-700 rounded-xl p-4 flex flex-col items-center gap-2 hover:border-purple-500 focus:outline-none transition-colors" data-category="other">
+                                    <span class="text-3xl">⏱️</span>
+                                    <span class="text-sm font-semibold text-white">Other</span>
                                 </button>
                             </div>
                         </div>
@@ -551,6 +555,14 @@
                             </button>
                             <div id="endWaitTimeProgressBar" class="hold-progress-bar mt-1" style="position: relative; bottom: auto; left: 0; right: 0;"></div>
                         </div>
+                        <div class="pt-3">
+                            <button type="button" id="btnOpenWaitTimeLogRequest" class="w-full py-3 rounded-xl border-2 border-orange-500 bg-orange-900/30 text-orange-300 font-semibold hover:bg-orange-900/50 transition-colors">
+                                Log waittime with the customer
+                            </button>
+                            <p id="waitTimeLogRequestStatus" class="hidden text-xs text-green-400 mt-2">
+                                A wait-time log request is already active and visible to your office.
+                            </p>
+                        </div>
                     </div>
                     <!-- Step 3: Review total + notes + Submit / Discard -->
                     <div id="waitTimePauseReview" class="hidden">
@@ -574,6 +586,42 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Wait Time Log Request Modal -->
+    <div id="waitTimeLogRequestModal" class="hidden fixed inset-0 bg-black bg-opacity-70 z-[65] overflow-y-auto">
+        <div class="min-h-screen px-4 flex items-end sm:items-center justify-center py-8">
+            <div class="bg-[#1a1f24] rounded-t-3xl sm:rounded-3xl w-full max-w-md transform transition-all border border-gray-800">
+                <div class="sticky top-0 bg-[#1a1f24] border-b border-gray-800 rounded-t-3xl z-10 px-6 py-4">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-lg font-semibold text-white">Wait Time Log Request</h2>
+                        <button type="button" id="waitTimeLogRequestModalClose" class="touch-target text-gray-400 hover:text-white transition-colors" aria-label="Close">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
+                </div>
+                <form id="waitTimeLogRequestForm" class="p-6 pb-8 space-y-4">
+                    <p class="text-sm text-gray-300">
+                        This sends a request for your office to contact the customer on your behalf to log the start of your wait time.
+                    </p>
+                    <div>
+                        <label for="waitTimeLogCustomerName" class="text-sm text-gray-400 mb-2 block">Customer name</label>
+                        <input id="waitTimeLogCustomerName" type="text" class="w-full bg-[#283039] text-white px-4 py-3 rounded-lg border border-gray-700 focus:outline-none" placeholder="Name of the person who asked you to wait">
+                    </div>
+                    <div>
+                        <label for="waitTimeLogSubject" class="text-sm text-gray-400 mb-2 block">Subject</label>
+                        <input id="waitTimeLogSubject" type="text" maxlength="120" class="w-full bg-[#283039] text-white px-4 py-3 rounded-lg border border-gray-700 focus:outline-none" placeholder="Short summary of the situation">
+                    </div>
+                    <div>
+                        <label for="waitTimeLogMessage" class="text-sm text-gray-400 mb-2 block">Message</label>
+                        <textarea id="waitTimeLogMessage" rows="4" class="w-full bg-[#283039] text-white px-4 py-3 rounded-lg border border-gray-700 focus:outline-none resize-none" placeholder="Explain why you stopped and what needs logging with the customer"></textarea>
+                    </div>
+                    <button type="submit" id="waitTimeLogRequestSubmit" class="w-full py-3 rounded-xl border-2 border-orange-500 bg-orange-900/30 text-orange-300 font-semibold disabled:opacity-60 disabled:cursor-not-allowed">
+                        Submit request
+                    </button>
+                </form>
             </div>
         </div>
     </div>
@@ -1084,7 +1132,7 @@
 
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, getDocs, query, where, doc, getDoc, updateDoc, setDoc, addDoc, serverTimestamp, deleteField, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, getDocs, query, where, doc, getDoc, updateDoc, setDoc, addDoc, serverTimestamp, deleteField, deleteDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, signOut, updatePassword, reauthenticateWithCredential, EmailAuthProvider, deleteUser, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
@@ -1138,6 +1186,7 @@
         window.query = query;
         window.where = where;
         window.deleteDoc = deleteDoc;
+        window.onSnapshot = onSnapshot;
         
         console.log('Firebase initialized successfully!');
         
@@ -1564,6 +1613,9 @@
             await loadDriverDaySessionAndUpdateButtons();
             setupHoldToConfirmButtons();
             setupWaitTimePauseModal();
+            setupWaitTimeLogRequestModal();
+            startWaitTimeLogRequestListener();
+            await refreshActiveWaitTimeLogRequest();
             const portalBtns = document.querySelector('.portal-buttons');
             if (portalBtns) portalBtns.classList.remove('portal-buttons-loading');
             console.log('Loading complete!');
@@ -2067,11 +2119,14 @@
         const WAIT_CATEGORIES_PAUSE = {
             awaiting_release: { label: 'Awaiting Release' },
             charging_vehicle: { label: 'Charging Vehicle' },
-            car_wash: { label: 'Car Wash' }
+            car_wash: { label: 'Car Wash' },
+            other: { label: 'Other' }
         };
         let waitTimePauseElapsedInterval = null;
         let selectedPauseCategory = null;
         let pendingWaitTimeReviewData = null; // { waitTimeData, firestoreData, docId } when review screen is shown
+        let activeWaitTimeLogRequest = null;
+        let unsubscribeWaitTimeLogRequests = null;
 
         function getActivePauseStartMs() {
             if (!driverDaySession || !driverDaySession.activeWaitTimeStartedAt) return 0;
@@ -2140,6 +2195,86 @@
                 btn.classList.add('border-gray-600', 'bg-gray-800', 'text-gray-500');
                 btn.classList.remove('border-green-600', 'bg-green-900/30', 'text-green-300');
             }
+        }
+
+        function updateWaitTimeLogRequestButtonState() {
+            const button = document.getElementById('btnOpenWaitTimeLogRequest');
+            const status = document.getElementById('waitTimeLogRequestStatus');
+            if (!button) return;
+            const hasActiveRequest = !!activeWaitTimeLogRequest;
+            button.disabled = hasActiveRequest;
+            button.classList.toggle('opacity-60', hasActiveRequest);
+            button.classList.toggle('cursor-not-allowed', hasActiveRequest);
+            if (status) {
+                status.classList.toggle('hidden', !hasActiveRequest);
+            }
+        }
+
+        function closeWaitTimeLogRequestModal() {
+            const modal = document.getElementById('waitTimeLogRequestModal');
+            const form = document.getElementById('waitTimeLogRequestForm');
+            if (modal) modal.classList.add('hidden');
+            if (form) form.reset();
+            const submitBtn = document.getElementById('waitTimeLogRequestSubmit');
+            if (submitBtn) submitBtn.disabled = false;
+        }
+
+        async function refreshActiveWaitTimeLogRequest() {
+            if (!currentUser || !currentUser.uid || !window.getDocs || !window.query || !window.where) return;
+            const officeId = getCurrentOfficeId();
+            if (!officeId) return;
+            try {
+                const requestQuery = window.query(
+                    window.collection(window.db, 'waitTimeLogRequests'),
+                    window.where('driverId', '==', currentUser.uid),
+                    window.where('officeId', '==', officeId)
+                );
+                const snap = await window.getDocs(requestQuery);
+                const requests = snap.docs
+                    .map(function (d) { return { id: d.id, ...d.data() }; })
+                    .filter(function (item) { return (item.requestType || 'wait_time_log_request') === 'wait_time_log_request'; })
+                    .filter(function (item) { return (item.status || 'pending') === 'pending'; })
+                    .sort(function (a, b) {
+                        const aMs = a.createdAt && a.createdAt.toDate ? a.createdAt.toDate().getTime() : 0;
+                        const bMs = b.createdAt && b.createdAt.toDate ? b.createdAt.toDate().getTime() : 0;
+                        return bMs - aMs;
+                    });
+                activeWaitTimeLogRequest = requests[0] || null;
+                updateWaitTimeLogRequestButtonState();
+            } catch (error) {
+                console.warn('Could not refresh wait-time log requests:', error);
+            }
+        }
+
+        function startWaitTimeLogRequestListener() {
+            if (unsubscribeWaitTimeLogRequests) {
+                unsubscribeWaitTimeLogRequests();
+                unsubscribeWaitTimeLogRequests = null;
+            }
+            if (!currentUser || !currentUser.uid || !window.onSnapshot) return;
+            const officeId = getCurrentOfficeId();
+            if (!officeId) return;
+            const requestQuery = window.query(
+                window.collection(window.db, 'waitTimeLogRequests'),
+                window.where('driverId', '==', currentUser.uid),
+                window.where('officeId', '==', officeId)
+            );
+            unsubscribeWaitTimeLogRequests = window.onSnapshot(requestQuery, function (snapshot) {
+                const requests = snapshot.docs
+                    .map(function (d) { return { id: d.id, ...d.data() }; })
+                    .filter(function (item) { return (item.requestType || 'wait_time_log_request') === 'wait_time_log_request'; })
+                    .filter(function (item) { return (item.status || 'pending') === 'pending'; })
+                    .sort(function (a, b) {
+                        const aMs = a.createdAt && a.createdAt.toDate ? a.createdAt.toDate().getTime() : 0;
+                        const bMs = b.createdAt && b.createdAt.toDate ? b.createdAt.toDate().getTime() : 0;
+                        return bMs - aMs;
+                    });
+                activeWaitTimeLogRequest = requests[0] || null;
+                updateWaitTimeLogRequestButtonState();
+            }, function (error) {
+                console.warn('Wait-time log request listener failed:', error);
+                refreshActiveWaitTimeLogRequest();
+            });
         }
 
         function openWaitTimePauseModal(toRunningView) {
@@ -2447,6 +2582,65 @@
                     notifyError(err.message || 'Could not discard.');
                 });
             });
+        }
+
+        function setupWaitTimeLogRequestModal() {
+            const openBtn = document.getElementById('btnOpenWaitTimeLogRequest');
+            const closeBtn = document.getElementById('waitTimeLogRequestModalClose');
+            const modal = document.getElementById('waitTimeLogRequestModal');
+            const form = document.getElementById('waitTimeLogRequestForm');
+            if (openBtn) {
+                openBtn.addEventListener('click', function () {
+                    if (activeWaitTimeLogRequest) return;
+                    if (modal) modal.classList.remove('hidden');
+                });
+            }
+            if (closeBtn) {
+                closeBtn.addEventListener('click', closeWaitTimeLogRequestModal);
+            }
+            if (modal) {
+                modal.addEventListener('click', function (event) {
+                    if (event.target === modal) closeWaitTimeLogRequestModal();
+                });
+            }
+            if (form) {
+                form.addEventListener('submit', async function (event) {
+                    event.preventDefault();
+                    if (!currentUser || activeWaitTimeLogRequest) {
+                        updateWaitTimeLogRequestButtonState();
+                        return;
+                    }
+                    const customerName = (document.getElementById('waitTimeLogCustomerName').value || '').trim();
+                    const subject = (document.getElementById('waitTimeLogSubject').value || '').trim();
+                    const message = (document.getElementById('waitTimeLogMessage').value || '').trim();
+                    if (!customerName || !subject || !message) {
+                        notifyWarning('Please complete customer name, subject, and message.');
+                        return;
+                    }
+                    const submitBtn = document.getElementById('waitTimeLogRequestSubmit');
+                    if (submitBtn) submitBtn.disabled = true;
+                    try {
+                        await window.addDoc(window.collection(window.db, 'waitTimeLogRequests'), {
+                            requestType: 'wait_time_log_request',
+                            status: 'pending',
+                            officeId: getCurrentOfficeId() || '',
+                            driverId: currentUser.uid,
+                            driverName: getDriverName(),
+                            customerName,
+                            subject,
+                            message,
+                            createdAt: window.serverTimestamp(),
+                            updatedAt: window.serverTimestamp()
+                        });
+                        notifySuccess('Request sent to office.');
+                        closeWaitTimeLogRequestModal();
+                    } catch (error) {
+                        console.error('Could not create wait-time log request:', error);
+                        notifyError('Could not send request. Please try again.');
+                        if (submitBtn) submitBtn.disabled = false;
+                    }
+                });
+            }
         }
 
         async function getDriverPhotoStoragePath(file) {

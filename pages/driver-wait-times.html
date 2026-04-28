@@ -96,6 +96,10 @@
             background: rgba(249, 115, 22, 0.15);
             color: #fb923c;
         }
+        .badge-other {
+            background: rgba(168, 85, 247, 0.15);
+            color: #c084fc;
+        }
         .loading-overlay {
             position: fixed;
             inset: 0;
@@ -464,7 +468,7 @@
 
                     <div>
                         <label class="text-sm text-gray-400 mb-3 block">WAIT TYPE</label>
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                             <button type="button" class="category-btn border border-gray-700 rounded-xl p-4 flex flex-col items-center gap-2 hover:border-blue-500 focus:outline-none"
                                 data-category="awaiting_release" onclick="selectWaitCategory('awaiting_release')">
                                 <span class="text-3xl">🚦</span>
@@ -479,6 +483,11 @@
                                 data-category="car_wash" onclick="selectWaitCategory('car_wash')">
                                 <span class="text-3xl">🧼</span>
                                 <span class="text-sm font-semibold">Car Wash</span>
+                            </button>
+                            <button type="button" class="category-btn border border-gray-700 rounded-xl p-4 flex flex-col items-center gap-2 hover:border-purple-500 focus:outline-none"
+                                data-category="other" onclick="selectWaitCategory('other')">
+                                <span class="text-3xl">⏱️</span>
+                                <span class="text-sm font-semibold">Other</span>
                             </button>
                         </div>
                         <p id="categoryHint" class="text-xs text-gray-500 mt-2 hidden"></p>
@@ -642,6 +651,12 @@
                 icon: '🧼',
                 badge: 'badge-wash',
                 hint: 'Use this when the vehicle is being cleaned.'
+            },
+            other: {
+                label: 'Other',
+                icon: '⏱️',
+                badge: 'badge-other',
+                hint: 'Use this when the wait reason does not match the listed categories.'
             }
         };
 

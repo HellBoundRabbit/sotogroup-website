@@ -25,7 +25,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, getDocs, getDoc, doc, query, where, onSnapshot, updateDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, getDocs, getDoc, doc, query, where, onSnapshot, updateDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         const firebaseConfig = {
@@ -49,6 +49,7 @@
         window.firebaseWhere = where;
         window.firebaseOnSnapshot = onSnapshot;
         window.firebaseUpdateDoc = updateDoc;
+        window.firebaseDeleteDoc = deleteDoc;
         window.signOut = signOut;
     </script>
     <style type="text/tailwindcss">
@@ -95,6 +96,9 @@
         .timeline-paused-end .material-symbols-outlined { font-size: 14px; }
         .timeline-name { color: #e5e7eb; flex: 1; min-width: 0; }
         .timeline-step-desc { color: #9cabba; font-size: 11px; margin-top: 1px; }
+        .live-support-card {
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+        }
     </style>
 </head>
 <body class="bg-[#111418] text-white" style="font-family: Inter, 'Noto Sans', sans-serif;">
@@ -227,6 +231,22 @@
                         </a>
                     </div>
 
+                    <!-- Live Support -->
+                    <section class="mb-6">
+                        <div class="bg-[#1a1f24] border border-[#283039] rounded-lg overflow-hidden">
+                            <div class="px-4 py-3 border-b border-[#283039] flex items-center justify-between gap-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-[#9cabba]">support_agent</span>
+                                    <h2 class="text-sm font-semibold text-white">Live Support</h2>
+                                </div>
+                                <span class="text-xs text-[#9cabba]">Newest to oldest</span>
+                            </div>
+                            <div id="live-support-list" class="p-3 flex gap-3 overflow-x-auto">
+                                <div class="text-sm text-[#9cabba]">No live support requests.</div>
+                            </div>
+                        </div>
+                    </section>
+
                     <!-- Map + Timeline -->
                     <div class="flex gap-4">
                         <div id="dashboard-map-container" class="flex-1 min-w-0 bg-[#1a1f24] border border-[#283039] rounded-lg overflow-hidden">
@@ -266,6 +286,25 @@
             </button>
         </div>
         <div id="dashboard-map-fullscreen-leaflet" class="flex-1 relative min-h-0"></div>
+    </div>
+
+    <!-- Live Support Request Modal -->
+    <div id="liveSupportModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-[1200]">
+        <div class="min-h-screen px-4 py-8 flex items-center justify-center">
+            <div class="bg-[#1a1f24] border border-[#283039] rounded-lg w-full max-w-lg">
+                <div class="px-6 py-4 border-b border-[#283039] flex items-center justify-between">
+                    <h3 id="liveSupportModalTitle" class="text-lg font-semibold text-white">WaitTime Log Request</h3>
+                    <button type="button" id="liveSupportModalClose" class="text-gray-400 hover:text-white transition-colors">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+                <div id="liveSupportModalBody" class="p-6 space-y-4"></div>
+                <div class="px-6 pb-6 flex gap-3">
+                    <button type="button" id="liveSupportConfirmBtn" class="flex-1 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-white font-semibold transition-colors">Confirm log</button>
+                    <button type="button" id="liveSupportCancelBtn" class="flex-1 py-2 bg-[#283039] hover:bg-[#3a444e] rounded-lg text-white font-semibold transition-colors">Close</button>
+                </div>
+            </div>
+        </div>
     </div>
                 </div>
             </main>
@@ -337,6 +376,10 @@
             const items = [];
             const seenUids = new Set();
             try {
+                if (!officeId) {
+                    console.warn('[Dashboard] loadDriversWorkingTodayList called without officeId');
+                    return [];
+                }
                 const Model = window.AvailabilityModel;
                 const q = window.firebaseQuery(
                     window.firebaseCollection(window.firestore, 'drivers'),
@@ -424,9 +467,19 @@
                 dd.classList.remove('hidden');
                 const list = document.getElementById('dropdown-drivers-working-list');
                 list.innerHTML = '<div class="px-3 py-2 text-[#9cabba]">Loading...</div>';
-                loadDriversWorkingTodayList(getCurrentOfficeId()).then(items => {
-                    if (items.length === 0) list.innerHTML = '<div class="px-3 py-2 text-[#9cabba]">No drivers working today</div>';
-                    else list.innerHTML = items.map(it => '<a href="/pages/drivers.html?driver=' + encodeURIComponent(it.driverId) + '" class="block px-3 py-1.5 text-white hover:bg-[#283039]">' + (it.name || 'Driver') + '</a>').join('');
+                const officeId = getCurrentOfficeId();
+                loadDriversWorkingTodayList(officeId).then(items => {
+                    // Keep card count in sync with dropdown source of truth.
+                    const stat = document.getElementById('stat-drivers-working');
+                    if (stat) stat.textContent = String(items.length);
+                    if (items.length === 0) {
+                        list.innerHTML = '<div class="px-3 py-2 text-[#9cabba]">No drivers working today</div>';
+                    } else {
+                        list.innerHTML = items.map(it => '<a href="/pages/drivers.html?driver=' + encodeURIComponent(it.driverId) + '" class="block px-3 py-1.5 text-white hover:bg-[#283039]">' + (it.name || 'Driver') + '</a>').join('');
+                    }
+                }).catch(err => {
+                    console.error('[Dashboard] Drivers working dropdown load failed', err);
+                    list.innerHTML = '<div class="px-3 py-2 text-red-400">Failed to load drivers</div>';
                 });
             } else {
                 dd.classList.add('hidden');
@@ -464,6 +517,138 @@
                 console.error('[Dashboard] Wait times count failed', e);
                 return 0;
             }
+        }
+
+        function toMillis(value) {
+            if (!value) return 0;
+            if (typeof value.toDate === 'function') return value.toDate().getTime();
+            if (value instanceof Date) return value.getTime();
+            const parsed = new Date(value).getTime();
+            return Number.isFinite(parsed) ? parsed : 0;
+        }
+
+        function formatSupportRelativeTime(ts) {
+            const ms = toMillis(ts);
+            if (!ms) return 'Unknown time';
+            const diffMin = Math.max(0, Math.floor((Date.now() - ms) / 60000));
+            if (diffMin < 1) return 'Just now';
+            if (diffMin < 60) return `${diffMin}m ago`;
+            const diffHours = Math.floor(diffMin / 60);
+            if (diffHours < 24) return `${diffHours}h ago`;
+            const diffDays = Math.floor(diffHours / 24);
+            return `${diffDays}d ago`;
+        }
+
+        function getSupportUrgencyStyle(createdAt) {
+            const elapsedMs = Math.max(0, Date.now() - toMillis(createdAt));
+            const ratio = Math.min(1, elapsedMs / (10 * 60 * 1000));
+            if (ratio < 0.34) {
+                return 'background-color: rgba(34, 197, 94, 0.2); border-color: rgba(34, 197, 94, 0.6);';
+            }
+            if (ratio < 0.67) {
+                return 'background-color: rgba(249, 115, 22, 0.22); border-color: rgba(249, 115, 22, 0.65);';
+            }
+            return 'background-color: rgba(239, 68, 68, 0.22); border-color: rgba(239, 68, 68, 0.65);';
+        }
+
+        function getSupportTypeLabel(type) {
+            if (type === 'authorization_request') return 'Authorization Request';
+            return 'WaitTime Log Request';
+        }
+
+        function renderLiveSupportList() {
+            const listEl = document.getElementById('live-support-list');
+            if (!listEl) return;
+            if (!liveSupportRequests.length) {
+                listEl.innerHTML = '<div class="text-sm text-[#9cabba]">No live support requests.</div>';
+                return;
+            }
+            listEl.innerHTML = liveSupportRequests.map((item) => {
+                const style = getSupportUrgencyStyle(item.createdAt);
+                const submitted = formatSupportRelativeTime(item.createdAt);
+                const driverName = escapeHtml(item.driverName || 'Driver');
+                return `
+                    <button type="button" onclick="openLiveSupportModal('${item.id}')" class="live-support-card min-w-[230px] max-w-[260px] text-left border rounded-lg p-3 hover:brightness-110 transition-all" style="${style}">
+                        <div class="text-xs text-white/90 font-semibold">${getSupportTypeLabel(item.requestType)}</div>
+                        <div class="text-sm font-bold text-white mt-1 truncate">${driverName}</div>
+                        <div class="text-xs text-white/90 mt-2">Submitted ${submitted}</div>
+                    </button>
+                `;
+            }).join('');
+        }
+
+        function openLiveSupportModal(requestId) {
+            const item = liveSupportRequests.find((entry) => entry.id === requestId);
+            if (!item) return;
+            liveSupportSelectedRequest = item;
+            const modal = document.getElementById('liveSupportModal');
+            const body = document.getElementById('liveSupportModalBody');
+            const title = document.getElementById('liveSupportModalTitle');
+            if (!modal || !body || !title) return;
+            title.textContent = getSupportTypeLabel(item.requestType);
+            body.innerHTML = `
+                <div class="grid grid-cols-1 gap-3 text-sm">
+                    <div><span class="text-[#9cabba]">Driver:</span> <span class="text-white">${escapeHtml(item.driverName || 'Driver')}</span></div>
+                    <div><span class="text-[#9cabba]">Submitted:</span> <span class="text-white">${formatSupportRelativeTime(item.createdAt)}</span></div>
+                    <div><span class="text-[#9cabba]">Customer name:</span> <span class="text-white">${escapeHtml(item.customerName || '—')}</span></div>
+                    <div><span class="text-[#9cabba]">Subject:</span> <span class="text-white">${escapeHtml(item.subject || '—')}</span></div>
+                </div>
+                <div class="mt-4 bg-[#111418] border border-[#283039] rounded-lg p-4">
+                    <div class="text-xs text-[#9cabba] mb-2">Message</div>
+                    <p class="text-sm text-white whitespace-pre-wrap">${escapeHtml(item.message || '—')}</p>
+                </div>
+            `;
+            modal.classList.remove('hidden');
+        }
+
+        function closeLiveSupportModal() {
+            const modal = document.getElementById('liveSupportModal');
+            if (modal) modal.classList.add('hidden');
+            liveSupportSelectedRequest = null;
+        }
+
+        async function confirmLiveSupportRequest() {
+            if (!liveSupportSelectedRequest || !window.firebaseDeleteDoc) return;
+            const confirmed = window.showConfirmation
+                ? await window.showConfirmation({
+                    title: 'Confirm Wait Time Log',
+                    message: 'Confirm log and remove this request from Live Support?',
+                    confirmText: 'Confirm',
+                    cancelText: 'Cancel',
+                    tone: 'warning'
+                })
+                : window.confirm('Confirm log and remove this request from Live Support?');
+            if (!confirmed) return;
+            try {
+                await window.firebaseDeleteDoc(window.firebaseDoc(window.firestore, 'waitTimeLogRequests', liveSupportSelectedRequest.id));
+                closeLiveSupportModal();
+            } catch (error) {
+                console.error('[Dashboard] Failed to confirm live support request', error);
+                notifyError('Could not confirm request. Please try again.');
+            }
+        }
+
+        function startLiveSupportListener() {
+            const officeId = getCurrentOfficeId();
+            if (!officeId || !window.firebaseOnSnapshot) return;
+            if (unsubscribeLiveSupport) unsubscribeLiveSupport();
+            const supportQuery = window.firebaseQuery(
+                window.firebaseCollection(window.firestore, 'waitTimeLogRequests'),
+                window.firebaseWhere('officeId', '==', officeId)
+            );
+            unsubscribeLiveSupport = window.firebaseOnSnapshot(supportQuery, (snapshot) => {
+                liveSupportRequests = snapshot.docs
+                    .map((d) => ({ id: d.id, ...d.data() }))
+                    .filter((item) => (item.requestType || 'wait_time_log_request') === 'wait_time_log_request')
+                    .filter((item) => (item.status || 'pending') === 'pending')
+                    .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+                renderLiveSupportList();
+            }, (error) => {
+                console.error('[Dashboard] Live support listener failed', error);
+            });
+
+            if (liveSupportAgeInterval) clearInterval(liveSupportAgeInterval);
+            liveSupportAgeInterval = setInterval(renderLiveSupportList, 30000);
         }
 
         // Notifications (same pattern as other office pages)
@@ -559,6 +744,10 @@
         let driverMarkerLayerFullscreen = null;
         let dashboardDriversCache = [];
         let dashboardTimelineStepsCache = [];
+        let liveSupportRequests = [];
+        let liveSupportSelectedRequest = null;
+        let unsubscribeLiveSupport = null;
+        let liveSupportAgeInterval = null;
 
         function getTodayDateString() {
             const d = new Date();
@@ -852,6 +1041,16 @@
             return { firstName, lastName, full: s || 'Driver' };
         }
 
+        function escapeHtml(value) {
+            if (value == null) return '';
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
         async function fetchDriverDisplayName(driverId) {
             if (!driverId) return 'Driver';
             try {
@@ -878,7 +1077,8 @@
         var WAIT_CATEGORY_LABELS = {
             awaiting_release: 'Awaiting Release',
             charging_vehicle: 'Charging Vehicle',
-            car_wash: 'Car Wash'
+            car_wash: 'Car Wash',
+            other: 'Other'
         };
 
         async function fetchTimelineSteps(officeId, dateStr) {
@@ -1070,6 +1270,8 @@
                     await refreshDriverMap();
                     await updateNotificationCount();
                     setupRealtimeListeners();
+                    startLiveSupportListener();
+                    setupLiveSupportModalHandlers();
                     
                     // Show the map now that everything is loaded
                     const mapInner = document.getElementById('dashboard-map-inner');
@@ -1123,6 +1325,22 @@
                 if (el) el.textContent = activeCount;
                 refreshDriverMap();
             });
+        }
+
+        function setupLiveSupportModalHandlers() {
+            window.openLiveSupportModal = openLiveSupportModal;
+            const modal = document.getElementById('liveSupportModal');
+            const closeBtn = document.getElementById('liveSupportModalClose');
+            const cancelBtn = document.getElementById('liveSupportCancelBtn');
+            const confirmBtn = document.getElementById('liveSupportConfirmBtn');
+            if (closeBtn) closeBtn.addEventListener('click', closeLiveSupportModal);
+            if (cancelBtn) cancelBtn.addEventListener('click', closeLiveSupportModal);
+            if (confirmBtn) confirmBtn.addEventListener('click', confirmLiveSupportRequest);
+            if (modal) {
+                modal.addEventListener('click', (event) => {
+                    if (event.target === modal) closeLiveSupportModal();
+                });
+            }
         }
 
         async function logout() {
