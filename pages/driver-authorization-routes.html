@@ -870,22 +870,37 @@
             return rm ? `${h}h ${rm}m` : `${h}h`;
         }
         
+        /**
+         * Compact strip for route cards: consecutive WALKING steps are merged (API often returns
+         * many sub-steps of a few seconds each, each rounding to “1m” if shown separately).
+         */
         function buildRouteStripPieces(directionResponse) {
             const chunks = [];
             const rd = directionResponse?.routes?.[0];
             if (!rd?.legs) return chunks;
+
+            let walkAccumSec = 0;
+
+            function flushWalk() {
+                if (walkAccumSec <= 0) return;
+                const mins = Math.max(1, Math.round(walkAccumSec / 60));
+                chunks.push({ type: 'walk', mins });
+                walkAccumSec = 0;
+            }
+
             rd.legs.forEach((leg) => {
-                leg.steps.forEach((step) => {
+                (leg.steps || []).forEach((step) => {
                     if (step.travel_mode === 'WALKING') {
-                        const mins = Math.max(1, Math.round((step.duration?.value ?? 60) / 60));
-                        chunks.push({ type: 'walk', mins });
+                        walkAccumSec += typeof step.duration?.value === 'number' ? step.duration.value : 0;
                     } else if (step.travel_mode === 'TRANSIT' && step.transit) {
+                        flushWalk();
                         const ln = step.transit.line || {};
                         const label = ln.short_name || ln.name || 'Transit';
                         chunks.push({ type: 'transit', label, line: ln });
                     }
                 });
             });
+            flushWalk();
             return chunks;
         }
         
