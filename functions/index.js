@@ -21,6 +21,41 @@ function getMapsApiKey() {
   return (process.env.GOOGLE_MAPS_API_KEY || "").trim();
 }
 
+/** RFC3339 UTC for Routes API `departureTime` / `arrivalTime`. */
+function normalizeDepartureRfc3339(departureInput) {
+  let d;
+  if (typeof departureInput === "number" && Number.isFinite(departureInput)) {
+    d = departureInput > 2e12 ? new Date(departureInput) : new Date(departureInput * 1000);
+  } else if (typeof departureInput === "string" && departureInput.trim()) {
+    const p = Date.parse(departureInput);
+    d = Number.isFinite(p) ? new Date(p) : new Date();
+  } else if (departureInput && typeof departureInput === "object" && departureInput.seconds) {
+    d = new Date(departureInput.seconds * 1000);
+  } else {
+    d = new Date();
+  }
+  if (isNaN(d.getTime())) d = new Date();
+  return d.toISOString();
+}
+
+/**
+ * Field mask for transit computeRoutes. Parent `routes.legs.steps` returns step fields
+ * (transitDetails, polylines, etc.) per Routes API field-mask rules.
+ */
+const ROUTES_AUTH_TRANSIT_FIELD_MASK = [
+  "routes.distanceMeters",
+  "routes.duration",
+  "routes.staticDuration",
+  "routes.routeLabels",
+  "routes.polyline",
+  "routes.legs.distanceMeters",
+  "routes.legs.duration",
+  "routes.legs.startLocation",
+  "routes.legs.endLocation",
+  "routes.legs.polyline",
+  "routes.legs.steps",
+].join(",");
+
 admin.initializeApp();
 const db = admin.firestore();
 
@@ -201,8 +236,8 @@ exports.sendDriverLoginEmail = onCall(
 
 /**
  * Distance Matrix: driving distance between two addresses/postcodes.
- * Set secret: `firebase functions:secrets:set GOOGLE_MAPS_API_KEY` (paste a key with Distance Matrix + Directions APIs enabled;
- * Application restrictions: None; API restrictions: restrict to those APIs only.)
+ * Set secret: `firebase functions:secrets:set GOOGLE_MAPS_API_KEY` (paste a key with Distance Matrix +
+ * Directions + **Routes API** enabled. Application restrictions: None; API restrictions: restrict to those APIs only.)
  */
 exports.calculateDistance = onCall(
   { region: "us-central1", cors: true },
@@ -674,4 +709,100 @@ exports.calculateTravelOptions = onCall(
       error: `Google Maps API error: ${errStatus.status}${errStatus.error_message ? ` — ${errStatus.error_message}` : ""}`,
     };
   },
+);
+
+/**
+ * Routes API (v2): same family of multi-transit options as Google Maps (computeAlternativeRoutes).
+ * Requires the server key to have **Routes API** enabled in Google Cloud Console (not only Directions).
+ * Returns raw `routes[]` JSON for client-side adaptation to the JS Directions shape.
+ */
+exports.computeAuthorizationTransitRoutes = onCall(
+    { region: "us-central1", cors: true },
+    async (request) => {
+      const apiKey = getMapsApiKey();
+      if (!apiKey) {
+        throw new HttpsError(
+            "failed-precondition",
+            "GOOGLE_MAPS_API_KEY is not set. Add functions/.env with GOOGLE_MAPS_API_KEY=<key> and redeploy.",
+        );
+      }
+
+      const { origin, destination, departureTime, regionCode } = request.data || {};
+      if (!origin || !destination ||
+        typeof origin.lat !== "number" || typeof origin.lng !== "number" ||
+        typeof destination.lat !== "number" || typeof destination.lng !== "number") {
+        throw new HttpsError(
+            "invalid-argument",
+            "origin and destination must be { lat, lng } numbers.",
+        );
+      }
+
+      const depIso = normalizeDepartureRfc3339(departureTime);
+      const region = typeof regionCode === "string" && regionCode.length === 2
+        ? regionCode.toUpperCase()
+        : "GB";
+
+      const body = {
+        origin: {
+          location: {
+            latLng: { latitude: origin.lat, longitude: origin.lng },
+          },
+        },
+        destination: {
+          location: {
+            latLng: { latitude: destination.lat, longitude: destination.lng },
+          },
+        },
+        travelMode: "TRANSIT",
+        departureTime: depIso,
+        computeAlternativeRoutes: true,
+        languageCode: "en-GB",
+        regionCode: region,
+      };
+
+      const url = "https://routes.googleapis.com/directions/v2:computeRoutes";
+      let res;
+      try {
+        res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": apiKey,
+            "X-Goog-FieldMask": ROUTES_AUTH_TRANSIT_FIELD_MASK,
+          },
+          body: JSON.stringify(body),
+        });
+      } catch (err) {
+        functions.logger.error("computeAuthorizationTransitRoutes fetch failed", { message: err.message });
+        return { success: false, error: err.message || "Network error calling Routes API." };
+      }
+
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (_) {
+        functions.logger.warn("computeAuthorizationTransitRoutes bad JSON", { status: res.status, text: text.slice(0, 400) });
+        return { success: false, error: `Routes API returned non-JSON (${res.status}).` };
+      }
+
+      if (!res.ok) {
+        const msg = (data.error && data.error.message) || data.message || `HTTP ${res.status}`;
+        functions.logger.warn("computeAuthorizationTransitRoutes routes error", {
+          status: res.status,
+          msg,
+        });
+        return { success: false, error: msg };
+      }
+
+      const routes = data.routes || [];
+      if (!Array.isArray(routes) || routes.length === 0) {
+        return {
+          success: false,
+          error: "No transit routes returned. Try a different time or locations.",
+        };
+      }
+
+      return { success: true, routes };
+    },
 );
