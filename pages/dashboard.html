@@ -231,18 +231,18 @@
                         </a>
                     </div>
 
-                    <!-- Live Support -->
+                    <!-- Driver communications -->
                     <section class="mb-6">
                         <div class="bg-[#1a1f24] border border-[#283039] rounded-lg overflow-hidden">
                             <div class="px-4 py-3 border-b border-[#283039] flex items-center justify-between gap-2">
                                 <div class="flex items-center gap-2">
                                     <span class="material-symbols-outlined text-[#9cabba]">support_agent</span>
-                                    <h2 class="text-sm font-semibold text-white">Live Support</h2>
+                                    <h2 class="text-sm font-semibold text-white">Driver communications</h2>
                                 </div>
                                 <span class="text-xs text-[#9cabba]">Newest to oldest</span>
                             </div>
                             <div id="live-support-list" class="p-3 flex gap-3 overflow-x-auto">
-                                <div class="text-sm text-[#9cabba]">No live support requests.</div>
+                                <div class="text-sm text-[#9cabba]">No pending driver communications.</div>
                             </div>
                         </div>
                     </section>
@@ -288,7 +288,7 @@
         <div id="dashboard-map-fullscreen-leaflet" class="flex-1 relative min-h-0"></div>
     </div>
 
-    <!-- Live Support Request Modal -->
+    <!-- Driver communications request modal -->
     <div id="liveSupportModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-[1200]">
         <div class="min-h-screen px-4 py-8 flex items-center justify-center">
             <div class="bg-[#1a1f24] border border-[#283039] rounded-lg w-full max-w-lg">
@@ -557,27 +557,35 @@
         }
 
         function renderLiveSupportList() {
+            void renderLiveSupportListAsync();
+        }
+
+        async function renderLiveSupportListAsync() {
             const listEl = document.getElementById('live-support-list');
             if (!listEl) return;
             if (!liveSupportRequests.length) {
-                listEl.innerHTML = '<div class="text-sm text-[#9cabba]">No live support requests.</div>';
+                listEl.innerHTML = '<div class="text-sm text-[#9cabba]">No pending driver communications.</div>';
                 return;
             }
-            listEl.innerHTML = liveSupportRequests.map((item) => {
+            const fragments = [];
+            for (let i = 0; i < liveSupportRequests.length; i++) {
+                const item = liveSupportRequests[i];
                 const style = getSupportUrgencyStyle(item.createdAt);
                 const submitted = formatSupportRelativeTime(item.createdAt);
-                const driverName = escapeHtml(item.driverName || 'Driver');
-                return `
-                    <button type="button" onclick="openLiveSupportModal('${item.id}')" class="live-support-card min-w-[230px] max-w-[260px] text-left border rounded-lg p-3 hover:brightness-110 transition-all" style="${style}">
-                        <div class="text-xs text-white/90 font-semibold">${getSupportTypeLabel(item.requestType)}</div>
-                        <div class="text-sm font-bold text-white mt-1 truncate">${driverName}</div>
-                        <div class="text-xs text-white/90 mt-2">Submitted ${submitted}</div>
+                const displayName = await resolveLiveSupportDisplayName(item);
+                const typeLabel = getSupportTypeLabel(item.requestType);
+                fragments.push(`
+                    <button type="button" onclick="void openLiveSupportModal('${item.id}')" class="live-support-card min-w-[230px] max-w-[260px] text-left border rounded-lg p-3 hover:brightness-110 transition-all" style="${style}">
+                        <div class="text-sm font-bold text-white truncate">${escapeHtml(displayName)}</div>
+                        <div class="text-xs text-white/90 font-semibold mt-2">${escapeHtml(typeLabel)}</div>
+                        <div class="text-xs text-white/70 mt-2">${escapeHtml('Submitted ' + submitted)}</div>
                     </button>
-                `;
-            }).join('');
+                `);
+            }
+            listEl.innerHTML = fragments.join('');
         }
 
-        function openLiveSupportModal(requestId) {
+        async function openLiveSupportModal(requestId) {
             const item = liveSupportRequests.find((entry) => entry.id === requestId);
             if (!item) return;
             liveSupportSelectedRequest = item;
@@ -585,11 +593,15 @@
             const body = document.getElementById('liveSupportModalBody');
             const title = document.getElementById('liveSupportModalTitle');
             if (!modal || !body || !title) return;
-            title.textContent = getSupportTypeLabel(item.requestType);
+            const displayName = await resolveLiveSupportDisplayName(item);
+            const typeLabel = getSupportTypeLabel(item.requestType);
+            title.textContent = typeLabel;
             body.innerHTML = `
                 <div class="grid grid-cols-1 gap-3 text-sm">
-                    <div><span class="text-[#9cabba]">Driver:</span> <span class="text-white">${escapeHtml(item.driverName || 'Driver')}</span></div>
-                    <div><span class="text-[#9cabba]">Submitted:</span> <span class="text-white">${formatSupportRelativeTime(item.createdAt)}</span></div>
+                    <div><span class="text-[#9cabba]">Name:</span> <span class="text-white">${escapeHtml(displayName)}</span></div>
+                    <div><span class="text-[#9cabba]">Type of request:</span> <span class="text-white">${escapeHtml(typeLabel)}</span></div>
+                    <div><span class="text-[#9cabba]">Submitted:</span> <span class="text-white">${escapeHtml(formatSupportRelativeTime(item.createdAt))}</span></div>
+                    <div class="pt-2 border-t border-[#283039]"></div>
                     <div><span class="text-[#9cabba]">Customer name:</span> <span class="text-white">${escapeHtml(item.customerName || '—')}</span></div>
                     <div><span class="text-[#9cabba]">Subject:</span> <span class="text-white">${escapeHtml(item.subject || '—')}</span></div>
                 </div>
@@ -612,12 +624,12 @@
             const confirmed = window.showConfirmation
                 ? await window.showConfirmation({
                     title: 'Confirm Wait Time Log',
-                    message: 'Confirm log and remove this request from Live Support?',
+                    message: 'Confirm log and remove this request from Driver communications?',
                     confirmText: 'Confirm',
                     cancelText: 'Cancel',
                     tone: 'warning'
                 })
-                : window.confirm('Confirm log and remove this request from Live Support?');
+                : window.confirm('Confirm log and remove this request from Driver communications?');
             if (!confirmed) return;
             try {
                 await window.firebaseDeleteDoc(window.firebaseDoc(window.firestore, 'waitTimeLogRequests', liveSupportSelectedRequest.id));
@@ -745,6 +757,7 @@
         let dashboardDriversCache = [];
         let dashboardTimelineStepsCache = [];
         let liveSupportRequests = [];
+        let liveSupportDriverNameCache = {};
         let liveSupportSelectedRequest = null;
         let unsubscribeLiveSupport = null;
         let liveSupportAgeInterval = null;
@@ -1072,6 +1085,37 @@
                 }
             } catch (e) {}
             return null;
+        }
+
+        async function resolveLiveSupportDisplayName(item) {
+            const fid = item && item.driverId;
+            const storedSansEmail = () => {
+                const raw = item && item.driverName;
+                if (!raw || typeof raw !== 'string') return '';
+                const t = raw.trim();
+                return t.includes('@') ? '' : t;
+            };
+            if (!fid) {
+                return storedSansEmail() || 'Driver';
+            }
+            if (liveSupportDriverNameCache[fid]) {
+                return liveSupportDriverNameCache[fid];
+            }
+            let resolved = '';
+            try {
+                const n = await fetchDriverDisplayName(fid);
+                if (n && typeof n === 'string' && !n.includes('@')) {
+                    resolved = n.trim();
+                }
+            } catch (e) {}
+            if (!resolved) {
+                resolved = storedSansEmail();
+            }
+            if (!resolved) {
+                resolved = 'Driver';
+            }
+            liveSupportDriverNameCache[fid] = resolved;
+            return resolved;
         }
 
         var WAIT_CATEGORY_LABELS = {

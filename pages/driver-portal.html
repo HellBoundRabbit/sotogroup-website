@@ -559,9 +559,6 @@
                             <button type="button" id="btnOpenWaitTimeLogRequest" class="w-full py-3 rounded-xl border-2 border-orange-500 bg-orange-900/30 text-orange-300 font-semibold hover:bg-orange-900/50 transition-colors">
                                 Log waittime with the customer
                             </button>
-                            <p id="waitTimeLogRequestStatus" class="hidden text-xs text-green-400 mt-2">
-                                A wait-time log request is already active and visible to your office.
-                            </p>
                         </div>
                     </div>
                     <!-- Step 3: Review total + notes + Submit / Discard -->
@@ -1132,7 +1129,7 @@
 
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, getDocs, query, where, doc, getDoc, updateDoc, setDoc, addDoc, serverTimestamp, deleteField, deleteDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, getDocs, query, where, doc, getDoc, updateDoc, setDoc, addDoc, serverTimestamp, deleteField, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, signOut, updatePassword, reauthenticateWithCredential, EmailAuthProvider, deleteUser, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
@@ -1186,7 +1183,6 @@
         window.query = query;
         window.where = where;
         window.deleteDoc = deleteDoc;
-        window.onSnapshot = onSnapshot;
         
         console.log('Firebase initialized successfully!');
         
@@ -1614,8 +1610,6 @@
             setupHoldToConfirmButtons();
             setupWaitTimePauseModal();
             setupWaitTimeLogRequestModal();
-            startWaitTimeLogRequestListener();
-            await refreshActiveWaitTimeLogRequest();
             const portalBtns = document.querySelector('.portal-buttons');
             if (portalBtns) portalBtns.classList.remove('portal-buttons-loading');
             console.log('Loading complete!');
@@ -1629,9 +1623,19 @@
         }
 
         function getDriverName() {
-            const first = (currentUser && (currentUser.firstName || currentUser.displayName || '')) || '';
+            const first = (currentUser && (currentUser.firstName || '')) || '';
             const last = (currentUser && currentUser.lastName) || '';
-            return [first, last].filter(Boolean).join(' ').trim() || (currentUser && currentUser.email) || 'Driver';
+            const joined = [first, last].filter(Boolean).join(' ').trim();
+            if (joined) return joined;
+            if (currentUser && currentUser.displayName) {
+                const dn = String(currentUser.displayName).trim();
+                if (dn && !dn.includes('@')) return dn;
+            }
+            if (currentUser && currentUser.name) {
+                const legacy = String(currentUser.name).trim();
+                if (legacy && !legacy.includes('@')) return legacy;
+            }
+            return 'Driver';
         }
 
         async function loadDriverDaySessionAndUpdateButtons() {
@@ -2125,8 +2129,6 @@
         let waitTimePauseElapsedInterval = null;
         let selectedPauseCategory = null;
         let pendingWaitTimeReviewData = null; // { waitTimeData, firestoreData, docId } when review screen is shown
-        let activeWaitTimeLogRequest = null;
-        let unsubscribeWaitTimeLogRequests = null;
 
         function getActivePauseStartMs() {
             if (!driverDaySession || !driverDaySession.activeWaitTimeStartedAt) return 0;
@@ -2197,19 +2199,6 @@
             }
         }
 
-        function updateWaitTimeLogRequestButtonState() {
-            const button = document.getElementById('btnOpenWaitTimeLogRequest');
-            const status = document.getElementById('waitTimeLogRequestStatus');
-            if (!button) return;
-            const hasActiveRequest = !!activeWaitTimeLogRequest;
-            button.disabled = hasActiveRequest;
-            button.classList.toggle('opacity-60', hasActiveRequest);
-            button.classList.toggle('cursor-not-allowed', hasActiveRequest);
-            if (status) {
-                status.classList.toggle('hidden', !hasActiveRequest);
-            }
-        }
-
         function closeWaitTimeLogRequestModal() {
             const modal = document.getElementById('waitTimeLogRequestModal');
             const form = document.getElementById('waitTimeLogRequestForm');
@@ -2217,64 +2206,6 @@
             if (form) form.reset();
             const submitBtn = document.getElementById('waitTimeLogRequestSubmit');
             if (submitBtn) submitBtn.disabled = false;
-        }
-
-        async function refreshActiveWaitTimeLogRequest() {
-            if (!currentUser || !currentUser.uid || !window.getDocs || !window.query || !window.where) return;
-            const officeId = getCurrentOfficeId();
-            if (!officeId) return;
-            try {
-                const requestQuery = window.query(
-                    window.collection(window.db, 'waitTimeLogRequests'),
-                    window.where('driverId', '==', currentUser.uid),
-                    window.where('officeId', '==', officeId)
-                );
-                const snap = await window.getDocs(requestQuery);
-                const requests = snap.docs
-                    .map(function (d) { return { id: d.id, ...d.data() }; })
-                    .filter(function (item) { return (item.requestType || 'wait_time_log_request') === 'wait_time_log_request'; })
-                    .filter(function (item) { return (item.status || 'pending') === 'pending'; })
-                    .sort(function (a, b) {
-                        const aMs = a.createdAt && a.createdAt.toDate ? a.createdAt.toDate().getTime() : 0;
-                        const bMs = b.createdAt && b.createdAt.toDate ? b.createdAt.toDate().getTime() : 0;
-                        return bMs - aMs;
-                    });
-                activeWaitTimeLogRequest = requests[0] || null;
-                updateWaitTimeLogRequestButtonState();
-            } catch (error) {
-                console.warn('Could not refresh wait-time log requests:', error);
-            }
-        }
-
-        function startWaitTimeLogRequestListener() {
-            if (unsubscribeWaitTimeLogRequests) {
-                unsubscribeWaitTimeLogRequests();
-                unsubscribeWaitTimeLogRequests = null;
-            }
-            if (!currentUser || !currentUser.uid || !window.onSnapshot) return;
-            const officeId = getCurrentOfficeId();
-            if (!officeId) return;
-            const requestQuery = window.query(
-                window.collection(window.db, 'waitTimeLogRequests'),
-                window.where('driverId', '==', currentUser.uid),
-                window.where('officeId', '==', officeId)
-            );
-            unsubscribeWaitTimeLogRequests = window.onSnapshot(requestQuery, function (snapshot) {
-                const requests = snapshot.docs
-                    .map(function (d) { return { id: d.id, ...d.data() }; })
-                    .filter(function (item) { return (item.requestType || 'wait_time_log_request') === 'wait_time_log_request'; })
-                    .filter(function (item) { return (item.status || 'pending') === 'pending'; })
-                    .sort(function (a, b) {
-                        const aMs = a.createdAt && a.createdAt.toDate ? a.createdAt.toDate().getTime() : 0;
-                        const bMs = b.createdAt && b.createdAt.toDate ? b.createdAt.toDate().getTime() : 0;
-                        return bMs - aMs;
-                    });
-                activeWaitTimeLogRequest = requests[0] || null;
-                updateWaitTimeLogRequestButtonState();
-            }, function (error) {
-                console.warn('Wait-time log request listener failed:', error);
-                refreshActiveWaitTimeLogRequest();
-            });
         }
 
         function openWaitTimePauseModal(toRunningView) {
@@ -2591,7 +2522,6 @@
             const form = document.getElementById('waitTimeLogRequestForm');
             if (openBtn) {
                 openBtn.addEventListener('click', function () {
-                    if (activeWaitTimeLogRequest) return;
                     if (modal) modal.classList.remove('hidden');
                 });
             }
@@ -2606,8 +2536,7 @@
             if (form) {
                 form.addEventListener('submit', async function (event) {
                     event.preventDefault();
-                    if (!currentUser || activeWaitTimeLogRequest) {
-                        updateWaitTimeLogRequestButtonState();
+                    if (!currentUser) {
                         return;
                     }
                     const customerName = (document.getElementById('waitTimeLogCustomerName').value || '').trim();
