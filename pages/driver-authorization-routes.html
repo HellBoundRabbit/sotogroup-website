@@ -871,8 +871,45 @@
         }
         
         /**
-         * Compact strip for route cards: consecutive WALKING steps are merged (API often returns
-         * many sub-steps of a few seconds each, each rounding to “1m” if shown separately).
+         * DirectionsStep / Routes steps may include nested `steps` (walking maneuvers, etc.).
+         * We only render leaf segments so each physical walk / ride appears once on the strip.
+         */
+        function flattenLeafSteps(stepList) {
+            const leaves = [];
+            function walk(steps) {
+                for (const step of steps || []) {
+                    if (
+                        step.steps &&
+                        Array.isArray(step.steps) &&
+                        step.steps.length > 0
+                    ) {
+                        walk(step.steps);
+                    } else if (step) {
+                        leaves.push(step);
+                    }
+                }
+            }
+            walk(stepList);
+            return leaves;
+        }
+
+        /** Normalize mode strings from JS Directions vs Routes adapter. */
+        function stripStepIsWalking(step) {
+            if (step.transit) return false;
+            const raw = String(step.travel_mode || step.travelMode || '').toUpperCase();
+            if (raw.includes('TRANSIT')) return false;
+            return raw.includes('WALK') || raw === '';
+        }
+
+        function stripStepIsTransit(step) {
+            if (!step.transit) return false;
+            const raw = String(step.travel_mode || step.travelMode || '').toUpperCase();
+            return raw.includes('TRANSIT');
+        }
+
+        /**
+         * Compact strip for route cards: merge consecutive walks (Directions often uses nested
+         * micro-WALK maneuvers → many 1-minute chips unless we flatten leaves + accumulate).
          */
         function buildRouteStripPieces(directionResponse) {
             const chunks = [];
@@ -889,10 +926,12 @@
             }
 
             rd.legs.forEach((leg) => {
-                (leg.steps || []).forEach((step) => {
-                    if (step.travel_mode === 'WALKING') {
-                        walkAccumSec += typeof step.duration?.value === 'number' ? step.duration.value : 0;
-                    } else if (step.travel_mode === 'TRANSIT' && step.transit) {
+                const leaves = flattenLeafSteps(leg.steps);
+                leaves.forEach((step) => {
+                    if (stripStepIsWalking(step)) {
+                        walkAccumSec +=
+                            typeof step.duration?.value === 'number' ? step.duration.value : 0;
+                    } else if (stripStepIsTransit(step)) {
                         flushWalk();
                         const ln = step.transit.line || {};
                         const label = ln.short_name || ln.name || 'Transit';
