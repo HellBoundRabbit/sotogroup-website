@@ -17,6 +17,7 @@
     <title>Authorization Request - SOTO Routes</title>
     <script src="/assets/js/tailwind-runtime.js"></script>
     <script src="/js/session-manager.js"></script>
+    <script src="/js/authorization-routes-api-adapter.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
     <!--
       Google Cloud (same project as this API key) must have enabled:
@@ -391,6 +392,84 @@
         .hdpi.pac-logo::after {
             opacity: 1;
         }
+
+        .request-button {
+            position: absolute;
+            top: 12px;
+            right: 16px;
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 8px;
+            color: #ffffff;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            gap: 8px;
+        }
+        .request-button.visible { display: flex; }
+        .routes-list {
+            width: 100%;
+            max-width: 600px;
+            background: #1a1f24;
+            border-right: 1px solid #283039;
+            overflow-y: auto;
+            padding: 16px;
+        }
+        .map-container { flex: 1; min-width: 400px; position: relative; display: none; }
+        .map-container.fullscreen {
+            display: block;
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            background: #000000;
+        }
+        .map-container.fullscreen #map { width: 100%; height: 100%; }
+        #map { width: 100%; height: 100%; }
+        .route-card { background: #111418; border: 1px solid #283039; border-radius: 8px; padding: 16px; margin-bottom: 12px; cursor: pointer; }
+        .route-card.selected { border-color: #3b82f6; background: #1e3a5f; }
+        .route-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .route-title { font-weight: 600; font-size: 16px; }
+        .route-duration { color: #3b82f6; font-weight: 500; }
+        .route-timeline { position: relative; padding-left: 80px; }
+        .timeline-item { position: relative; margin-bottom: 20px; padding-bottom: 20px; min-height: 60px; }
+        .timeline-dot { position: absolute; left: -20px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: #ffffff; border: 2px solid #374151; z-index: 2; }
+        .timeline-segment-line { position: absolute; left: -20px; width: 2px; z-index: 1; }
+        .timeline-segment-line.walking { background: repeating-linear-gradient(to bottom, #4285F4 0px, #4285F4 4px, transparent 4px, transparent 8px); }
+        .timeline-segment-line.bus { background: #9C27B0; }
+        .timeline-segment-line.train { background: #EA4335; }
+        .timeline-segment-line.subway { background: #34A853; }
+        .timeline-segment-line.wait { background: #F59E0B; }
+        .timeline-time { position: absolute; left: -60px; top: 0; font-size: 13px; font-weight: 600; color: #9ca3af; width: 50px; text-align: right; }
+        .timeline-content { background: #1a1f24; border-radius: 8px; padding: 12px; border: 1px solid transparent; transition: all 0.2s; cursor: pointer; }
+        .timeline-content.transit-cost { background: #1e3a5f; border-color: #3b82f6; }
+        .timeline-content.taxi-request { background: #7f1d1d !important; border-color: #ef4444 !important; border-width: 2px; }
+        .timeline-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+        .timeline-title { font-weight: 600; font-size: 14px; }
+        .timeline-location { font-size: 13px; color: #9ca3af; margin-top: 4px; }
+        .timeline-duration { font-size: 12px; color: #6b7280; margin-top: 4px; }
+        .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #9ca3af; }
+        .loading-spinner { width: 40px; height: 40px; border: 3px solid #283039; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 16px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .error-message { background: #7f1d1d; border: 1px solid #991b1b; border-radius: 8px; padding: 16px; color: #fca5a5; margin: 16px; }
+        .cost-input { margin-top: 8px; padding: 6px 10px; background: #283039 !important; border: 1px solid #3a444e !important; border-radius: 6px; color: #fff !important; font-size: 14px; width: 100%; max-width: 120px; }
+        .segment-cost-label { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+        .route-picker-panel { flex: 1; max-width: 600px; width: 100%; background: #1a1f24; border-right: 1px solid #283039; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; min-height: 0; }
+        .route-picker-panel[hidden], #routesList[hidden] { display: none !important; }
+        .route-picker-title { font-weight: 700; font-size: 18px; margin-bottom: 4px; }
+        .route-picker-sub { font-size: 13px; color: #9ca3af; margin-bottom: 12px; }
+        .route-picker-cards { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+        .route-option-card { background: #111418; border: 1px solid #283039; border-radius: 10px; padding: 14px 14px 12px; cursor: pointer; text-align: left; width: 100%; }
+        .route-option-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+        .route-option-duration { font-size: 22px; font-weight: 700; line-height: 1.2; }
+        .route-option-window { font-size: 12px; color: #9ca3af; text-align: right; max-width: 58%; line-height: 1.35; }
+        .route-option-strip-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 2px; font-size: 13px; color: #d1d5db; margin-bottom: 6px; }
+        .route-strip-sep { color: #6b7280; font-size: 12px; padding: 0 2px; user-select: none; }
+        .route-strip-walk { display: inline-flex; align-items: center; gap: 4px; color: #93c5fd; }
+        .route-strip-badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; color: #fff; background: #5b6470; }
+        .route-option-detail { font-size: 12px; color: #6b7280; margin-top: 2px; }
     </style>
 </head>
 <body class="bg-black text-white min-h-screen">
@@ -548,6 +627,42 @@
                         <span class="text-white font-semibold">Proceed</span>
                     </button>
                 </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- In-page routes experience (single-page flow) -->
+    <div id="authorizationRoutesLayer" class="hidden fixed inset-0 z-[70] bg-[#0f1419] text-white">
+        <div class="h-full flex flex-col">
+            <div class="bg-[#1a1f24] border-b border-[#283039] px-4 py-3 relative">
+                <button type="button" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#283039] border border-[#3a444e] text-sm" onclick="closeAuthorizationRoutesLayer()">
+                    <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span>
+                    Back
+                </button>
+                <h2 id="routeScreenTitle" class="text-lg font-bold mt-3">Route options</h2>
+                <div id="routeInfo" class="text-xs text-gray-400 mt-1"></div>
+                <button class="request-button" id="requestButton" onclick="handleNext()">
+                    <span class="material-symbols-outlined" style="font-size:18px;">arrow_forward</span>
+                    Next
+                </button>
+            </div>
+            <div class="flex-1 min-h-0 flex flex-col md:flex-row">
+                <div id="routePickerPanel" class="route-picker-panel">
+                    <div class="route-picker-lead">
+                        <div class="route-picker-title">Public transport routes</div>
+                        <p class="route-picker-sub">We found more than one way to make this journey. Tap a route to continue.</p>
+                    </div>
+                    <div id="routePickerCards" class="route-picker-cards">
+                        <div class="loading">
+                            <div class="loading-spinner"></div>
+                            <p>Finding routes…</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="routes-list" id="routesList" hidden></div>
+                <div class="map-container">
+                    <div id="map"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -729,7 +844,7 @@
             proceedButton.disabled = !(hasFrom && hasTo && hasValidTime);
         }
         
-        // Proceed to routes
+        // Proceed to routes (single-page: open in-page route flow)
         function proceedToRoutes() {
             const fromInput = document.getElementById('fromAddress');
             const toInput = document.getElementById('toAddress');
@@ -749,7 +864,7 @@
                 departureTime = new Date().toISOString();
             }
             
-            // Store data in sessionStorage for the routes page
+            // Store data in sessionStorage for route flow state
             sessionStorage.setItem('authorizationRequest', JSON.stringify({
                 from: {
                     address: fromInput.value,
@@ -766,9 +881,574 @@
                 departureTime: departureTime
             }));
             
-            // Navigate to routes page
-            window.location.href = '/pages/driver-authorization-routes.html';
+            openAuthorizationRoutesLayer();
         }
+        
+        function openAuthorizationRoutesLayer() {
+            const layer = document.getElementById('authorizationRoutesLayer');
+            if (!layer) return;
+            
+            closeAuthorizationModal();
+            layer.classList.remove('hidden');
+            initializeMap().then(() => loadRoutes());
+        }
+        
+        function closeAuthorizationRoutesLayer() {
+            const layer = document.getElementById('authorizationRoutesLayer');
+            if (layer) layer.classList.add('hidden');
+            const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
+            const routesList = document.getElementById('routesList');
+            if (mapContainer) mapContainer.classList.remove('fullscreen');
+            if (routesList) routesList.style.display = '';
+        }
+
+        let map;
+        let directionsService;
+        let routes = [];
+        let routeAlternatives = [];
+        let routesPickerConfirmed = false;
+        let selectedRouteIndex = null;
+        let requestData = null;
+        let routePolylines = [];
+        let routeMarkers = [];
+        let routeSegments = [];
+        let selectedSegments = new Set();
+        let transitCostSegments = new Map();
+        let taxiRequestSegments = new Set();
+        let taxiPolylines = [];
+        let segmentPolylines = [];
+        let clickTimers = new Map();
+
+        function directionsRoutePromise(request) {
+            return new Promise((resolve) => {
+                directionsService.route(request, (response, status) => {
+                    const ok = status === google.maps.DirectionsStatus.OK || status === 'OK';
+                    resolve(ok ? response : null);
+                });
+            });
+        }
+        function totalRouteDurationSecs(directionResponse) {
+            if (!directionResponse?.routes?.[0]?.legs?.length) return 0;
+            return directionResponse.routes[0].legs.reduce((sum, leg) => sum + (leg.duration?.value ?? 0), 0);
+        }
+        function dedupeDirectionResponses(items) {
+            const seen = new Set();
+            const out = [];
+            for (const resp of items) {
+                if (!resp?.routes?.[0]?.legs?.length) continue;
+                const r0 = resp.routes[0];
+                let key = r0.overview_polyline?.points || '';
+                if (!key) {
+                    key = r0.legs.map((leg) => leg.steps.map((s) => `${s.travel_mode}:${s.duration?.value ?? 0}`).join(',')).join('|');
+                }
+                if (seen.has(key)) continue;
+                seen.add(key);
+                out.push(resp);
+            }
+            out.sort((a, b) => totalRouteDurationSecs(a) - totalRouteDurationSecs(b));
+            return out;
+        }
+        function escapeHtml(unsafe) {
+            if (unsafe == null || unsafe === '') return '';
+            const el = document.createElement('div');
+            el.textContent = String(unsafe);
+            return el.innerHTML;
+        }
+        function lineBadgeBackgroundStyle(transitLine) {
+            const c = transitLine?.color;
+            if (!c || typeof c !== 'string') return '';
+            const hex = c.replace(/^#/, '').trim();
+            if (/^[0-9a-fA-F]{6}$/.test(hex)) return `background:#${hex};`;
+            if (/^[0-9a-fA-F]{8}$/.test(hex)) return `background:#${hex.slice(0, 6)};`;
+            return '';
+        }
+        function getRouteScheduledWindow(directionResponse, departureFallback) {
+            let depTs = null;
+            let arrTs = null;
+            const rd = directionResponse?.routes?.[0];
+            const fb = departureFallback instanceof Date ? departureFallback : new Date(departureFallback);
+            if (!rd?.legs) return { dep: fb, arr: fb };
+            rd.legs.forEach((leg) => {
+                leg.steps.forEach((step) => {
+                    if (step.travel_mode === 'TRANSIT' && step.transit) {
+                        const td = step.transit;
+                        if (td.departure_time?.value) depTs = depTs == null ? td.departure_time.value * 1000 : Math.min(depTs, td.departure_time.value * 1000);
+                        if (td.arrival_time?.value) arrTs = arrTs == null ? td.arrival_time.value * 1000 : Math.max(arrTs, td.arrival_time.value * 1000);
+                    }
+                });
+            });
+            let depDate = fb instanceof Date ? fb : new Date(fb);
+            if (depTs != null) depDate = new Date(depTs);
+            const totalSecs = totalRouteDurationSecs(directionResponse);
+            const arrDate = arrTs != null ? new Date(arrTs) : new Date(depDate.getTime() + totalSecs * 1000);
+            return { dep: depDate, arr: arrDate };
+        }
+        const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        function formatClockWeekday(date) {
+            if (!(date instanceof Date) || isNaN(date.getTime())) return '';
+            const h = date.getHours().toString().padStart(2, '0');
+            const mi = date.getMinutes().toString().padStart(2, '0');
+            return `${h}:${mi} (${WEEKDAY_SHORT[date.getDay()]})`;
+        }
+        function formatCompactDuration(totalSecs) {
+            const m = Math.round(totalSecs / 60);
+            const h = Math.floor(m / 60);
+            const rm = m % 60;
+            if (h === 0) return `${rm} min`;
+            return rm ? `${h}h ${rm}m` : `${h}h`;
+        }
+        function flattenLeafSteps(stepList) {
+            const leaves = [];
+            function walk(steps) {
+                for (const step of steps || []) {
+                    if (step.steps && Array.isArray(step.steps) && step.steps.length > 0) walk(step.steps);
+                    else if (step) leaves.push(step);
+                }
+            }
+            walk(stepList);
+            return leaves;
+        }
+        function stripStepIsWalking(step) {
+            if (step.transit) return false;
+            const raw = String(step.travel_mode || step.travelMode || '').toUpperCase();
+            if (raw.includes('TRANSIT')) return false;
+            return raw.includes('WALK') || raw === '';
+        }
+        function stripStepIsTransit(step) {
+            if (!step.transit) return false;
+            const raw = String(step.travel_mode || step.travelMode || '').toUpperCase();
+            return raw.includes('TRANSIT');
+        }
+        function buildRouteStripPieces(directionResponse) {
+            const chunks = [];
+            const rd = directionResponse?.routes?.[0];
+            if (!rd?.legs) return chunks;
+            let walkAccumSec = 0;
+            function flushWalk() {
+                if (walkAccumSec <= 0) return;
+                chunks.push({ type: 'walk', mins: Math.max(1, Math.round(walkAccumSec / 60)) });
+                walkAccumSec = 0;
+            }
+            rd.legs.forEach((leg) => {
+                flattenLeafSteps(leg.steps).forEach((step) => {
+                    if (stripStepIsWalking(step)) walkAccumSec += typeof step.duration?.value === 'number' ? step.duration.value : 0;
+                    else if (stripStepIsTransit(step)) {
+                        flushWalk();
+                        const ln = step.transit.line || {};
+                        chunks.push({ type: 'transit', label: ln.short_name || ln.name || 'Transit', line: ln });
+                    }
+                });
+            });
+            flushWalk();
+            return chunks;
+        }
+        function renderRoutePickerCards(alts) {
+            const host = document.getElementById('routePickerCards');
+            if (!host || !requestData) return;
+            host.innerHTML = '';
+            const depFallback = requestData.departureTime ? new Date(requestData.departureTime) : new Date();
+            alts.forEach((resp, index) => {
+                const secs = totalRouteDurationSecs(resp);
+                const durationLabel = secs < 3600 ? `${Math.round(secs / 60)} min` : formatCompactDuration(secs);
+                const { dep, arr } = getRouteScheduledWindow(resp, depFallback);
+                const windowHtml = `${escapeHtml(formatClockWeekday(dep))} – ${escapeHtml(formatClockWeekday(arr))}`;
+                const pieces = buildRouteStripPieces(resp);
+                const stripParts = [];
+                pieces.forEach((p, pi) => {
+                    if (pi > 0) stripParts.push('<span class="route-strip-sep">›</span>');
+                    if (p.type === 'walk') stripParts.push(`<span class="route-strip-walk"><span class="material-symbols-outlined" style="font-size:18px;">directions_walk</span>${p.mins}</span>`);
+                    else {
+                        const st = lineBadgeBackgroundStyle(p.line);
+                        stripParts.push(`<span class="route-strip-badge" ${st ? `style="${escapeHtml(st)}"` : ''}>${escapeHtml(p.label)}</span>`);
+                    }
+                });
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'route-option-card';
+                btn.innerHTML = `<div class="route-option-row"><div class="route-option-duration">${escapeHtml(durationLabel)}</div><div class="route-option-window">${windowHtml}</div></div><div class="route-option-strip-wrap">${stripParts.join('')}</div>`;
+                btn.addEventListener('click', () => confirmRoutePickerSelection(index));
+                host.appendChild(btn);
+            });
+        }
+        function confirmRoutePickerSelection(index) {
+            if (routesPickerConfirmed) return;
+            const chosen = routeAlternatives[index];
+            if (!chosen) return;
+            routes = [chosen];
+            routeAlternatives = [];
+            routesPickerConfirmed = true;
+            const pickerPanel = document.getElementById('routePickerPanel');
+            const routesListEl = document.getElementById('routesList');
+            if (pickerPanel) pickerPanel.hidden = true;
+            if (routesListEl) routesListEl.removeAttribute('hidden');
+            const t = document.getElementById('routeScreenTitle');
+            if (t) t.textContent = 'Click a step once to request a transit cost. Click twice to request a taxi.';
+            selectRoute(0);
+        }
+        function setPoweredByGoogleAttribution() {
+            const el = document.getElementById('routeInfo');
+            if (el) el.textContent = `Powered by Google, © ${new Date().getFullYear()} Google`;
+        }
+        function clearPoweredByGoogleAttribution() {
+            const el = document.getElementById('routeInfo');
+            if (el) el.textContent = '';
+        }
+        async function waitForFirebaseFunctions() {
+            for (let i = 0; i < 90; i++) {
+                if (window.firebase && typeof window.firebase.httpsCallable === 'function' && window.firebase.functions) return true;
+                await new Promise((r) => setTimeout(r, 50));
+            }
+            return false;
+        }
+        async function tryLoadRoutesFromGoogleRoutesApi(origin, destination) {
+            const ready = await waitForFirebaseFunctions();
+            if (!ready || typeof window.routesApiAdaptAuthorizationRoutes !== 'function') return null;
+            try {
+                const fn = window.firebase.httpsCallable(window.firebase.functions, 'computeAuthorizationTransitRoutes');
+                const result = await fn({ origin, destination, departureTime: requestData.departureTime, regionCode: 'GB' });
+                const data = result && result.data;
+                if (!data || !data.success || !Array.isArray(data.routes) || data.routes.length === 0) return null;
+                return window.routesApiAdaptAuthorizationRoutes(data.routes, google.maps.LatLng);
+            } catch (e) {
+                console.warn('Routes API callable failed; using Directions fallback.', e);
+                return null;
+            }
+        }
+        async function initializeMap() {
+            await waitForGoogleMaps();
+            const storedData = sessionStorage.getItem('authorizationRequest');
+            if (!storedData) {
+                showError('No route data found. Please go back and create a new request.');
+                return;
+            }
+            requestData = JSON.parse(storedData);
+            if (!map) {
+                map = new google.maps.Map(document.getElementById('map'), { zoom: 10, center: { lat: requestData.from.lat, lng: requestData.from.lng }, mapTypeId: google.maps.MapTypeId.ROADMAP });
+                directionsService = new google.maps.DirectionsService();
+            }
+        }
+        async function loadRoutes() {
+            await waitForGoogleMaps();
+            if (!requestData) {
+                const storedData = sessionStorage.getItem('authorizationRequest');
+                if (!storedData) return;
+                requestData = JSON.parse(storedData);
+            }
+            routesPickerConfirmed = false;
+            routeAlternatives = [];
+            routes = [];
+            const pickerCards = document.getElementById('routePickerCards');
+            const pickerPanel = document.getElementById('routePickerPanel');
+            const routesListEl = document.getElementById('routesList');
+            if (pickerCards) pickerCards.innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>Finding routes…</p></div>';
+            if (pickerPanel) pickerPanel.hidden = false;
+            if (routesListEl) routesListEl.setAttribute('hidden', '');
+            const titleEl = document.getElementById('routeScreenTitle');
+            if (titleEl) titleEl.textContent = 'Route options';
+            clearPoweredByGoogleAttribution();
+            try {
+                const departureTime = new Date(requestData.departureTime);
+                const depEffective = departureTime instanceof Date && !isNaN(departureTime.getTime()) ? departureTime : new Date();
+                const origin = { lat: requestData.from.lat, lng: requestData.from.lng };
+                const destination = { lat: requestData.to.lat, lng: requestData.to.lng };
+                const fromRoutesApi = await tryLoadRoutesFromGoogleRoutesApi(origin, destination);
+                if (fromRoutesApi?.length) routeAlternatives = fromRoutesApi;
+                else {
+                    const narrowedModes = [google.maps.TransitMode.BUS, google.maps.TransitMode.TRAIN, google.maps.TransitMode.SUBWAY];
+                    const variants = [
+                        { modes: narrowedModes, routingPreference: google.maps.TransitRoutePreference.FEWER_TRANSFERS },
+                        { modes: narrowedModes, routingPreference: google.maps.TransitRoutePreference.LESS_WALKING },
+                        { routingPreference: google.maps.TransitRoutePreference.FEWER_TRANSFERS },
+                        { routingPreference: google.maps.TransitRoutePreference.LESS_WALKING }
+                    ];
+                    const requests = variants.map((v) => ({ origin, destination, travelMode: google.maps.TravelMode.TRANSIT, transitOptions: { departureTime: depEffective, ...v } }));
+                    const resultsRaw = await Promise.all(requests.map((r) => directionsRoutePromise(r)));
+                    routeAlternatives = dedupeDirectionResponses(resultsRaw.filter(Boolean));
+                }
+                setPoweredByGoogleAttribution();
+                if (!routeAlternatives.length) return showError('No public transport routes found for this journey. Please try different locations or times.');
+                if (routeAlternatives.length === 1) return confirmRoutePickerSelection(0);
+                renderRoutePickerCards(routeAlternatives);
+            } catch (error) {
+                console.error('Error loading routes:', error);
+                showError('An error occurred while loading routes. Please try again.');
+            }
+        }
+        function formatTime(date) {
+            if (!date) return '';
+            const hours = date.getHours();
+            const minutes = date.getMinutes();
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            return `${hours % 12 || 12}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+        }
+        function getTimelineIcon(step) {
+            if (step.travel_mode === 'WALKING') return '<span class="material-symbols-outlined" style="font-size:20px;color:#4285F4;">directions_walk</span>';
+            if (step.travel_mode === 'TRANSIT' && step.transit) {
+                const transitType = step.transit.line?.vehicle?.type;
+                if (transitType === 'BUS') return '<span class="material-symbols-outlined" style="font-size:20px;color:#9C27B0;">directions_bus</span>';
+                if (transitType === 'TRAIN') return '<span class="material-symbols-outlined" style="font-size:20px;color:#EA4335;">train</span>';
+                if (transitType === 'SUBWAY') return '<span class="material-symbols-outlined" style="font-size:20px;color:#34A853;">subway</span>';
+            }
+            return '<span class="material-symbols-outlined" style="font-size:20px;">arrow_forward</span>';
+        }
+        function getLineClass(step) {
+            if (step.travel_mode === 'WALKING') return 'walking';
+            if (step.travel_mode === 'TRANSIT' && step.transit) {
+                const transitType = step.transit.line?.vehicle?.type;
+                if (transitType === 'BUS') return 'bus';
+                if (transitType === 'TRAIN') return 'train';
+                if (transitType === 'SUBWAY') return 'subway';
+            }
+            return '';
+        }
+        function formatWaitTime(minutes) {
+            if (minutes < 60) return `${minutes} min`;
+            const hours = Math.floor(minutes / 60);
+            const mins = minutes % 60;
+            return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
+        }
+        function displayRoutes() {
+            const routesList = document.getElementById('routesList');
+            if (routes.length === 0) {
+                routesList.innerHTML = '<div class="error-message">No routes found.</div>';
+                return;
+            }
+            routesList.innerHTML = '';
+            routes.forEach((route, routeIndex) => {
+                const routeCard = document.createElement('div');
+                routeCard.className = 'route-card';
+                routeCard.onclick = (e) => { if (!e.target.closest('.timeline-content')) selectRoute(routeIndex); };
+                const leg = route.routes[0].legs[0];
+                let timelineHtml = '<div class="route-timeline">';
+                let segmentIndex = 0;
+                let currentTime = new Date(requestData.departureTime);
+                timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTime(currentTime)}</div><div class="timeline-content"><div class="timeline-header"><span class="material-symbols-outlined" style="font-size:20px;color:#fff;">place</span><div class="timeline-title">Start</div></div><div class="timeline-location">${requestData.from.address}</div></div></div>`;
+                route.routes[0].legs.forEach((lg) => {
+                    const legSteps = lg.steps || [];
+                    for (let stepIndex = 0; stepIndex < legSteps.length; stepIndex++) {
+                        const step = legSteps[stepIndex];
+                        const segmentId = `route-${routeIndex}-segment-${segmentIndex}`;
+                        if (step.travel_mode === 'WALKING') {
+                            let mergedWalkSec = step.duration?.value || 0;
+                            let mergedWalkDistanceMeters = step.distance?.value || 0;
+                            let consumedWalkSegments = 1;
+                            while (stepIndex + 1 < legSteps.length && legSteps[stepIndex + 1]?.travel_mode === 'WALKING') {
+                                const nextWalk = legSteps[stepIndex + 1];
+                                mergedWalkSec += nextWalk.duration?.value || 0;
+                                mergedWalkDistanceMeters += nextWalk.distance?.value || 0;
+                                consumedWalkSegments++;
+                                stepIndex++;
+                            }
+                            const arrivalTime = new Date(currentTime.getTime() + (mergedWalkSec * 1000));
+                            const walkMinutes = Math.max(1, Math.round(mergedWalkSec / 60));
+                            const walkDistanceText = mergedWalkDistanceMeters > 0 ? (mergedWalkDistanceMeters >= 1000 ? `${(mergedWalkDistanceMeters / 1000).toFixed(1)} km` : `${Math.round(mergedWalkDistanceMeters)} m`) : null;
+                            timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-segment-line walking" style="top:0;height:${mergedWalkSec * 0.5}px;"></div><div class="timeline-time">${formatTime(arrivalTime)}</div><div class="timeline-content" id="${segmentId}" style="cursor:default;opacity:0.8;pointer-events:none;"><div class="timeline-header"><div class="timeline-icon">${getTimelineIcon(step)}</div><div class="timeline-title">Walk</div></div><div class="timeline-duration">About ${walkMinutes} min${walkDistanceText ? ' · ' + walkDistanceText : ''}</div></div></div>`;
+                            currentTime = arrivalTime;
+                            segmentIndex += consumedWalkSegments;
+                        } else if (step.travel_mode === 'TRANSIT' && step.transit) {
+                            const transit = step.transit;
+                            const transitType = transit.line?.vehicle?.type;
+                            const transitName = transitType === 'BUS' ? (transit.line.short_name ? `Bus ${transit.line.short_name}` : 'Bus') : (transit.departure_stop?.name || transit.line.name || 'Transit');
+                            if (transit.departure_time?.value) {
+                                const departureTime = new Date(transit.departure_time.value * 1000);
+                                const waitTimeMinutes = Math.max(0, Math.floor((departureTime.getTime() - currentTime.getTime()) / 60000));
+                                if (waitTimeMinutes > 0 && waitTimeMinutes < 1440) {
+                                    const waitSegmentId = `route-${routeIndex}-wait-${segmentIndex}`;
+                                    const isWaitTransitCost = transitCostSegments.has(waitSegmentId);
+                                    const isWaitTaxiRequest = taxiRequestSegments.has(waitSegmentId);
+                                    const waitCostValue = transitCostSegments.get(waitSegmentId) || '';
+                                    const waitContentClass = isWaitTaxiRequest ? 'taxi-request' : (isWaitTransitCost ? 'transit-cost' : '');
+                                    timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-segment-line wait" style="top:0;height:${Math.min(waitTimeMinutes * 2, 100)}px;"></div><div class="timeline-time">${formatTime(departureTime)}</div><div class="timeline-content ${waitContentClass}" id="${waitSegmentId}" onclick="handleSegmentClick('${waitSegmentId}', event)"><div class="timeline-header"><span class="material-symbols-outlined" style="font-size:20px;color:#F59E0B;">schedule</span><div class="timeline-title">Wait</div></div><div class="timeline-duration">${formatWaitTime(waitTimeMinutes)}</div>${transit.departure_stop ? `<div class="timeline-location">${transit.departure_stop.name}</div>` : ''}${(isWaitTransitCost || isWaitTaxiRequest) ? `<div class="segment-cost-label">${isWaitTaxiRequest ? 'Taxi Cost:' : 'Transit Cost:'}</div><input type="number" step="0.01" min="0" placeholder="£0.00" value="${waitCostValue}" class="cost-input" onchange="updateSegmentCost('${waitSegmentId}', this.value)" onclick="event.stopPropagation();">` : ''}</div></div>`;
+                                }
+                                currentTime = departureTime;
+                            }
+                            const arrivalTime = transit.arrival_time?.value ? new Date(transit.arrival_time.value * 1000) : new Date(currentTime.getTime() + (step.duration.value * 1000));
+                            const transitSegmentId = `route-${routeIndex}-segment-${segmentIndex}`;
+                            const isTransitCostSegment = transitCostSegments.has(transitSegmentId);
+                            const isTaxiRequestSegment = taxiRequestSegments.has(transitSegmentId);
+                            const transitCostValue = transitCostSegments.get(transitSegmentId) || '';
+                            const transitContentClass = isTaxiRequestSegment ? 'taxi-request' : (isTransitCostSegment ? 'transit-cost' : '');
+                            timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-segment-line ${getLineClass(step)}" style="top:0;height:${step.duration.value * 0.3}px;"></div><div class="timeline-time">${formatTime(arrivalTime)}</div><div class="timeline-content ${transitContentClass}" id="${transitSegmentId}" onclick="handleSegmentClick('${transitSegmentId}', event)"><div class="timeline-header"><div class="timeline-icon">${getTimelineIcon(step)}</div><div class="timeline-title">${transitName}</div></div><div class="timeline-duration">${step.duration.text}${transit.num_stops ? ' (' + transit.num_stops + ' stops)' : ''}</div>${transit.departure_stop ? `<div class="timeline-location">${transit.departure_stop.name}</div>` : ''}${transit.arrival_stop ? `<div class="timeline-location">→ ${transit.arrival_stop.name}</div>` : ''}${(isTransitCostSegment || isTaxiRequestSegment) ? `<div class="segment-cost-label">${isTaxiRequestSegment ? 'Taxi Cost:' : 'Transit Cost:'}</div><input type="number" step="0.01" min="0" placeholder="£0.00" value="${transitCostValue}" class="cost-input" onchange="updateSegmentCost('${transitSegmentId}', this.value)" onclick="event.stopPropagation();">` : ''}</div></div>`;
+                            currentTime = arrivalTime;
+                            segmentIndex++;
+                        }
+                    }
+                });
+                timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTime(currentTime)}</div><div class="timeline-content"><div class="timeline-header"><span class="material-symbols-outlined" style="font-size:20px;color:#fff;">place</span><div class="timeline-title">Arrive</div></div><div class="timeline-location">${requestData.to.address}</div></div></div></div>`;
+                routeCard.innerHTML = `<div class="route-header"><div class="route-title">Route ${routeIndex + 1}</div><div class="route-duration">${leg.duration.text}</div></div><div>${timelineHtml}</div>`;
+                routesList.appendChild(routeCard);
+            });
+        }
+        function handleSegmentClick(segmentId, event) {
+            event.stopPropagation();
+            const hasTransitCost = transitCostSegments.has(segmentId);
+            const hasTaxiRequest = taxiRequestSegments.has(segmentId);
+            if (clickTimers.has(segmentId)) {
+                clearTimeout(clickTimers.get(segmentId));
+                clickTimers.delete(segmentId);
+                if (hasTaxiRequest) {
+                    taxiRequestSegments.delete(segmentId);
+                    transitCostSegments.delete(segmentId);
+                } else {
+                    const existingCost = transitCostSegments.get(segmentId) || '';
+                    taxiRequestSegments.add(segmentId);
+                    if (existingCost) transitCostSegments.set(segmentId, existingCost);
+                }
+            } else if (hasTransitCost && !hasTaxiRequest) {
+                const existingCost = transitCostSegments.get(segmentId) || '';
+                taxiRequestSegments.add(segmentId);
+                if (existingCost) transitCostSegments.set(segmentId, existingCost);
+            } else if (hasTaxiRequest) {
+                taxiRequestSegments.delete(segmentId);
+                transitCostSegments.delete(segmentId);
+            } else {
+                const timer = setTimeout(() => {
+                    transitCostSegments.set(segmentId, '');
+                    taxiRequestSegments.delete(segmentId);
+                    clickTimers.delete(segmentId);
+                    updateRequestButton();
+                    displayRoutes();
+                    if (selectedRouteIndex !== null) renderRoute(routes[selectedRouteIndex]);
+                }, 300);
+                clickTimers.set(segmentId, timer);
+            }
+            updateRequestButton();
+            displayRoutes();
+            if (selectedRouteIndex !== null) renderRoute(routes[selectedRouteIndex]);
+        }
+        function updateSegmentCost(segmentId, value) {
+            if (transitCostSegments.has(segmentId) || taxiRequestSegments.has(segmentId)) transitCostSegments.set(segmentId, value);
+        }
+        function updateRequestButton() {
+            const requestButton = document.getElementById('requestButton');
+            if (!requestButton) return;
+            if (transitCostSegments.size > 0 || taxiRequestSegments.size > 0) requestButton.classList.add('visible');
+            else requestButton.classList.remove('visible');
+        }
+        function handleNext() {
+            const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
+            const routesList = document.getElementById('routesList');
+            if (mapContainer && routesList) {
+                routesList.style.display = 'none';
+                mapContainer.classList.add('fullscreen');
+                if (selectedRouteIndex !== null && routes[selectedRouteIndex]) renderRoute(routes[selectedRouteIndex]);
+            }
+        }
+        function getColorForTravelMode(travelMode, transitType) {
+            if (travelMode === 'WALKING') return { color: '#4285F4' };
+            if (travelMode === 'TRANSIT') {
+                if (transitType === 'BUS') return { color: '#9C27B0' };
+                if (transitType === 'TRAIN') return { color: '#EA4335' };
+                if (transitType === 'SUBWAY') return { color: '#34A853' };
+                return { color: '#FBBC04' };
+            }
+            return { color: '#3b82f6' };
+        }
+        function clearRoute() {
+            routePolylines.forEach((polyline) => polyline.setMap(null));
+            routeMarkers.forEach((marker) => marker.setMap(null));
+            taxiPolylines.forEach((polyline) => polyline.setMap(null));
+            segmentPolylines.forEach((item) => item.polyline?.setMap?.(null));
+            routePolylines = [];
+            routeMarkers = [];
+            taxiPolylines = [];
+            segmentPolylines = [];
+            routeSegments = [];
+        }
+        function renderRoute(route) {
+            clearRoute();
+            const bounds = new google.maps.LatLngBounds();
+            const routeData = route.routes[0];
+            let totalSegments = 0;
+            routeData.legs.forEach((leg) => leg.steps.forEach((step) => { if (step.travel_mode === 'WALKING' || step.travel_mode === 'TRANSIT') totalSegments++; }));
+            let allTaxiRequests = true;
+            for (let i = 0; i < totalSegments; i++) {
+                if (!taxiRequestSegments.has(`route-${selectedRouteIndex}-segment-${i}`)) { allTaxiRequests = false; break; }
+            }
+            routeData.legs.forEach((leg) => {
+                bounds.extend(leg.start_location);
+                bounds.extend(leg.end_location);
+                const startMarker = new google.maps.Marker({ position: leg.start_location, map, label: 'A', icon: { url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png' } });
+                routeMarkers.push(startMarker);
+                if (allTaxiRequests && totalSegments > 0) {
+                    const taxiPolyline = new google.maps.Polyline({ path: [leg.start_location, leg.end_location], geodesic: false, strokeColor: '#EF4444', strokeOpacity: 1, strokeWeight: 8, map });
+                    taxiPolylines.push(taxiPolyline);
+                } else {
+                    let tempSegmentIndex = 0;
+                    const stepsWithStatus = [];
+                    leg.steps.forEach((step) => {
+                        if (step.travel_mode === 'WALKING' || step.travel_mode === 'TRANSIT') {
+                            const segmentId = `route-${selectedRouteIndex}-segment-${tempSegmentIndex}`;
+                            stepsWithStatus.push({ step, segmentId, isTaxiRequest: taxiRequestSegments.has(segmentId) });
+                            tempSegmentIndex++;
+                        }
+                    });
+                    for (let i = 0; i < stepsWithStatus.length; i++) {
+                        const current = stepsWithStatus[i];
+                        if (current.step.travel_mode === 'TRANSIT' && current.isTaxiRequest) {
+                            const taxiPolyline = new google.maps.Polyline({ path: [current.step.start_location, current.step.end_location], geodesic: false, strokeColor: '#EF4444', strokeOpacity: 1, strokeWeight: 8, map });
+                            taxiPolylines.push(taxiPolyline);
+                            continue;
+                        }
+                        let path = [];
+                        if (current.step.polyline?.points) {
+                            try { path = google.maps.geometry.encoding.decodePath(current.step.polyline.points); } catch (_e) {}
+                        }
+                        if (!path.length && current.step.start_location && current.step.end_location) path = [current.step.start_location, current.step.end_location];
+                        if (path.length) {
+                            const style = getColorForTravelMode(current.step.travel_mode, current.step.transit?.line?.vehicle?.type);
+                            const polylineOptions = { path, geodesic: true, strokeColor: style.color, strokeOpacity: 0.8, strokeWeight: 5, map };
+                            if (current.step.travel_mode === 'WALKING') {
+                                polylineOptions.icons = [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, strokeWeight: 5, scale: 1 }, offset: '0%', repeat: '20px' }];
+                            }
+                            const polyline = new google.maps.Polyline(polylineOptions);
+                            routePolylines.push(polyline);
+                            segmentPolylines.push({ polyline, segmentId: current.segmentId });
+                            path.forEach((point) => bounds.extend(point));
+                        }
+                    }
+                }
+                const endMarker = new google.maps.Marker({ position: leg.end_location, map, label: 'B', icon: { url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png' } });
+                routeMarkers.push(endMarker);
+            });
+            if (!bounds.isEmpty()) map.fitBounds(bounds);
+        }
+        function selectRoute(index) {
+            selectedRouteIndex = index;
+            selectedSegments.clear();
+            transitCostSegments.clear();
+            taxiRequestSegments.clear();
+            clickTimers.forEach((timer) => clearTimeout(timer));
+            clickTimers.clear();
+            updateRequestButton();
+            document.querySelectorAll('.route-card').forEach((card, i) => card.classList.toggle('selected', i === index));
+            routeSegments = [];
+            let segmentIndex = 0;
+            routes[index].routes[0].legs.forEach((leg) => {
+                leg.steps.forEach((step) => {
+                    if (step.travel_mode === 'WALKING' || step.travel_mode === 'TRANSIT') {
+                        routeSegments.push({ id: `route-${index}-segment-${segmentIndex}`, routeIndex: index, step, startLocation: step.start_location, endLocation: step.end_location, polylineIndex: segmentIndex });
+                        segmentIndex++;
+                    }
+                });
+            });
+            if (routes[index]) renderRoute(routes[index]);
+            displayRoutes();
+        }
+        function showError(message) {
+            clearPoweredByGoogleAttribution();
+            const pickerCards = document.getElementById('routePickerCards');
+            const pickerPanel = document.getElementById('routePickerPanel');
+            const routesList = document.getElementById('routesList');
+            if (pickerCards) pickerCards.innerHTML = `<div class="error-message">${escapeHtml(message)}</div>`;
+            if (pickerPanel) pickerPanel.hidden = false;
+            if (routesList) routesList.setAttribute('hidden', '');
+            const titleEl = document.getElementById('routeScreenTitle');
+            if (titleEl) titleEl.textContent = 'Route options';
+        }
+        window.handleSegmentClick = handleSegmentClick;
+        window.updateSegmentCost = updateSegmentCost;
+        window.handleNext = handleNext;
         
         // Open authorization modal
         function openAuthorizationModal() {
@@ -811,6 +1491,7 @@
             if (mainContent) {
                 mainContent.classList.remove('hidden');
             }
+            
         });
     </script>
 </body>
