@@ -42,6 +42,7 @@ function normalizeDepartureRfc3339(departureInput) {
  * Field mask for transit computeRoutes. Parent `routes.legs.steps` returns step fields
  * (transitDetails, polylines, etc.) per Routes API field-mask rules.
  */
+/** Transit schedules live under `routes.legs.steps.transitDetails` (+ nested stopDetails times); relying only on `routes.legs.steps` can omit them. */
 const ROUTES_AUTH_TRANSIT_FIELD_MASK = [
   "routes.distanceMeters",
   "routes.duration",
@@ -53,7 +54,13 @@ const ROUTES_AUTH_TRANSIT_FIELD_MASK = [
   "routes.legs.startLocation",
   "routes.legs.endLocation",
   "routes.legs.polyline",
-  "routes.legs.steps",
+  "routes.legs.steps.distanceMeters",
+  "routes.legs.steps.staticDuration",
+  "routes.legs.steps.polyline",
+  "routes.legs.steps.startLocation",
+  "routes.legs.steps.endLocation",
+  "routes.legs.steps.travelMode",
+  "routes.legs.steps.transitDetails",
 ].join(",");
 
 admin.initializeApp();
