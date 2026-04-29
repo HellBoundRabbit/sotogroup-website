@@ -1176,36 +1176,67 @@
             return d.toLocaleString();
         }
 
-        async function getDriverContext() {
-            if (driverContext) return driverContext;
+        function officeIdFromLocalIdentity() {
+            try {
+                const raw = localStorage.getItem('soto_user_identity');
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                return parsed.officeId || parsed.officeID || null;
+            } catch (_e) {
+                return null;
+            }
+        }
+
+        /** @param {{ forceRefresh?: boolean }} [opts] Pass forceRefresh before submit so officeId is re-read from Firestore/session. */
+        async function getDriverContext(opts) {
+            const force = opts && opts.forceRefresh;
+            if (driverContext != null && !force) return driverContext;
             const user = window.auth?.currentUser;
             if (!user) return null;
             let officeId = null;
             let displayName = null;
             try {
-                const driverByUidQ = query(
-                    collection(window.db, 'drivers'),
-                    where('uid', '==', user.uid),
-                    limit(1)
-                );
+                const driverByUidQ = query(collection(window.db, 'drivers'), where('uid', '==', user.uid), limit(1));
                 const snap = await getDocs(driverByUidQ);
                 if (!snap.empty) {
                     const d = snap.docs[0].data();
-                    officeId = d.officeId || null;
+                    officeId = d.officeId || d.officeID || null;
                     displayName = [d.firstName, d.lastName].filter(Boolean).join(' ').trim() || null;
                 }
             } catch (e) {
-                console.warn('[Authorization] Unable to resolve driver context from drivers collection.', e);
+                console.warn('[Authorization] drivers query by uid failed.', e);
             }
-            if (!displayName) {
+
+            if (!officeId) {
                 try {
-                    const uSnap = await getDoc(doc(window.db, 'users', user.uid));
-                    if (uSnap.exists()) {
-                        const d = uSnap.data();
+                    const dSnap = await getDoc(doc(window.db, 'drivers', user.uid));
+                    if (dSnap.exists()) {
+                        const d = dSnap.data();
+                        officeId = d.officeId || d.officeID || officeId;
+                        if (!displayName) {
+                            displayName = [d.firstName, d.lastName].filter(Boolean).join(' ').trim() || null;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[Authorization] drivers/{uid} lookup failed.', e);
+                }
+            }
+
+            try {
+                const uSnap = await getDoc(doc(window.db, 'users', user.uid));
+                if (uSnap.exists()) {
+                    const d = uSnap.data();
+                    if (!officeId) officeId = d.officeId || d.officeID || null;
+                    if (!displayName) {
                         displayName = [d.firstName, d.lastName].filter(Boolean).join(' ').trim() || d.name || null;
                     }
-                } catch (_e) {}
+                }
+            } catch (e) {
+                console.warn('[Authorization] users/{uid} lookup failed.', e);
             }
+
+            if (!officeId) officeId = officeIdFromLocalIdentity();
+
             driverContext = {
                 uid: user.uid,
                 email: user.email || null,
@@ -1865,13 +1896,15 @@
 
         async function confirmAuthorizationRequest() {
             if (!currentReviewPayload || selectedRouteIndex === null || !routes[selectedRouteIndex]) return;
-            const ctx = await getDriverContext();
+            const ctx = await getDriverContext({ forceRefresh: true });
             if (!ctx?.uid) {
                 alert('Could not identify driver session. Please sign in again.');
                 return;
             }
             if (!ctx.officeId) {
-                alert('Could not determine office assignment for this driver. Please contact office.');
+                alert(
+                    'Could not determine your office assignment. Open the app from the driver portal once to refresh your profile, or ask the office to confirm your account is linked to an office in Firestore (users and drivers should include officeId).',
+                );
                 return;
             }
             try {
@@ -2053,19 +2086,25 @@
         }
         
         // Initialize on page load
-        document.addEventListener('DOMContentLoaded', () => {
-            // Check if Google Maps is already loaded (for when modal opens)
+        document.addEventListener('DOMContentLoaded', async () => {
             if (window.google && window.google.maps && window.google.maps.places) {
                 googleMapsLoaded = true;
             }
-            
-            // Show main content
+
             const mainContent = document.getElementById('mainContent');
             if (mainContent) {
                 mainContent.classList.remove('hidden');
             }
+
+            try {
+                if (typeof window.sotoSession?.bootstrap === 'function') {
+                    await window.sotoSession.bootstrap(['driver']);
+                }
+            } catch (e) {
+                console.warn('[Authorization] Session bootstrap failed or was skipped.', e);
+            }
+
             loadAuthorizationRequests();
-            
         });
     </script>
 </body>
