@@ -79,8 +79,17 @@
         if (!depStop) depStop = td.departureStop;
         if (!arrStop) arrStop = td.arrivalStop;
 
-        const depIso = td.departureTime || td.departure_time?.value;
-        const arrIso = td.arrivalTime || td.arrival_time?.value;
+        /** Routes REST often puts RFC3339 times on `stopDetails` only; top-level departureTime may be absent. */
+        const depIso =
+            td.departureTime ||
+            td.departure_time?.value ||
+            stopDetails?.departureTime ||
+            stopDetails?.departure_time;
+        const arrIso =
+            td.arrivalTime ||
+            td.arrival_time?.value ||
+            stopDetails?.arrivalTime ||
+            stopDetails?.arrival_time;
         /** @returns {number|undefined} unix seconds */
         function secs(v) {
             if (v == null) return undefined;
