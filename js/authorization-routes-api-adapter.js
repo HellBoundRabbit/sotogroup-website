@@ -1,6 +1,6 @@
 /**
  * Maps Routes API v2 `computeRoutes` JSON into Google Maps Javascript
- * DirectionsResult-shaped objects consumed by driver-authorization-routes.html.
+ * DirectionsResult-shaped objects consumed by driver authorization single-page flow.
  *
  * Depends on google.maps.geometry.encoding for encoded polylines (loaded with Maps API).
  */
