@@ -66,6 +66,40 @@
         };
     }
 
+    /**
+     * Milliseconds from Routes time fields (RFC3339 string or unix-ish number).
+     * @returns {number|NaN}
+     */
+    function msFromRoutesTransitTimeCandidate(v) {
+        if (v == null || v === '') return NaN;
+        if (typeof v === 'number' && Number.isFinite(v)) return v > 2e12 ? v : v * 1000;
+        if (typeof v === 'string') {
+            const p = Date.parse(v);
+            return Number.isFinite(p) ? p : NaN;
+        }
+        return NaN;
+    }
+
+    /** Seconds aboard / on leg when API omits step.staticDuration but has schedule endpoints. */
+    function transitDetailsScheduleSpanSeconds(td) {
+        if (!td || typeof td !== 'object') return 0;
+        const stopDetails = td.stopDetails || td.stop_details;
+        const depIso =
+            td.departureTime ||
+            td.departure_time?.value ||
+            stopDetails?.departureTime ||
+            stopDetails?.departure_time;
+        const arrIso =
+            td.arrivalTime ||
+            td.arrival_time?.value ||
+            stopDetails?.arrivalTime ||
+            stopDetails?.arrival_time;
+        const dMs = msFromRoutesTransitTimeCandidate(depIso);
+        const aMs = msFromRoutesTransitTimeCandidate(arrIso);
+        if (!(Number.isFinite(dMs) && Number.isFinite(aMs)) || aMs <= dMs) return 0;
+        return Math.round((aMs - dMs) / 1000);
+    }
+
     /** @param {*} td */
     /** @param {typeof google.maps.LatLng} LatLngCtor */
     function transitDetailsToDirectionsTransit(td, LatLngCtor) {
@@ -151,7 +185,6 @@
     /** @param {*} step */
     /** @param {typeof google.maps.LatLng} LatLngCtor */
     function adaptStep(step, LatLngCtor) {
-        const staticDurSec = parseProtoDurationSeconds(step.staticDuration);
         const dm = step.distanceMeters != null ? step.distanceMeters : 0;
         const tm = step.travelMode || step.travel_mode || 'UNKNOWN';
 
@@ -161,11 +194,21 @@
             ? 'TRANSIT'
             : 'WALKING';
 
+        let durSec = parseProtoDurationSeconds(step.staticDuration);
+        if (durSec <= 0) durSec = parseProtoDurationSeconds(step.duration);
+        if (durSec <= 0 && typeof step.duration?.value === 'number' && step.duration.value > 0) {
+            durSec = Math.round(step.duration.value);
+        }
+        if (durSec <= 0 && travel_mode === 'TRANSIT' && step.transitDetails) {
+            const inferred = transitDetailsScheduleSpanSeconds(step.transitDetails);
+            if (inferred > 0) durSec = inferred;
+        }
+
         const base = {
             travel_mode,
             duration: {
-                value: staticDurSec,
-                text: formatDurText(staticDurSec),
+                value: durSec,
+                text: formatDurText(durSec),
             },
             distance: {
                 value: dm,
@@ -180,6 +223,17 @@
 
         if (travel_mode === 'TRANSIT' && step.transitDetails) {
             base.transit = transitDetailsToDirectionsTransit(step.transitDetails, LatLngCtor);
+            if (
+                durSec > 0 &&
+                base.transit.departure_time?.value &&
+                !base.transit.arrival_time?.value &&
+                typeof base.transit.departure_time.value === 'number'
+            ) {
+                base.transit.arrival_time = {
+                    text: '',
+                    value: base.transit.departure_time.value + durSec,
+                };
+            }
         }
 
         return base;
