@@ -174,6 +174,29 @@
             z-index: -1;
         }
         
+        .authorization-modal-shell {
+            min-height: 100dvh;
+            padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .authorization-modal-card {
+            width: min(100%, 640px);
+            max-height: min(88dvh, 760px);
+            display: flex;
+            flex-direction: column;
+            border-radius: 24px;
+            overflow: hidden;
+        }
+        
+        .authorization-modal-body {
+            padding: 20px 20px 24px;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
         /* Animated button for proceed */
         .animated-button {
             position: relative;
@@ -346,6 +369,23 @@
             cursor: not-allowed;
         }
         
+        @media (max-width: 430px) {
+            .authorization-modal-card {
+                width: 100%;
+                max-height: min(90dvh, 760px);
+                border-radius: 20px;
+            }
+            .authorization-modal-body {
+                padding: 16px 16px 20px;
+            }
+            .input-group {
+                margin-bottom: 18px;
+            }
+            .proceed-button {
+                margin-top: 18px;
+            }
+        }
+        
         /*
          * Places autocomplete panel: use a light panel with dark text.
          * Do NOT force white text on all .pac-* nodes — Google’s rows often stay white,
@@ -436,12 +476,6 @@
         .route-timeline { position: relative; padding-left: 80px; }
         .timeline-item { position: relative; margin-bottom: 20px; padding-bottom: 20px; min-height: 60px; }
         .timeline-dot { position: absolute; left: -20px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: #ffffff; border: 2px solid #374151; z-index: 2; }
-        .timeline-segment-line { position: absolute; left: -20px; width: 2px; z-index: 1; }
-        .timeline-segment-line.walking { background: repeating-linear-gradient(to bottom, #4285F4 0px, #4285F4 4px, transparent 4px, transparent 8px); }
-        .timeline-segment-line.bus { background: #9C27B0; }
-        .timeline-segment-line.train { background: #EA4335; }
-        .timeline-segment-line.subway { background: #34A853; }
-        .timeline-segment-line.wait { background: #F59E0B; }
         .timeline-time { position: absolute; left: -60px; top: 0; font-size: 13px; font-weight: 600; color: #9ca3af; width: 50px; text-align: right; }
         .timeline-content { background: #1a1f24; border-radius: 8px; padding: 12px; border: 1px solid transparent; transition: all 0.2s; cursor: pointer; }
         .timeline-content.transit-cost { background: #1e3a5f; border-color: #3b82f6; }
@@ -525,8 +559,8 @@
 
     <!-- Authorization Request Modal -->
     <div id="authorizationModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 overflow-y-auto">
-        <div class="min-h-screen px-4 flex items-end sm:items-center justify-center">
-            <div class="bg-[#1a1f24] rounded-t-3xl sm:rounded-3xl w-full max-w-2xl transform transition-all animated-border-modal">
+        <div class="authorization-modal-shell">
+            <div class="bg-[#1a1f24] transform transition-all animated-border-modal authorization-modal-card">
                 <div class="sticky top-0 bg-[#1a1f24] border-b border-gray-800 rounded-t-3xl z-10">
                     <div class="flex items-center justify-between px-6 py-4">
                         <h2 class="text-lg font-semibold">New Authorization Request</h2>
@@ -535,7 +569,7 @@
                         </button>
                     </div>
                 </div>
-                <div class="p-6 pb-8">
+                <div class="authorization-modal-body">
                     <!-- Form Container -->
                     <div class="form-container">
                 <form id="authorizationForm">
@@ -1191,16 +1225,6 @@
             }
             return '<span class="material-symbols-outlined" style="font-size:20px;">arrow_forward</span>';
         }
-        function getLineClass(step) {
-            if (step.travel_mode === 'WALKING') return 'walking';
-            if (step.travel_mode === 'TRANSIT' && step.transit) {
-                const transitType = step.transit.line?.vehicle?.type;
-                if (transitType === 'BUS') return 'bus';
-                if (transitType === 'TRAIN') return 'train';
-                if (transitType === 'SUBWAY') return 'subway';
-            }
-            return '';
-        }
         function formatWaitTime(minutes) {
             if (minutes < 60) return `${minutes} min`;
             const hours = Math.floor(minutes / 60);
@@ -1242,7 +1266,7 @@
                             const arrivalTime = new Date(currentTime.getTime() + (mergedWalkSec * 1000));
                             const walkMinutes = Math.max(1, Math.round(mergedWalkSec / 60));
                             const walkDistanceText = mergedWalkDistanceMeters > 0 ? (mergedWalkDistanceMeters >= 1000 ? `${(mergedWalkDistanceMeters / 1000).toFixed(1)} km` : `${Math.round(mergedWalkDistanceMeters)} m`) : null;
-                            timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-segment-line walking" style="top:0;height:${mergedWalkSec * 0.5}px;"></div><div class="timeline-time">${formatTime(arrivalTime)}</div><div class="timeline-content" id="${segmentId}" style="cursor:default;opacity:0.8;pointer-events:none;"><div class="timeline-header"><div class="timeline-icon">${getTimelineIcon(step)}</div><div class="timeline-title">Walk</div></div><div class="timeline-duration">About ${walkMinutes} min${walkDistanceText ? ' · ' + walkDistanceText : ''}</div></div></div>`;
+                            timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTime(arrivalTime)}</div><div class="timeline-content" id="${segmentId}" style="cursor:default;opacity:0.8;pointer-events:none;"><div class="timeline-header"><div class="timeline-icon">${getTimelineIcon(step)}</div><div class="timeline-title">Walk</div></div><div class="timeline-duration">About ${walkMinutes} min${walkDistanceText ? ' · ' + walkDistanceText : ''}</div></div></div>`;
                             currentTime = arrivalTime;
                             segmentIndex += consumedWalkSegments;
                         } else if (step.travel_mode === 'TRANSIT' && step.transit) {
@@ -1258,7 +1282,7 @@
                                     const isWaitTaxiRequest = taxiRequestSegments.has(waitSegmentId);
                                     const waitCostValue = transitCostSegments.get(waitSegmentId) || '';
                                     const waitContentClass = isWaitTaxiRequest ? 'taxi-request' : (isWaitTransitCost ? 'transit-cost' : '');
-                                    timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-segment-line wait" style="top:0;height:${Math.min(waitTimeMinutes * 2, 100)}px;"></div><div class="timeline-time">${formatTime(departureTime)}</div><div class="timeline-content ${waitContentClass}" id="${waitSegmentId}" onclick="handleSegmentClick('${waitSegmentId}', event)"><div class="timeline-header"><span class="material-symbols-outlined" style="font-size:20px;color:#F59E0B;">schedule</span><div class="timeline-title">Wait</div></div><div class="timeline-duration">${formatWaitTime(waitTimeMinutes)}</div>${transit.departure_stop ? `<div class="timeline-location">${transit.departure_stop.name}</div>` : ''}${(isWaitTransitCost || isWaitTaxiRequest) ? `<div class="segment-cost-label">${isWaitTaxiRequest ? 'Taxi Cost:' : 'Transit Cost:'}</div><input type="number" step="0.01" min="0" placeholder="£0.00" value="${waitCostValue}" class="cost-input" onchange="updateSegmentCost('${waitSegmentId}', this.value)" onclick="event.stopPropagation();">` : ''}</div></div>`;
+                                    timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTime(departureTime)}</div><div class="timeline-content ${waitContentClass}" id="${waitSegmentId}" onclick="handleSegmentClick('${waitSegmentId}', event)"><div class="timeline-header"><span class="material-symbols-outlined" style="font-size:20px;color:#F59E0B;">schedule</span><div class="timeline-title">Wait</div></div><div class="timeline-duration">${formatWaitTime(waitTimeMinutes)}</div>${transit.departure_stop ? `<div class="timeline-location">${transit.departure_stop.name}</div>` : ''}${(isWaitTransitCost || isWaitTaxiRequest) ? `<div class="segment-cost-label">${isWaitTaxiRequest ? 'Taxi Cost:' : 'Transit Cost:'}</div><input type="number" step="0.01" min="0" placeholder="£0.00" value="${waitCostValue}" class="cost-input" onchange="updateSegmentCost('${waitSegmentId}', this.value)" onclick="event.stopPropagation();">` : ''}</div></div>`;
                                 }
                                 currentTime = departureTime;
                             }
@@ -1268,7 +1292,7 @@
                             const isTaxiRequestSegment = taxiRequestSegments.has(transitSegmentId);
                             const transitCostValue = transitCostSegments.get(transitSegmentId) || '';
                             const transitContentClass = isTaxiRequestSegment ? 'taxi-request' : (isTransitCostSegment ? 'transit-cost' : '');
-                            timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-segment-line ${getLineClass(step)}" style="top:0;height:${step.duration.value * 0.3}px;"></div><div class="timeline-time">${formatTime(arrivalTime)}</div><div class="timeline-content ${transitContentClass}" id="${transitSegmentId}" onclick="handleSegmentClick('${transitSegmentId}', event)"><div class="timeline-header"><div class="timeline-icon">${getTimelineIcon(step)}</div><div class="timeline-title">${transitName}</div></div><div class="timeline-duration">${step.duration.text}${transit.num_stops ? ' (' + transit.num_stops + ' stops)' : ''}</div>${transit.departure_stop ? `<div class="timeline-location">${transit.departure_stop.name}</div>` : ''}${transit.arrival_stop ? `<div class="timeline-location">→ ${transit.arrival_stop.name}</div>` : ''}${(isTransitCostSegment || isTaxiRequestSegment) ? `<div class="segment-cost-label">${isTaxiRequestSegment ? 'Taxi Cost:' : 'Transit Cost:'}</div><input type="number" step="0.01" min="0" placeholder="£0.00" value="${transitCostValue}" class="cost-input" onchange="updateSegmentCost('${transitSegmentId}', this.value)" onclick="event.stopPropagation();">` : ''}</div></div>`;
+                            timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTime(arrivalTime)}</div><div class="timeline-content ${transitContentClass}" id="${transitSegmentId}" onclick="handleSegmentClick('${transitSegmentId}', event)"><div class="timeline-header"><div class="timeline-icon">${getTimelineIcon(step)}</div><div class="timeline-title">${transitName}</div></div><div class="timeline-duration">${step.duration.text}${transit.num_stops ? ' (' + transit.num_stops + ' stops)' : ''}</div>${transit.departure_stop ? `<div class="timeline-location">${transit.departure_stop.name}</div>` : ''}${transit.arrival_stop ? `<div class="timeline-location">→ ${transit.arrival_stop.name}</div>` : ''}${(isTransitCostSegment || isTaxiRequestSegment) ? `<div class="segment-cost-label">${isTaxiRequestSegment ? 'Taxi Cost:' : 'Transit Cost:'}</div><input type="number" step="0.01" min="0" placeholder="£0.00" value="${transitCostValue}" class="cost-input" onchange="updateSegmentCost('${transitSegmentId}', this.value)" onclick="event.stopPropagation();">` : ''}</div></div>`;
                             currentTime = arrivalTime;
                             segmentIndex++;
                         }
