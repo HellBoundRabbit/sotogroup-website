@@ -484,23 +484,63 @@
         }
         .map-container { flex: 1; min-width: 400px; position: relative; display: none; }
         .map-container.fullscreen {
-            display: block;
+            display: flex;
+            flex-direction: column;
             position: fixed;
             inset: 0;
             z-index: 1000;
             background: #000000;
         }
-        .map-container.fullscreen #map { width: 100%; height: 100%; }
+        /* Top half: cost / review. Bottom half: map only — not a full viewport map hidden under the sheet. */
+        .map-container.fullscreen .map-top-panel:not(.hidden) {
+            position: relative;
+            top: auto;
+            flex: 0 0 50vh;
+            height: 50vh;
+            max-height: none;
+            border-bottom: 1px solid #283039;
+            order: 0;
+            z-index: 1100;
+        }
+        .map-container.fullscreen #map {
+            order: 1;
+            flex: 1 1 50%;
+            min-height: 0;
+            width: 100% !important;
+            height: 100% !important;
+        }
         #map { width: 100%; height: 100%; }
         .route-card { background: #111418; border: 1px solid #283039; border-radius: 8px; padding: 16px; margin-bottom: 12px; cursor: pointer; }
         .route-card.selected { border-color: #3b82f6; background: #1e3a5f; }
         .route-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
         .route-title { font-weight: 600; font-size: 16px; }
         .route-duration { color: #3b82f6; font-weight: 500; }
-        .route-timeline { position: relative; padding-left: 80px; }
+        .route-timeline { position: relative; padding-left: 140px; }
         .timeline-item { position: relative; margin-bottom: 20px; padding-bottom: 20px; min-height: 60px; }
-        .timeline-dot { position: absolute; left: -20px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: #ffffff; border: 2px solid #374151; z-index: 2; }
-        .timeline-time { position: absolute; left: -60px; top: 0; font-size: 13px; font-weight: 600; color: #9ca3af; width: 50px; text-align: right; }
+        .timeline-dot { position: absolute; left: -12px; top: 8px; width: 11px; height: 11px; border-radius: 50%; background: #ffffff; border: 2px solid #374151; z-index: 2; }
+        .timeline-time {
+            position: absolute;
+            left: -132px;
+            top: 0;
+            width: 116px;
+            text-align: right;
+            line-height: 1.15;
+            padding-right: 10px;
+        }
+        .timeline-clock-line {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #d1d5db;
+            letter-spacing: 0.01em;
+        }
+        .timeline-clock-ampm {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            color: #9ca3af;
+            margin-top: 1px;
+        }
         .timeline-content { background: #1a1f24; border-radius: 8px; padding: 12px; border: 1px solid transparent; transition: all 0.2s; cursor: pointer; }
         .timeline-content.transit-cost { background: #1e3a5f; border-color: #3b82f6; }
         .timeline-content.taxi-request { background: #7f1d1d !important; border-color: #ef4444 !important; border-width: 2px; }
@@ -1485,6 +1525,43 @@
             const ampm = hours >= 12 ? 'PM' : 'AM';
             return `${hours % 12 || 12}:${minutes.toString().padStart(2, '0')} ${ampm}`;
         }
+        /** Two-line clock for timeline gutter: \"11:00\" / \"pm\" (matches picker-friendly reading). */
+        function formatTimelineClockHtml(date) {
+            if (!(date instanceof Date) || isNaN(date.getTime())) {
+                return '<span class="timeline-clock-line">—</span>';
+            }
+            const h24 = date.getHours();
+            const minutes = date.getMinutes();
+            const period = (h24 >= 12 ? 'pm' : 'am');
+            const hour12 = h24 % 12 || 12;
+            const line1 = `${hour12}:${minutes.toString().padStart(2, '0')}`;
+            return `<span class="timeline-clock-line">${escapeHtml(line1)}</span><span class="timeline-clock-ampm">${escapeHtml(period)}</span>`;
+        }
+
+        /** Same semantics as route cards (first-boarding − walk to board): aligns detailed timeline Start with listed windows. */
+        function getEffectiveTripStartMs(directionResponse, departureFallbackIso) {
+            const fb = new Date(departureFallbackIso || Date.now());
+            const fbMs = fb.getTime();
+            const rd = directionResponse?.routes?.[0];
+            if (!rd?.legs) return fbMs;
+            let walkSecBeforeFirstTransit = 0;
+            let firstTransitDepUnix = null;
+            outer: for (const leg of rd.legs) {
+                const leaves = flattenLeafSteps(leg.steps || []);
+                for (const step of leaves) {
+                    if (stripStepIsWalking(step)) {
+                        walkSecBeforeFirstTransit += typeof step.duration?.value === 'number' ? step.duration.value : 0;
+                    } else if (stripStepIsTransit(step) && step.transit?.departure_time?.value) {
+                        firstTransitDepUnix = step.transit.departure_time.value;
+                        break outer;
+                    } else if (stripStepIsTransit(step)) {
+                        break outer;
+                    }
+                }
+            }
+            if (firstTransitDepUnix == null) return fbMs;
+            return firstTransitDepUnix * 1000 - walkSecBeforeFirstTransit * 1000;
+        }
         function getTimelineIcon(step) {
             if (step.travel_mode === 'WALKING') return '<span class="material-symbols-outlined" style="font-size:20px;color:#4285F4;">directions_walk</span>';
             if (step.travel_mode === 'TRANSIT' && step.transit) {
@@ -1501,6 +1578,32 @@
             const mins = minutes % 60;
             return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
         }
+
+        /** Last-resort parser for Directions duration text ("About 22 mins", "24 mins", "1 hour 5 mins"). */
+        function approxSecondsFromDurationText(text) {
+            if (!text || typeof text !== 'string') return 0;
+            const t = text.toLowerCase().replace(/\babout\b/gi, '').replace(/\s+/g, ' ').trim();
+            let sec = 0;
+            const hours = t.match(/(\d+)\s*h(?:ours?)?\b/);
+            if (hours) sec += parseInt(hours[1], 10) * 3600;
+            const mins = t.match(/(\d+)\s*(?:min|mins|minute|minutes)\b/);
+            if (mins) sec += parseInt(mins[1], 10) * 60;
+            const secs = t.match(/(\d+)\s*(?:sec|secs|second|seconds)\b/);
+            if (secs) sec += parseInt(secs[1], 10);
+            return sec;
+        }
+
+        function transitLegSeconds(step, transit) {
+            const v = step.duration?.value;
+            if (typeof v === 'number' && v > 0) return v;
+            if (transit?.departure_time?.value != null && transit?.arrival_time?.value != null) {
+                const d = transit.arrival_time.value - transit.departure_time.value;
+                if (typeof d === 'number' && d > 0) return d;
+            }
+            const fromText = approxSecondsFromDurationText(step.duration?.text || '');
+            return fromText > 0 ? fromText : 0;
+        }
+
         function displayRoutes() {
             const routesList = document.getElementById('routesList');
             if (routes.length === 0) {
@@ -1515,8 +1618,9 @@
                 const leg = route.routes[0].legs[0];
                 let timelineHtml = '<div class="route-timeline">';
                 let segmentIndex = 0;
-                let currentTime = new Date(requestData.departureTime);
-                timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTime(currentTime)}</div><div class="timeline-content"><div class="timeline-header"><span class="material-symbols-outlined" style="font-size:20px;color:#fff;">place</span><div class="timeline-title">Start</div></div><div class="timeline-location">${requestData.from.address}</div></div></div>`;
+                const startMs = getEffectiveTripStartMs(route, requestData.departureTime);
+                let currentTime = new Date(startMs);
+                timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTimelineClockHtml(currentTime)}</div><div class="timeline-content"><div class="timeline-header"><span class="material-symbols-outlined" style="font-size:20px;color:#fff;">place</span><div class="timeline-title">Start</div></div><div class="timeline-location">${requestData.from.address}</div></div></div>`;
                 route.routes[0].legs.forEach((lg) => {
                     const legSteps = lg.steps || [];
                     for (let stepIndex = 0; stepIndex < legSteps.length; stepIndex++) {
@@ -1536,7 +1640,7 @@
                             const arrivalTime = new Date(currentTime.getTime() + (mergedWalkSec * 1000));
                             const walkMinutes = Math.max(1, Math.round(mergedWalkSec / 60));
                             const walkDistanceText = mergedWalkDistanceMeters > 0 ? (mergedWalkDistanceMeters >= 1000 ? `${(mergedWalkDistanceMeters / 1000).toFixed(1)} km` : `${Math.round(mergedWalkDistanceMeters)} m`) : null;
-                            timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTime(arrivalTime)}</div><div class="timeline-content" id="${segmentId}" style="cursor:default;opacity:0.8;pointer-events:none;"><div class="timeline-header"><div class="timeline-icon">${getTimelineIcon(step)}</div><div class="timeline-title">Walk</div></div><div class="timeline-duration">About ${walkMinutes} min${walkDistanceText ? ' · ' + walkDistanceText : ''}</div></div></div>`;
+                            timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTimelineClockHtml(arrivalTime)}</div><div class="timeline-content" id="${segmentId}" style="cursor:default;opacity:0.8;pointer-events:none;"><div class="timeline-header"><div class="timeline-icon">${getTimelineIcon(step)}</div><div class="timeline-title">Walk</div></div><div class="timeline-duration">About ${walkMinutes} min${walkDistanceText ? ' · ' + walkDistanceText : ''}</div></div></div>`;
                             currentTime = arrivalTime;
                             segmentIndex += consumedWalkSegments;
                         } else if (step.travel_mode === 'TRANSIT' && step.transit) {
@@ -1552,23 +1656,34 @@
                                     const isWaitTaxiRequest = taxiRequestSegments.has(waitSegmentId);
                                     const waitCostValue = transitCostSegments.get(waitSegmentId) || '';
                                     const waitContentClass = isWaitTaxiRequest ? 'taxi-request' : (isWaitTransitCost ? 'transit-cost' : '');
-                                    timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTime(departureTime)}</div><div class="timeline-content ${waitContentClass}" id="${waitSegmentId}" onclick="handleSegmentClick('${waitSegmentId}', event)"><div class="timeline-header"><span class="material-symbols-outlined" style="font-size:20px;color:#F59E0B;">schedule</span><div class="timeline-title">Wait</div></div><div class="timeline-duration">${formatWaitTime(waitTimeMinutes)}</div>${transit.departure_stop ? `<div class="timeline-location">${transit.departure_stop.name}</div>` : ''}${(isWaitTransitCost || isWaitTaxiRequest) ? `<div class="segment-cost-label">${isWaitTaxiRequest ? 'Taxi Cost:' : 'Transit Cost:'}</div><input type="number" step="0.01" min="0" placeholder="£0.00" value="${waitCostValue}" class="cost-input" onchange="updateSegmentCost('${waitSegmentId}', this.value)" onclick="event.stopPropagation();">` : ''}</div></div>`;
+                                    timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTimelineClockHtml(departureTime)}</div><div class="timeline-content ${waitContentClass}" id="${waitSegmentId}" onclick="handleSegmentClick('${waitSegmentId}', event)"><div class="timeline-header"><span class="material-symbols-outlined" style="font-size:20px;color:#F59E0B;">schedule</span><div class="timeline-title">Wait</div></div><div class="timeline-duration">${formatWaitTime(waitTimeMinutes)}</div>${transit.departure_stop ? `<div class="timeline-location">${transit.departure_stop.name}</div>` : ''}${(isWaitTransitCost || isWaitTaxiRequest) ? `<div class="segment-cost-label">${isWaitTaxiRequest ? 'Taxi Cost:' : 'Transit Cost:'}</div><input type="number" step="0.01" min="0" placeholder="£0.00" value="${waitCostValue}" class="cost-input" onchange="updateSegmentCost('${waitSegmentId}', this.value)" onclick="event.stopPropagation();">` : ''}</div></div>`;
                                 }
                                 currentTime = departureTime;
                             }
-                            const arrivalTime = transit.arrival_time?.value ? new Date(transit.arrival_time.value * 1000) : new Date(currentTime.getTime() + (step.duration.value * 1000));
+                            const onboardSec = transitLegSeconds(step, transit);
+                            const boardingMs =
+                                transit.departure_time?.value != null ? transit.departure_time.value * 1000 : currentTime.getTime();
+                            let arrivalMs;
+                            if (transit.arrival_time?.value != null) {
+                                arrivalMs = transit.arrival_time.value * 1000;
+                            } else if (onboardSec > 0) {
+                                arrivalMs = boardingMs + onboardSec * 1000;
+                            } else {
+                                arrivalMs = currentTime.getTime();
+                            }
+                            const arrivalTime = new Date(arrivalMs);
                             const transitSegmentId = `route-${routeIndex}-segment-${segmentIndex}`;
                             const isTransitCostSegment = transitCostSegments.has(transitSegmentId);
                             const isTaxiRequestSegment = taxiRequestSegments.has(transitSegmentId);
                             const transitCostValue = transitCostSegments.get(transitSegmentId) || '';
                             const transitContentClass = isTaxiRequestSegment ? 'taxi-request' : (isTransitCostSegment ? 'transit-cost' : '');
-                            timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTime(arrivalTime)}</div><div class="timeline-content ${transitContentClass}" id="${transitSegmentId}" onclick="handleSegmentClick('${transitSegmentId}', event)"><div class="timeline-header"><div class="timeline-icon">${getTimelineIcon(step)}</div><div class="timeline-title">${transitName}</div></div><div class="timeline-duration">${step.duration.text}${transit.num_stops ? ' (' + transit.num_stops + ' stops)' : ''}</div>${transit.departure_stop ? `<div class="timeline-location">${transit.departure_stop.name}</div>` : ''}${transit.arrival_stop ? `<div class="timeline-location">→ ${transit.arrival_stop.name}</div>` : ''}${(isTransitCostSegment || isTaxiRequestSegment) ? `<div class="segment-cost-label">${isTaxiRequestSegment ? 'Taxi Cost:' : 'Transit Cost:'}</div><input type="number" step="0.01" min="0" placeholder="£0.00" value="${transitCostValue}" class="cost-input" onchange="updateSegmentCost('${transitSegmentId}', this.value)" onclick="event.stopPropagation();">` : ''}</div></div>`;
+                            timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTimelineClockHtml(arrivalTime)}</div><div class="timeline-content ${transitContentClass}" id="${transitSegmentId}" onclick="handleSegmentClick('${transitSegmentId}', event)"><div class="timeline-header"><div class="timeline-icon">${getTimelineIcon(step)}</div><div class="timeline-title">${transitName}</div></div><div class="timeline-duration">${step.duration.text}${transit.num_stops ? ' (' + transit.num_stops + ' stops)' : ''}</div>${transit.departure_stop ? `<div class="timeline-location">${transit.departure_stop.name}</div>` : ''}${transit.arrival_stop ? `<div class="timeline-location">→ ${transit.arrival_stop.name}</div>` : ''}${(isTransitCostSegment || isTaxiRequestSegment) ? `<div class="segment-cost-label">${isTaxiRequestSegment ? 'Taxi Cost:' : 'Transit Cost:'}</div><input type="number" step="0.01" min="0" placeholder="£0.00" value="${transitCostValue}" class="cost-input" onchange="updateSegmentCost('${transitSegmentId}', this.value)" onclick="event.stopPropagation();">` : ''}</div></div>`;
                             currentTime = arrivalTime;
                             segmentIndex++;
                         }
                     }
                 });
-                timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTime(currentTime)}</div><div class="timeline-content"><div class="timeline-header"><span class="material-symbols-outlined" style="font-size:20px;color:#fff;">place</span><div class="timeline-title">Arrive</div></div><div class="timeline-location">${requestData.to.address}</div></div></div></div>`;
+                timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTimelineClockHtml(currentTime)}</div><div class="timeline-content"><div class="timeline-header"><span class="material-symbols-outlined" style="font-size:20px;color:#fff;">place</span><div class="timeline-title">Arrive</div></div><div class="timeline-location">${requestData.to.address}</div></div></div></div>`;
                 routeCard.innerHTML = `<div class="route-header"><div class="route-title">Route ${routeIndex + 1}</div><div class="route-duration">${leg.duration.text}</div></div><div>${timelineHtml}</div>`;
                 routesList.appendChild(routeCard);
             });
@@ -1619,6 +1734,18 @@
             if (transitCostSegments.size > 0 || taxiRequestSegments.size > 0) requestButton.classList.add('visible');
             else requestButton.classList.remove('visible');
         }
+        function triggerMapResizeSoon() {
+            if (!map || typeof google === 'undefined' || !google.maps) return;
+            const run = () => {
+                try {
+                    google.maps.event.trigger(map, 'resize');
+                } catch (_e) {}
+            };
+            run();
+            if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(run);
+            setTimeout(run, 250);
+        }
+
         function handleNext() {
             const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
             const routesList = document.getElementById('routesList');
@@ -1631,15 +1758,19 @@
             }
             if (mapCostPanel) mapCostPanel.classList.remove('hidden');
             if (reviewPanel) reviewPanel.classList.add('hidden');
+            triggerMapResizeSoon();
         }
 
         function backFromMapPanel() {
             const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
             const routesList = document.getElementById('routesList');
             const mapCostPanel = document.getElementById('mapCostPanel');
+            const reviewPanel = document.getElementById('reviewPanel');
             if (mapContainer) mapContainer.classList.remove('fullscreen');
             if (routesList) routesList.style.display = '';
             if (mapCostPanel) mapCostPanel.classList.add('hidden');
+            if (reviewPanel) reviewPanel.classList.add('hidden');
+            triggerMapResizeSoon();
         }
 
         function setCarryoverChoice(choice) {
@@ -1721,6 +1852,7 @@
             `;
             if (mapCostPanel) mapCostPanel.classList.add('hidden');
             reviewPanel.classList.remove('hidden');
+            triggerMapResizeSoon();
         }
 
         function backToMapCostPanel() {
@@ -1728,6 +1860,7 @@
             const reviewPanel = document.getElementById('reviewPanel');
             if (reviewPanel) reviewPanel.classList.add('hidden');
             if (mapCostPanel) mapCostPanel.classList.remove('hidden');
+            triggerMapResizeSoon();
         }
 
         async function confirmAuthorizationRequest() {
