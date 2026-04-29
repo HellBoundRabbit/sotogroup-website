@@ -1181,26 +1181,49 @@
                 const raw = localStorage.getItem('soto_user_identity');
                 if (!raw) return null;
                 const parsed = JSON.parse(raw);
-                return parsed.officeId || parsed.officeID || null;
+                return (
+                    parsed.officeId ||
+                    parsed.officeID ||
+                    parsed.office_id ||
+                    (parsed.user && (parsed.user.officeId || parsed.user.officeID)) ||
+                    null
+                );
             } catch (_e) {
                 return null;
             }
         }
 
-        /** @param {{ forceRefresh?: boolean }} [opts] Pass forceRefresh before submit so officeId is re-read from Firestore/session. */
+        /**
+         * Firestore rules use request.auth.token.officeId — that comes from ID token custom claims,
+         * not necessarily from users/drivers documents. Read claims first.
+         */
+        async function officeIdFromAuthToken(user, forceRefresh) {
+            try {
+                if (forceRefresh) await user.getIdToken(true);
+                const tr = await user.getIdTokenResult();
+                const c = tr.claims || {};
+                const oid = c.officeId ?? c.office_id;
+                if (oid != null && String(oid).trim().length > 0) return String(oid).trim();
+            } catch (e) {
+                console.warn('[Authorization] ID token claims read failed.', e);
+            }
+            return null;
+        }
+
+        /** @param {{ forceRefresh?: boolean }} [opts] Pass forceRefresh before submit so token + Firestore are re-read. */
         async function getDriverContext(opts) {
             const force = opts && opts.forceRefresh;
             if (driverContext != null && !force) return driverContext;
             const user = window.auth?.currentUser;
             if (!user) return null;
-            let officeId = null;
+            let officeId = await officeIdFromAuthToken(user, Boolean(force));
             let displayName = null;
             try {
                 const driverByUidQ = query(collection(window.db, 'drivers'), where('uid', '==', user.uid), limit(1));
                 const snap = await getDocs(driverByUidQ);
                 if (!snap.empty) {
                     const d = snap.docs[0].data();
-                    officeId = d.officeId || d.officeID || null;
+                    if (!officeId) officeId = d.officeId || d.officeID || null;
                     displayName = [d.firstName, d.lastName].filter(Boolean).join(' ').trim() || null;
                 }
             } catch (e) {
@@ -1233,6 +1256,27 @@
                 }
             } catch (e) {
                 console.warn('[Authorization] users/{uid} lookup failed.', e);
+            }
+
+            if (!officeId && user.email) {
+                try {
+                    const emailKey = String(user.email).trim().toLowerCase();
+                    const byEmail = query(
+                        collection(window.db, 'drivers'),
+                        where('email', '==', emailKey),
+                        limit(1),
+                    );
+                    const emailSnap = await getDocs(byEmail);
+                    if (!emailSnap.empty) {
+                        const d = emailSnap.docs[0].data();
+                        officeId = d.officeId || d.officeID || officeId;
+                        if (!displayName) {
+                            displayName = [d.firstName, d.lastName].filter(Boolean).join(' ').trim() || null;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[Authorization] drivers lookup by email failed.', e);
+                }
             }
 
             if (!officeId) officeId = officeIdFromLocalIdentity();
@@ -1896,14 +1940,24 @@
 
         async function confirmAuthorizationRequest() {
             if (!currentReviewPayload || selectedRouteIndex === null || !routes[selectedRouteIndex]) return;
-            const ctx = await getDriverContext({ forceRefresh: true });
+            driverContext = null;
+            let ctx = await getDriverContext({ forceRefresh: true });
+            if (!ctx?.officeId && typeof window.sotoSession?.bootstrap === 'function') {
+                try {
+                    await window.sotoSession.bootstrap(['driver']);
+                    driverContext = null;
+                    ctx = await getDriverContext({ forceRefresh: true });
+                } catch (e) {
+                    console.warn('[Authorization] Re-bootstrap before submit failed.', e);
+                }
+            }
             if (!ctx?.uid) {
                 alert('Could not identify driver session. Please sign in again.');
                 return;
             }
             if (!ctx.officeId) {
                 alert(
-                    'Could not determine your office assignment. Open the app from the driver portal once to refresh your profile, or ask the office to confirm your account is linked to an office in Firestore (users and drivers should include officeId).',
+                    'Still no office linked to this login. Sign out, open the Driver Portal and sign in again (that refreshes your security token), then retry. If it continues, the office team must set officeId on your user in Firestore or ensure bootstrapSession sets the officeId claim for drivers.',
                 );
                 return;
             }
