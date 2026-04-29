@@ -367,6 +367,32 @@
             cursor: not-allowed;
         }
         
+        .authorization-request-card {
+            background: #111418;
+            border: 2px solid #4b5563;
+            border-radius: 12px;
+            padding: 14px;
+        }
+        .authorization-request-card.status-pending { border-color: #6b7280; }
+        .authorization-request-card.status-approved { border-color: #22c55e; }
+        .authorization-request-card.status-rejected { border-color: #ef4444; }
+        .authorization-request-card.status-contact_office { border-color: #f97316; }
+        
+        .map-top-panel {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 33vh;
+            min-height: 250px;
+            max-height: 360px;
+            z-index: 1100;
+            background: rgba(17, 20, 24, 0.96);
+            border-bottom: 1px solid #283039;
+            overflow-y: auto;
+            padding: 12px;
+        }
+        
         @media (max-width: 430px) {
             .authorization-modal-card {
                 width: 100%;
@@ -694,6 +720,32 @@
                 <div class="routes-list" id="routesList" hidden></div>
                 <div class="map-container">
                     <div id="map"></div>
+                    <div id="mapCostPanel" class="map-top-panel hidden">
+                        <div class="flex items-center justify-between mb-3">
+                            <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] border border-[#3a444e] text-sm" onclick="backFromMapPanel()">Back</button>
+                            <button type="button" class="px-3 py-2 rounded-lg bg-[#0d7ff2] text-white text-sm font-semibold" onclick="goToReviewPanel()">Next</button>
+                        </div>
+                        <div class="space-y-2 text-sm">
+                            <input id="publicTransportCostInput" type="number" step="0.01" min="0" placeholder="Public transport cost (£)" class="input-field">
+                            <input id="taxiCostInput" type="number" step="0.01" min="0" placeholder="Cost of taxi (£)" class="input-field">
+                            <input id="totalCostInput" type="number" step="0.01" min="0" placeholder="Total cost transport incl taxi (£)" class="input-field">
+                            <input id="originalArrivalInput" type="text" placeholder="Arrival time with original route" class="input-field">
+                            <input id="proposedArrivalInput" type="text" placeholder="Arrival time with proposed changes" class="input-field">
+                            <div class="text-xs text-gray-300 mt-2">Will this prevent a carryover?</div>
+                            <div class="flex gap-2">
+                                <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] text-xs" onclick="setCarryoverChoice('yes')">Yes</button>
+                                <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] text-xs" onclick="setCarryoverChoice('no')">No</button>
+                                <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] text-xs" onclick="setCarryoverChoice('unknown')">I don't know</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="reviewPanel" class="map-top-panel hidden">
+                        <div class="flex items-center justify-between mb-3">
+                            <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] border border-[#3a444e] text-sm" onclick="backToMapCostPanel()">Back</button>
+                            <button type="button" class="px-3 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold" onclick="confirmAuthorizationRequest()">Confirm</button>
+                        </div>
+                        <div id="reviewPanelBody" class="text-sm text-gray-200 space-y-2"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -931,8 +983,14 @@
             if (layer) layer.classList.add('hidden');
             const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
             const routesList = document.getElementById('routesList');
+            const mapCostPanel = document.getElementById('mapCostPanel');
+            const reviewPanel = document.getElementById('reviewPanel');
             if (mapContainer) mapContainer.classList.remove('fullscreen');
             if (routesList) routesList.style.display = '';
+            if (mapCostPanel) mapCostPanel.classList.add('hidden');
+            if (reviewPanel) reviewPanel.classList.add('hidden');
+            currentReviewPayload = null;
+            carryoverChoice = null;
         }
 
         let map;
@@ -951,6 +1009,107 @@
         let taxiPolylines = [];
         let segmentPolylines = [];
         let clickTimers = new Map();
+        let carryoverChoice = null;
+        let driverContext = null;
+        let currentReviewPayload = null;
+
+        function getStatusLabel(status) {
+            if (status === 'approved') return 'Authorised';
+            if (status === 'rejected') return 'Rejected';
+            if (status === 'contact_office') return 'Contact office';
+            return 'Pending office review';
+        }
+
+        function formatSubmittedAt(value) {
+            const d = value?.toDate ? value.toDate() : (value ? new Date(value) : null);
+            if (!d || Number.isNaN(d.getTime())) return 'Unknown';
+            return d.toLocaleString();
+        }
+
+        async function getDriverContext() {
+            if (driverContext) return driverContext;
+            const user = window.auth?.currentUser;
+            if (!user) return null;
+            let officeId = null;
+            let displayName = null;
+            try {
+                const driverByUidQ = query(
+                    collection(window.db, 'drivers'),
+                    where('uid', '==', user.uid),
+                    limit(1)
+                );
+                const snap = await getDocs(driverByUidQ);
+                if (!snap.empty) {
+                    const d = snap.docs[0].data();
+                    officeId = d.officeId || null;
+                    displayName = [d.firstName, d.lastName].filter(Boolean).join(' ').trim() || null;
+                }
+            } catch (e) {
+                console.warn('[Authorization] Unable to resolve driver context from drivers collection.', e);
+            }
+            if (!displayName) {
+                try {
+                    const uSnap = await getDoc(doc(window.db, 'users', user.uid));
+                    if (uSnap.exists()) {
+                        const d = uSnap.data();
+                        displayName = [d.firstName, d.lastName].filter(Boolean).join(' ').trim() || d.name || null;
+                    }
+                } catch (_e) {}
+            }
+            driverContext = {
+                uid: user.uid,
+                email: user.email || null,
+                officeId: officeId || null,
+                name: displayName || 'Driver',
+            };
+            return driverContext;
+        }
+
+        function renderAuthorizationRequests(items) {
+            const emptyState = document.getElementById('emptyState');
+            const requestsSection = document.getElementById('requestsSection');
+            if (!emptyState || !requestsSection) return;
+            if (!items.length) {
+                emptyState.classList.remove('hidden');
+                requestsSection.classList.add('hidden');
+                requestsSection.innerHTML = '';
+                return;
+            }
+            emptyState.classList.add('hidden');
+            requestsSection.classList.remove('hidden');
+            requestsSection.innerHTML = items.map((item) => `
+                <div class="authorization-request-card status-${item.status || 'pending'}">
+                    <div class="flex items-start justify-between gap-2">
+                        <div>
+                            <div class="text-sm font-semibold text-white">${escapeHtml(item.from?.address || 'From')} → ${escapeHtml(item.to?.address || 'To')}</div>
+                            <div class="text-xs text-gray-400 mt-1">Submitted: ${escapeHtml(formatSubmittedAt(item.createdAt))}</div>
+                        </div>
+                        <span class="text-xs font-semibold text-white">${escapeHtml(getStatusLabel(item.status))}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function loadAuthorizationRequests() {
+            const ctx = await getDriverContext();
+            if (!ctx?.uid) return;
+            try {
+                const qAuth = query(
+                    collection(window.db, 'authorizationRequests'),
+                    where('driverId', '==', ctx.uid)
+                );
+                const snap = await getDocs(qAuth);
+                const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+                    .sort((a, b) => {
+                        const am = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+                        const bm = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+                        return bm - am;
+                    });
+                renderAuthorizationRequests(items);
+            } catch (e) {
+                console.error('[Authorization] Failed loading requests', e);
+            }
+        }
 
         function directionsRoutePromise(request) {
             return new Promise((resolve) => {
@@ -1351,10 +1510,155 @@
         function handleNext() {
             const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
             const routesList = document.getElementById('routesList');
+            const mapCostPanel = document.getElementById('mapCostPanel');
+            const reviewPanel = document.getElementById('reviewPanel');
             if (mapContainer && routesList) {
                 routesList.style.display = 'none';
                 mapContainer.classList.add('fullscreen');
                 if (selectedRouteIndex !== null && routes[selectedRouteIndex]) renderRoute(routes[selectedRouteIndex]);
+            }
+            if (mapCostPanel) mapCostPanel.classList.remove('hidden');
+            if (reviewPanel) reviewPanel.classList.add('hidden');
+        }
+
+        function backFromMapPanel() {
+            const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
+            const routesList = document.getElementById('routesList');
+            const mapCostPanel = document.getElementById('mapCostPanel');
+            if (mapContainer) mapContainer.classList.remove('fullscreen');
+            if (routesList) routesList.style.display = '';
+            if (mapCostPanel) mapCostPanel.classList.add('hidden');
+        }
+
+        function setCarryoverChoice(choice) {
+            carryoverChoice = choice;
+        }
+
+        function buildCurrentRouteSegmentsSummary() {
+            if (selectedRouteIndex === null || !routes[selectedRouteIndex]?.routes?.[0]?.legs) return [];
+            const out = [];
+            let segmentIndex = 0;
+            routes[selectedRouteIndex].routes[0].legs.forEach((leg) => {
+                (leg.steps || []).forEach((step) => {
+                    if (step.travel_mode !== 'WALKING' && step.travel_mode !== 'TRANSIT') return;
+                    const segmentId = `route-${selectedRouteIndex}-segment-${segmentIndex}`;
+                    const base = {
+                        segmentId,
+                        travelMode: step.travel_mode,
+                        durationText: step.duration?.text || '',
+                        distanceText: step.distance?.text || '',
+                        isTaxiReplacement: taxiRequestSegments.has(segmentId),
+                        enteredCost: transitCostSegments.get(segmentId) || '',
+                    };
+                    if (step.travel_mode === 'TRANSIT') {
+                        base.label = step.transit?.line?.short_name || step.transit?.line?.name || 'Transit';
+                        base.from = step.transit?.departure_stop?.name || '';
+                        base.to = step.transit?.arrival_stop?.name || '';
+                    } else {
+                        base.label = 'Walk';
+                    }
+                    out.push(base);
+                    segmentIndex++;
+                });
+            });
+            return out;
+        }
+
+        function getRouteWindowSummary() {
+            const route = selectedRouteIndex !== null ? routes[selectedRouteIndex] : null;
+            if (!route?.routes?.[0]) return { originalArrival: '', duration: '' };
+            const leg0 = route.routes[0].legs?.[0];
+            return {
+                originalArrival: leg0?.arrival_time?.text || '',
+                duration: leg0?.duration?.text || '',
+            };
+        }
+
+        function goToReviewPanel() {
+            const mapCostPanel = document.getElementById('mapCostPanel');
+            const reviewPanel = document.getElementById('reviewPanel');
+            const reviewBody = document.getElementById('reviewPanelBody');
+            if (!reviewPanel || !reviewBody) return;
+            const routeMeta = getRouteWindowSummary();
+            const segments = buildCurrentRouteSegmentsSummary();
+            currentReviewPayload = {
+                publicTransportCost: document.getElementById('publicTransportCostInput')?.value || '',
+                taxiCost: document.getElementById('taxiCostInput')?.value || '',
+                totalTransportCost: document.getElementById('totalCostInput')?.value || '',
+                originalArrival: document.getElementById('originalArrivalInput')?.value || routeMeta.originalArrival || '',
+                proposedArrival: document.getElementById('proposedArrivalInput')?.value || '',
+                carryoverChoice: carryoverChoice,
+                segments,
+                routeDuration: routeMeta.duration || '',
+            };
+            reviewBody.innerHTML = `
+                <div class="text-xs text-gray-400">Route stages</div>
+                <div class="space-y-2">${segments.map((s) => `
+                    <div class="bg-[#111418] border border-[#283039] rounded-lg p-2">
+                        <div class="font-semibold">${escapeHtml(s.label || 'Step')} ${s.isTaxiReplacement ? '<span class="text-red-400">Taxi replacement</span>' : ''}</div>
+                        <div class="text-xs text-gray-400">${escapeHtml(s.durationText || '')}${s.distanceText ? ' · ' + escapeHtml(s.distanceText) : ''}</div>
+                        ${s.enteredCost ? `<div class="text-xs text-emerald-300 mt-1">Entered value: £${escapeHtml(String(s.enteredCost))}</div>` : ''}
+                    </div>
+                `).join('')}</div>
+                <div class="pt-2 border-t border-[#283039] mt-2">
+                    <div class="text-xs text-gray-400">Journey details</div>
+                    <div class="text-sm">From: ${escapeHtml(requestData?.from?.address || '—')}</div>
+                    <div class="text-sm">To: ${escapeHtml(requestData?.to?.address || '—')}</div>
+                    <div class="text-sm">Leave at: ${escapeHtml(new Date(requestData?.departureTime || Date.now()).toLocaleString())}</div>
+                </div>
+            `;
+            if (mapCostPanel) mapCostPanel.classList.add('hidden');
+            reviewPanel.classList.remove('hidden');
+        }
+
+        function backToMapCostPanel() {
+            const mapCostPanel = document.getElementById('mapCostPanel');
+            const reviewPanel = document.getElementById('reviewPanel');
+            if (reviewPanel) reviewPanel.classList.add('hidden');
+            if (mapCostPanel) mapCostPanel.classList.remove('hidden');
+        }
+
+        async function confirmAuthorizationRequest() {
+            if (!currentReviewPayload || selectedRouteIndex === null || !routes[selectedRouteIndex]) return;
+            const ctx = await getDriverContext();
+            if (!ctx?.uid) {
+                alert('Could not identify driver session. Please sign in again.');
+                return;
+            }
+            if (!ctx.officeId) {
+                alert('Could not determine office assignment for this driver. Please contact office.');
+                return;
+            }
+            try {
+                await addDoc(collection(window.db, 'authorizationRequests'), {
+                    requestType: 'authorization_request',
+                    status: 'pending',
+                    driverId: ctx.uid,
+                    driverName: ctx.name || 'Driver',
+                    driverEmail: ctx.email || null,
+                    officeId: ctx.officeId || null,
+                    createdAt: serverTimestamp(),
+                    from: requestData?.from || null,
+                    to: requestData?.to || null,
+                    departureTime: requestData?.departureTime || null,
+                    selectedRouteIndex,
+                    routeDuration: currentReviewPayload.routeDuration || '',
+                    summaryFields: {
+                        publicTransportCost: currentReviewPayload.publicTransportCost || '',
+                        taxiCost: currentReviewPayload.taxiCost || '',
+                        totalTransportCost: currentReviewPayload.totalTransportCost || '',
+                        originalArrival: currentReviewPayload.originalArrival || '',
+                        proposedArrival: currentReviewPayload.proposedArrival || '',
+                        carryoverChoice: currentReviewPayload.carryoverChoice || '',
+                    },
+                    segments: currentReviewPayload.segments || [],
+                });
+                alert('Authorization request submitted successfully.');
+                closeAuthorizationRoutesLayer();
+                await loadAuthorizationRequests();
+            } catch (e) {
+                console.error('[Authorization] Failed to submit request', e);
+                alert('Failed to submit authorization request. Please try again.');
             }
         }
         function getColorForTravelMode(travelMode, transitType) {
@@ -1533,6 +1837,7 @@
             if (mainContent) {
                 mainContent.classList.remove('hidden');
             }
+            loadAuthorizationRequests();
             
         });
     </script>

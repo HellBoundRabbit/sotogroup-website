@@ -299,9 +299,11 @@
                     </button>
                 </div>
                 <div id="liveSupportModalBody" class="p-6 space-y-4"></div>
-                <div class="px-6 pb-6 flex gap-3">
-                    <button type="button" id="liveSupportConfirmBtn" class="flex-1 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-white font-semibold transition-colors">Confirm log</button>
-                    <button type="button" id="liveSupportCancelBtn" class="flex-1 py-2 bg-[#283039] hover:bg-[#3a444e] rounded-lg text-white font-semibold transition-colors">Close</button>
+                <div class="px-6 pb-6 flex gap-3 flex-wrap">
+                    <button type="button" id="liveSupportRejectBtn" class="hidden flex-1 min-w-[120px] py-2 bg-red-600 hover:bg-red-700 rounded-lg text-white font-semibold transition-colors">Reject</button>
+                    <button type="button" id="liveSupportConfirmBtn" class="flex-1 min-w-[120px] py-2 bg-green-600 hover:bg-green-700 rounded-lg text-white font-semibold transition-colors">Confirm</button>
+                    <button type="button" id="liveSupportContactBtn" class="hidden flex-1 min-w-[120px] py-2 bg-orange-600 hover:bg-orange-700 rounded-lg text-white font-semibold transition-colors">Contact office</button>
+                    <button type="button" id="liveSupportCancelBtn" class="flex-1 min-w-[120px] py-2 bg-[#283039] hover:bg-[#3a444e] rounded-lg text-white font-semibold transition-colors">Close</button>
                 </div>
             </div>
         </div>
@@ -596,20 +598,52 @@
             const displayName = await resolveLiveSupportDisplayName(item);
             const typeLabel = getSupportTypeLabel(item.requestType);
             title.textContent = typeLabel;
+            const rejectBtn = document.getElementById('liveSupportRejectBtn');
+            const confirmBtn = document.getElementById('liveSupportConfirmBtn');
+            const contactBtn = document.getElementById('liveSupportContactBtn');
+            const cancelBtn = document.getElementById('liveSupportCancelBtn');
             body.innerHTML = `
                 <div class="grid grid-cols-1 gap-3 text-sm">
                     <div><span class="text-[#9cabba]">Name:</span> <span class="text-white">${escapeHtml(displayName)}</span></div>
                     <div><span class="text-[#9cabba]">Type of request:</span> <span class="text-white">${escapeHtml(typeLabel)}</span></div>
                     <div><span class="text-[#9cabba]">Submitted:</span> <span class="text-white">${escapeHtml(formatSupportRelativeTime(item.createdAt))}</span></div>
-                    <div class="pt-2 border-t border-[#283039]"></div>
-                    <div><span class="text-[#9cabba]">Customer name:</span> <span class="text-white">${escapeHtml(item.customerName || '—')}</span></div>
-                    <div><span class="text-[#9cabba]">Subject:</span> <span class="text-white">${escapeHtml(item.subject || '—')}</span></div>
-                </div>
-                <div class="mt-4 bg-[#111418] border border-[#283039] rounded-lg p-4">
-                    <div class="text-xs text-[#9cabba] mb-2">Message</div>
-                    <p class="text-sm text-white whitespace-pre-wrap">${escapeHtml(item.message || '—')}</p>
                 </div>
             `;
+            if (item.requestType === 'authorization_request') {
+                if (rejectBtn) rejectBtn.classList.remove('hidden');
+                if (contactBtn) contactBtn.classList.remove('hidden');
+                if (confirmBtn) confirmBtn.textContent = 'Confirm';
+                if (cancelBtn) cancelBtn.textContent = 'Close';
+                body.innerHTML += `
+                    <div class="mt-4 bg-[#111418] border border-[#283039] rounded-lg p-4 space-y-2 text-sm">
+                        <div><span class="text-[#9cabba]">From:</span> <span class="text-white">${escapeHtml(item.from?.address || '—')}</span></div>
+                        <div><span class="text-[#9cabba]">To:</span> <span class="text-white">${escapeHtml(item.to?.address || '—')}</span></div>
+                        <div><span class="text-[#9cabba]">Leave at:</span> <span class="text-white">${escapeHtml(item.departureTime ? new Date(item.departureTime).toLocaleString() : '—')}</span></div>
+                        <div><span class="text-[#9cabba]">Public transport cost:</span> <span class="text-white">${escapeHtml(item.summaryFields?.publicTransportCost || '—')}</span></div>
+                        <div><span class="text-[#9cabba]">Taxi cost:</span> <span class="text-white">${escapeHtml(item.summaryFields?.taxiCost || '—')}</span></div>
+                        <div><span class="text-[#9cabba]">Total cost:</span> <span class="text-white">${escapeHtml(item.summaryFields?.totalTransportCost || '—')}</span></div>
+                        <div><span class="text-[#9cabba]">Original arrival:</span> <span class="text-white">${escapeHtml(item.summaryFields?.originalArrival || '—')}</span></div>
+                        <div><span class="text-[#9cabba]">Proposed arrival:</span> <span class="text-white">${escapeHtml(item.summaryFields?.proposedArrival || '—')}</span></div>
+                        <div><span class="text-[#9cabba]">Carryover prevented:</span> <span class="text-white">${escapeHtml(item.summaryFields?.carryoverChoice || '—')}</span></div>
+                        <div class="pt-2 border-t border-[#283039] text-xs text-[#9cabba]">Route stages</div>
+                        ${(item.segments || []).map((s) => `<div class="text-xs text-white">• ${escapeHtml(s.label || s.travelMode || 'Stage')} ${s.isTaxiReplacement ? '(Taxi replacement)' : ''} ${s.enteredCost ? `— £${escapeHtml(String(s.enteredCost))}` : ''}</div>`).join('')}
+                    </div>
+                `;
+            } else {
+                if (rejectBtn) rejectBtn.classList.add('hidden');
+                if (contactBtn) contactBtn.classList.add('hidden');
+                if (confirmBtn) confirmBtn.textContent = 'Confirm log';
+                if (cancelBtn) cancelBtn.textContent = 'Close';
+                body.innerHTML += `
+                    <div class="pt-2 border-t border-[#283039] mt-3"></div>
+                    <div><span class="text-[#9cabba]">Customer name:</span> <span class="text-white">${escapeHtml(item.customerName || '—')}</span></div>
+                    <div><span class="text-[#9cabba]">Subject:</span> <span class="text-white">${escapeHtml(item.subject || '—')}</span></div>
+                    <div class="mt-4 bg-[#111418] border border-[#283039] rounded-lg p-4">
+                        <div class="text-xs text-[#9cabba] mb-2">Message</div>
+                        <p class="text-sm text-white whitespace-pre-wrap">${escapeHtml(item.message || '—')}</p>
+                    </div>
+                `;
+            }
             modal.classList.remove('hidden');
         }
 
@@ -621,6 +655,10 @@
 
         async function confirmLiveSupportRequest() {
             if (!liveSupportSelectedRequest || !window.firebaseDeleteDoc) return;
+            if (liveSupportSelectedRequest.requestType === 'authorization_request') {
+                await updateAuthorizationRequestStatus('approved');
+                return;
+            }
             const confirmed = window.showConfirmation
                 ? await window.showConfirmation({
                     title: 'Confirm Wait Time Log',
@@ -640,6 +678,30 @@
             }
         }
 
+        async function updateAuthorizationRequestStatus(newStatus) {
+            if (!liveSupportSelectedRequest) return;
+            const confirmed = window.showConfirmation
+                ? await window.showConfirmation({
+                    title: 'Update Authorization Request',
+                    message: `Set this request to ${newStatus.replace('_', ' ')}?`,
+                    confirmText: 'Confirm',
+                    cancelText: 'Cancel',
+                    tone: 'warning'
+                })
+                : window.confirm(`Set this request to ${newStatus}?`);
+            if (!confirmed) return;
+            try {
+                await window.firebaseUpdateDoc(
+                    window.firebaseDoc(window.firestore, 'authorizationRequests', liveSupportSelectedRequest.id),
+                    { status: newStatus, reviewedAt: new Date().toISOString() }
+                );
+                closeLiveSupportModal();
+            } catch (error) {
+                console.error('[Dashboard] Failed updating authorization request status', error);
+                notifyError('Could not update authorization request. Please try again.');
+            }
+        }
+
         function startLiveSupportListener() {
             const officeId = getCurrentOfficeId();
             if (!officeId || !window.firebaseOnSnapshot) return;
@@ -648,16 +710,41 @@
                 window.firebaseCollection(window.firestore, 'waitTimeLogRequests'),
                 window.firebaseWhere('officeId', '==', officeId)
             );
-            unsubscribeLiveSupport = window.firebaseOnSnapshot(supportQuery, (snapshot) => {
-                liveSupportRequests = snapshot.docs
+            const authQuery = window.firebaseQuery(
+                window.firebaseCollection(window.firestore, 'authorizationRequests'),
+                window.firebaseWhere('officeId', '==', officeId)
+            );
+            let waitItems = [];
+            let authItems = [];
+            function applyCombined() {
+                liveSupportRequests = [...waitItems, ...authItems]
+                    .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+                renderLiveSupportList();
+            }
+            const unWait = window.firebaseOnSnapshot(supportQuery, (snapshot) => {
+                waitItems = snapshot.docs
                     .map((d) => ({ id: d.id, ...d.data() }))
                     .filter((item) => (item.requestType || 'wait_time_log_request') === 'wait_time_log_request')
                     .filter((item) => (item.status || 'pending') === 'pending')
                     .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
-                renderLiveSupportList();
+                applyCombined();
             }, (error) => {
                 console.error('[Dashboard] Live support listener failed', error);
             });
+            const unAuth = window.firebaseOnSnapshot(authQuery, (snapshot) => {
+                authItems = snapshot.docs
+                    .map((d) => ({ id: d.id, ...d.data() }))
+                    .filter((item) => (item.requestType || 'authorization_request') === 'authorization_request')
+                    .filter((item) => (item.status || 'pending') === 'pending')
+                    .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+                applyCombined();
+            }, (error) => {
+                console.error('[Dashboard] Authorization listener failed', error);
+            });
+            unsubscribeLiveSupport = () => {
+                if (typeof unWait === 'function') unWait();
+                if (typeof unAuth === 'function') unAuth();
+            };
 
             if (liveSupportAgeInterval) clearInterval(liveSupportAgeInterval);
             liveSupportAgeInterval = setInterval(renderLiveSupportList, 30000);
@@ -1377,9 +1464,13 @@
             const closeBtn = document.getElementById('liveSupportModalClose');
             const cancelBtn = document.getElementById('liveSupportCancelBtn');
             const confirmBtn = document.getElementById('liveSupportConfirmBtn');
+            const rejectBtn = document.getElementById('liveSupportRejectBtn');
+            const contactBtn = document.getElementById('liveSupportContactBtn');
             if (closeBtn) closeBtn.addEventListener('click', closeLiveSupportModal);
             if (cancelBtn) cancelBtn.addEventListener('click', closeLiveSupportModal);
             if (confirmBtn) confirmBtn.addEventListener('click', confirmLiveSupportRequest);
+            if (rejectBtn) rejectBtn.addEventListener('click', () => updateAuthorizationRequestStatus('rejected'));
+            if (contactBtn) contactBtn.addEventListener('click', () => updateAuthorizationRequestStatus('contact_office'));
             if (modal) {
                 modal.addEventListener('click', (event) => {
                     if (event.target === modal) closeLiveSupportModal();
