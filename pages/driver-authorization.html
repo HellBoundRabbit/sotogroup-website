@@ -56,6 +56,21 @@
         window.db = db;
         window.auth = auth;
         window.firebase = { functions, httpsCallable };
+
+        /** Inline script uses Firestore modular API; import scope is module-only — expose for non-module scripts. */
+        window.collection = collection;
+        window.doc = doc;
+        window.query = query;
+        window.where = where;
+        window.limit = limit;
+        window.orderBy = orderBy;
+        window.getDocs = getDocs;
+        window.getDoc = getDoc;
+        window.addDoc = addDoc;
+        window.updateDoc = updateDoc;
+        window.deleteDoc = deleteDoc;
+        window.setDoc = setDoc;
+        window.serverTimestamp = serverTimestamp;
         
         console.log('Firebase initialized successfully!');
     </script>
@@ -1163,6 +1178,28 @@
         let driverContext = null;
         let currentReviewPayload = null;
 
+        /**
+         * Firebase is initialised in a `type="module"` block (async). Inline script must not call
+         * query/getDoc/addDoc until the module assigns them to `window`.
+         */
+        async function waitForFirestoreReady(maxAttempts = 160) {
+            for (let i = 0; i < maxAttempts; i++) {
+                if (
+                    window.db &&
+                    window.auth &&
+                    typeof window.query === 'function' &&
+                    typeof window.collection === 'function' &&
+                    typeof window.getDoc === 'function' &&
+                    typeof window.addDoc === 'function'
+                ) {
+                    return true;
+                }
+                await new Promise((r) => setTimeout(r, 50));
+            }
+            console.error('[Authorization] Timed out waiting for Firebase Firestore on window.');
+            return false;
+        }
+
         function getStatusLabel(status) {
             if (status === 'approved') return 'Authorised';
             if (status === 'rejected') return 'Rejected';
@@ -1316,6 +1353,7 @@
         }
 
         async function loadAuthorizationRequests() {
+            if (!(await waitForFirestoreReady())) return;
             const ctx = await getDriverContext();
             if (!ctx?.uid) return;
             try {
@@ -2149,6 +2187,8 @@
             if (mainContent) {
                 mainContent.classList.remove('hidden');
             }
+
+            await waitForFirestoreReady();
 
             try {
                 if (typeof window.sotoSession?.bootstrap === 'function') {
