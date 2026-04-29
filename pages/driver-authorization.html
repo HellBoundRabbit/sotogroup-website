@@ -596,7 +596,7 @@
                 <div class="authorization-modal-body">
                     <!-- Form Container -->
                     <div class="form-container">
-                <form id="authorizationForm">
+                <form id="authorizationForm" onsubmit="event.preventDefault(); return false;">
                     <!-- From Address -->
                     <div class="input-group">
                         <label class="input-label" for="fromAddress">From</label>
@@ -693,7 +693,7 @@
     <div id="authorizationRoutesLayer" class="hidden fixed inset-0 z-[70] bg-[#0f1419] text-white">
         <div class="h-full flex flex-col">
             <div class="bg-[#1a1f24] border-b border-[#283039] px-4 py-3 relative">
-                <button type="button" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#283039] border border-[#3a444e] text-sm" onclick="closeAuthorizationRoutesLayer()">
+                <button type="button" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#283039] border border-[#3a444e] text-sm" onclick="authorizationRoutesNavigateBack()">
                     <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span>
                     Back
                 </button>
@@ -968,19 +968,73 @@
             
             openAuthorizationRoutesLayer();
         }
-        
+
+        /** Hides modal and restores scroll; does not reset the form (used when transitioning to route flow). */
+        function hideAuthorizationModal() {
+            const modal = document.getElementById('authorizationModal');
+            if (modal) modal.classList.add('hidden');
+            document.body.classList.remove('modal-open');
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.left = '';
+            document.body.style.right = '';
+            document.body.style.width = '';
+            window.scrollTo(0, modalScrollY || 0);
+        }
+
+        function resetAuthorizationRequestFormFields() {
+            const form = document.getElementById('authorizationForm');
+            if (form) form.reset();
+            fromPlace = null;
+            toPlace = null;
+            const fromInput = document.getElementById('fromAddress');
+            const toInput = document.getElementById('toAddress');
+            if (fromInput) fromInput.value = '';
+            if (toInput) toInput.value = '';
+            const nowRadio = document.querySelector('input[name="leaveAt"][value="now"]');
+            if (nowRadio) nowRadio.checked = true;
+            const customDateTime = document.getElementById('customDateTime');
+            if (customDateTime) {
+                customDateTime.style.display = 'none';
+                customDateTime.value = '';
+            }
+            validateForm();
+        }
+
+        /** Show routes layer before hiding the modal to avoid flashing the underlying page between states. */
         function openAuthorizationRoutesLayer() {
             const layer = document.getElementById('authorizationRoutesLayer');
             if (!layer) return;
-            
-            closeAuthorizationModal();
             layer.classList.remove('hidden');
+            hideAuthorizationModal();
             initializeMap().then(() => loadRoutes());
         }
-        
+
+        /** @param {boolean} [alsoClearAlternativesBackup] default true — set false when returning from route list to the multi-option picker. */
+        function resetInLayerRouteFlowState(alsoClearAlternativesBackup) {
+            try {
+                clearRoute();
+            } catch (_e) {}
+            routes = [];
+            routeAlternatives = [];
+            if (alsoClearAlternativesBackup !== false) routeAlternativesSnapshot = [];
+            routesPickerConfirmed = false;
+            selectedRouteIndex = null;
+            routeSegments = [];
+            selectedSegments.clear();
+            transitCostSegments.clear();
+            taxiRequestSegments.clear();
+            clickTimers.forEach((timer) => clearTimeout(timer));
+            clickTimers.clear();
+            updateRequestButton();
+            const requestButton = document.getElementById('requestButton');
+            if (requestButton) requestButton.classList.remove('visible');
+        }
+
         function closeAuthorizationRoutesLayer() {
             const layer = document.getElementById('authorizationRoutesLayer');
             if (layer) layer.classList.add('hidden');
+            sessionStorage.removeItem('authorizationRequest');
             const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
             const routesList = document.getElementById('routesList');
             const mapCostPanel = document.getElementById('mapCostPanel');
@@ -991,12 +1045,68 @@
             if (reviewPanel) reviewPanel.classList.add('hidden');
             currentReviewPayload = null;
             carryoverChoice = null;
+            requestData = null;
+            resetInLayerRouteFlowState(true);
+            resetAuthorizationRequestFormFields();
+            const pickerPanel = document.getElementById('routePickerPanel');
+            const pickerCards = document.getElementById('routePickerCards');
+            if (pickerPanel) pickerPanel.hidden = false;
+            if (pickerCards) pickerCards.innerHTML = '';
+            if (routesList) routesList.setAttribute('hidden', '');
+            const titleEl = document.getElementById('routeScreenTitle');
+            if (titleEl) titleEl.textContent = 'Route options';
+            clearPoweredByGoogleAttribution();
+        }
+
+        function authorizationRoutesNavigateBack() {
+            const layer = document.getElementById('authorizationRoutesLayer');
+            if (!layer || layer.classList.contains('hidden')) return;
+
+            const reviewPanel = document.getElementById('reviewPanel');
+            const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
+
+            if (reviewPanel && !reviewPanel.classList.contains('hidden')) {
+                backToMapCostPanel();
+                return;
+            }
+
+            if (mapContainer && mapContainer.classList.contains('fullscreen')) {
+                backFromMapPanel();
+                return;
+            }
+
+            if (routesPickerConfirmed && routeAlternativesSnapshot.length > 1) {
+                routesPickerConfirmed = false;
+                resetInLayerRouteFlowState(false);
+                routeAlternatives = routeAlternativesSnapshot.slice();
+                const pickerPanel = document.getElementById('routePickerPanel');
+                const routesListEl = document.getElementById('routesList');
+                const titleEl = document.getElementById('routeScreenTitle');
+                const mapCostPan = document.getElementById('mapCostPanel');
+                const rev = document.getElementById('reviewPanel');
+                if (pickerPanel) pickerPanel.hidden = false;
+                if (routesListEl) {
+                    routesListEl.setAttribute('hidden', '');
+                    routesListEl.innerHTML = '';
+                    routesListEl.style.display = '';
+                }
+                if (mapCostPan) mapCostPan.classList.add('hidden');
+                if (rev) rev.classList.add('hidden');
+                if (titleEl) titleEl.textContent = 'Route options';
+                setPoweredByGoogleAttribution();
+                renderRoutePickerCards(routeAlternatives);
+                return;
+            }
+
+            closeAuthorizationRoutesLayer();
         }
 
         let map;
         let directionsService;
         let routes = [];
         let routeAlternatives = [];
+        /** Shallow copy taken when >1 options exist; survives confirmRoutePicker clearing `routeAlternatives` for Back → picker. */
+        let routeAlternativesSnapshot = [];
         let routesPickerConfirmed = false;
         let selectedRouteIndex = null;
         let requestData = null;
@@ -1329,6 +1439,7 @@
             routesPickerConfirmed = false;
             routeAlternatives = [];
             routes = [];
+            routeAlternativesSnapshot = [];
             const pickerCards = document.getElementById('routePickerCards');
             const pickerPanel = document.getElementById('routePickerPanel');
             const routesListEl = document.getElementById('routesList');
@@ -1358,6 +1469,7 @@
                     routeAlternatives = dedupeDirectionResponses(resultsRaw.filter(Boolean));
                 }
                 setPoweredByGoogleAttribution();
+                routeAlternativesSnapshot = routeAlternatives.length > 1 ? routeAlternatives.slice() : [];
                 if (!routeAlternatives.length) return showError('No public transport routes found for this journey. Please try different locations or times.');
                 if (routeAlternatives.length === 1) return confirmRoutePickerSelection(0);
                 renderRoutePickerCards(routeAlternatives);
@@ -1776,6 +1888,7 @@
         window.handleSegmentClick = handleSegmentClick;
         window.updateSegmentCost = updateSegmentCost;
         window.handleNext = handleNext;
+        window.authorizationRoutesNavigateBack = authorizationRoutesNavigateBack;
         
         // Open authorization modal
         function openAuthorizationModal() {
@@ -1799,30 +1912,11 @@
             }, 100);
         }
         
-        // Close authorization modal
+        /** Close modal (X button or leaving form) and clear the request form. */
         function closeAuthorizationModal() {
-            document.getElementById('authorizationModal').classList.add('hidden');
-            
-            // Restore background scrolling when modal closes.
-            document.body.classList.remove('modal-open');
-            document.body.style.position = '';
-            document.body.style.top = '';
-            document.body.style.left = '';
-            document.body.style.right = '';
-            document.body.style.width = '';
-            window.scrollTo(0, modalScrollY || 0);
-            
-            // Reset form
-            document.getElementById('authorizationForm').reset();
-            fromPlace = null;
-            toPlace = null;
-            document.getElementById('fromAddress').value = '';
-            document.getElementById('toAddress').value = '';
-            const nowRadio = document.querySelector('input[name="leaveAt"][value="now"]');
-            if (nowRadio) nowRadio.checked = true;
-            const customDateTime = document.getElementById('customDateTime');
-            if (customDateTime) customDateTime.style.display = 'none';
-            validateForm();
+            hideAuthorizationModal();
+            sessionStorage.removeItem('authorizationRequest');
+            resetAuthorizationRequestFormFields();
         }
         
         // Initialize on page load
