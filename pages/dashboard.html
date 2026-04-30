@@ -640,8 +640,8 @@
                 const fromAddress = item.from?.address || '—';
                 const toAddress = item.to?.address || '—';
                 const leaveAt = item.departureTime ? new Date(item.departureTime).toLocaleString() : '—';
-                const fromLatLng = normalizeLatLng(item.from?.location);
-                const toLatLng = normalizeLatLng(item.to?.location);
+                const fromLatLng = normalizeLatLng(item.from?.location || item.from);
+                const toLatLng = normalizeLatLng(item.to?.location || item.to);
                 const canRenderMaps = Boolean(fromLatLng && toLatLng);
                 const originalMapUrl = canRenderMaps ? buildGoogleDirectionEmbedUrl(fromLatLng, toLatLng, 'transit') : '';
                 const amendedMapUrl = canRenderMaps ? buildGoogleDirectionEmbedUrl(fromLatLng, toLatLng, 'driving') : '';
