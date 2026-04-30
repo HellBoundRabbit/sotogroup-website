@@ -2104,7 +2104,7 @@
             routeData.legs.forEach((leg) => {
                 bounds.extend(leg.start_location);
                 bounds.extend(leg.end_location);
-                const startMarker = new google.maps.Marker({ position: leg.start_location, map, label: 'A', icon: { url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png' } });
+                const startMarker = new google.maps.Marker({ position: leg.start_location, map, label: 'A', icon: { url: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png' } });
                 routeMarkers.push(startMarker);
                 if (allTaxiRequests && totalSegments > 0) {
                     const taxiPolyline = new google.maps.Polyline({ path: [leg.start_location, leg.end_location], geodesic: false, strokeColor: '#EF4444', strokeOpacity: 1, strokeWeight: 8, map });
@@ -2144,7 +2144,7 @@
                         }
                     }
                 }
-                const endMarker = new google.maps.Marker({ position: leg.end_location, map, label: 'B', icon: { url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png' } });
+                const endMarker = new google.maps.Marker({ position: leg.end_location, map, label: 'B', icon: { url: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png' } });
                 routeMarkers.push(endMarker);
             });
             if (!bounds.isEmpty()) map.fitBounds(bounds);
