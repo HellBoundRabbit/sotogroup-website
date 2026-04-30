@@ -1895,8 +1895,10 @@
             const out = [];
             let segmentIndex = 0;
             routes[selectedRouteIndex].routes[0].legs.forEach((leg) => {
-                (leg.steps || []).forEach((step) => {
-                    if (step.travel_mode !== 'WALKING' && step.travel_mode !== 'TRANSIT') return;
+                const steps = leg.steps || [];
+                for (let i = 0; i < steps.length; i++) {
+                    const step = steps[i];
+                    if (step.travel_mode !== 'WALKING' && step.travel_mode !== 'TRANSIT') continue;
                     const segmentId = `route-${selectedRouteIndex}-segment-${segmentIndex}`;
                     const base = {
                         segmentId,
@@ -1911,11 +1913,28 @@
                         base.from = step.transit?.departure_stop?.name || '';
                         base.to = step.transit?.arrival_stop?.name || '';
                     } else {
+                        // Collapse adjacent walk segments so review cards stay readable.
+                        let mergedDurationSec = step.duration?.value || 0;
+                        let mergedDistanceMeters = step.distance?.value || 0;
+                        while (i + 1 < steps.length && steps[i + 1]?.travel_mode === 'WALKING') {
+                            const nextWalk = steps[i + 1];
+                            mergedDurationSec += nextWalk.duration?.value || 0;
+                            mergedDistanceMeters += nextWalk.distance?.value || 0;
+                            i++;
+                            segmentIndex++;
+                        }
                         base.label = 'Walk';
+                        const walkMinutes = Math.max(1, Math.round(mergedDurationSec / 60));
+                        base.durationText = `About ${walkMinutes} min`;
+                        if (mergedDistanceMeters > 0) {
+                            base.distanceText = mergedDistanceMeters >= 1000
+                                ? `${(mergedDistanceMeters / 1000).toFixed(1)} km`
+                                : `${Math.round(mergedDistanceMeters)} m`;
+                        }
                     }
                     out.push(base);
                     segmentIndex++;
-                });
+                }
             });
             return out;
         }
@@ -2104,7 +2123,7 @@
             routeData.legs.forEach((leg) => {
                 bounds.extend(leg.start_location);
                 bounds.extend(leg.end_location);
-                const startMarker = new google.maps.Marker({ position: leg.start_location, map, label: 'A', icon: { url: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png' } });
+                const startMarker = new google.maps.Marker({ position: leg.start_location, map, label: 'A', icon: { url: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png' } });
                 routeMarkers.push(startMarker);
                 if (allTaxiRequests && totalSegments > 0) {
                     const taxiPolyline = new google.maps.Polyline({ path: [leg.start_location, leg.end_location], geodesic: false, strokeColor: '#EF4444', strokeOpacity: 1, strokeWeight: 8, map });

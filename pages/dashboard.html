@@ -291,19 +291,21 @@
     <!-- Driver communications request modal -->
     <div id="liveSupportModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-[1200] overflow-y-auto">
         <div class="min-h-full px-4 py-8 flex items-start justify-center">
-            <div class="bg-[#1a1f24] border border-[#283039] rounded-lg w-full max-w-6xl max-h-[90vh] overflow-hidden">
-                <div class="px-6 py-4 border-b border-[#283039] flex items-center justify-between">
+            <div class="bg-[#1a1f24] border border-[#283039] rounded-lg w-full max-w-6xl">
+                <div class="px-6 py-4 border-b border-[#283039] flex items-center justify-between gap-4">
                     <h3 id="liveSupportModalTitle" class="text-lg font-semibold text-white">WaitTime Log Request</h3>
-                    <button type="button" id="liveSupportModalClose" class="text-gray-400 hover:text-white transition-colors">
-                        <span class="material-symbols-outlined">close</span>
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <button type="button" id="liveSupportContactBtn" class="hidden py-2 px-3 rounded-lg border border-orange-400/45 bg-orange-500/15 text-orange-200 hover:bg-orange-500/25 hover:border-orange-300/70 text-sm font-semibold transition-colors">Contact office</button>
+                        <button type="button" id="liveSupportRejectBtn" class="hidden py-2 px-3 rounded-lg border border-red-400/45 bg-red-500/15 text-red-200 hover:bg-red-500/25 hover:border-red-300/70 text-sm font-semibold transition-colors">Reject</button>
+                        <button type="button" id="liveSupportConfirmBtn" class="py-2 px-3 rounded-lg border border-emerald-400/45 bg-emerald-500/15 text-emerald-100 hover:bg-emerald-500/25 hover:border-emerald-300/70 text-sm font-semibold transition-colors">Confirm</button>
+                        <button type="button" id="liveSupportModalClose" class="text-gray-400 hover:text-white transition-colors p-1">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
                 </div>
-                <div id="liveSupportModalBody" class="p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-140px)]"></div>
-                <div class="px-6 pb-6 flex gap-3 flex-wrap">
-                    <button type="button" id="liveSupportRejectBtn" class="hidden flex-1 min-w-[120px] py-2 bg-red-600 hover:bg-red-700 rounded-lg text-white font-semibold transition-colors">Reject</button>
-                    <button type="button" id="liveSupportConfirmBtn" class="flex-1 min-w-[120px] py-2 bg-green-600 hover:bg-green-700 rounded-lg text-white font-semibold transition-colors">Confirm</button>
-                    <button type="button" id="liveSupportContactBtn" class="hidden flex-1 min-w-[120px] py-2 bg-orange-600 hover:bg-orange-700 rounded-lg text-white font-semibold transition-colors">Contact office</button>
-                    <button type="button" id="liveSupportCancelBtn" class="flex-1 min-w-[120px] py-2 bg-[#283039] hover:bg-[#3a444e] rounded-lg text-white font-semibold transition-colors">Close</button>
+                <div id="liveSupportModalBody" class="p-6 space-y-4"></div>
+                <div class="px-6 pb-6 flex justify-end">
+                    <button type="button" id="liveSupportCancelBtn" class="py-2 px-4 bg-[#283039] hover:bg-[#3a444e] rounded-lg text-white font-semibold transition-colors">Close</button>
                 </div>
             </div>
         </div>
@@ -648,6 +650,12 @@
             const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
             L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(liveSupportOriginalRouteMap);
             L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(liveSupportRevisedRouteMap);
+            const startEndIcon = (letter, color) => L.divIcon({
+                className: '',
+                html: `<div style="width:24px;height:24px;border-radius:9999px;background:${color};color:#fff;font-weight:700;font-size:12px;line-height:24px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.45);">${letter}</div>`,
+                iconSize: [24, 24],
+                iconAnchor: [12, 12],
+            });
 
             const bounds = [];
             routeSegments.forEach((segment) => {
@@ -672,13 +680,23 @@
                     : originalStyle;
 
                 L.polyline(path, originalStyle).addTo(liveSupportOriginalRouteMap);
-                L.polyline(path, revisedStyle).addTo(liveSupportRevisedRouteMap);
+                const revisedPath = segment.isTaxiReplacement && start && end
+                    ? [[start.lat, start.lng], [end.lat, end.lng]]
+                    : path;
+                L.polyline(revisedPath, revisedStyle).addTo(liveSupportRevisedRouteMap);
+                revisedPath.forEach((pt) => bounds.push(pt));
             });
 
             if (bounds.length) {
                 const mapBounds = L.latLngBounds(bounds);
                 liveSupportOriginalRouteMap.fitBounds(mapBounds, { padding: [18, 18] });
                 liveSupportRevisedRouteMap.fitBounds(mapBounds, { padding: [18, 18] });
+                const start = bounds[0];
+                const end = bounds[bounds.length - 1];
+                L.marker(start, { icon: startEndIcon('A', '#16a34a') }).addTo(liveSupportOriginalRouteMap);
+                L.marker(end, { icon: startEndIcon('B', '#dc2626') }).addTo(liveSupportOriginalRouteMap);
+                L.marker(start, { icon: startEndIcon('A', '#16a34a') }).addTo(liveSupportRevisedRouteMap);
+                L.marker(end, { icon: startEndIcon('B', '#dc2626') }).addTo(liveSupportRevisedRouteMap);
             } else {
                 const fallback = [54.5, -2];
                 liveSupportOriginalRouteMap.setView(fallback, 6);
@@ -688,6 +706,39 @@
                 liveSupportOriginalRouteMap?.invalidateSize();
                 liveSupportRevisedRouteMap?.invalidateSize();
             }, 50);
+        }
+
+        function buildAuthorizationStagesHtml(segments) {
+            if (!Array.isArray(segments) || !segments.length) return '<div class="text-xs text-[#9cabba]">No route stage details.</div>';
+            const merged = [];
+            for (let i = 0; i < segments.length; i++) {
+                const current = segments[i];
+                const mode = (current?.travelMode || '').toUpperCase();
+                if (mode === 'WALKING') {
+                    let duration = current.durationText || '';
+                    let distance = current.distanceText || '';
+                    while (i + 1 < segments.length && (segments[i + 1]?.travelMode || '').toUpperCase() === 'WALKING') {
+                        const next = segments[i + 1];
+                        duration = duration || next.durationText || '';
+                        distance = distance || next.distanceText || '';
+                        i++;
+                    }
+                    merged.push({ label: 'Walk', travelMode: 'WALKING', durationText: duration, distanceText: distance, isTaxiReplacement: false, enteredCost: '' });
+                } else {
+                    merged.push(current);
+                }
+            }
+            return merged.map((s) => {
+                const detail = [s.durationText, s.distanceText].filter(Boolean).join(' · ');
+                const lineName = s.label || s.travelMode || 'Stage';
+                return `<div class="text-xs text-white">
+                    <span class="font-semibold">${escapeHtml(lineName)}</span>
+                    ${s.from || s.to ? `<span class="text-[#9cabba]"> ${escapeHtml((s.from ? s.from : '') + (s.to ? ` → ${s.to}` : ''))}</span>` : ''}
+                    ${detail ? `<div class="text-[11px] text-[#9cabba] mt-0.5">${escapeHtml(detail)}</div>` : ''}
+                    ${s.isTaxiReplacement ? '<div class="text-[11px] text-red-300 mt-0.5">Taxi replacement</div>' : ''}
+                    ${s.enteredCost ? `<div class="text-[11px] text-emerald-300 mt-0.5">Entered cost: £${escapeHtml(String(s.enteredCost))}</div>` : ''}
+                </div>`;
+            }).join('');
         }
 
         function renderLiveSupportList() {
@@ -747,8 +798,13 @@
                 if (confirmBtn) confirmBtn.textContent = 'Confirm';
                 if (cancelBtn) cancelBtn.textContent = 'Close';
                 const hasRouteVisualization = Array.isArray(item.routeVisualization?.segments) && item.routeVisualization.segments.length > 0;
+                const fromAddress = item.from?.address || '—';
+                const toAddress = item.to?.address || '—';
                 body.innerHTML += `
                     <div class="mt-4 bg-[#111418] border border-[#283039] rounded-lg p-4 space-y-4 text-sm">
+                        <div class="text-center text-sm font-semibold text-white border-b border-[#283039] pb-2">
+                            ${escapeHtml(fromAddress)} <span class="text-[#9cabba]">→</span> ${escapeHtml(toAddress)}
+                        </div>
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                             <div class="space-y-3">
                                 <div class="text-xs uppercase tracking-wide text-[#9cabba] font-semibold">Original route</div>
@@ -778,7 +834,7 @@
                         </div>
                         <div><span class="text-[#9cabba]">Carryover prevented:</span> <span class="text-white">${escapeHtml(item.summaryFields?.carryoverChoice || '—')}</span></div>
                         <div class="pt-2 border-t border-[#283039] text-xs text-[#9cabba]">Route stages</div>
-                        ${(item.segments || []).map((s) => `<div class="text-xs text-white">• ${escapeHtml(s.label || s.travelMode || 'Stage')} ${s.isTaxiReplacement ? '(Taxi replacement)' : ''} ${s.enteredCost ? `— £${escapeHtml(String(s.enteredCost))}` : ''}</div>`).join('')}
+                        ${buildAuthorizationStagesHtml(item.segments || [])}
                     </div>
                 `;
             } else {
