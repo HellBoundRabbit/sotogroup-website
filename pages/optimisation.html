@@ -985,7 +985,7 @@
 
             const dateDocId = activeOptimisationDate;
             const driverDocId = sanitizeFirestoreKey(driver.id || driver.name, 'driver');
-            const dateDocRef = window.firebaseDoc(window.firestore, 'Assigned Jobs', dateDocId);
+            const dateDocRef = window.firebaseDoc(window.firestore, 'AssignedJobs', dateDocId);
             await window.firebaseSetDoc(dateDocRef, {
                 officeId,
                 selectedDate: activeOptimisationDate,
@@ -1003,7 +1003,7 @@
                     price: typeof parsed.price === 'number' ? parsed.price : Number(parsed.price) || 0
                 };
             });
-            const driverDocRef = window.firebaseDoc(window.firestore, 'Assigned Jobs', dateDocId, 'drivers', driverDocId);
+            const driverDocRef = window.firebaseDoc(window.firestore, 'AssignedJobs', dateDocId, 'drivers', driverDocId);
             await window.firebaseSetDoc(driverDocRef, {
                 officeId,
                 selectedDate: activeOptimisationDate,
