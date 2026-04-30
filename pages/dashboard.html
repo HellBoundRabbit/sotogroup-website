@@ -291,7 +291,7 @@
     <!-- Driver communications request modal -->
     <div id="liveSupportModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-[1200]">
         <div class="min-h-screen px-4 py-8 flex items-center justify-center">
-            <div class="bg-[#1a1f24] border border-[#283039] rounded-lg w-full max-w-lg">
+            <div class="bg-[#1a1f24] border border-[#283039] rounded-lg w-full max-w-6xl">
                 <div class="px-6 py-4 border-b border-[#283039] flex items-center justify-between">
                     <h3 id="liveSupportModalTitle" class="text-lg font-semibold text-white">WaitTime Log Request</h3>
                     <button type="button" id="liveSupportModalClose" class="text-gray-400 hover:text-white transition-colors">
@@ -558,6 +558,29 @@
             return 'WaitTime Log Request';
         }
 
+        function normalizeLatLng(location) {
+            if (!location || typeof location !== 'object') return null;
+            const rawLat = location.lat ?? location.latitude;
+            const rawLng = location.lng ?? location.lon ?? location.longitude;
+            const lat = typeof rawLat === 'function' ? rawLat() : rawLat;
+            const lng = typeof rawLng === 'function' ? rawLng() : rawLng;
+            const numLat = Number(lat);
+            const numLng = Number(lng);
+            if (!Number.isFinite(numLat) || !Number.isFinite(numLng)) return null;
+            return { lat: numLat, lng: numLng };
+        }
+
+        function buildGoogleDirectionEmbedUrl(origin, destination, mode) {
+            const apiKey = 'AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA';
+            const params = new URLSearchParams({
+                key: apiKey,
+                origin: `${origin.lat},${origin.lng}`,
+                destination: `${destination.lat},${destination.lng}`,
+                mode,
+            });
+            return `https://www.google.com/maps/embed/v1/directions?${params.toString()}`;
+        }
+
         function renderLiveSupportList() {
             void renderLiveSupportListAsync();
         }
@@ -614,16 +637,47 @@
                 if (contactBtn) contactBtn.classList.remove('hidden');
                 if (confirmBtn) confirmBtn.textContent = 'Confirm';
                 if (cancelBtn) cancelBtn.textContent = 'Close';
+                const fromAddress = item.from?.address || '—';
+                const toAddress = item.to?.address || '—';
+                const leaveAt = item.departureTime ? new Date(item.departureTime).toLocaleString() : '—';
+                const fromLatLng = normalizeLatLng(item.from?.location);
+                const toLatLng = normalizeLatLng(item.to?.location);
+                const canRenderMaps = Boolean(fromLatLng && toLatLng);
+                const originalMapUrl = canRenderMaps ? buildGoogleDirectionEmbedUrl(fromLatLng, toLatLng, 'transit') : '';
+                const amendedMapUrl = canRenderMaps ? buildGoogleDirectionEmbedUrl(fromLatLng, toLatLng, 'driving') : '';
                 body.innerHTML += `
-                    <div class="mt-4 bg-[#111418] border border-[#283039] rounded-lg p-4 space-y-2 text-sm">
-                        <div><span class="text-[#9cabba]">From:</span> <span class="text-white">${escapeHtml(item.from?.address || '—')}</span></div>
-                        <div><span class="text-[#9cabba]">To:</span> <span class="text-white">${escapeHtml(item.to?.address || '—')}</span></div>
-                        <div><span class="text-[#9cabba]">Leave at:</span> <span class="text-white">${escapeHtml(item.departureTime ? new Date(item.departureTime).toLocaleString() : '—')}</span></div>
-                        <div><span class="text-[#9cabba]">Public transport cost:</span> <span class="text-white">${escapeHtml(item.summaryFields?.publicTransportCost || '—')}</span></div>
-                        <div><span class="text-[#9cabba]">Taxi cost:</span> <span class="text-white">${escapeHtml(item.summaryFields?.taxiCost || '—')}</span></div>
-                        <div><span class="text-[#9cabba]">Total cost:</span> <span class="text-white">${escapeHtml(item.summaryFields?.totalTransportCost || '—')}</span></div>
-                        <div><span class="text-[#9cabba]">Original arrival:</span> <span class="text-white">${escapeHtml(item.summaryFields?.originalArrival || '—')}</span></div>
-                        <div><span class="text-[#9cabba]">Proposed arrival:</span> <span class="text-white">${escapeHtml(item.summaryFields?.proposedArrival || '—')}</span></div>
+                    <div class="mt-4 bg-[#111418] border border-[#283039] rounded-lg p-4 space-y-4 text-sm">
+                        <div class="text-center space-y-1 border-b border-[#283039] pb-3">
+                            <div class="text-sm text-white font-semibold">${escapeHtml(fromAddress)} <span class="text-[#9cabba]">→</span> ${escapeHtml(toAddress)}</div>
+                            <div><span class="text-[#9cabba]">Leave at:</span> <span class="text-white">${escapeHtml(leaveAt)}</span></div>
+                        </div>
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <div class="space-y-3">
+                                <div class="text-xs uppercase tracking-wide text-[#9cabba] font-semibold">Original route</div>
+                                <div class="bg-black border border-[#283039] rounded-lg overflow-hidden h-56">
+                                    ${canRenderMaps
+                                        ? `<iframe title="Original route map" src="${escapeHtml(originalMapUrl)}" width="100%" height="100%" style="border:0;" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>`
+                                        : `<div class="h-full flex items-center justify-center text-[#9cabba] text-xs px-4 text-center">Map preview unavailable for this request.</div>`}
+                                </div>
+                                <div class="space-y-1.5">
+                                    <div><span class="text-[#9cabba]">Public transport cost:</span> <span class="text-white">${escapeHtml(item.summaryFields?.publicTransportCost || '—')}</span></div>
+                                    <div><span class="text-[#9cabba]">Original Arrival time:</span> <span class="text-white">${escapeHtml(item.summaryFields?.originalArrival || '—')}</span></div>
+                                </div>
+                            </div>
+                            <div class="space-y-3">
+                                <div class="text-xs uppercase tracking-wide text-[#9cabba] font-semibold">Amended route</div>
+                                <div class="bg-black border border-[#283039] rounded-lg overflow-hidden h-56">
+                                    ${canRenderMaps
+                                        ? `<iframe title="Amended route map" src="${escapeHtml(amendedMapUrl)}" width="100%" height="100%" style="border:0;" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>`
+                                        : `<div class="h-full flex items-center justify-center text-[#9cabba] text-xs px-4 text-center">Map preview unavailable for this request.</div>`}
+                                </div>
+                                <div class="space-y-1.5">
+                                    <div><span class="text-[#9cabba]">Taxi cost:</span> <span class="text-white">${escapeHtml(item.summaryFields?.taxiCost || '—')}</span></div>
+                                    <div><span class="text-[#9cabba]">Total Transit cost:</span> <span class="text-white">${escapeHtml(item.summaryFields?.totalTransportCost || '—')}</span></div>
+                                    <div><span class="text-[#9cabba]">New arrival time:</span> <span class="text-white">${escapeHtml(item.summaryFields?.proposedArrival || '—')}</span></div>
+                                </div>
+                            </div>
+                        </div>
                         <div><span class="text-[#9cabba]">Carryover prevented:</span> <span class="text-white">${escapeHtml(item.summaryFields?.carryoverChoice || '—')}</span></div>
                         <div class="pt-2 border-t border-[#283039] text-xs text-[#9cabba]">Route stages</div>
                         ${(item.segments || []).map((s) => `<div class="text-xs text-white">• ${escapeHtml(s.label || s.travelMode || 'Stage')} ${s.isTaxiReplacement ? '(Taxi replacement)' : ''} ${s.enteredCost ? `— £${escapeHtml(String(s.enteredCost))}` : ''}</div>`).join('')}
