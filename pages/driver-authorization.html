@@ -1997,6 +1997,9 @@
                     out.push({
                         segmentId,
                         travelMode: step.travel_mode,
+                        transitVehicleType: step.travel_mode === 'TRANSIT'
+                            ? (step.transit?.line?.vehicle?.type || null)
+                            : null,
                         isTaxiReplacement: taxiRequestSegments.has(segmentId),
                         polyline: step.polyline?.points || '',
                         startLocation: toLatLngLiteral(step.start_location),

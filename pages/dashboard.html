@@ -658,6 +658,33 @@
             });
 
             const bounds = [];
+            function colorForAuthorizationSegment(segment) {
+                const mode = String(segment.travelMode || '').toUpperCase();
+                if (mode !== 'TRANSIT') {
+                    return { color: '#60a5fa', dashArray: '7 6' };
+                }
+                const vt = String(segment.transitVehicleType || '').toUpperCase();
+                if (vt === 'BUS') {
+                    return { color: '#f97316', dashArray: null };
+                }
+                if (
+                    vt === 'TRAIN' ||
+                    vt === 'HEAVY_RAIL' ||
+                    vt === 'INTERCITY_TRAIN' ||
+                    vt === 'COMMUTER_TRAIN' ||
+                    vt === 'HIGH_SPEED_TRAIN' ||
+                    vt === 'RAIL' ||
+                    vt === 'SUBWAY' ||
+                    vt === 'TRAM' ||
+                    vt === 'LIGHT_RAIL' ||
+                    vt === 'MONORAIL' ||
+                    vt === 'FUNICULAR'
+                ) {
+                    return { color: '#a855f7', dashArray: null };
+                }
+                return { color: '#2563eb', dashArray: null };
+            }
+
             routeSegments.forEach((segment) => {
                 const start = normalizeLatLng(segment.startLocation);
                 const end = normalizeLatLng(segment.endLocation);
@@ -668,15 +695,15 @@
                 if (!path.length) return;
                 path.forEach((pt) => bounds.push(pt));
 
-                const isTransit = segment.travelMode === 'TRANSIT';
+                const lineStyle = colorForAuthorizationSegment(segment);
                 const originalStyle = {
-                    color: isTransit ? '#2563eb' : '#60a5fa',
+                    color: lineStyle.color,
                     weight: 5,
                     opacity: 0.95,
-                    dashArray: isTransit ? null : '7 6',
+                    dashArray: lineStyle.dashArray,
                 };
                 const revisedStyle = segment.isTaxiReplacement
-                    ? { color: '#ef4444', weight: 6, opacity: 0.98 }
+                    ? { color: '#ef4444', weight: 6, opacity: 0.98, dashArray: null }
                     : originalStyle;
 
                 L.polyline(path, originalStyle).addTo(liveSupportOriginalRouteMap);
@@ -906,9 +933,11 @@
                 : window.confirm(`Set this request to ${newStatus}?`);
             if (!confirmed) return;
             try {
+                const nowMs = Date.now();
+                const deleteAfterMs = nowMs + (24 * 60 * 60 * 1000);
                 await window.firebaseUpdateDoc(
                     window.firebaseDoc(window.firestore, 'authorizationRequests', liveSupportSelectedRequest.id),
-                    { status: newStatus, reviewedAt: new Date().toISOString() }
+                    { status: newStatus, reviewedAt: new Date(nowMs).toISOString(), deleteAtMs: deleteAfterMs }
                 );
                 closeLiveSupportModal();
             } catch (error) {
