@@ -1930,6 +1930,43 @@
             };
         }
 
+        function toLatLngLiteral(point) {
+            if (!point || typeof point !== 'object') return null;
+            const rawLat = point.lat ?? point.latitude;
+            const rawLng = point.lng ?? point.lon ?? point.longitude;
+            const lat = typeof rawLat === 'function' ? rawLat() : rawLat;
+            const lng = typeof rawLng === 'function' ? rawLng() : rawLng;
+            const numLat = Number(lat);
+            const numLng = Number(lng);
+            if (!Number.isFinite(numLat) || !Number.isFinite(numLng)) return null;
+            return { lat: numLat, lng: numLng };
+        }
+
+        function buildCurrentRouteVisualization() {
+            if (selectedRouteIndex === null || !routes[selectedRouteIndex]?.routes?.[0]?.legs) return null;
+            const out = [];
+            let segmentIndex = 0;
+            routes[selectedRouteIndex].routes[0].legs.forEach((leg) => {
+                (leg.steps || []).forEach((step) => {
+                    if (step.travel_mode !== 'WALKING' && step.travel_mode !== 'TRANSIT') return;
+                    const segmentId = `route-${selectedRouteIndex}-segment-${segmentIndex}`;
+                    out.push({
+                        segmentId,
+                        travelMode: step.travel_mode,
+                        isTaxiReplacement: taxiRequestSegments.has(segmentId),
+                        polyline: step.polyline?.points || '',
+                        startLocation: toLatLngLiteral(step.start_location),
+                        endLocation: toLatLngLiteral(step.end_location),
+                    });
+                    segmentIndex++;
+                });
+            });
+            return {
+                selectedRouteIndex,
+                segments: out,
+            };
+        }
+
         function goToReviewPanel() {
             const mapCostPanel = document.getElementById('mapCostPanel');
             const reviewPanel = document.getElementById('reviewPanel');
@@ -1946,6 +1983,7 @@
                 carryoverChoice: carryoverChoice,
                 segments,
                 routeDuration: routeMeta.duration || '',
+                routeVisualization: buildCurrentRouteVisualization(),
             };
             reviewBody.innerHTML = `
                 <div class="text-xs text-gray-400">Route stages</div>
@@ -2022,6 +2060,7 @@
                         carryoverChoice: currentReviewPayload.carryoverChoice || '',
                     },
                     segments: currentReviewPayload.segments || [],
+                    routeVisualization: currentReviewPayload.routeVisualization || null,
                 });
                 alert('Authorization request submitted successfully.');
                 closeAuthorizationRoutesLayer();

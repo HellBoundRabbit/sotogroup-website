@@ -317,6 +317,8 @@
     <script>
         let currentSession = null;
         let liveSupportModalScrollY = 0;
+        let liveSupportOriginalRouteMap = null;
+        let liveSupportRevisedRouteMap = null;
         const notifyWarning = (m, t) => window.uiDialogs && window.uiDialogs.showAlert({ title: t || 'Heads Up', message: m, tone: 'warning' });
         const notifyError = (m, t) => window.uiDialogs && window.uiDialogs.showAlert({ title: t || 'Error', message: m, tone: 'danger' });
 
@@ -591,17 +593,101 @@
             return { lat: numLat, lng: numLng };
         }
 
-        function buildGoogleDirectionEmbedUrl(origin, destination, mode) {
-            const originCoord = `${origin.lat},${origin.lng}`;
-            const destinationCoord = `${destination.lat},${destination.lng}`;
-            const travelFlag = mode === 'transit' ? 'r' : 'd';
-            const params = new URLSearchParams({
-                saddr: originCoord,
-                daddr: destinationCoord,
-                dirflg: travelFlag,
-                output: 'embed',
+        function decodeGooglePolyline(encoded) {
+            if (!encoded || typeof encoded !== 'string') return [];
+            const coords = [];
+            let index = 0;
+            let lat = 0;
+            let lng = 0;
+            while (index < encoded.length) {
+                let shift = 0;
+                let result = 0;
+                let byte = null;
+                do {
+                    byte = encoded.charCodeAt(index++) - 63;
+                    result |= (byte & 0x1f) << shift;
+                    shift += 5;
+                } while (byte >= 0x20 && index < encoded.length + 1);
+                const dLat = (result & 1) ? ~(result >> 1) : (result >> 1);
+                lat += dLat;
+                shift = 0;
+                result = 0;
+                do {
+                    byte = encoded.charCodeAt(index++) - 63;
+                    result |= (byte & 0x1f) << shift;
+                    shift += 5;
+                } while (byte >= 0x20 && index < encoded.length + 1);
+                const dLng = (result & 1) ? ~(result >> 1) : (result >> 1);
+                lng += dLng;
+                coords.push([lat / 1e5, lng / 1e5]);
+            }
+            return coords;
+        }
+
+        function clearAuthorizationRouteMaps() {
+            if (liveSupportOriginalRouteMap) {
+                liveSupportOriginalRouteMap.remove();
+                liveSupportOriginalRouteMap = null;
+            }
+            if (liveSupportRevisedRouteMap) {
+                liveSupportRevisedRouteMap.remove();
+                liveSupportRevisedRouteMap = null;
+            }
+        }
+
+        function renderAuthorizationRouteMaps(item) {
+            const originalHost = document.getElementById('authOriginalRouteMap');
+            const revisedHost = document.getElementById('authRevisedRouteMap');
+            if (!originalHost || !revisedHost || typeof L === 'undefined') return;
+            const routeSegments = item.routeVisualization?.segments || [];
+            if (!routeSegments.length) return;
+            clearAuthorizationRouteMaps();
+
+            liveSupportOriginalRouteMap = L.map(originalHost, { zoomControl: false, attributionControl: false });
+            liveSupportRevisedRouteMap = L.map(revisedHost, { zoomControl: false, attributionControl: false });
+            const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+            L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(liveSupportOriginalRouteMap);
+            L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(liveSupportRevisedRouteMap);
+
+            const bounds = [];
+            routeSegments.forEach((segment) => {
+                const start = normalizeLatLng(segment.startLocation);
+                const end = normalizeLatLng(segment.endLocation);
+                const decoded = decodeGooglePolyline(segment.polyline || '');
+                const path = decoded.length
+                    ? decoded
+                    : (start && end ? [[start.lat, start.lng], [end.lat, end.lng]] : []);
+                if (!path.length) return;
+                path.forEach((pt) => bounds.push(pt));
+
+                const isTransit = segment.travelMode === 'TRANSIT';
+                const originalStyle = {
+                    color: isTransit ? '#2563eb' : '#60a5fa',
+                    weight: 5,
+                    opacity: 0.95,
+                    dashArray: isTransit ? null : '7 6',
+                };
+                const revisedStyle = segment.isTaxiReplacement
+                    ? { color: '#ef4444', weight: 6, opacity: 0.98 }
+                    : originalStyle;
+
+                L.polyline(path, originalStyle).addTo(liveSupportOriginalRouteMap);
+                L.polyline(path, revisedStyle).addTo(liveSupportRevisedRouteMap);
             });
-            return `https://www.google.com/maps?${params.toString()}`;
+
+            if (bounds.length) {
+                const mapBounds = L.latLngBounds(bounds);
+                liveSupportOriginalRouteMap.fitBounds(mapBounds, { padding: [18, 18] });
+                liveSupportRevisedRouteMap.fitBounds(mapBounds, { padding: [18, 18] });
+            } else {
+                const fallback = [54.5, -2];
+                liveSupportOriginalRouteMap.setView(fallback, 6);
+                liveSupportRevisedRouteMap.setView(fallback, 6);
+            }
+            setTimeout(() => {
+                liveSupportOriginalRouteMap?.invalidateSize();
+                liveSupportRevisedRouteMap?.invalidateSize();
+            }, 50);
         }
 
         function renderLiveSupportList() {
@@ -660,27 +746,16 @@
                 if (contactBtn) contactBtn.classList.remove('hidden');
                 if (confirmBtn) confirmBtn.textContent = 'Confirm';
                 if (cancelBtn) cancelBtn.textContent = 'Close';
-                const fromAddress = item.from?.address || '—';
-                const toAddress = item.to?.address || '—';
-                const leaveAt = item.departureTime ? new Date(item.departureTime).toLocaleString() : '—';
-                const fromLatLng = normalizeLatLng(item.from?.location || item.from);
-                const toLatLng = normalizeLatLng(item.to?.location || item.to);
-                const canRenderMaps = Boolean(fromLatLng && toLatLng);
-                const originalMapUrl = canRenderMaps ? buildGoogleDirectionEmbedUrl(fromLatLng, toLatLng, 'transit') : '';
-                const amendedMapUrl = canRenderMaps ? buildGoogleDirectionEmbedUrl(fromLatLng, toLatLng, 'driving') : '';
+                const hasRouteVisualization = Array.isArray(item.routeVisualization?.segments) && item.routeVisualization.segments.length > 0;
                 body.innerHTML += `
                     <div class="mt-4 bg-[#111418] border border-[#283039] rounded-lg p-4 space-y-4 text-sm">
-                        <div class="text-center space-y-1 border-b border-[#283039] pb-3">
-                            <div class="text-sm text-white font-semibold">${escapeHtml(fromAddress)} <span class="text-[#9cabba]">→</span> ${escapeHtml(toAddress)}</div>
-                            <div><span class="text-[#9cabba]">Leave at:</span> <span class="text-white">${escapeHtml(leaveAt)}</span></div>
-                        </div>
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                             <div class="space-y-3">
                                 <div class="text-xs uppercase tracking-wide text-[#9cabba] font-semibold">Original route</div>
                                 <div class="bg-black border border-[#283039] rounded-lg overflow-hidden h-56">
-                                    ${canRenderMaps
-                                        ? `<iframe title="Original route map" src="${escapeHtml(originalMapUrl)}" width="100%" height="100%" style="border:0;" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>`
-                                        : `<div class="h-full flex items-center justify-center text-[#9cabba] text-xs px-4 text-center">Map preview unavailable for this request.</div>`}
+                                    ${hasRouteVisualization
+                                        ? '<div id="authOriginalRouteMap" class="w-full h-full"></div>'
+                                        : '<div class="h-full flex items-center justify-center text-[#9cabba] text-xs px-4 text-center">Map preview unavailable for this request.</div>'}
                                 </div>
                                 <div class="space-y-1.5">
                                     <div><span class="text-[#9cabba]">Public transport cost:</span> <span class="text-white">${escapeHtml(item.summaryFields?.publicTransportCost || '—')}</span></div>
@@ -690,9 +765,9 @@
                             <div class="space-y-3">
                                 <div class="text-xs uppercase tracking-wide text-[#9cabba] font-semibold">Amended route</div>
                                 <div class="bg-black border border-[#283039] rounded-lg overflow-hidden h-56">
-                                    ${canRenderMaps
-                                        ? `<iframe title="Amended route map" src="${escapeHtml(amendedMapUrl)}" width="100%" height="100%" style="border:0;" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>`
-                                        : `<div class="h-full flex items-center justify-center text-[#9cabba] text-xs px-4 text-center">Map preview unavailable for this request.</div>`}
+                                    ${hasRouteVisualization
+                                        ? '<div id="authRevisedRouteMap" class="w-full h-full"></div>'
+                                        : '<div class="h-full flex items-center justify-center text-[#9cabba] text-xs px-4 text-center">Map preview unavailable for this request.</div>'}
                                 </div>
                                 <div class="space-y-1.5">
                                     <div><span class="text-[#9cabba]">Taxi cost:</span> <span class="text-white">${escapeHtml(item.summaryFields?.taxiCost || '—')}</span></div>
@@ -707,6 +782,7 @@
                     </div>
                 `;
             } else {
+                clearAuthorizationRouteMaps();
                 if (rejectBtn) rejectBtn.classList.add('hidden');
                 if (contactBtn) contactBtn.classList.add('hidden');
                 if (confirmBtn) confirmBtn.textContent = 'Confirm log';
@@ -723,11 +799,15 @@
             }
             modal.classList.remove('hidden');
             lockLiveSupportBackgroundScroll();
+            if (item.requestType === 'authorization_request') {
+                setTimeout(() => renderAuthorizationRouteMaps(item), 30);
+            }
         }
 
         function closeLiveSupportModal() {
             const modal = document.getElementById('liveSupportModal');
             if (modal) modal.classList.add('hidden');
+            clearAuthorizationRouteMaps();
             unlockLiveSupportBackgroundScroll();
             liveSupportSelectedRequest = null;
         }
