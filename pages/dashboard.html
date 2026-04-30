@@ -289,16 +289,16 @@
     </div>
 
     <!-- Driver communications request modal -->
-    <div id="liveSupportModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-[1200]">
-        <div class="min-h-screen px-4 py-8 flex items-center justify-center">
-            <div class="bg-[#1a1f24] border border-[#283039] rounded-lg w-full max-w-6xl">
+    <div id="liveSupportModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-[1200] overflow-y-auto">
+        <div class="min-h-full px-4 py-8 flex items-start justify-center">
+            <div class="bg-[#1a1f24] border border-[#283039] rounded-lg w-full max-w-6xl max-h-[90vh] overflow-hidden">
                 <div class="px-6 py-4 border-b border-[#283039] flex items-center justify-between">
                     <h3 id="liveSupportModalTitle" class="text-lg font-semibold text-white">WaitTime Log Request</h3>
                     <button type="button" id="liveSupportModalClose" class="text-gray-400 hover:text-white transition-colors">
                         <span class="material-symbols-outlined">close</span>
                     </button>
                 </div>
-                <div id="liveSupportModalBody" class="p-6 space-y-4"></div>
+                <div id="liveSupportModalBody" class="p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-140px)]"></div>
                 <div class="px-6 pb-6 flex gap-3 flex-wrap">
                     <button type="button" id="liveSupportRejectBtn" class="hidden flex-1 min-w-[120px] py-2 bg-red-600 hover:bg-red-700 rounded-lg text-white font-semibold transition-colors">Reject</button>
                     <button type="button" id="liveSupportConfirmBtn" class="flex-1 min-w-[120px] py-2 bg-green-600 hover:bg-green-700 rounded-lg text-white font-semibold transition-colors">Confirm</button>
@@ -316,6 +316,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script>
         let currentSession = null;
+        let liveSupportModalScrollY = 0;
         const notifyWarning = (m, t) => window.uiDialogs && window.uiDialogs.showAlert({ title: t || 'Heads Up', message: m, tone: 'warning' });
         const notifyError = (m, t) => window.uiDialogs && window.uiDialogs.showAlert({ title: t || 'Error', message: m, tone: 'danger' });
 
@@ -558,6 +559,26 @@
             return 'WaitTime Log Request';
         }
 
+        function lockLiveSupportBackgroundScroll() {
+            liveSupportModalScrollY = window.scrollY || window.pageYOffset || 0;
+            document.body.style.position = 'fixed';
+            document.body.style.top = `-${liveSupportModalScrollY}px`;
+            document.body.style.left = '0';
+            document.body.style.right = '0';
+            document.body.style.width = '100%';
+            document.body.style.overflow = 'hidden';
+        }
+
+        function unlockLiveSupportBackgroundScroll() {
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.left = '';
+            document.body.style.right = '';
+            document.body.style.width = '';
+            document.body.style.overflow = '';
+            window.scrollTo(0, liveSupportModalScrollY || 0);
+        }
+
         function normalizeLatLng(location) {
             if (!location || typeof location !== 'object') return null;
             const rawLat = location.lat ?? location.latitude;
@@ -571,14 +592,16 @@
         }
 
         function buildGoogleDirectionEmbedUrl(origin, destination, mode) {
-            const apiKey = 'AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA';
+            const originCoord = `${origin.lat},${origin.lng}`;
+            const destinationCoord = `${destination.lat},${destination.lng}`;
+            const travelFlag = mode === 'transit' ? 'r' : 'd';
             const params = new URLSearchParams({
-                key: apiKey,
-                origin: `${origin.lat},${origin.lng}`,
-                destination: `${destination.lat},${destination.lng}`,
-                mode,
+                saddr: originCoord,
+                daddr: destinationCoord,
+                dirflg: travelFlag,
+                output: 'embed',
             });
-            return `https://www.google.com/maps/embed/v1/directions?${params.toString()}`;
+            return `https://www.google.com/maps?${params.toString()}`;
         }
 
         function renderLiveSupportList() {
@@ -699,11 +722,13 @@
                 `;
             }
             modal.classList.remove('hidden');
+            lockLiveSupportBackgroundScroll();
         }
 
         function closeLiveSupportModal() {
             const modal = document.getElementById('liveSupportModal');
             if (modal) modal.classList.add('hidden');
+            unlockLiveSupportBackgroundScroll();
             liveSupportSelectedRequest = null;
         }
 
