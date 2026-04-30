@@ -817,6 +817,9 @@
         let ungroupedJobs = [];
         let savedRoutesForPort = [];
         let routeReviewData = [];
+        let activeOptimisationDate = null; // YYYY-MM-DD selected in optimise settings
+        const routeHoldStateByNumber = {};
+        const ROUTE_ASSIGN_HOLD_MS = 3000;
 
         // === OPTIMISATION PORT JOBS DEBUG LOGGING ===
         // All Asana API calls are READ-ONLY (GET only). No PUT/POST/DELETE/PATCH to Asana anywhere.
@@ -885,6 +888,179 @@
             if (window.routeGroupingKeyHandler) {
                 document.removeEventListener('keydown', window.routeGroupingKeyHandler);
             }
+        }
+
+        function sanitizeFirestoreKey(value, fallback = 'unknown') {
+            const normalized = String(value || '')
+                .trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '_')
+                .replace(/^_+|_+$/g, '');
+            return normalized || fallback;
+        }
+
+        function getRouteByNumber(routeNumber) {
+            const index = Number(routeNumber) - 1;
+            if (!Number.isInteger(index) || index < 0 || index >= savedRoutes.length) {
+                return null;
+            }
+            return savedRoutes[index];
+        }
+
+        function getAssignedDriverFromRoute(routeData) {
+            if (!routeData || !routeData.route) return null;
+            const assignedDriver = routeData.route.assignedDriver || {};
+            const name = routeData.route.assignedDriverName ||
+                assignedDriver.name ||
+                `${assignedDriver.firstName || ''} ${assignedDriver.lastName || ''}`.trim() ||
+                'Unknown Driver';
+            const id = assignedDriver.uid || assignedDriver.id || routeData.route.assignedDriverId || null;
+            const postcode = routeData.route.assignedDriverPostcode ||
+                assignedDriver.homePostcode ||
+                assignedDriver.postcode ||
+                '';
+            return { id, name, postcode };
+        }
+
+        async function createAssignedJobExpenseDrafts(routeData, selectedDate, officeId) {
+            const driver = getAssignedDriverFromRoute(routeData);
+            if (!driver || !driver.id) throw new Error('Assigned driver ID missing for expense draft creation.');
+            const jobs = Array.isArray(routeData.jobs) ? routeData.jobs : [];
+            const emptyLines = {};
+            if (window.EXPENSE_BATCH_SCHEMA && typeof window.EXPENSE_BATCH_SCHEMA.emptyLines === 'function') {
+                Object.assign(emptyLines, window.EXPENSE_BATCH_SCHEMA.emptyLines());
+            }
+            for (let i = 0; i < jobs.length; i++) {
+                const job = jobs[i] || {};
+                const parsed = job.parsedData || {};
+                const registration = String(parsed.reg_number || '').trim().toUpperCase();
+                if (!registration) continue;
+                const routeIdRaw = routeData.route.routeId || routeData.route.id || `route_${selectedDate}_${i + 1}`;
+                const routeId = sanitizeFirestoreKey(routeIdRaw, `route_${i + 1}`);
+                const driverKey = sanitizeFirestoreKey(driver.id, 'driver');
+                const regKey = sanitizeFirestoreKey(registration, `reg_${i + 1}`);
+                const expenseDocId = `assigned_${selectedDate}_${driverKey}_${routeId}_job${i + 1}_${regKey}`;
+                const batchRef = window.firebaseDoc(window.firestore, 'expenseBatches', expenseDocId);
+                await window.firebaseSetDoc(batchRef, {
+                    driverId: driver.id,
+                    driverName: driver.name,
+                    officeId: officeId,
+                    registration,
+                    status: 'draft',
+                    totalAmount: 0,
+                    notes: '',
+                    collectionDate: selectedDate,
+                    lines: emptyLines,
+                    assignmentSource: 'optimisation_hold_assign',
+                    assignedJobMeta: {
+                        routeId: routeData.route.routeId || routeData.route.id || null,
+                        routeNumber: routeData.route.routeNumber || null,
+                        jobNumber: i + 1,
+                        collectionPostcode: parsed.collection_address || null,
+                        deliveryPostcode: parsed.postcode_delivery || null,
+                        price: typeof parsed.price === 'number' ? parsed.price : Number(parsed.price) || 0
+                    },
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                }, { merge: true });
+            }
+        }
+
+        async function assignRouteByHold(routeNumber) {
+            if (!window.firestore || !window.firebaseCollection || !window.firebaseSetDoc || !window.firebaseDoc) {
+                throw new Error('Firebase is not available right now.');
+            }
+            if (!activeOptimisationDate) {
+                throw new Error('Please run optimisation with a selected day first.');
+            }
+            const officeId = getCurrentOfficeId();
+            if (!officeId) throw new Error('Missing office context.');
+            const routeData = getRouteByNumber(routeNumber);
+            if (!routeData) throw new Error('Route not found.');
+            const driver = getAssignedDriverFromRoute(routeData);
+            if (!driver || !driver.name) throw new Error('This route has no assigned driver.');
+
+            const confirmed = window.confirm(`Would you like to assign these jobs to ${driver.name}?`);
+            if (!confirmed) return;
+
+            const dateDocId = activeOptimisationDate;
+            const driverDocId = sanitizeFirestoreKey(driver.id || driver.name, 'driver');
+            const dateDocRef = window.firebaseDoc(window.firestore, 'Assigned Jobs', dateDocId);
+            await window.firebaseSetDoc(dateDocRef, {
+                officeId,
+                selectedDate: activeOptimisationDate,
+                updatedAt: new Date()
+            }, { merge: true });
+
+            const jobs = Array.isArray(routeData.jobs) ? routeData.jobs : [];
+            const jobsPayload = jobs.map((job, idx) => {
+                const parsed = job?.parsedData || {};
+                return {
+                    jobNumber: idx + 1,
+                    reg: parsed.reg_number || null,
+                    collectionPostcode: parsed.collection_address || null,
+                    deliveryPostcode: parsed.postcode_delivery || null,
+                    price: typeof parsed.price === 'number' ? parsed.price : Number(parsed.price) || 0
+                };
+            });
+            const driverDocRef = window.firebaseDoc(window.firestore, 'Assigned Jobs', dateDocId, 'drivers', driverDocId);
+            await window.firebaseSetDoc(driverDocRef, {
+                officeId,
+                selectedDate: activeOptimisationDate,
+                driverId: driver.id || null,
+                driverName: driver.name,
+                driverPostcode: driver.postcode || null,
+                routeId: routeData.route.routeId || routeData.route.id || null,
+                routeNumber: routeData.route.routeNumber || routeNumber,
+                routeScore: routeData.route.routeScore || null,
+                jobs: jobsPayload,
+                updatedAt: new Date()
+            }, { merge: true });
+
+            await createAssignedJobExpenseDrafts(routeData, activeOptimisationDate, officeId);
+            window.alert(`Assigned ${jobsPayload.length} job${jobsPayload.length === 1 ? '' : 's'} to ${driver.name} and created expense drafts.`);
+        }
+
+        function clearRouteHoldState(routeNumber) {
+            const state = routeHoldStateByNumber[routeNumber];
+            if (!state) return;
+            if (state.timer) clearTimeout(state.timer);
+            if (state.element) state.element.classList.remove('ring-2', 'ring-cyan-400');
+            delete routeHoldStateByNumber[routeNumber];
+        }
+
+        function setupRouteHoldAssignmentHandlers() {
+            Object.keys(routeHoldStateByNumber).forEach((key) => clearRouteHoldState(key));
+            const routeCards = Array.from(document.querySelectorAll('[id^="firebase-route-"]'));
+            routeCards.forEach((card) => {
+                const routeNumber = Number(String(card.id).replace('firebase-route-', ''));
+                if (!Number.isInteger(routeNumber)) return;
+                const routeData = getRouteByNumber(routeNumber);
+                if (!routeData || !routeData.route || !routeData.route.assignedDriverName) return;
+                if (card.dataset.holdAssignBound === '1') return;
+                const startHold = () => {
+                    clearRouteHoldState(routeNumber);
+                    card.classList.add('ring-2', 'ring-cyan-400');
+                    const timer = setTimeout(async () => {
+                        clearRouteHoldState(routeNumber);
+                        try {
+                            await assignRouteByHold(routeNumber);
+                        } catch (error) {
+                            console.error('Hold assignment failed:', error);
+                            window.alert(error?.message || 'Failed to assign jobs.');
+                        }
+                    }, ROUTE_ASSIGN_HOLD_MS);
+                    routeHoldStateByNumber[routeNumber] = { timer, element: card };
+                };
+                const cancelHold = () => clearRouteHoldState(routeNumber);
+                card.addEventListener('mousedown', startHold);
+                card.addEventListener('touchstart', startHold, { passive: true });
+                card.addEventListener('mouseup', cancelHold);
+                card.addEventListener('mouseleave', cancelHold);
+                card.addEventListener('touchend', cancelHold);
+                card.addEventListener('touchcancel', cancelHold);
+                card.dataset.holdAssignBound = '1';
+            });
         }
 
         function showScreen(screenId) {
@@ -3032,6 +3208,7 @@
                 });
                 
                 console.log(`Displayed ${savedRoutes.length} routes successfully`);
+                setupRouteHoldAssignmentHandlers();
                 
             } catch (error) {
                 console.error('Error displaying routes:', error);
@@ -3132,18 +3309,25 @@
                         </div>
                     </div>
                 </div>
+                <div id="firebase-route-${routeNumber}-hold-hint" class="mt-2 hidden rounded-md border border-cyan-500/30 bg-cyan-500/10 px-2 py-1 text-[11px] text-cyan-200">
+                    Hold 3 seconds to assign this route
+                </div>
             `;
             
             // Populate driver information if assigned
             if (routeRecord.assignedDriverName) {
                 const driverElement = document.getElementById(`firebase-route-${routeNumber}-driver`);
                 const locationElement = document.getElementById(`firebase-route-${routeNumber}-driver-location`);
+                const holdHint = document.getElementById(`firebase-route-${routeNumber}-hold-hint`);
                 
                 if (driverElement) {
                     driverElement.textContent = routeRecord.assignedDriverName;
                 }
                 if (locationElement) {
                     locationElement.textContent = routeRecord.assignedDriverPostcode || '-';
+                }
+                if (holdHint) {
+                    holdHint.classList.remove('hidden');
                 }
             }
             
@@ -4492,6 +4676,7 @@
                 alert('Please select a day first');
                 return;
             }
+            activeOptimisationDate = selectedOptimiseDay.date.toISOString().split('T')[0];
             
             // Simple approach: Get all office drivers, filter out the ones marked as off (BEFORE closing popup)
             console.log('Starting simple optimization...');
@@ -6028,6 +6213,10 @@
                     if (carryoverDisplay) carryoverDisplay.classList.add('hidden');
                     if (toWorkLabel) toWorkLabel.textContent = 'To First Job';
                 }
+                const holdHint = document.getElementById(`firebase-route-${routeNumber}-hold-hint`);
+                if (holdHint) {
+                    holdHint.classList.remove('hidden');
+                }
                 
                 // Display travel options - check EACH DIRECTION separately
                 // TO work: Show mixed mode only if TO work time > 2 hours
@@ -6250,6 +6439,7 @@
             console.log('💾 Saving driver assignments to Firebase...');
             await saveRoutesToFirebase();
             console.log('✅ Driver assignments saved to Firebase');
+            setupRouteHoldAssignmentHandlers();
         }
         
         // Calculate route score based on total distance (for backward compatibility)
@@ -7087,6 +7277,7 @@
                 
                 // Handle unmatched routes and drivers
                 await handleUnmatchedRoutesAndDrivers();
+                setupRouteHoldAssignmentHandlers();
                 
                 console.log('Successfully loaded routes with last assigned drivers');
             } catch (error) {
@@ -7125,6 +7316,7 @@
                     const driverElement = document.getElementById(`firebase-route-${routeNumber}-driver`);
                     const locationElement = document.getElementById(`firebase-route-${routeNumber}-driver-location`);
                     const regElement = document.getElementById(`firebase-route-${routeNumber}-reg`);
+                    const holdHint = document.getElementById(`firebase-route-${routeNumber}-hold-hint`);
                     
                     if (driverElement) {
                         driverElement.textContent = routeData.route.assignedDriverName;
@@ -7132,6 +7324,9 @@
                     
                     if (locationElement) {
                         locationElement.textContent = routeData.route.assignedDriverPostcode || '-';
+                    }
+                    if (holdHint) {
+                        holdHint.classList.remove('hidden');
                     }
                     
                     // REG for all jobs: Job 1: X, Job 2: Y
