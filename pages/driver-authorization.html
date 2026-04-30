@@ -1177,6 +1177,7 @@
         let carryoverChoice = null;
         let driverContext = null;
         let currentReviewPayload = null;
+        let unsubscribeAuthorizationRequests = null;
 
         /**
          * Firebase is initialised in a `type="module"` block (async). Inline script must not call
@@ -1190,7 +1191,8 @@
                     typeof window.query === 'function' &&
                     typeof window.collection === 'function' &&
                     typeof window.getDoc === 'function' &&
-                    typeof window.addDoc === 'function'
+                    typeof window.addDoc === 'function' &&
+                    typeof window.onSnapshot === 'function'
                 ) {
                     return true;
                 }
@@ -1352,6 +1354,34 @@
             `).join('');
         }
 
+        function mapAndSortAuthorizationDocs(snapshotDocs) {
+            return snapshotDocs.map((d) => ({ id: d.id, ...d.data() }))
+                .sort((a, b) => {
+                    const am = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+                    const bm = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+                    return bm - am;
+                });
+        }
+
+        async function startAuthorizationRequestsListener() {
+            if (!(await waitForFirestoreReady())) return;
+            const ctx = await getDriverContext();
+            if (!ctx?.uid) return;
+            if (typeof unsubscribeAuthorizationRequests === 'function') {
+                unsubscribeAuthorizationRequests();
+                unsubscribeAuthorizationRequests = null;
+            }
+            const qAuth = query(
+                collection(window.db, 'authorizationRequests'),
+                where('driverId', '==', ctx.uid)
+            );
+            unsubscribeAuthorizationRequests = onSnapshot(qAuth, (snap) => {
+                renderAuthorizationRequests(mapAndSortAuthorizationDocs(snap.docs));
+            }, (e) => {
+                console.error('[Authorization] Authorization request listener failed', e);
+            });
+        }
+
         async function loadAuthorizationRequests() {
             if (!(await waitForFirestoreReady())) return;
             const ctx = await getDriverContext();
@@ -1362,12 +1392,7 @@
                     where('driverId', '==', ctx.uid)
                 );
                 const snap = await getDocs(qAuth);
-                const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-                    .sort((a, b) => {
-                        const am = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
-                        const bm = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
-                        return bm - am;
-                    });
+                const items = mapAndSortAuthorizationDocs(snap.docs);
                 renderAuthorizationRequests(items);
             } catch (e) {
                 console.error('[Authorization] Failed loading requests', e);
@@ -2256,7 +2281,15 @@
                 console.warn('[Authorization] Session bootstrap failed or was skipped.', e);
             }
 
+            await startAuthorizationRequestsListener();
             loadAuthorizationRequests();
+        });
+
+        window.addEventListener('beforeunload', () => {
+            if (typeof unsubscribeAuthorizationRequests === 'function') {
+                unsubscribeAuthorizationRequests();
+                unsubscribeAuthorizationRequests = null;
+            }
         });
     </script>
 </body>
