@@ -258,6 +258,10 @@
         .input-group {
             margin-bottom: 24px;
         }
+        /* When scrolling "To" into view, leave room under the sticky modal header (mobile keyboard + Places dropdown). */
+        .to-address-field-group {
+            scroll-margin-top: 5.5rem;
+        }
         
         .input-label {
             display: block;
@@ -518,14 +522,59 @@
             order: 0;
             z-index: 1100;
         }
-        .map-container.fullscreen #map {
+        #mapDefaultMount {
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        .map-container.fullscreen #mapDefaultMount {
             order: 1;
             flex: 1 1 50%;
+            min-height: 0;
+            width: 100%;
+        }
+        .map-container.fullscreen #mapDefaultMount #map {
+            flex: 1;
             min-height: 0;
             width: 100% !important;
             height: 100% !important;
         }
-        #map { width: 100%; height: 100%; }
+        #map, #mapProposed { width: 100%; height: 100%; }
+        #mapProposedSlot {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            min-height: 120px;
+        }
+        #mapProposedSlot #mapProposed {
+            position: absolute;
+            inset: 0;
+        }
+        /* Cost step: shrink maps so form + two maps fit small phones (keyboard may add scroll). */
+        .map-container.fullscreen.auth-cost-mode .map-top-panel:not(.hidden) {
+            flex: 1 1 auto;
+            min-height: 0;
+            max-height: min(92dvh, 900px);
+            height: auto;
+            overflow-y: auto;
+        }
+        .map-container.fullscreen.auth-cost-mode #mapDefaultMount {
+            flex: 0 0 auto;
+        }
+        .map-container.fullscreen.auth-cost-mode #mapDefaultMount #map {
+            flex: 0 0 clamp(120px, 24vh, 220px);
+            min-height: 120px;
+            max-height: 240px;
+        }
+        .auth-map-shell {
+            width: 100%;
+            border: 1px solid #283039;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #0f1419;
+        }
         .route-card { background: #111418; border: 1px solid #283039; border-radius: 8px; padding: 16px; margin-bottom: 12px; cursor: pointer; }
         .route-card.selected { border-color: #3b82f6; background: #1e3a5f; }
         .route-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
@@ -669,7 +718,7 @@
                     </div>
                     
                     <!-- To Address -->
-                    <div class="input-group">
+                    <div class="input-group to-address-field-group">
                         <label class="input-label" for="toAddress">To</label>
                         <input 
                             type="text" 
@@ -768,32 +817,59 @@
                 </div>
                 <div class="routes-list" id="routesList" hidden></div>
                 <div class="map-container">
-                    <div id="map"></div>
+                    <div id="mapDefaultMount">
+                        <div id="map"></div>
+                    </div>
                     <div id="mapCostPanel" class="map-top-panel hidden">
-                        <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center justify-between mb-2 shrink-0">
                             <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] border border-[#3a444e] text-sm" onclick="backFromMapPanel()">Back</button>
-                            <button type="button" class="px-3 py-2 rounded-lg bg-[#0d7ff2] text-white text-sm font-semibold" onclick="goToReviewPanel()">Next</button>
+                            <button type="button" id="mapCostNextBtn" class="px-3 py-2 rounded-lg bg-[#0d7ff2] text-white text-sm font-semibold" onclick="mapCostPrimaryNext()">Next</button>
                         </div>
-                        <div class="space-y-2 text-sm">
-                            <input id="publicTransportCostInput" type="number" step="0.01" min="0" placeholder="Public transport cost (£)" class="input-field">
-                            <input id="taxiCostInput" type="number" step="0.01" min="0" placeholder="Cost of taxi (£)" class="input-field">
-                            <input id="totalCostInput" type="number" step="0.01" min="0" placeholder="Total cost transport incl taxi (£)" class="input-field">
-                            <input id="originalArrivalInput" type="text" placeholder="Arrival time with original route" class="input-field">
-                            <input id="proposedArrivalInput" type="text" placeholder="Arrival time with proposed changes" class="input-field">
-                            <div class="text-xs text-gray-300 mt-2">Will this prevent a carryover?</div>
-                            <div class="flex gap-2">
-                                <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] text-xs" onclick="setCarryoverChoice('yes')">Yes</button>
-                                <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] text-xs" onclick="setCarryoverChoice('no')">No</button>
-                                <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] text-xs" onclick="setCarryoverChoice('unknown')">I don't know</button>
+                        <!-- Transit cost only (no taxi): one map + stage lines + confirm -->
+                        <div id="mapCostTransitOnly" class="hidden space-y-2 text-sm">
+                            <div class="auth-map-shell mx-auto w-full max-w-md" style="height:clamp(120px, 28vh, 260px);">
+                                <div id="mapTransitOnlySlot" class="w-full h-full"></div>
+                            </div>
+                            <div id="transitOnlyStageList" class="text-xs text-gray-200 space-y-1 px-1"></div>
+                            <div id="transitOnlyConfirmStep" class="hidden border border-[#374151] rounded-lg p-3 bg-[#111418]">
+                                <p class="text-gray-300 text-xs mb-2">Send this authorization request to your office?</p>
+                                <div class="flex gap-2 flex-wrap">
+                                    <button type="button" class="px-3 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold" onclick="submitAuthorizationFromMapFlow()">Send request</button>
+                                    <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] text-sm" onclick="mapCostTransitOnlyBackToEdit()">Back</button>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div id="reviewPanel" class="map-top-panel hidden">
-                        <div class="flex items-center justify-between mb-3">
-                            <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] border border-[#3a444e] text-sm" onclick="backToMapCostPanel()">Back</button>
-                            <button type="button" class="px-3 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold" onclick="confirmAuthorizationRequest()">Confirm</button>
+                        <!-- Taxi (and optional transit cost): two maps + fields -->
+                        <div id="mapCostWithTaxi" class="hidden space-y-2 text-sm">
+                            <div class="text-xs text-gray-400 font-semibold">Original route</div>
+                            <div class="auth-map-shell w-full" style="height:clamp(110px, 22vh, 200px);">
+                                <div id="mapOriginalSlot" class="w-full h-full"></div>
+                            </div>
+                            <label class="text-xs text-gray-400 block">Original transport cost (£)</label>
+                            <input id="publicTransportCostInput" type="number" step="0.01" min="0" placeholder="Enter amount" class="input-field">
+                            <label class="text-xs text-gray-400 block">Original arrival time</label>
+                            <input id="originalArrivalInput" type="time" class="input-field">
+                            <div class="text-xs text-gray-400 font-semibold pt-1">Proposed route</div>
+                            <div class="auth-map-shell w-full" style="height:clamp(110px, 22vh, 200px);">
+                                <div id="mapProposedSlot" class="w-full h-full min-h-[120px]">
+                                    <div id="mapProposed"></div>
+                                </div>
+                            </div>
+                            <div id="transitCostSummaryUnderProposed" class="text-xs text-gray-200 space-y-1 hidden"></div>
+                            <div id="taxiLegRowsHost" class="space-y-2"></div>
+                            <input id="totalCostInput" type="hidden" value="">
+                            <input id="proposedArrivalInput" type="hidden" value="">
+                            <input id="taxiCostInput" type="hidden" value="">
                         </div>
-                        <div id="reviewPanelBody" class="text-sm text-gray-200 space-y-2"></div>
+                        <div id="mapCarryoverBlock" class="hidden border-t border-[#283039] pt-3 mt-2">
+                            <div class="text-xs text-gray-300 mb-2">Will this prevent a carryover?</div>
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] text-xs" onclick="completeMapFlowWithCarryover('yes')">Yes</button>
+                                <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] text-xs" onclick="completeMapFlowWithCarryover('no')">No</button>
+                                <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] text-xs" onclick="completeMapFlowWithCarryover('unknown')">I don't know</button>
+                                <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] text-xs" onclick="completeMapFlowWithCarryover(null)">Skip</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -843,6 +919,23 @@
             });
         }
         
+        /** Scrolls the "To" block to the top of the modal scroll area so Places suggestions sit above the on-screen keyboard (mobile). */
+        function scrollAuthorizationToField(el) {
+            if (!el) return;
+            const modal = document.getElementById('authorizationModal');
+            if (!modal || modal.classList.contains('hidden')) return;
+            const run = () => {
+                try {
+                    el.scrollIntoView({ block: 'start', behavior: 'smooth', inline: 'nearest' });
+                } catch (_e) {}
+            };
+            requestAnimationFrame(() => {
+                run();
+                requestAnimationFrame(run);
+            });
+            setTimeout(run, 280);
+        }
+
         // Initialize autocomplete for address inputs
         async function initializeAutocomplete() {
             await waitForGoogleMaps();
@@ -878,6 +971,11 @@
             // Also validate on manual input
             fromInput.addEventListener('input', validateForm);
             toInput.addEventListener('input', validateForm);
+
+            const toFieldGroup = toInput.closest('.to-address-field-group') || toInput;
+            const onToFieldActivate = () => scrollAuthorizationToField(toFieldGroup);
+            toInput.addEventListener('focusin', onToFieldActivate);
+            toInput.addEventListener('pointerdown', onToFieldActivate, { passive: true });
         }
         
         // Use current location
@@ -1061,6 +1159,7 @@
 
         /** @param {boolean} [alsoClearAlternativesBackup] default true — set false when returning from route list to the multi-option picker. */
         function resetInLayerRouteFlowState(alsoClearAlternativesBackup) {
+            resetMapCostPanelDomState();
             try {
                 clearRoute();
             } catch (_e) {}
@@ -1087,11 +1186,9 @@
             const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
             const routesList = document.getElementById('routesList');
             const mapCostPanel = document.getElementById('mapCostPanel');
-            const reviewPanel = document.getElementById('reviewPanel');
             if (mapContainer) mapContainer.classList.remove('fullscreen');
             if (routesList) routesList.style.display = '';
             if (mapCostPanel) mapCostPanel.classList.add('hidden');
-            if (reviewPanel) reviewPanel.classList.add('hidden');
             currentReviewPayload = null;
             carryoverChoice = null;
             requestData = null;
@@ -1111,11 +1208,18 @@
             const layer = document.getElementById('authorizationRoutesLayer');
             if (!layer || layer.classList.contains('hidden')) return;
 
-            const reviewPanel = document.getElementById('reviewPanel');
             const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
 
-            if (reviewPanel && !reviewPanel.classList.contains('hidden')) {
-                backToMapCostPanel();
+            const transitConfirm = document.getElementById('transitOnlyConfirmStep');
+            if (transitConfirm && !transitConfirm.classList.contains('hidden')) {
+                mapCostTransitOnlyBackToEdit();
+                return;
+            }
+            const carryBlock = document.getElementById('mapCarryoverBlock');
+            if (carryBlock && !carryBlock.classList.contains('hidden')) {
+                carryBlock.classList.add('hidden');
+                const nb = document.getElementById('mapCostNextBtn');
+                if (nb) nb.classList.remove('hidden');
                 return;
             }
 
@@ -1132,7 +1236,6 @@
                 const routesListEl = document.getElementById('routesList');
                 const titleEl = document.getElementById('routeScreenTitle');
                 const mapCostPan = document.getElementById('mapCostPanel');
-                const rev = document.getElementById('reviewPanel');
                 if (pickerPanel) pickerPanel.hidden = false;
                 if (routesListEl) {
                     routesListEl.setAttribute('hidden', '');
@@ -1140,7 +1243,6 @@
                     routesListEl.style.display = '';
                 }
                 if (mapCostPan) mapCostPan.classList.add('hidden');
-                if (rev) rev.classList.add('hidden');
                 if (titleEl) titleEl.textContent = 'Route options';
                 setPoweredByGoogleAttribution();
                 renderRoutePickerCards(routeAlternatives);
@@ -1151,6 +1253,13 @@
         }
 
         let map;
+        /** Second map for “proposed route” when taxi requests exist. */
+        let mapProposed = null;
+        /** off | transit_only | with_taxi — drives map cost UI and submit payload. */
+        let mapCostActiveMode = 'off';
+        let proposedRoutePolylines = [];
+        let proposedTaxiPolylines = [];
+        let proposedRouteMarkers = [];
         let directionsService;
         let routes = [];
         let routeAlternatives = [];
@@ -1874,10 +1983,11 @@
             else requestButton.classList.remove('visible');
         }
         function triggerMapResizeSoon() {
-            if (!map || typeof google === 'undefined' || !google.maps) return;
+            if (typeof google === 'undefined' || !google.maps) return;
             const run = () => {
                 try {
-                    google.maps.event.trigger(map, 'resize');
+                    if (map) google.maps.event.trigger(map, 'resize');
+                    if (mapProposed) google.maps.event.trigger(mapProposed, 'resize');
                 } catch (_e) {}
             };
             run();
@@ -1885,31 +1995,343 @@
             setTimeout(run, 250);
         }
 
-        function handleNext() {
+        function mountMainMapInto(slotEl) {
+            const node = document.getElementById('map');
+            if (node && slotEl && node.parentElement !== slotEl) slotEl.appendChild(node);
+            triggerMapResizeSoon();
+        }
+
+        function restoreMainMapToDefaultMount() {
+            const m = document.getElementById('mapDefaultMount');
+            const node = document.getElementById('map');
+            if (m && node && node.parentElement !== m) m.appendChild(node);
+            triggerMapResizeSoon();
+        }
+
+        function clearProposedRoute() {
+            proposedRoutePolylines.forEach((p) => p.setMap(null));
+            proposedTaxiPolylines.forEach((p) => p.setMap(null));
+            proposedRouteMarkers.forEach((mk) => mk.setMap(null));
+            proposedRoutePolylines = [];
+            proposedTaxiPolylines = [];
+            proposedRouteMarkers = [];
+        }
+
+        function resetMapCostPanelDomState() {
+            mapCostActiveMode = 'off';
+            ['mapCostTransitOnly', 'mapCostWithTaxi', 'transitOnlyConfirmStep', 'mapCarryoverBlock'].forEach((id) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.classList.add('hidden');
+            });
+            const nextBtn = document.getElementById('mapCostNextBtn');
+            if (nextBtn) nextBtn.classList.remove('hidden');
+            const tc = document.getElementById('transitCostSummaryUnderProposed');
+            if (tc) {
+                tc.classList.add('hidden');
+                tc.innerHTML = '';
+            }
+            const host = document.getElementById('taxiLegRowsHost');
+            if (host) host.innerHTML = '';
+            const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
+            if (mapContainer) mapContainer.classList.remove('auth-cost-mode');
+            restoreMainMapToDefaultMount();
+            clearProposedRoute();
+        }
+
+        function describeSegmentForUi(segmentId) {
+            if (!segmentId) return '';
+            if (String(segmentId).includes('-wait-')) return 'Wait before transit';
+            const rs = routeSegments.find((r) => r.id === segmentId);
+            if (rs?.step?.travel_mode === 'TRANSIT' && rs.step.transit) {
+                const t = rs.step.transit;
+                const line = t.line?.short_name || t.line?.name || 'Transit';
+                const from = t.departure_stop?.name || '';
+                const to = t.arrival_stop?.name || '';
+                let s = line;
+                if (from) s += ` · ${from}`;
+                if (to) s += ` → ${to}`;
+                return s;
+            }
+            if (rs?.step?.travel_mode === 'WALKING') return 'Walk';
+            return String(segmentId);
+        }
+
+        function renderRedPolylineForSegmentStep(targetMap, step, bounds) {
+            let path = [];
+            if (step.polyline?.points) {
+                try {
+                    path = google.maps.geometry.encoding.decodePath(step.polyline.points);
+                } catch (_e) {}
+            }
+            if (!path.length && step.start_location && step.end_location) path = [step.start_location, step.end_location];
+            if (!path.length) return;
+            const polyline = new google.maps.Polyline({
+                path,
+                geodesic: true,
+                strokeColor: '#EF4444',
+                strokeOpacity: 1,
+                strokeWeight: 6,
+                map: targetMap,
+                zIndex: 3,
+            });
+            if (targetMap === mapProposed) proposedRoutePolylines.push(polyline);
+            else routePolylines.push(polyline);
+            path.forEach((pt) => bounds.extend(pt));
+        }
+
+        function drawStraightTaxiLeg(targetMap, start, end, bounds) {
+            if (!start || !end) return;
+            const polyline = new google.maps.Polyline({
+                path: [start, end],
+                geodesic: false,
+                strokeColor: '#EF4444',
+                strokeOpacity: 1,
+                strokeWeight: 8,
+                map: targetMap,
+                zIndex: 4,
+            });
+            if (targetMap === mapProposed) proposedTaxiPolylines.push(polyline);
+            else taxiPolylines.push(polyline);
+            bounds.extend(start);
+            bounds.extend(end);
+        }
+
+        function renderTransitCostHighlightsOnPrimaryMap(route) {
+            clearRoute();
+            if (!route?.routes?.[0]?.legs || !map) return;
+            const bounds = new google.maps.LatLngBounds();
+            const hasCost = (segmentId) => {
+                const v = transitCostSegments.get(segmentId);
+                return v != null && String(v).trim() !== '';
+            };
+            route.routes[0].legs.forEach((leg) => {
+                let tempSegmentIndex = 0;
+                const stepsWithStatus = [];
+                leg.steps.forEach((step) => {
+                    if (step.travel_mode === 'WALKING' || step.travel_mode === 'TRANSIT') {
+                        const segmentId = `route-${selectedRouteIndex}-segment-${tempSegmentIndex}`;
+                        stepsWithStatus.push({ step, segmentId });
+                        tempSegmentIndex++;
+                    }
+                });
+                for (let i = 0; i < stepsWithStatus.length; i++) {
+                    const { step, segmentId } = stepsWithStatus[i];
+                    if (!hasCost(segmentId) || taxiRequestSegments.has(segmentId)) continue;
+                    if (step.travel_mode !== 'TRANSIT') continue;
+                    renderRedPolylineForSegmentStep(map, step, bounds);
+                }
+            });
+            if (!bounds.isEmpty()) map.fitBounds(bounds);
+        }
+
+        function ensureMapProposed() {
+            const el = document.getElementById('mapProposed');
+            if (!el || !requestData) return null;
+            if (!mapProposed) {
+                const center = map?.getCenter?.() || { lat: requestData.from.lat, lng: requestData.from.lng };
+                mapProposed = new google.maps.Map(el, {
+                    zoom: map?.getZoom?.() ?? 11,
+                    center,
+                    mapTypeId: google.maps.MapTypeId.ROADMAP,
+                });
+            }
+            triggerMapResizeSoon();
+            return mapProposed;
+        }
+
+        function renderProposedOverlaysOnSecondMap(route) {
+            clearProposedRoute();
+            if (!mapProposed || !route?.routes?.[0]?.legs) return;
+            const bounds = new google.maps.LatLngBounds();
+            const hasCost = (segmentId) => {
+                const v = transitCostSegments.get(segmentId);
+                return v != null && String(v).trim() !== '';
+            };
+            route.routes[0].legs.forEach((leg) => {
+                let tempSegmentIndex = 0;
+                const stepsWithStatus = [];
+                leg.steps.forEach((step) => {
+                    if (step.travel_mode === 'WALKING' || step.travel_mode === 'TRANSIT') {
+                        const segmentId = `route-${selectedRouteIndex}-segment-${tempSegmentIndex}`;
+                        stepsWithStatus.push({ step, segmentId, isTaxi: taxiRequestSegments.has(segmentId) });
+                        tempSegmentIndex++;
+                    }
+                });
+                for (let i = 0; i < stepsWithStatus.length; i++) {
+                    const { step, segmentId, isTaxi } = stepsWithStatus[i];
+                    if (isTaxi) {
+                        drawStraightTaxiLeg(mapProposed, step.start_location, step.end_location, bounds);
+                        continue;
+                    }
+                    if (step.travel_mode === 'TRANSIT' && hasCost(segmentId)) {
+                        renderRedPolylineForSegmentStep(mapProposed, step, bounds);
+                    }
+                }
+            });
+            if (!bounds.isEmpty()) mapProposed.fitBounds(bounds);
+            else if (map?.getCenter) mapProposed.setCenter(map.getCenter());
+        }
+
+        function populateTransitOnlyStageList() {
+            const el = document.getElementById('transitOnlyStageList');
+            if (!el) return;
+            const lines = [];
+            transitCostSegments.forEach((cost, segmentId) => {
+                if (taxiRequestSegments.has(segmentId)) return;
+                if (cost == null || String(cost).trim() === '') return;
+                lines.push({ segmentId, cost: String(cost).trim() });
+            });
+            if (!lines.length) {
+                el.innerHTML = '<div class="text-gray-500 text-xs">No transit costs entered.</div>';
+                return;
+            }
+            el.innerHTML = lines
+                .map(
+                    (l) =>
+                        `<div class="flex justify-between gap-2 border-b border-[#283039] py-1"><span>${escapeHtml(describeSegmentForUi(l.segmentId))}</span><span class="font-semibold text-red-300">£${escapeHtml(l.cost)}</span></div>`,
+                )
+                .join('');
+        }
+
+        function populateTaxiCostSummaryUnderProposed() {
+            const el = document.getElementById('transitCostSummaryUnderProposed');
+            if (!el) return;
+            const parts = [];
+            transitCostSegments.forEach((cost, segmentId) => {
+                if (taxiRequestSegments.has(segmentId)) return;
+                if (cost == null || String(cost).trim() === '') return;
+                parts.push(
+                    `<div class="flex justify-between gap-2"><span>${escapeHtml(describeSegmentForUi(segmentId))}</span><span>£${escapeHtml(String(cost).trim())}</span></div>`,
+                );
+            });
+            if (!parts.length) {
+                el.classList.add('hidden');
+                el.innerHTML = '';
+                return;
+            }
+            el.innerHTML = `<div class="text-xs text-gray-400 mb-1">Transit cost on legs you are not replacing with a taxi</div>${parts.join('')}`;
+            el.classList.remove('hidden');
+        }
+
+        function buildTaxiLegRows() {
+            const host = document.getElementById('taxiLegRowsHost');
+            if (!host) return;
+            host.innerHTML = '';
+            const ids = Array.from(taxiRequestSegments).sort();
+            ids.forEach((segmentId) => {
+                const pref = transitCostSegments.get(segmentId) || '';
+                const row = document.createElement('div');
+                row.className = 'rounded-lg border border-[#374151] p-2 space-y-1 bg-[#111418]';
+                row.innerHTML = `
+                    <div class="text-xs text-gray-400">${escapeHtml(describeSegmentForUi(segmentId))}</div>
+                    <label class="text-xs text-gray-400 block">Taxi cost (£)</label>
+                    <input type="number" step="0.01" min="0" class="input-field taxi-cost-row" data-segment="${escapeHtml(segmentId)}" value="${escapeHtml(String(pref))}">
+                    <label class="text-xs text-gray-400 block">Expected arrival if taking taxi</label>
+                    <input type="time" class="input-field taxi-time-row" data-segment="${escapeHtml(segmentId)}">
+                `;
+                host.appendChild(row);
+            });
+        }
+
+        async function handleNext() {
+            carryoverChoice = null;
+            await initializeMap();
             const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
             const routesList = document.getElementById('routesList');
             const mapCostPanel = document.getElementById('mapCostPanel');
-            const reviewPanel = document.getElementById('reviewPanel');
+            if (selectedRouteIndex === null || !routes[selectedRouteIndex]) return;
             if (mapContainer && routesList) {
                 routesList.style.display = 'none';
                 mapContainer.classList.add('fullscreen');
-                if (selectedRouteIndex !== null && routes[selectedRouteIndex]) renderRoute(routes[selectedRouteIndex]);
+                mapContainer.classList.add('auth-cost-mode');
             }
             if (mapCostPanel) mapCostPanel.classList.remove('hidden');
-            if (reviewPanel) reviewPanel.classList.add('hidden');
+
+            const hasTaxi = taxiRequestSegments.size > 0;
+            mapCostActiveMode = hasTaxi ? 'with_taxi' : 'transit_only';
+            const transitOnlyEl = document.getElementById('mapCostTransitOnly');
+            const withTaxiEl = document.getElementById('mapCostWithTaxi');
+            const nextBtn = document.getElementById('mapCostNextBtn');
+            const carry = document.getElementById('mapCarryoverBlock');
+            const confirmStep = document.getElementById('transitOnlyConfirmStep');
+            if (confirmStep) confirmStep.classList.add('hidden');
+            if (carry) carry.classList.add('hidden');
+            if (nextBtn) nextBtn.classList.remove('hidden');
+
+            if (mapCostActiveMode === 'transit_only') {
+                if (withTaxiEl) withTaxiEl.classList.add('hidden');
+                if (transitOnlyEl) transitOnlyEl.classList.remove('hidden');
+                mountMainMapInto(document.getElementById('mapTransitOnlySlot'));
+                populateTransitOnlyStageList();
+                renderTransitCostHighlightsOnPrimaryMap(routes[selectedRouteIndex]);
+            } else {
+                if (transitOnlyEl) transitOnlyEl.classList.add('hidden');
+                if (withTaxiEl) withTaxiEl.classList.remove('hidden');
+                mountMainMapInto(document.getElementById('mapOriginalSlot'));
+                const pt = document.getElementById('publicTransportCostInput');
+                const oa = document.getElementById('originalArrivalInput');
+                if (pt) pt.value = '';
+                if (oa) oa.value = '';
+                const savedTaxi = taxiRequestSegments;
+                taxiRequestSegments = new Set();
+                renderRoute(routes[selectedRouteIndex]);
+                taxiRequestSegments = savedTaxi;
+                populateTaxiCostSummaryUnderProposed();
+                buildTaxiLegRows();
+                ensureMapProposed();
+                renderProposedOverlaysOnSecondMap(routes[selectedRouteIndex]);
+            }
             triggerMapResizeSoon();
+        }
+
+        function mapCostPrimaryNext() {
+            if (mapCostActiveMode === 'transit_only') {
+                const confirmStep = document.getElementById('transitOnlyConfirmStep');
+                const nextBtn = document.getElementById('mapCostNextBtn');
+                if (confirmStep && confirmStep.classList.contains('hidden')) {
+                    confirmStep.classList.remove('hidden');
+                    if (nextBtn) nextBtn.classList.add('hidden');
+                }
+                return;
+            }
+            if (mapCostActiveMode === 'with_taxi') {
+                const carry = document.getElementById('mapCarryoverBlock');
+                const nextBtn = document.getElementById('mapCostNextBtn');
+                if (carry && carry.classList.contains('hidden')) {
+                    carry.classList.remove('hidden');
+                    if (nextBtn) nextBtn.classList.add('hidden');
+                }
+            }
+        }
+
+        function mapCostTransitOnlyBackToEdit() {
+            const confirmStep = document.getElementById('transitOnlyConfirmStep');
+            const nextBtn = document.getElementById('mapCostNextBtn');
+            if (confirmStep) confirmStep.classList.add('hidden');
+            if (nextBtn) nextBtn.classList.remove('hidden');
+        }
+
+        async function submitAuthorizationFromMapFlow() {
+            carryoverChoice = null;
+            await confirmAuthorizationRequest();
+        }
+
+        async function completeMapFlowWithCarryover(choice) {
+            carryoverChoice = choice;
+            await confirmAuthorizationRequest();
         }
 
         function backFromMapPanel() {
             const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
             const routesList = document.getElementById('routesList');
             const mapCostPanel = document.getElementById('mapCostPanel');
-            const reviewPanel = document.getElementById('reviewPanel');
+            resetMapCostPanelDomState();
             if (mapContainer) mapContainer.classList.remove('fullscreen');
             if (routesList) routesList.style.display = '';
             if (mapCostPanel) mapCostPanel.classList.add('hidden');
-            if (reviewPanel) reviewPanel.classList.add('hidden');
             triggerMapResizeSoon();
+            if (selectedRouteIndex !== null && routes[selectedRouteIndex]) renderRoute(routes[selectedRouteIndex]);
         }
 
         function setCarryoverChoice(choice) {
@@ -2015,55 +2437,95 @@
             };
         }
 
-        function goToReviewPanel() {
-            const mapCostPanel = document.getElementById('mapCostPanel');
-            const reviewPanel = document.getElementById('reviewPanel');
-            const reviewBody = document.getElementById('reviewPanelBody');
-            if (!reviewPanel || !reviewBody) return;
+        function applyTaxiRowInputsToSegments(segments) {
+            document.querySelectorAll('input.taxi-cost-row').forEach((input) => {
+                const sid = input.getAttribute('data-segment');
+                const seg = segments.find((s) => s.segmentId === sid);
+                if (seg && input.value != null) seg.enteredCost = input.value;
+            });
+            document.querySelectorAll('input.taxi-time-row').forEach((input) => {
+                const sid = input.getAttribute('data-segment');
+                const seg = segments.find((s) => s.segmentId === sid);
+                if (seg) seg.proposedTaxiArrivalTime = input.value || '';
+            });
+        }
+
+        function appendWaitIntervalCostSegments(segments) {
+            const have = new Set(segments.map((s) => s.segmentId));
+            transitCostSegments.forEach((cost, id) => {
+                if (!String(id).includes('-wait-')) return;
+                if (taxiRequestSegments.has(id)) return;
+                if (cost == null || String(cost).trim() === '') return;
+                if (have.has(id)) return;
+                have.add(id);
+                segments.push({
+                    segmentId: id,
+                    travelMode: 'WAIT',
+                    label: 'Wait',
+                    durationText: '',
+                    distanceText: '',
+                    isTaxiReplacement: false,
+                    enteredCost: String(cost).trim(),
+                });
+            });
+        }
+
+        function buildAuthorizationPayloadForSubmit() {
+            if (selectedRouteIndex === null || !routes[selectedRouteIndex]) return null;
             const routeMeta = getRouteWindowSummary();
             const segments = buildCurrentRouteSegmentsSummary();
-            currentReviewPayload = {
-                publicTransportCost: document.getElementById('publicTransportCostInput')?.value || '',
-                taxiCost: document.getElementById('taxiCostInput')?.value || '',
-                totalTransportCost: document.getElementById('totalCostInput')?.value || '',
-                originalArrival: document.getElementById('originalArrivalInput')?.value || routeMeta.originalArrival || '',
-                proposedArrival: document.getElementById('proposedArrivalInput')?.value || '',
-                carryoverChoice: carryoverChoice,
+            appendWaitIntervalCostSegments(segments);
+            applyTaxiRowInputsToSegments(segments);
+            const pt = document.getElementById('publicTransportCostInput')?.value?.trim() || '';
+            const origArrival = document.getElementById('originalArrivalInput')?.value?.trim() || '';
+            const taxiCostInputs = Array.from(document.querySelectorAll('input.taxi-cost-row'))
+                .map((el) => el.value.trim())
+                .filter(Boolean);
+            const taxiTimes = Array.from(document.querySelectorAll('input.taxi-time-row'))
+                .map((el) => el.value.trim())
+                .filter(Boolean);
+            const taxiJoined = taxiCostInputs.length ? taxiCostInputs.join(' / ') : '';
+            const proposedArrivalJoined = taxiTimes.join('; ');
+            let publicTransportCost = pt;
+            let taxiCost = taxiJoined;
+            let totalTransportCost = '';
+            if (mapCostActiveMode === 'transit_only') {
+                const transitOnlyCosts = [];
+                transitCostSegments.forEach((v, id) => {
+                    if (taxiRequestSegments.has(id)) return;
+                    if (v != null && String(v).trim() !== '') transitOnlyCosts.push(String(v).trim());
+                });
+                publicTransportCost = transitOnlyCosts.join(' + ');
+                taxiCost = '';
+                totalTransportCost = publicTransportCost;
+            } else if (mapCostActiveMode === 'with_taxi') {
+                const ptNum = parseFloat(pt);
+                const taxiSum = taxiCostInputs.reduce((s, v) => s + (parseFloat(v) || 0), 0);
+                const hasAny = (Number.isFinite(ptNum) && ptNum > 0) || taxiSum > 0;
+                totalTransportCost = hasAny ? String((Number.isFinite(ptNum) ? ptNum : 0) + taxiSum) : '';
+            } else {
+                publicTransportCost = document.getElementById('publicTransportCostInput')?.value || '';
+                taxiCost = document.getElementById('taxiCostInput')?.value || '';
+                totalTransportCost = document.getElementById('totalCostInput')?.value || '';
+            }
+            const carry = mapCostActiveMode === 'with_taxi' ? carryoverChoice : null;
+            return {
+                publicTransportCost,
+                taxiCost,
+                totalTransportCost,
+                originalArrival: mapCostActiveMode === 'with_taxi' ? origArrival : routeMeta.originalArrival || '',
+                proposedArrival: mapCostActiveMode === 'with_taxi' ? proposedArrivalJoined : '',
+                carryoverChoice: carry,
                 segments,
                 routeDuration: routeMeta.duration || '',
                 routeVisualization: buildCurrentRouteVisualization(),
             };
-            reviewBody.innerHTML = `
-                <div class="text-xs text-gray-400">Route stages</div>
-                <div class="space-y-2">${segments.map((s) => `
-                    <div class="bg-[#111418] border border-[#283039] rounded-lg p-2">
-                        <div class="font-semibold">${escapeHtml(s.label || 'Step')} ${s.isTaxiReplacement ? '<span class="text-red-400">Taxi replacement</span>' : ''}</div>
-                        <div class="text-xs text-gray-400">${escapeHtml(s.durationText || '')}${s.distanceText ? ' · ' + escapeHtml(s.distanceText) : ''}</div>
-                        ${s.enteredCost ? `<div class="text-xs text-emerald-300 mt-1">Entered value: £${escapeHtml(String(s.enteredCost))}</div>` : ''}
-                    </div>
-                `).join('')}</div>
-                <div class="pt-2 border-t border-[#283039] mt-2">
-                    <div class="text-xs text-gray-400">Journey details</div>
-                    <div class="text-sm">From: ${escapeHtml(requestData?.from?.address || '—')}</div>
-                    <div class="text-sm">To: ${escapeHtml(requestData?.to?.address || '—')}</div>
-                    <div class="text-sm">Leave at: ${escapeHtml(new Date(requestData?.departureTime || Date.now()).toLocaleString())}</div>
-                </div>
-            `;
-            if (mapCostPanel) mapCostPanel.classList.add('hidden');
-            reviewPanel.classList.remove('hidden');
-            triggerMapResizeSoon();
-        }
-
-        function backToMapCostPanel() {
-            const mapCostPanel = document.getElementById('mapCostPanel');
-            const reviewPanel = document.getElementById('reviewPanel');
-            if (reviewPanel) reviewPanel.classList.add('hidden');
-            if (mapCostPanel) mapCostPanel.classList.remove('hidden');
-            triggerMapResizeSoon();
         }
 
         async function confirmAuthorizationRequest() {
-            if (!currentReviewPayload || selectedRouteIndex === null || !routes[selectedRouteIndex]) return;
+            if (selectedRouteIndex === null || !routes[selectedRouteIndex]) return;
+            currentReviewPayload = buildAuthorizationPayloadForSubmit();
+            if (!currentReviewPayload) return;
             driverContext = null;
             let ctx = await getDriverContext({ forceRefresh: true });
             if (!ctx?.officeId && typeof window.sotoSession?.bootstrap === 'function') {
@@ -2105,7 +2567,10 @@
                         totalTransportCost: currentReviewPayload.totalTransportCost || '',
                         originalArrival: currentReviewPayload.originalArrival || '',
                         proposedArrival: currentReviewPayload.proposedArrival || '',
-                        carryoverChoice: currentReviewPayload.carryoverChoice || '',
+                        carryoverChoice:
+                            currentReviewPayload.carryoverChoice == null || currentReviewPayload.carryoverChoice === ''
+                                ? null
+                                : String(currentReviewPayload.carryoverChoice),
                     },
                     segments: currentReviewPayload.segments || [],
                     routeVisualization: currentReviewPayload.routeVisualization || null,
@@ -2233,6 +2698,10 @@
         window.handleSegmentClick = handleSegmentClick;
         window.updateSegmentCost = updateSegmentCost;
         window.handleNext = handleNext;
+        window.mapCostPrimaryNext = mapCostPrimaryNext;
+        window.mapCostTransitOnlyBackToEdit = mapCostTransitOnlyBackToEdit;
+        window.submitAuthorizationFromMapFlow = submitAuthorizationFromMapFlow;
+        window.completeMapFlowWithCarryover = completeMapFlowWithCarryover;
         window.authorizationRoutesNavigateBack = authorizationRoutesNavigateBack;
         
         // Open authorization modal
