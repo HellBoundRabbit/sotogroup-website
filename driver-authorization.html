@@ -1,0 +1,3078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SOTO Routes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#000000">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16.png">
+    <link rel="icon" type="image/svg+xml" href="/assets/logos/favicon.svg">
+    <link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png">
+    <title>Authorization Request - SOTO Routes</title>
+    <script src="/assets/js/tailwind-runtime.js"></script>
+    <script src="/js/session-manager.js"></script>
+    <script src="/js/ui-dialogs.js"></script>
+    <script src="/js/authorization-routes-api-adapter.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
+    <!--
+      Google Cloud (same project as this API key) must have enabled:
+      - Maps JavaScript API
+      - Places API (legacy Autocomplete)
+      - Geocoding API (Use current location → reverse geocode)
+      Billing must be active for Maps Platform usage.
+    -->
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA&libraries=places,geometry&loading=async&callback=initGoogleMaps"></script>
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, where, updateDoc, doc, deleteDoc, getDoc, setDoc, serverTimestamp, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+        
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA",
+            authDomain: "soto-routes.firebaseapp.com",
+            projectId: "soto-routes",
+            storageBucket: "soto-routes.firebasestorage.app",
+            messagingSenderId: "440989695549",
+            appId: "1:440989695549:web:0bce8b92a46f7f79953454",
+            measurementId: "G-4E3G40QQ9L"
+        };
+        
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const functions = getFunctions(app);
+        
+        // Make Firebase available globally
+        window.firebaseApp = app;
+        window.db = db;
+        window.auth = auth;
+        window.firebase = { functions, httpsCallable };
+
+        /** Inline script uses Firestore modular API; import scope is module-only — expose for non-module scripts. */
+        window.collection = collection;
+        window.doc = doc;
+        window.query = query;
+        window.where = where;
+        window.limit = limit;
+        window.orderBy = orderBy;
+        window.getDocs = getDocs;
+        window.getDoc = getDoc;
+        window.addDoc = addDoc;
+        window.updateDoc = updateDoc;
+        window.deleteDoc = deleteDoc;
+        window.setDoc = setDoc;
+        window.serverTimestamp = serverTimestamp;
+        window.onSnapshot = onSnapshot;
+        
+        console.log('Firebase initialized successfully!');
+    </script>
+    <style>
+        body {
+            background: #000000;
+            color: #ffffff;
+            font-family: Inter, "Noto Sans", sans-serif;
+        }
+        
+        body.modal-open {
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        /* Above sticky nav / modal / Places (≤60); below ui-dialogs overlay (9998) so confirm/alert still wins. */
+        #authorizationRoutesLayer {
+            z-index: 9990;
+        }
+        
+        .touch-target {
+            min-height: 44px;
+            min-width: 44px;
+        }
+        
+        /* Spinner for back button */
+        .spinner-wrapper {
+            width: 56px;
+            height: 56px;
+            position: relative;
+        }
+        .spinner {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            animation: spinning82341 1.7s linear infinite;
+            filter: blur(1px);
+        }
+        .spinner::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(186, 66, 255) 35%, rgb(0, 225, 255));
+            box-shadow: 0px -5px 20px 0px rgb(186, 66, 255), 0px 5px 20px 0px rgb(0, 225, 255);
+        }
+        .spinner1 {
+            background-color: rgb(36, 36, 36);
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2;
+        }
+        .spinner-icon {
+            position: relative;
+            z-index: 3;
+            color: white;
+            font-size: 1.875rem;
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+            filter: none !important;
+        }
+        @keyframes spinning82341 {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        
+        .spinner-green {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            animation: spinning82341 1.7s linear infinite;
+            filter: blur(1px);
+        }
+        .spinner-green::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-image: linear-gradient(rgb(0, 255, 0) 35%, rgb(0, 200, 0));
+            box-shadow: 0px -5px 20px 0px rgb(0, 255, 0), 0px 5px 20px 0px rgb(0, 200, 0);
+        }
+        
+        /* Animated border modal */
+        .animated-border-modal {
+            position: relative;
+            background: #1a1f24;
+            isolation: isolate;
+        }
+        .animated-border-modal::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 1.5rem;
+            background: #1a1f24;
+            z-index: -1;
+        }
+        .animated-border-modal::before {
+            display: none;
+        }
+        
+        .authorization-modal-shell {
+            min-height: 100dvh;
+            padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .authorization-modal-card {
+            width: min(100%, 640px);
+            max-height: min(88dvh, 760px);
+            display: flex;
+            flex-direction: column;
+            border-radius: 24px;
+            overflow: hidden;
+        }
+        
+        .authorization-modal-body {
+            padding: 20px 20px 24px;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        /* Animated button for proceed */
+        .animated-button {
+            position: relative;
+            background: rgb(36, 36, 36);
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            isolation: isolate;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 48px;
+        }
+        .animated-button::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 0.5rem;
+            background: rgb(36, 36, 36);
+            z-index: -1;
+        }
+        .animated-button-add::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 0.5rem;
+            background: linear-gradient(45deg, rgb(186, 66, 255), rgb(0, 225, 255), rgb(186, 66, 255));
+            background-size: 200% 200%;
+            animation: borderGradient 3s ease infinite;
+            z-index: -1;
+        }
+        @keyframes borderGradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        .form-container {
+            background: transparent;
+            border-radius: 0;
+            padding: 0;
+            max-width: none;
+            margin: 0;
+        }
+        
+        .input-group {
+            margin-bottom: 24px;
+        }
+        /* When scrolling "To" into view, leave room under the sticky modal header (mobile keyboard + Places dropdown). */
+        .to-address-field-group {
+            scroll-margin-top: 5.5rem;
+        }
+        
+        .input-label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #d1d5db;
+        }
+        
+        .input-field {
+            width: 100%;
+            padding: 12px 16px;
+            background: #283039 !important;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            color: #ffffff !important;
+            font-size: 16px;
+            transition: border-color 0.2s;
+        }
+        
+        .input-field::placeholder {
+            color: #9ca3af !important;
+        }
+        
+        .input-field:-webkit-autofill,
+        .input-field:-webkit-autofill:hover,
+        .input-field:-webkit-autofill:focus {
+            -webkit-text-fill-color: #ffffff !important;
+            -webkit-box-shadow: 0 0 0px 1000px #283039 inset !important;
+            box-shadow: 0 0 0px 1000px #283039 inset !important;
+        }
+        
+        .input-field:focus {
+            outline: none;
+            border-color: #3b82f6;
+            background: #283039 !important;
+            color: #ffffff !important;
+        }
+        
+        .input-field input {
+            color: #ffffff !important;
+        }
+        
+        .location-button {
+            width: 100%;
+            padding: 12px 16px;
+            background: #1a1f24;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        
+        .location-button:hover {
+            background: #283039;
+            border-color: #4b5563;
+        }
+        
+        .location-button:active {
+            background: #111418;
+        }
+        
+        .location-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .time-picker-group {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .time-radio {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            color: #d1d5db;
+        }
+        
+        .time-radio input[type="radio"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #3b82f6;
+        }
+        
+        .datetime-input {
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .datetime-input::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            cursor: pointer;
+        }
+        
+        .proceed-button {
+            width: 100%;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 8px;
+            color: #ffffff;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            margin-top: 24px;
+        }
+        
+        .proceed-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .authorization-request-card {
+            background: #111418;
+            border: 2px solid #4b5563;
+            border-radius: 12px;
+            padding: 14px;
+        }
+        .authorization-request-card.status-pending { border-color: #6b7280; }
+        .authorization-request-card.status-approved { border-color: #22c55e; }
+        .authorization-request-card.status-rejected { border-color: #ef4444; }
+        .authorization-request-card.status-contact_office { border-color: #f97316; }
+        
+        .map-top-panel {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 33vh;
+            min-height: 250px;
+            max-height: 360px;
+            z-index: 1100;
+            background: rgba(17, 20, 24, 0.96);
+            border-bottom: 1px solid #283039;
+            overflow-y: auto;
+            padding: 12px;
+        }
+        
+        @media (max-width: 430px) {
+            .authorization-modal-card {
+                width: 100%;
+                max-height: min(90dvh, 760px);
+                border-radius: 20px;
+            }
+            .authorization-modal-body {
+                padding: 16px 16px 20px;
+            }
+            .input-group {
+                margin-bottom: 18px;
+            }
+            .proceed-button {
+                margin-top: 18px;
+            }
+        }
+        
+        /*
+         * Places autocomplete panel: use a light panel with dark text.
+         * Do NOT force white text on all .pac-* nodes — Google’s rows often stay white,
+         * which made suggestions look “empty” (white on white).
+         */
+        .pac-container {
+            background: #ffffff !important;
+            border: 1px solid #e5e7eb !important;
+            border-radius: 8px;
+            /* Above #authorizationModal (z-50), below #authorizationRoutesLayer (z-70) and ui-dialogs — a high value hid the route flow after Proceed. */
+            z-index: 60 !important;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.15);
+        }
+
+        .pac-item {
+            padding: 10px 12px;
+            border-top: 1px solid #f3f4f6;
+            cursor: pointer;
+            color: #111827 !important;
+        }
+
+        .pac-item:first-child {
+            border-top: none;
+        }
+
+        .pac-item:hover,
+        .pac-item-selected {
+            background: #f3f4f6 !important;
+        }
+
+        .pac-item-query {
+            color: #111827 !important;
+            font-weight: 500;
+        }
+
+        .pac-matched {
+            color: #2563eb !important;
+            font-weight: 600;
+        }
+
+        .pac-icon {
+            background-color: transparent !important;
+        }
+
+        .hdpi.pac-logo::after {
+            opacity: 1;
+        }
+
+        .request-button {
+            position: absolute;
+            top: 12px;
+            right: 16px;
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 8px;
+            color: #ffffff;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            gap: 8px;
+        }
+        .request-button.visible { display: flex; }
+        /* Map cost step: same chrome as routes layer header (Back + gradient Next). */
+        .map-cost-panel-header {
+            background: #1a1f24;
+            border-bottom: 1px solid #283039;
+            padding: 12px 16px;
+            position: relative;
+            flex-shrink: 0;
+        }
+        .map-cost-next-btn {
+            position: absolute;
+            top: 12px;
+            right: 16px;
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 8px;
+            color: #ffffff;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .map-cost-next-btn.hidden {
+            display: none !important;
+        }
+        .routes-list {
+            width: 100%;
+            max-width: 600px;
+            background: #1a1f24;
+            border-right: 1px solid #283039;
+            overflow-y: auto;
+            padding: 16px;
+        }
+        .map-container { flex: 1; min-width: 0; position: relative; display: none; }
+        .map-container.fullscreen {
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            background: #000000;
+            box-sizing: border-box;
+            width: 100%;
+            /* iOS: parent chain + % height is unreliable; pin to dynamic viewport */
+            height: 100vh;
+            height: 100dvh;
+            height: 100svh;
+            max-height: 100vh;
+            max-height: 100dvh;
+            max-height: 100svh;
+        }
+        /* Top half: cost / review. Bottom half: map only — not a full viewport map hidden under the sheet. */
+        .map-container.fullscreen .map-top-panel:not(.hidden) {
+            position: relative;
+            top: auto;
+            flex: 0 0 50vh;
+            height: 50vh;
+            max-height: none;
+            border-bottom: 1px solid #283039;
+            order: 0;
+            z-index: 1100;
+        }
+        #mapDefaultMount {
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        .map-container.fullscreen #mapDefaultMount {
+            order: 1;
+            flex: 1 1 50%;
+            min-height: 0;
+            width: 100%;
+        }
+        .map-container.fullscreen #mapDefaultMount #map {
+            flex: 1;
+            min-height: 0;
+            width: 100% !important;
+            height: 100% !important;
+        }
+        #map, #mapProposed { width: 100%; height: 100%; }
+        #mapProposedSlot {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            min-height: 120px;
+        }
+        #mapProposedSlot #mapProposed {
+            position: absolute;
+            inset: 0;
+        }
+        /* Cost step: fill the fixed map shell on mobile (flex 1 1 auto + height:auto collapses on iOS). */
+        .map-container.fullscreen.auth-cost-mode .map-top-panel:not(.hidden) {
+            flex: 1 1 0;
+            min-height: 0;
+            width: 100%;
+            max-height: none;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .map-container.fullscreen.auth-cost-mode .map-top-panel:not(.hidden) > div:first-child {
+            flex-shrink: 0;
+        }
+        .map-container.fullscreen.auth-cost-mode .map-top-panel:not(.hidden) > #mapCostTransitOnly:not(.hidden),
+        .map-container.fullscreen.auth-cost-mode .map-top-panel:not(.hidden) > #mapCostWithTaxi:not(.hidden) {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-x: hidden;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .map-container.fullscreen.auth-cost-mode .map-top-panel:not(.hidden) > #mapCarryoverBlock:not(.hidden) {
+            flex-shrink: 0;
+        }
+        /*
+         * Cost flow moves #map into slots inside .map-top-panel. The empty #mapDefaultMount
+         * still had height:100% + flex share, which reserved ~half the screen as blank black.
+         */
+        .map-container.fullscreen.auth-cost-mode #mapDefaultMount {
+            display: none;
+        }
+        .auth-map-shell {
+            width: 100%;
+            border: 1px solid #283039;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #0f1419;
+        }
+        .route-card { background: #111418; border: 1px solid #283039; border-radius: 8px; padding: 16px; margin-bottom: 12px; cursor: pointer; }
+        .route-card.selected { border-color: #3b82f6; background: #1e3a5f; }
+        .route-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .route-title { font-weight: 600; font-size: 16px; }
+        .route-duration { color: #3b82f6; font-weight: 500; }
+        .route-timeline { position: relative; padding-left: 140px; }
+        .timeline-item { position: relative; margin-bottom: 20px; padding-bottom: 20px; min-height: 60px; }
+        .timeline-dot { position: absolute; left: -12px; top: 8px; width: 11px; height: 11px; border-radius: 50%; background: #ffffff; border: 2px solid #374151; z-index: 2; }
+        .timeline-time {
+            position: absolute;
+            left: -132px;
+            top: 0;
+            width: 116px;
+            text-align: right;
+            line-height: 1.15;
+            padding-right: 10px;
+        }
+        .timeline-clock-line {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #d1d5db;
+            letter-spacing: 0.01em;
+        }
+        .timeline-clock-ampm {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            color: #9ca3af;
+            margin-top: 1px;
+        }
+        .timeline-content { background: #1a1f24; border-radius: 8px; padding: 12px; border: 1px solid transparent; transition: all 0.2s; cursor: pointer; }
+        .timeline-content.transit-cost { background: #1e3a5f; border-color: #3b82f6; }
+        .timeline-content.taxi-request { background: #7f1d1d !important; border-color: #ef4444 !important; border-width: 2px; }
+        .timeline-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+        .timeline-title { font-weight: 600; font-size: 14px; }
+        .timeline-location { font-size: 13px; color: #9ca3af; margin-top: 4px; }
+        .timeline-duration { font-size: 12px; color: #6b7280; margin-top: 4px; }
+        .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #9ca3af; }
+        .loading-spinner { width: 40px; height: 40px; border: 3px solid #283039; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 16px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .error-message { background: #7f1d1d; border: 1px solid #991b1b; border-radius: 8px; padding: 16px; color: #fca5a5; margin: 16px; }
+        .cost-input { margin-top: 8px; padding: 6px 10px; background: #283039 !important; border: 1px solid #3a444e !important; border-radius: 6px; color: #fff !important; font-size: 14px; width: 100%; max-width: 120px; }
+        .segment-cost-input-wrap { display: flex; align-items: center; gap: 6px; margin-top: 8px; max-width: 148px; }
+        .segment-cost-input-wrap .cost-input-prefix { color: #e5e7eb; font-size: 15px; font-weight: 600; flex-shrink: 0; line-height: 1; }
+        .segment-cost-input-wrap .cost-input,
+        .segment-cost-input-wrap .input-field { margin-top: 0; flex: 1; min-width: 0; max-width: none; }
+        .segment-cost-label { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+        .route-picker-panel { flex: 1; max-width: 600px; width: 100%; background: #1a1f24; border-right: 1px solid #283039; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; min-height: 0; }
+        .route-picker-panel[hidden], #routesList[hidden] { display: none !important; }
+        .route-picker-title { font-weight: 700; font-size: 18px; margin-bottom: 4px; }
+        .route-picker-sub { font-size: 13px; color: #9ca3af; margin-bottom: 12px; }
+        .route-picker-cards { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+        .route-option-card { background: #111418; border: 1px solid #283039; border-radius: 10px; padding: 14px 14px 12px; cursor: pointer; text-align: left; width: 100%; }
+        .route-option-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+        .route-option-duration { font-size: 22px; font-weight: 700; line-height: 1.2; }
+        .route-option-window { font-size: 12px; color: #9ca3af; text-align: right; max-width: 58%; line-height: 1.35; }
+        .route-option-strip-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 2px; font-size: 13px; color: #d1d5db; margin-bottom: 6px; }
+        .route-strip-sep { color: #6b7280; font-size: 12px; padding: 0 2px; user-select: none; }
+        .route-strip-walk { display: inline-flex; align-items: center; gap: 4px; color: #93c5fd; }
+        .route-strip-badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; color: #fff; background: #5b6470; }
+        .route-option-detail { font-size: 12px; color: #6b7280; margin-top: 2px; }
+    </style>
+</head>
+<body class="bg-black text-white min-h-screen">
+    <!-- Top Navigation -->
+    <div class="bg-black border-b border-gray-800 sticky top-0 z-50">
+        <div class="flex items-center justify-between px-4 py-3">
+            <button onclick="window.location.href='/pages/driver-portal.html'" class="touch-target">
+                <div class="spinner-wrapper">
+                    <div class="spinner"></div>
+                    <div class="spinner1">
+                        <span class="material-symbols-outlined spinner-icon">arrow_back</span>
+                    </div>
+                </div>
+            </button>
+            <div class="flex items-center gap-3">
+                <h1 class="text-xl font-semibold">Authorization</h1>
+            </div>
+            <div class="touch-target w-14 shrink-0" aria-hidden="true"></div>
+        </div>
+    </div>
+
+    <div id="authPageLoading" class="container max-w-2xl mx-auto px-4 py-20 flex flex-col items-center justify-center min-h-[45vh] text-center">
+        <div class="w-10 h-10 border-2 border-gray-600 border-t-blue-500 rounded-full animate-spin mb-4" role="status" aria-label="Loading"></div>
+        <p class="text-gray-400 text-sm">Loading authorization requests…</p>
+    </div>
+
+    <!-- Main Content (shown after list is ready) -->
+    <div id="mainContent" class="hidden container max-w-2xl mx-auto px-4 py-6 pb-24">
+        <!-- Empty State -->
+        <div id="emptyState" class="text-center py-16">
+            <span class="material-symbols-outlined text-6xl text-gray-600 mb-4">verified_user</span>
+            <p class="text-gray-400 text-lg mb-6">No authorization requests</p>
+            <p class="text-gray-500 text-sm mb-8">Create your first authorization request to get started</p>
+        </div>
+
+        <!-- Authorization Requests List (hidden by default) -->
+        <div id="requestsSection" class="hidden space-y-3">
+            <!-- Requests will be rendered here -->
+        </div>
+    </div>
+
+    <!-- Floating Add Button -->
+    <button type="button" id="authFloatingAdd" onclick="openAuthorizationModal()" class="hidden fixed bottom-6 right-6 z-40">
+        <div class="spinner-wrapper">
+            <div class="spinner"></div>
+            <div class="spinner1">
+                <span class="material-symbols-outlined spinner-icon">add</span>
+            </div>
+        </div>
+    </button>
+
+    <!-- Authorization Request Modal -->
+    <div id="authorizationModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 overflow-y-auto">
+        <div class="authorization-modal-shell">
+            <div class="bg-[#1a1f24] transform transition-all animated-border-modal authorization-modal-card">
+                <div class="sticky top-0 bg-[#1a1f24] border-b border-gray-800 rounded-t-3xl z-10">
+                    <div class="flex items-center justify-between px-6 py-4">
+                        <h2 class="text-lg font-semibold">New Authorization Request</h2>
+                        <button onclick="closeAuthorizationModal()" class="touch-target text-gray-400 hover:text-white transition-colors">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="authorization-modal-body">
+                    <!-- Form Container -->
+                    <div class="form-container">
+                <form id="authorizationForm" onsubmit="event.preventDefault(); return false;">
+                    <!-- From Address -->
+                    <div class="input-group">
+                        <label class="input-label" for="fromAddress">From</label>
+                        <input 
+                            type="text" 
+                            id="fromAddress" 
+                            class="input-field w-full bg-[#283039] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none" 
+                            placeholder="Enter departure address or postcode"
+                            autocomplete="off"
+                            style="background-color: #283039 !important; color: #ffffff !important; border-color: #374151;"
+                        />
+                        <button 
+                            type="button" 
+                            class="location-button" 
+                            id="useCurrentLocationFrom"
+                            onclick="useCurrentLocation('from')"
+                        >
+                            <span class="material-symbols-outlined" style="font-size: 18px;">my_location</span>
+                            Use Current Location
+                        </button>
+                    </div>
+                    
+                    <!-- To Address -->
+                    <div class="input-group to-address-field-group">
+                        <label class="input-label" for="toAddress">To</label>
+                        <input 
+                            type="text" 
+                            id="toAddress" 
+                            class="input-field w-full bg-[#283039] text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none" 
+                            placeholder="Enter arrival address or postcode"
+                            autocomplete="off"
+                            style="background-color: #283039 !important; color: #ffffff !important; border-color: #374151;"
+                        />
+                        <button 
+                            type="button" 
+                            class="location-button" 
+                            id="useCurrentLocationTo"
+                            onclick="useCurrentLocation('to')"
+                        >
+                            <span class="material-symbols-outlined" style="font-size: 18px;">my_location</span>
+                            Use Current Location
+                        </button>
+                    </div>
+                    
+                    <!-- Leave At -->
+                    <div class="input-group">
+                        <label class="input-label">Leave At</label>
+                        <div class="time-picker-group">
+                            <label class="time-radio">
+                                <input 
+                                    type="radio" 
+                                    name="leaveAt" 
+                                    value="now" 
+                                    checked 
+                                    onchange="handleLeaveAtChange()"
+                                />
+                                <span>Now</span>
+                            </label>
+                            <label class="time-radio">
+                                <input 
+                                    type="radio" 
+                                    name="leaveAt" 
+                                    value="custom" 
+                                    onchange="handleLeaveAtChange()"
+                                />
+                                <span>Custom Time</span>
+                            </label>
+                        </div>
+                        <input 
+                            type="datetime-local" 
+                            id="customDateTime" 
+                            class="input-field datetime-input" 
+                            style="display: none; margin-top: 12px;"
+                            onchange="validateForm()"
+                        />
+                    </div>
+                    
+                    <!-- Proceed Button -->
+                    <button 
+                        type="button" 
+                        id="proceedButton" 
+                        class="proceed-button animated-button animated-button-add" 
+                        disabled
+                        onclick="proceedToRoutes()"
+                    >
+                        <span class="text-white font-semibold">Proceed</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- In-page routes experience (single-page flow) -->
+    <div id="authorizationRoutesLayer" class="hidden fixed inset-0 bg-[#0f1419] text-white">
+        <div class="h-full flex flex-col">
+            <div class="bg-[#1a1f24] border-b border-[#283039] px-4 py-3 relative">
+                <button type="button" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#283039] border border-[#3a444e] text-sm" onclick="authorizationRoutesNavigateBack()">
+                    <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span>
+                    Back
+                </button>
+                <h2 id="routeScreenTitle" class="text-lg font-bold mt-3">Route options</h2>
+                <div id="routeInfo" class="text-xs text-gray-400 mt-1"></div>
+                <button class="request-button" id="requestButton" onclick="handleNext()">
+                    <span class="material-symbols-outlined" style="font-size:18px;">arrow_forward</span>
+                    Next
+                </button>
+            </div>
+            <div class="flex-1 min-h-0 flex flex-col md:flex-row">
+                <div id="routePickerPanel" class="route-picker-panel">
+                    <div class="route-picker-lead">
+                        <div class="route-picker-title">Public transport routes</div>
+                        <p class="route-picker-sub">We found more than one way to make this journey. Tap a route to continue.</p>
+                    </div>
+                    <div id="routePickerCards" class="route-picker-cards">
+                        <div class="loading">
+                            <div class="loading-spinner"></div>
+                            <p>Finding routes…</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="routes-list" id="routesList" hidden></div>
+                <div class="map-container">
+                    <div id="mapDefaultMount">
+                        <div id="map"></div>
+                    </div>
+                    <div id="mapCostPanel" class="map-top-panel hidden">
+                        <div class="map-cost-panel-header">
+                            <button type="button" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#283039] border border-[#3a444e] text-sm" onclick="backFromMapPanel()">
+                                <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span>
+                                Back
+                            </button>
+                            <button type="button" id="mapCostNextBtn" class="map-cost-next-btn" onclick="mapCostPrimaryNext()">
+                                <span class="material-symbols-outlined" style="font-size:18px;">arrow_forward</span>
+                                Next
+                            </button>
+                        </div>
+                        <!-- Transit cost only (no taxi): one map + stage lines + confirm -->
+                        <div id="mapCostTransitOnly" class="hidden space-y-2 text-sm px-4 pb-3">
+                            <div class="auth-map-shell w-full max-w-none" style="height:clamp(220px, 52vh, min(62vh, 520px));">
+                                <div id="mapTransitOnlySlot" class="w-full h-full"></div>
+                            </div>
+                            <div id="transitOnlyStageList" class="text-xs text-gray-200 space-y-1 px-1"></div>
+                        </div>
+                        <!-- Taxi (and optional transit cost): two maps + fields -->
+                        <div id="mapCostWithTaxi" class="hidden space-y-2 text-sm px-4 pb-3">
+                            <div class="text-xs text-gray-400 font-semibold">Original route</div>
+                            <div class="auth-map-shell w-full" style="height:clamp(110px, 22vh, 200px);">
+                                <div id="mapOriginalSlot" class="w-full h-full"></div>
+                            </div>
+                            <label class="text-xs text-gray-400 block">Original transport cost</label>
+                            <div class="segment-cost-input-wrap max-w-full">
+                                <span class="cost-input-prefix" aria-hidden="true">£</span>
+                                <input id="publicTransportCostInput" type="number" step="0.01" min="0" placeholder="0.00" class="input-field flex-1 min-w-0">
+                            </div>
+                            <label class="text-xs text-gray-400 block">Original arrival time</label>
+                            <input id="originalArrivalInput" type="time" class="input-field">
+                            <div class="text-xs text-gray-400 font-semibold pt-1">Proposed route</div>
+                            <div class="auth-map-shell w-full" style="height:clamp(110px, 22vh, 200px);">
+                                <div id="mapProposedSlot" class="w-full h-full min-h-[120px]">
+                                    <div id="mapProposed"></div>
+                                </div>
+                            </div>
+                            <div id="transitCostSummaryUnderProposed" class="text-xs text-gray-200 space-y-1 hidden"></div>
+                            <div id="taxiLegRowsHost" class="space-y-2"></div>
+                            <input id="totalCostInput" type="hidden" value="">
+                            <input id="proposedArrivalInput" type="hidden" value="">
+                            <input id="taxiCostInput" type="hidden" value="">
+                        </div>
+                        <div id="mapCarryoverBlock" class="hidden border-t border-[#283039] pt-3 mt-2 px-4 pb-3">
+                            <div class="text-xs text-gray-300 mb-2">Will this prevent a carryover?</div>
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] text-xs" onclick="completeMapFlowWithCarryover('yes')">Yes</button>
+                                <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] text-xs" onclick="completeMapFlowWithCarryover('no')">No</button>
+                                <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] text-xs" onclick="completeMapFlowWithCarryover('unknown')">I don't know</button>
+                                <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] text-xs" onclick="completeMapFlowWithCarryover(null)">Skip</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let fromAutocomplete, toAutocomplete;
+        let fromPlace = null;
+        let toPlace = null;
+        let googleMapsLoaded = false;
+        let modalScrollY = 0;
+
+        const AUTOCOMPLETE_FIELDS = ['geometry', 'formatted_address', 'name', 'address_components'];
+
+        /** Minimal Place result when Geocoder returns a result (same shape as Places Autocomplete). */
+        function geocoderResultToPlace(result) {
+            return {
+                formatted_address: result.formatted_address,
+                geometry: result.geometry,
+                name: result.formatted_address,
+                address_components: result.address_components
+            };
+        }
+        
+        // Initialize Google Maps
+        window.initGoogleMaps = function() {
+            if (window.google && window.google.maps && window.google.maps.places) {
+                googleMapsLoaded = true;
+                initializeAutocomplete();
+            }
+        };
+        
+        // Wait for Google Maps to load
+        function waitForGoogleMaps() {
+            return new Promise((resolve) => {
+                if (googleMapsLoaded) {
+                    resolve();
+                    return;
+                }
+                const checkInterval = setInterval(() => {
+                    if (googleMapsLoaded) {
+                        clearInterval(checkInterval);
+                        resolve();
+                    }
+                }, 100);
+            });
+        }
+        
+        /** Scrolls the "To" block to the top of the modal scroll area so Places suggestions sit above the on-screen keyboard (mobile). */
+        function scrollAuthorizationToField(el) {
+            if (!el) return;
+            const modal = document.getElementById('authorizationModal');
+            if (!modal || modal.classList.contains('hidden')) return;
+            const run = () => {
+                try {
+                    el.scrollIntoView({ block: 'start', behavior: 'smooth', inline: 'nearest' });
+                } catch (_e) {}
+            };
+            requestAnimationFrame(() => {
+                run();
+                requestAnimationFrame(run);
+            });
+            setTimeout(run, 280);
+        }
+
+        // Initialize autocomplete for address inputs
+        async function initializeAutocomplete() {
+            await waitForGoogleMaps();
+            if (fromAutocomplete && toAutocomplete) {
+                validateForm();
+                return;
+            }
+
+            // From address autocomplete
+            const fromInput = document.getElementById('fromAddress');
+            fromAutocomplete = new google.maps.places.Autocomplete(fromInput, {
+                componentRestrictions: { country: 'gb' },
+                fields: AUTOCOMPLETE_FIELDS
+            });
+            
+            fromAutocomplete.addListener('place_changed', () => {
+                fromPlace = fromAutocomplete.getPlace();
+                validateForm();
+            });
+            
+            // To address autocomplete
+            const toInput = document.getElementById('toAddress');
+            toAutocomplete = new google.maps.places.Autocomplete(toInput, {
+                componentRestrictions: { country: 'gb' },
+                fields: AUTOCOMPLETE_FIELDS
+            });
+            
+            toAutocomplete.addListener('place_changed', () => {
+                toPlace = toAutocomplete.getPlace();
+                validateForm();
+            });
+            
+            // Also validate on manual input
+            fromInput.addEventListener('input', validateForm);
+            toInput.addEventListener('input', validateForm);
+
+            const toFieldGroup = toInput.closest('.to-address-field-group') || toInput;
+            const onToFieldActivate = () => scrollAuthorizationToField(toFieldGroup);
+            toInput.addEventListener('focusin', onToFieldActivate);
+            toInput.addEventListener('pointerdown', onToFieldActivate, { passive: true });
+        }
+        
+        // Use current location
+        function useCurrentLocation(type) {
+            const button = document.getElementById(`useCurrentLocation${type.charAt(0).toUpperCase() + type.slice(1)}`);
+            const input = document.getElementById(`${type}Address`);
+            
+            button.disabled = true;
+            button.innerHTML = '<span class="material-symbols-outlined" style="font-size: 18px;">sync</span> Getting location...';
+            
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+
+                        waitForGoogleMaps()
+                            .then(() => {
+                                const geocoder = new google.maps.Geocoder();
+                                geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+                                    const resetBtn = () => {
+                                        button.disabled = false;
+                                        button.innerHTML = `<span class="material-symbols-outlined" style="font-size: 18px;">my_location</span> Use Current Location`;
+                                    };
+
+                                    if (status === 'OK' && results && results[0]) {
+                                        input.value = results[0].formatted_address;
+                                        const placeObj = geocoderResultToPlace(results[0]);
+                                        if (type === 'from') {
+                                            fromPlace = placeObj;
+                                        } else {
+                                            toPlace = placeObj;
+                                        }
+                                        validateForm();
+                                        resetBtn();
+                                        return;
+                                    }
+
+                                    console.error('[driver-authorization] Geocoder failed:', status);
+                                    let msg = 'Could not get an address for your location. Please enter it manually.';
+                                    if (status === 'REQUEST_DENIED' || status === 'INVALID_REQUEST') {
+                                        msg = 'Google Geocoding is not available for this app. In Google Cloud Console, enable Geocoding API for your Maps key’s project, ensure billing is on, and check API key restrictions.';
+                                    }
+                                    alert(msg);
+                                    resetBtn();
+                                });
+                            })
+                            .catch((err) => {
+                                console.error('Maps not ready for geocoding:', err);
+                                alert('Maps failed to load. Please refresh and try again.');
+                                button.disabled = false;
+                                button.innerHTML = `<span class="material-symbols-outlined" style="font-size: 18px;">my_location</span> Use Current Location`;
+                            });
+                    },
+                    (error) => {
+                        console.error('Error getting location:', error);
+                        alert('Could not get your location. Please enable location services or enter manually.');
+                        button.disabled = false;
+                        button.innerHTML = `<span class="material-symbols-outlined" style="font-size: 18px;">my_location</span> Use Current Location`;
+                    }
+                );
+            } else {
+                alert('Geolocation is not supported by your browser.');
+                button.disabled = false;
+                button.innerHTML = `<span class="material-symbols-outlined" style="font-size: 18px;">my_location</span> Use Current Location`;
+            }
+        }
+        
+        // Handle leave at change
+        function handleLeaveAtChange() {
+            const customDateTime = document.getElementById('customDateTime');
+            const customRadio = document.querySelector('input[name="leaveAt"][value="custom"]');
+            
+            if (customRadio.checked) {
+                customDateTime.style.display = 'block';
+                // Set minimum to now
+                const now = new Date();
+                now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+                customDateTime.min = now.toISOString().slice(0, 16);
+            } else {
+                customDateTime.style.display = 'none';
+            }
+            validateForm();
+        }
+        
+        // Validate form
+        function validateForm() {
+            const fromInput = document.getElementById('fromAddress');
+            const toInput = document.getElementById('toAddress');
+            const proceedButton = document.getElementById('proceedButton');
+            const customRadio = document.querySelector('input[name="leaveAt"][value="custom"]');
+            const customDateTime = document.getElementById('customDateTime');
+            
+            const hasFrom = fromInput.value.trim().length > 0 && fromPlace;
+            const hasTo = toInput.value.trim().length > 0 && toPlace;
+            const hasValidTime = !customRadio.checked || (customDateTime.value && customDateTime.value.length > 0);
+            
+            proceedButton.disabled = !(hasFrom && hasTo && hasValidTime);
+        }
+        
+        // Proceed to routes (single-page: open in-page route flow)
+        function proceedToRoutes() {
+            const fromInput = document.getElementById('fromAddress');
+            const toInput = document.getElementById('toAddress');
+            const leaveAtRadio = document.querySelector('input[name="leaveAt"]:checked');
+            const customDateTime = document.getElementById('customDateTime');
+            
+            if (!fromPlace || !toPlace) {
+                alert('Please select valid addresses for both From and To locations.');
+                return;
+            }
+
+            try {
+                fromInput?.blur();
+                toInput?.blur();
+                if (document.activeElement && typeof document.activeElement.blur === 'function') {
+                    document.activeElement.blur();
+                }
+            } catch (_e) {}
+
+            // Get departure time
+            let departureTime = null;
+            if (leaveAtRadio.value === 'custom' && customDateTime.value) {
+                departureTime = new Date(customDateTime.value).toISOString();
+            } else {
+                departureTime = new Date().toISOString();
+            }
+            
+            // Store only serializable fields (Places objects break JSON and are unused after reload).
+            sessionStorage.setItem(
+                'authorizationRequest',
+                JSON.stringify({
+                    from: {
+                        address: fromInput.value.trim(),
+                        lat: fromPlace.geometry.location.lat(),
+                        lng: fromPlace.geometry.location.lng(),
+                    },
+                    to: {
+                        address: toInput.value.trim(),
+                        lat: toPlace.geometry.location.lat(),
+                        lng: toPlace.geometry.location.lng(),
+                    },
+                    departureTime: departureTime,
+                }),
+            );
+
+            openAuthorizationRoutesLayer();
+        }
+
+        /** Hides modal and restores scroll; does not reset the form (used when transitioning to route flow). */
+        function hideAuthorizationModal() {
+            const modal = document.getElementById('authorizationModal');
+            if (modal) modal.classList.add('hidden');
+            document.body.classList.remove('modal-open');
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.left = '';
+            document.body.style.right = '';
+            document.body.style.width = '';
+            window.scrollTo(0, modalScrollY || 0);
+        }
+
+        function resetAuthorizationRequestFormFields() {
+            const form = document.getElementById('authorizationForm');
+            if (form) form.reset();
+            fromPlace = null;
+            toPlace = null;
+            const fromInput = document.getElementById('fromAddress');
+            const toInput = document.getElementById('toAddress');
+            if (fromInput) fromInput.value = '';
+            if (toInput) toInput.value = '';
+            const nowRadio = document.querySelector('input[name="leaveAt"][value="now"]');
+            if (nowRadio) nowRadio.checked = true;
+            const customDateTime = document.getElementById('customDateTime');
+            if (customDateTime) {
+                customDateTime.style.display = 'none';
+                customDateTime.value = '';
+            }
+            validateForm();
+        }
+
+        /** Show routes layer before hiding the modal to avoid flashing the underlying page between states. */
+        function openAuthorizationRoutesLayer() {
+            const layer = document.getElementById('authorizationRoutesLayer');
+            if (!layer) return;
+            try {
+                document.getElementById('fromAddress')?.blur();
+                document.getElementById('toAddress')?.blur();
+            } catch (_e) {}
+            layer.classList.remove('hidden');
+            hideAuthorizationModal();
+            initializeMap()
+                .then(() => loadRoutes())
+                .catch((e) => {
+                    console.error('[Authorization] Route layer init failed', e);
+                    showError('Could not load your journey. Please try Proceed again or reopen from the + button.');
+                });
+        }
+
+        /** @param {boolean} [alsoClearAlternativesBackup] default true — set false when returning from route list to the multi-option picker. */
+        function resetInLayerRouteFlowState(alsoClearAlternativesBackup) {
+            resetMapCostPanelDomState();
+            try {
+                clearRoute();
+            } catch (_e) {}
+            routes = [];
+            routeAlternatives = [];
+            if (alsoClearAlternativesBackup !== false) routeAlternativesSnapshot = [];
+            routesPickerConfirmed = false;
+            selectedRouteIndex = null;
+            routeSegments = [];
+            selectedSegments.clear();
+            transitCostSegments.clear();
+            taxiRequestSegments.clear();
+            clickTimers.forEach((timer) => clearTimeout(timer));
+            clickTimers.clear();
+            updateRequestButton();
+            const requestButton = document.getElementById('requestButton');
+            if (requestButton) requestButton.classList.remove('visible');
+        }
+
+        function closeAuthorizationRoutesLayer() {
+            const layer = document.getElementById('authorizationRoutesLayer');
+            if (layer) layer.classList.add('hidden');
+            sessionStorage.removeItem('authorizationRequest');
+            const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
+            const routesList = document.getElementById('routesList');
+            const mapCostPanel = document.getElementById('mapCostPanel');
+            if (mapContainer) mapContainer.classList.remove('fullscreen');
+            if (routesList) routesList.style.display = '';
+            if (mapCostPanel) mapCostPanel.classList.add('hidden');
+            currentReviewPayload = null;
+            carryoverChoice = null;
+            requestData = null;
+            resetInLayerRouteFlowState(true);
+            resetAuthorizationRequestFormFields();
+            const pickerPanel = document.getElementById('routePickerPanel');
+            const pickerCards = document.getElementById('routePickerCards');
+            if (pickerPanel) pickerPanel.hidden = false;
+            if (pickerCards) pickerCards.innerHTML = '';
+            if (routesList) routesList.setAttribute('hidden', '');
+            const titleEl = document.getElementById('routeScreenTitle');
+            if (titleEl) titleEl.textContent = 'Route options';
+            clearPoweredByGoogleAttribution();
+        }
+
+        function authorizationRoutesNavigateBack() {
+            const layer = document.getElementById('authorizationRoutesLayer');
+            if (!layer || layer.classList.contains('hidden')) return;
+
+            const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
+
+            const carryBlock = document.getElementById('mapCarryoverBlock');
+            if (carryBlock && !carryBlock.classList.contains('hidden')) {
+                carryBlock.classList.add('hidden');
+                const nb = document.getElementById('mapCostNextBtn');
+                if (nb) nb.classList.remove('hidden');
+                return;
+            }
+
+            if (mapContainer && mapContainer.classList.contains('fullscreen')) {
+                backFromMapPanel();
+                return;
+            }
+
+            if (routesPickerConfirmed && routeAlternativesSnapshot.length > 1) {
+                routesPickerConfirmed = false;
+                resetInLayerRouteFlowState(false);
+                routeAlternatives = routeAlternativesSnapshot.slice();
+                const pickerPanel = document.getElementById('routePickerPanel');
+                const routesListEl = document.getElementById('routesList');
+                const titleEl = document.getElementById('routeScreenTitle');
+                const mapCostPan = document.getElementById('mapCostPanel');
+                if (pickerPanel) pickerPanel.hidden = false;
+                if (routesListEl) {
+                    routesListEl.setAttribute('hidden', '');
+                    routesListEl.innerHTML = '';
+                    routesListEl.style.display = '';
+                }
+                if (mapCostPan) mapCostPan.classList.add('hidden');
+                if (titleEl) titleEl.textContent = 'Route options';
+                setPoweredByGoogleAttribution();
+                renderRoutePickerCards(routeAlternatives);
+                return;
+            }
+
+            closeAuthorizationRoutesLayer();
+        }
+
+        let map;
+        /** Second map for “proposed route” when taxi requests exist. */
+        let mapProposed = null;
+        /** off | transit_only | with_taxi — drives map cost UI and submit payload. */
+        let mapCostActiveMode = 'off';
+        let proposedRoutePolylines = [];
+        let proposedTaxiPolylines = [];
+        let proposedRouteMarkers = [];
+        let directionsService;
+        let routes = [];
+        let routeAlternatives = [];
+        /** Shallow copy taken when >1 options exist; survives confirmRoutePicker clearing `routeAlternatives` for Back → picker. */
+        let routeAlternativesSnapshot = [];
+        let routesPickerConfirmed = false;
+        let selectedRouteIndex = null;
+        let requestData = null;
+        let routePolylines = [];
+        let routeMarkers = [];
+        let routeSegments = [];
+        let selectedSegments = new Set();
+        let transitCostSegments = new Map();
+        let taxiRequestSegments = new Set();
+        let taxiPolylines = [];
+        let segmentPolylines = [];
+        let clickTimers = new Map();
+        let carryoverChoice = null;
+        let driverContext = null;
+        let currentReviewPayload = null;
+        let unsubscribeAuthorizationRequests = null;
+        let unsubscribeAuthStateChange = null;
+
+        /**
+         * Firebase is initialised in a `type="module"` block (async). Inline script must not call
+         * query/getDoc/addDoc until the module assigns them to `window`.
+         */
+        async function waitForFirestoreReady(maxAttempts = 160) {
+            for (let i = 0; i < maxAttempts; i++) {
+                if (
+                    window.db &&
+                    window.auth &&
+                    typeof window.query === 'function' &&
+                    typeof window.collection === 'function' &&
+                    typeof window.getDoc === 'function' &&
+                    typeof window.addDoc === 'function' &&
+                    typeof window.onSnapshot === 'function'
+                ) {
+                    return true;
+                }
+                await new Promise((r) => setTimeout(r, 50));
+            }
+            console.error('[Authorization] Timed out waiting for Firebase Firestore on window.');
+            return false;
+        }
+
+        function getStatusLabel(status) {
+            if (status === 'approved') return 'Accepted';
+            if (status === 'rejected') return 'Rejected';
+            if (status === 'contact_office') return 'Contact office';
+            return 'Requested';
+        }
+
+        function authorizationRequestCardClass(status) {
+            const s = status || 'pending';
+            if (s === 'approved' || s === 'rejected' || s === 'contact_office') return `status-${s}`;
+            return 'status-pending';
+        }
+
+        function formatSubmittedAt(value) {
+            const d = value?.toDate ? value.toDate() : (value ? new Date(value) : null);
+            if (!d || Number.isNaN(d.getTime())) return 'Unknown';
+            return d.toLocaleString();
+        }
+
+        function officeIdFromLocalIdentity() {
+            try {
+                const raw = localStorage.getItem('soto_user_identity');
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                return (
+                    parsed.officeId ||
+                    parsed.officeID ||
+                    parsed.office_id ||
+                    (parsed.user && (parsed.user.officeId || parsed.user.officeID)) ||
+                    null
+                );
+            } catch (_e) {
+                return null;
+            }
+        }
+
+        /**
+         * Firestore rules use request.auth.token.officeId — that comes from ID token custom claims,
+         * not necessarily from users/drivers documents. Read claims first.
+         */
+        async function officeIdFromAuthToken(user, forceRefresh) {
+            try {
+                if (forceRefresh) await user.getIdToken(true);
+                const tr = await user.getIdTokenResult();
+                const c = tr.claims || {};
+                const oid = c.officeId ?? c.office_id;
+                if (oid != null && String(oid).trim().length > 0) return String(oid).trim();
+            } catch (e) {
+                console.warn('[Authorization] ID token claims read failed.', e);
+            }
+            return null;
+        }
+
+        /** @param {{ forceRefresh?: boolean }} [opts] Pass forceRefresh before submit so token + Firestore are re-read. */
+        async function getDriverContext(opts) {
+            const force = opts && opts.forceRefresh;
+            if (driverContext != null && !force) return driverContext;
+            const user = window.auth?.currentUser;
+            if (!user) return null;
+            let officeId = await officeIdFromAuthToken(user, Boolean(force));
+            let displayName = null;
+            try {
+                const driverByUidQ = query(collection(window.db, 'drivers'), where('uid', '==', user.uid), limit(1));
+                const snap = await getDocs(driverByUidQ);
+                if (!snap.empty) {
+                    const d = snap.docs[0].data();
+                    if (!officeId) officeId = d.officeId || d.officeID || null;
+                    displayName = [d.firstName, d.lastName].filter(Boolean).join(' ').trim() || null;
+                }
+            } catch (e) {
+                console.warn('[Authorization] drivers query by uid failed.', e);
+            }
+
+            if (!officeId) {
+                try {
+                    const dSnap = await getDoc(doc(window.db, 'drivers', user.uid));
+                    if (dSnap.exists()) {
+                        const d = dSnap.data();
+                        officeId = d.officeId || d.officeID || officeId;
+                        if (!displayName) {
+                            displayName = [d.firstName, d.lastName].filter(Boolean).join(' ').trim() || null;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[Authorization] drivers/{uid} lookup failed.', e);
+                }
+            }
+
+            try {
+                const uSnap = await getDoc(doc(window.db, 'users', user.uid));
+                if (uSnap.exists()) {
+                    const d = uSnap.data();
+                    if (!officeId) officeId = d.officeId || d.officeID || null;
+                    if (!displayName) {
+                        displayName = [d.firstName, d.lastName].filter(Boolean).join(' ').trim() || d.name || null;
+                    }
+                }
+            } catch (e) {
+                console.warn('[Authorization] users/{uid} lookup failed.', e);
+            }
+
+            if (!officeId && user.email) {
+                try {
+                    const emailKey = String(user.email).trim().toLowerCase();
+                    const byEmail = query(
+                        collection(window.db, 'drivers'),
+                        where('email', '==', emailKey),
+                        limit(1),
+                    );
+                    const emailSnap = await getDocs(byEmail);
+                    if (!emailSnap.empty) {
+                        const d = emailSnap.docs[0].data();
+                        officeId = d.officeId || d.officeID || officeId;
+                        if (!displayName) {
+                            displayName = [d.firstName, d.lastName].filter(Boolean).join(' ').trim() || null;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[Authorization] drivers lookup by email failed.', e);
+                }
+            }
+
+            if (!officeId) officeId = officeIdFromLocalIdentity();
+
+            driverContext = {
+                uid: user.uid,
+                email: user.email || null,
+                officeId: officeId || null,
+                name: displayName || 'Driver',
+            };
+            return driverContext;
+        }
+
+        function renderAuthorizationRequests(items) {
+            const emptyState = document.getElementById('emptyState');
+            const requestsSection = document.getElementById('requestsSection');
+            if (!emptyState || !requestsSection) return;
+            if (!items.length) {
+                emptyState.classList.remove('hidden');
+                requestsSection.classList.add('hidden');
+                requestsSection.innerHTML = '';
+                return;
+            }
+            emptyState.classList.add('hidden');
+            requestsSection.classList.remove('hidden');
+            requestsSection.innerHTML = items.map((item) => `
+                <div class="authorization-request-card ${authorizationRequestCardClass(item.status)}">
+                    <div class="flex items-start justify-between gap-2">
+                        <div>
+                            <div class="text-sm font-semibold text-white">${escapeHtml(item.from?.address || 'From')} → ${escapeHtml(item.to?.address || 'To')}</div>
+                            <div class="text-xs text-gray-400 mt-1">Submitted: ${escapeHtml(formatSubmittedAt(item.createdAt))}</div>
+                        </div>
+                        <span class="authorization-status-pill text-xs font-semibold shrink-0">${escapeHtml(getStatusLabel(item.status))}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function mapAndSortAuthorizationDocs(snapshotDocs) {
+            return snapshotDocs.map((d) => ({ id: d.id, ...d.data() }))
+                .sort((a, b) => {
+                    const am = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+                    const bm = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+                    return bm - am;
+                });
+        }
+
+        const AUTHORIZATION_ANSWERED_TTL_MS = 48 * 60 * 60 * 1000;
+
+        function reviewedAtToMs(reviewedAt) {
+            if (reviewedAt == null) return null;
+            if (typeof reviewedAt.toMillis === 'function') return reviewedAt.toMillis();
+            if (typeof reviewedAt.toDate === 'function') return reviewedAt.toDate().getTime();
+            if (typeof reviewedAt === 'string') {
+                const t = Date.parse(reviewedAt);
+                return Number.isFinite(t) ? t : null;
+            }
+            if (typeof reviewedAt === 'number' && Number.isFinite(reviewedAt)) return reviewedAt;
+            return null;
+        }
+
+        function shouldDeleteExpiredAuthorization(data, nowMs) {
+            const status = data?.status || 'pending';
+            if (status === 'pending') return false;
+            if (!['approved', 'rejected', 'contact_office'].includes(status)) return false;
+            const reviewedMs = reviewedAtToMs(data.reviewedAt);
+            if (reviewedMs != null && nowMs - reviewedMs >= AUTHORIZATION_ANSWERED_TTL_MS) return true;
+            const deleteAtMs = typeof data.deleteAtMs === 'number' ? data.deleteAtMs : null;
+            if (deleteAtMs != null && nowMs >= deleteAtMs) return true;
+            return false;
+        }
+
+        async function deleteExpiredAuthorizationRequestsForDriver(ctx) {
+            if (!ctx?.uid || !window.db) return;
+            const qAuth = query(collection(window.db, 'authorizationRequests'), where('driverId', '==', ctx.uid));
+            const snap = await getDocs(qAuth);
+            const nowMs = Date.now();
+            const deletes = [];
+            snap.docs.forEach((d) => {
+                if (shouldDeleteExpiredAuthorization(d.data(), nowMs)) {
+                    deletes.push(deleteDoc(doc(window.db, 'authorizationRequests', d.id)));
+                }
+            });
+            if (!deletes.length) return;
+            try {
+                await Promise.all(deletes);
+            } catch (e) {
+                console.warn('[Authorization] Expired answered-request cleanup failed. Deploy latest Firestore rules if delete is denied.', e);
+            }
+        }
+
+        function setAuthorizationListShellReady() {
+            document.getElementById('authPageLoading')?.classList.add('hidden');
+            document.getElementById('mainContent')?.classList.remove('hidden');
+            document.getElementById('authFloatingAdd')?.classList.remove('hidden');
+        }
+
+        function setAuthorizationListShellLoading() {
+            document.getElementById('authPageLoading')?.classList.remove('hidden');
+            document.getElementById('mainContent')?.classList.add('hidden');
+            document.getElementById('authFloatingAdd')?.classList.add('hidden');
+        }
+
+        async function startAuthorizationRequestsListener() {
+            if (!(await waitForFirestoreReady())) return;
+            const ctx = await getDriverContext();
+            if (!ctx?.uid) return;
+            if (typeof unsubscribeAuthorizationRequests === 'function') {
+                unsubscribeAuthorizationRequests();
+                unsubscribeAuthorizationRequests = null;
+            }
+            const qAuth = query(
+                collection(window.db, 'authorizationRequests'),
+                where('driverId', '==', ctx.uid)
+            );
+            unsubscribeAuthorizationRequests = window.onSnapshot(qAuth, (snap) => {
+                renderAuthorizationRequests(mapAndSortAuthorizationDocs(snap.docs));
+            }, (e) => {
+                console.error('[Authorization] Authorization request listener failed', e);
+            });
+        }
+
+        async function loadAuthorizationRequests() {
+            if (!(await waitForFirestoreReady())) return;
+            const ctx = await getDriverContext();
+            if (!ctx?.uid) return;
+            await deleteExpiredAuthorizationRequestsForDriver(ctx);
+            try {
+                const qAuth = query(
+                    collection(window.db, 'authorizationRequests'),
+                    where('driverId', '==', ctx.uid)
+                );
+                const snap = await getDocs(qAuth);
+                const items = mapAndSortAuthorizationDocs(snap.docs);
+                renderAuthorizationRequests(items);
+            } catch (e) {
+                console.error('[Authorization] Failed loading requests', e);
+            }
+        }
+
+        function directionsRoutePromise(request) {
+            return new Promise((resolve) => {
+                directionsService.route(request, (response, status) => {
+                    const ok = status === google.maps.DirectionsStatus.OK || status === 'OK';
+                    resolve(ok ? response : null);
+                });
+            });
+        }
+        function totalRouteDurationSecs(directionResponse) {
+            if (!directionResponse?.routes?.[0]?.legs?.length) return 0;
+            return directionResponse.routes[0].legs.reduce((sum, leg) => sum + (leg.duration?.value ?? 0), 0);
+        }
+        function dedupeDirectionResponses(items) {
+            const seen = new Set();
+            const out = [];
+            for (const resp of items) {
+                if (!resp?.routes?.[0]?.legs?.length) continue;
+                const r0 = resp.routes[0];
+                let key = r0.overview_polyline?.points || '';
+                if (!key) {
+                    key = r0.legs.map((leg) => leg.steps.map((s) => `${s.travel_mode}:${s.duration?.value ?? 0}`).join(',')).join('|');
+                }
+                if (seen.has(key)) continue;
+                seen.add(key);
+                out.push(resp);
+            }
+            out.sort((a, b) => totalRouteDurationSecs(a) - totalRouteDurationSecs(b));
+            return out;
+        }
+        function escapeHtml(unsafe) {
+            if (unsafe == null || unsafe === '') return '';
+            const el = document.createElement('div');
+            el.textContent = String(unsafe);
+            return el.innerHTML;
+        }
+        function lineBadgeBackgroundStyle(transitLine) {
+            const c = transitLine?.color;
+            if (!c || typeof c !== 'string') return '';
+            const hex = c.replace(/^#/, '').trim();
+            if (/^[0-9a-fA-F]{6}$/.test(hex)) return `background:#${hex};`;
+            if (/^[0-9a-fA-F]{8}$/.test(hex)) return `background:#${hex.slice(0, 6)};`;
+            return '';
+        }
+        function getRouteScheduledWindow(directionResponse, departureFallback) {
+            let depTs = null;
+            let arrTs = null;
+            const rd = directionResponse?.routes?.[0];
+            const fb = departureFallback instanceof Date ? departureFallback : new Date(departureFallback);
+            if (!rd?.legs) return { dep: fb, arr: fb };
+            rd.legs.forEach((leg) => {
+                leg.steps.forEach((step) => {
+                    if (step.travel_mode === 'TRANSIT' && step.transit) {
+                        const td = step.transit;
+                        if (td.departure_time?.value) depTs = depTs == null ? td.departure_time.value * 1000 : Math.min(depTs, td.departure_time.value * 1000);
+                        if (td.arrival_time?.value) arrTs = arrTs == null ? td.arrival_time.value * 1000 : Math.max(arrTs, td.arrival_time.value * 1000);
+                    }
+                });
+            });
+            let depDate = fb instanceof Date ? fb : new Date(fb);
+            if (depTs != null) depDate = new Date(depTs);
+            const totalSecs = totalRouteDurationSecs(directionResponse);
+            const arrDate = arrTs != null ? new Date(arrTs) : new Date(depDate.getTime() + totalSecs * 1000);
+            return { dep: depDate, arr: arrDate };
+        }
+        const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        function formatClockWeekday(date) {
+            if (!(date instanceof Date) || isNaN(date.getTime())) return '';
+            const h = date.getHours().toString().padStart(2, '0');
+            const mi = date.getMinutes().toString().padStart(2, '0');
+            return `${h}:${mi} (${WEEKDAY_SHORT[date.getDay()]})`;
+        }
+        function formatCompactDuration(totalSecs) {
+            const m = Math.round(totalSecs / 60);
+            const h = Math.floor(m / 60);
+            const rm = m % 60;
+            if (h === 0) return `${rm} min`;
+            return rm ? `${h}h ${rm}m` : `${h}h`;
+        }
+        function flattenLeafSteps(stepList) {
+            const leaves = [];
+            function walk(steps) {
+                for (const step of steps || []) {
+                    if (step.steps && Array.isArray(step.steps) && step.steps.length > 0) walk(step.steps);
+                    else if (step) leaves.push(step);
+                }
+            }
+            walk(stepList);
+            return leaves;
+        }
+        function stripStepIsWalking(step) {
+            if (step.transit) return false;
+            const raw = String(step.travel_mode || step.travelMode || '').toUpperCase();
+            if (raw.includes('TRANSIT')) return false;
+            return raw.includes('WALK') || raw === '';
+        }
+        function stripStepIsTransit(step) {
+            if (!step.transit) return false;
+            const raw = String(step.travel_mode || step.travelMode || '').toUpperCase();
+            return raw.includes('TRANSIT');
+        }
+        function buildRouteStripPieces(directionResponse) {
+            const chunks = [];
+            const rd = directionResponse?.routes?.[0];
+            if (!rd?.legs) return chunks;
+            let walkAccumSec = 0;
+            function flushWalk() {
+                if (walkAccumSec <= 0) return;
+                chunks.push({ type: 'walk', mins: Math.max(1, Math.round(walkAccumSec / 60)) });
+                walkAccumSec = 0;
+            }
+            rd.legs.forEach((leg) => {
+                flattenLeafSteps(leg.steps).forEach((step) => {
+                    if (stripStepIsWalking(step)) walkAccumSec += typeof step.duration?.value === 'number' ? step.duration.value : 0;
+                    else if (stripStepIsTransit(step)) {
+                        flushWalk();
+                        const ln = step.transit.line || {};
+                        chunks.push({ type: 'transit', label: ln.short_name || ln.name || 'Transit', line: ln });
+                    }
+                });
+            });
+            flushWalk();
+            return chunks;
+        }
+        function renderRoutePickerCards(alts) {
+            const host = document.getElementById('routePickerCards');
+            if (!host || !requestData) return;
+            host.innerHTML = '';
+            const depFallback = requestData.departureTime ? new Date(requestData.departureTime) : new Date();
+            alts.forEach((resp, index) => {
+                const secs = totalRouteDurationSecs(resp);
+                const durationLabel = secs < 3600 ? `${Math.round(secs / 60)} min` : formatCompactDuration(secs);
+                const { dep, arr } = getRouteScheduledWindow(resp, depFallback);
+                const windowHtml = `${escapeHtml(formatClockWeekday(dep))} – ${escapeHtml(formatClockWeekday(arr))}`;
+                const pieces = buildRouteStripPieces(resp);
+                const stripParts = [];
+                pieces.forEach((p, pi) => {
+                    if (pi > 0) stripParts.push('<span class="route-strip-sep">›</span>');
+                    if (p.type === 'walk') stripParts.push(`<span class="route-strip-walk"><span class="material-symbols-outlined" style="font-size:18px;">directions_walk</span>${p.mins}</span>`);
+                    else {
+                        const st = lineBadgeBackgroundStyle(p.line);
+                        stripParts.push(`<span class="route-strip-badge" ${st ? `style="${escapeHtml(st)}"` : ''}>${escapeHtml(p.label)}</span>`);
+                    }
+                });
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'route-option-card';
+                btn.innerHTML = `<div class="route-option-row"><div class="route-option-duration">${escapeHtml(durationLabel)}</div><div class="route-option-window">${windowHtml}</div></div><div class="route-option-strip-wrap">${stripParts.join('')}</div>`;
+                btn.addEventListener('click', () => confirmRoutePickerSelection(index));
+                host.appendChild(btn);
+            });
+        }
+        function confirmRoutePickerSelection(index) {
+            if (routesPickerConfirmed) return;
+            const chosen = routeAlternatives[index];
+            if (!chosen) return;
+            routes = [chosen];
+            routeAlternatives = [];
+            routesPickerConfirmed = true;
+            const pickerPanel = document.getElementById('routePickerPanel');
+            const routesListEl = document.getElementById('routesList');
+            if (pickerPanel) pickerPanel.hidden = true;
+            if (routesListEl) routesListEl.removeAttribute('hidden');
+            const t = document.getElementById('routeScreenTitle');
+            if (t) t.textContent = 'Click a step once to request a transit cost. Click twice to request a taxi.';
+            selectRoute(0);
+        }
+        function setPoweredByGoogleAttribution() {
+            const el = document.getElementById('routeInfo');
+            if (el) el.textContent = `Powered by Google, © ${new Date().getFullYear()} Google`;
+        }
+        function clearPoweredByGoogleAttribution() {
+            const el = document.getElementById('routeInfo');
+            if (el) el.textContent = '';
+        }
+        async function waitForFirebaseFunctions() {
+            for (let i = 0; i < 90; i++) {
+                if (window.firebase && typeof window.firebase.httpsCallable === 'function' && window.firebase.functions) return true;
+                await new Promise((r) => setTimeout(r, 50));
+            }
+            return false;
+        }
+        async function tryLoadRoutesFromGoogleRoutesApi(origin, destination) {
+            const ready = await waitForFirebaseFunctions();
+            if (!ready || typeof window.routesApiAdaptAuthorizationRoutes !== 'function') return null;
+            try {
+                const fn = window.firebase.httpsCallable(window.firebase.functions, 'computeAuthorizationTransitRoutes');
+                const result = await fn({ origin, destination, departureTime: requestData.departureTime, regionCode: 'GB' });
+                const data = result && result.data;
+                if (!data || !data.success || !Array.isArray(data.routes) || data.routes.length === 0) return null;
+                return window.routesApiAdaptAuthorizationRoutes(data.routes, google.maps.LatLng);
+            } catch (e) {
+                console.warn('Routes API callable failed; using Directions fallback.', e);
+                return null;
+            }
+        }
+        async function initializeMap() {
+            await Promise.race([
+                waitForGoogleMaps(),
+                new Promise((_, rej) => setTimeout(() => rej(new Error('Google Maps did not become ready in time')), 45000)),
+            ]);
+            const storedData = sessionStorage.getItem('authorizationRequest');
+            if (!storedData) {
+                showError('No route data found. Please go back and create a new request.');
+                return;
+            }
+            let parsed;
+            try {
+                parsed = JSON.parse(storedData);
+            } catch (_e) {
+                showError('Saved journey data was invalid. Please use the + button and enter your addresses again.');
+                return;
+            }
+            requestData = parsed;
+            if (!map) {
+                map = new google.maps.Map(document.getElementById('map'), { zoom: 10, center: { lat: requestData.from.lat, lng: requestData.from.lng }, mapTypeId: google.maps.MapTypeId.ROADMAP });
+                directionsService = new google.maps.DirectionsService();
+            }
+        }
+        async function loadRoutes() {
+            await waitForGoogleMaps();
+            if (!requestData) {
+                const storedData = sessionStorage.getItem('authorizationRequest');
+                if (!storedData) return;
+                requestData = JSON.parse(storedData);
+            }
+            routesPickerConfirmed = false;
+            routeAlternatives = [];
+            routes = [];
+            routeAlternativesSnapshot = [];
+            const pickerCards = document.getElementById('routePickerCards');
+            const pickerPanel = document.getElementById('routePickerPanel');
+            const routesListEl = document.getElementById('routesList');
+            if (pickerCards) pickerCards.innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>Finding routes…</p></div>';
+            if (pickerPanel) pickerPanel.hidden = false;
+            if (routesListEl) routesListEl.setAttribute('hidden', '');
+            const titleEl = document.getElementById('routeScreenTitle');
+            if (titleEl) titleEl.textContent = 'Route options';
+            clearPoweredByGoogleAttribution();
+            try {
+                const departureTime = new Date(requestData.departureTime);
+                const depEffective = departureTime instanceof Date && !isNaN(departureTime.getTime()) ? departureTime : new Date();
+                const origin = { lat: requestData.from.lat, lng: requestData.from.lng };
+                const destination = { lat: requestData.to.lat, lng: requestData.to.lng };
+                const fromRoutesApi = await tryLoadRoutesFromGoogleRoutesApi(origin, destination);
+                if (fromRoutesApi?.length) routeAlternatives = fromRoutesApi;
+                else {
+                    const narrowedModes = [google.maps.TransitMode.BUS, google.maps.TransitMode.TRAIN, google.maps.TransitMode.SUBWAY];
+                    const variants = [
+                        { modes: narrowedModes, routingPreference: google.maps.TransitRoutePreference.FEWER_TRANSFERS },
+                        { modes: narrowedModes, routingPreference: google.maps.TransitRoutePreference.LESS_WALKING },
+                        { routingPreference: google.maps.TransitRoutePreference.FEWER_TRANSFERS },
+                        { routingPreference: google.maps.TransitRoutePreference.LESS_WALKING }
+                    ];
+                    const requests = variants.map((v) => ({ origin, destination, travelMode: google.maps.TravelMode.TRANSIT, transitOptions: { departureTime: depEffective, ...v } }));
+                    const resultsRaw = await Promise.all(requests.map((r) => directionsRoutePromise(r)));
+                    routeAlternatives = dedupeDirectionResponses(resultsRaw.filter(Boolean));
+                }
+                setPoweredByGoogleAttribution();
+                routeAlternativesSnapshot = routeAlternatives.length > 1 ? routeAlternatives.slice() : [];
+                if (!routeAlternatives.length) return showError('No public transport routes found for this journey. Please try different locations or times.');
+                if (routeAlternatives.length === 1) return confirmRoutePickerSelection(0);
+                renderRoutePickerCards(routeAlternatives);
+            } catch (error) {
+                console.error('Error loading routes:', error);
+                showError('An error occurred while loading routes. Please try again.');
+            }
+        }
+        function formatTime(date) {
+            if (!date) return '';
+            const hours = date.getHours();
+            const minutes = date.getMinutes();
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            return `${hours % 12 || 12}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+        }
+        /** Two-line clock for timeline gutter: \"11:00\" / \"pm\" (matches picker-friendly reading). */
+        function formatTimelineClockHtml(date) {
+            if (!(date instanceof Date) || isNaN(date.getTime())) {
+                return '<span class="timeline-clock-line">—</span>';
+            }
+            const h24 = date.getHours();
+            const minutes = date.getMinutes();
+            const period = (h24 >= 12 ? 'pm' : 'am');
+            const hour12 = h24 % 12 || 12;
+            const line1 = `${hour12}:${minutes.toString().padStart(2, '0')}`;
+            return `<span class="timeline-clock-line">${escapeHtml(line1)}</span><span class="timeline-clock-ampm">${escapeHtml(period)}</span>`;
+        }
+
+        /** Same semantics as route cards (first-boarding − walk to board): aligns detailed timeline Start with listed windows. */
+        function getEffectiveTripStartMs(directionResponse, departureFallbackIso) {
+            const fb = new Date(departureFallbackIso || Date.now());
+            const fbMs = fb.getTime();
+            const rd = directionResponse?.routes?.[0];
+            if (!rd?.legs) return fbMs;
+            let walkSecBeforeFirstTransit = 0;
+            let firstTransitDepUnix = null;
+            outer: for (const leg of rd.legs) {
+                const leaves = flattenLeafSteps(leg.steps || []);
+                for (const step of leaves) {
+                    if (stripStepIsWalking(step)) {
+                        walkSecBeforeFirstTransit += typeof step.duration?.value === 'number' ? step.duration.value : 0;
+                    } else if (stripStepIsTransit(step) && step.transit?.departure_time?.value) {
+                        firstTransitDepUnix = step.transit.departure_time.value;
+                        break outer;
+                    } else if (stripStepIsTransit(step)) {
+                        break outer;
+                    }
+                }
+            }
+            if (firstTransitDepUnix == null) return fbMs;
+            return firstTransitDepUnix * 1000 - walkSecBeforeFirstTransit * 1000;
+        }
+        function getTimelineIcon(step) {
+            if (step.travel_mode === 'WALKING') return '<span class="material-symbols-outlined" style="font-size:20px;color:#4285F4;">directions_walk</span>';
+            if (step.travel_mode === 'TRANSIT' && step.transit) {
+                const transitType = step.transit.line?.vehicle?.type;
+                if (transitType === 'BUS') return '<span class="material-symbols-outlined" style="font-size:20px;color:#9C27B0;">directions_bus</span>';
+                if (transitType === 'TRAIN') return '<span class="material-symbols-outlined" style="font-size:20px;color:#0ea5e9;">train</span>';
+                if (transitType === 'SUBWAY') return '<span class="material-symbols-outlined" style="font-size:20px;color:#34A853;">subway</span>';
+            }
+            return '<span class="material-symbols-outlined" style="font-size:20px;">arrow_forward</span>';
+        }
+        function formatWaitTime(minutes) {
+            if (minutes < 60) return `${minutes} min`;
+            const hours = Math.floor(minutes / 60);
+            const mins = minutes % 60;
+            return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
+        }
+
+        /** Last-resort parser for Directions duration text ("About 22 mins", "24 mins", "1 hour 5 mins"). */
+        function approxSecondsFromDurationText(text) {
+            if (!text || typeof text !== 'string') return 0;
+            const t = text.toLowerCase().replace(/\babout\b/gi, '').replace(/\s+/g, ' ').trim();
+            let sec = 0;
+            const hours = t.match(/(\d+)\s*h(?:ours?)?\b/);
+            if (hours) sec += parseInt(hours[1], 10) * 3600;
+            const mins = t.match(/(\d+)\s*(?:min|mins|minute|minutes)\b/);
+            if (mins) sec += parseInt(mins[1], 10) * 60;
+            const secs = t.match(/(\d+)\s*(?:sec|secs|second|seconds)\b/);
+            if (secs) sec += parseInt(secs[1], 10);
+            return sec;
+        }
+
+        function transitLegSeconds(step, transit) {
+            const v = step.duration?.value;
+            if (typeof v === 'number' && v > 0) return v;
+            if (transit?.departure_time?.value != null && transit?.arrival_time?.value != null) {
+                const d = transit.arrival_time.value - transit.departure_time.value;
+                if (typeof d === 'number' && d > 0) return d;
+            }
+            const fromText = approxSecondsFromDurationText(step.duration?.text || '');
+            return fromText > 0 ? fromText : 0;
+        }
+
+        function displayRoutes() {
+            const routesList = document.getElementById('routesList');
+            if (routes.length === 0) {
+                routesList.innerHTML = '<div class="error-message">No routes found.</div>';
+                return;
+            }
+            routesList.innerHTML = '';
+            routes.forEach((route, routeIndex) => {
+                const routeCard = document.createElement('div');
+                routeCard.className = 'route-card';
+                routeCard.onclick = (e) => { if (!e.target.closest('.timeline-content')) selectRoute(routeIndex); };
+                const leg = route.routes[0].legs[0];
+                let timelineHtml = '<div class="route-timeline">';
+                let segmentIndex = 0;
+                const startMs = getEffectiveTripStartMs(route, requestData.departureTime);
+                let currentTime = new Date(startMs);
+                timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTimelineClockHtml(currentTime)}</div><div class="timeline-content"><div class="timeline-header"><span class="material-symbols-outlined" style="font-size:20px;color:#fff;">place</span><div class="timeline-title">Start</div></div><div class="timeline-location">${requestData.from.address}</div></div></div>`;
+                route.routes[0].legs.forEach((lg) => {
+                    const legSteps = lg.steps || [];
+                    for (let stepIndex = 0; stepIndex < legSteps.length; stepIndex++) {
+                        const step = legSteps[stepIndex];
+                        const segmentId = `route-${routeIndex}-segment-${segmentIndex}`;
+                        if (step.travel_mode === 'WALKING') {
+                            let mergedWalkSec = step.duration?.value || 0;
+                            let mergedWalkDistanceMeters = step.distance?.value || 0;
+                            let consumedWalkSegments = 1;
+                            while (stepIndex + 1 < legSteps.length && legSteps[stepIndex + 1]?.travel_mode === 'WALKING') {
+                                const nextWalk = legSteps[stepIndex + 1];
+                                mergedWalkSec += nextWalk.duration?.value || 0;
+                                mergedWalkDistanceMeters += nextWalk.distance?.value || 0;
+                                consumedWalkSegments++;
+                                stepIndex++;
+                            }
+                            const arrivalTime = new Date(currentTime.getTime() + (mergedWalkSec * 1000));
+                            const walkMinutes = Math.max(1, Math.round(mergedWalkSec / 60));
+                            const walkDistanceText = mergedWalkDistanceMeters > 0 ? (mergedWalkDistanceMeters >= 1000 ? `${(mergedWalkDistanceMeters / 1000).toFixed(1)} km` : `${Math.round(mergedWalkDistanceMeters)} m`) : null;
+                            timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTimelineClockHtml(arrivalTime)}</div><div class="timeline-content" id="${segmentId}" style="cursor:default;opacity:0.8;pointer-events:none;"><div class="timeline-header"><div class="timeline-icon">${getTimelineIcon(step)}</div><div class="timeline-title">Walk</div></div><div class="timeline-duration">About ${walkMinutes} min${walkDistanceText ? ' · ' + walkDistanceText : ''}</div></div></div>`;
+                            currentTime = arrivalTime;
+                            segmentIndex += consumedWalkSegments;
+                        } else if (step.travel_mode === 'TRANSIT' && step.transit) {
+                            const transit = step.transit;
+                            const transitType = transit.line?.vehicle?.type;
+                            const transitName = transitType === 'BUS' ? (transit.line.short_name ? `Bus ${transit.line.short_name}` : 'Bus') : (transit.departure_stop?.name || transit.line.name || 'Transit');
+                            if (transit.departure_time?.value) {
+                                const departureTime = new Date(transit.departure_time.value * 1000);
+                                const waitTimeMinutes = Math.max(0, Math.floor((departureTime.getTime() - currentTime.getTime()) / 60000));
+                                if (waitTimeMinutes > 0 && waitTimeMinutes < 1440) {
+                                    const waitSegmentId = `route-${routeIndex}-wait-${segmentIndex}`;
+                                    const isWaitTransitCost = transitCostSegments.has(waitSegmentId);
+                                    const isWaitTaxiRequest = taxiRequestSegments.has(waitSegmentId);
+                                    const waitCostValue = transitCostSegments.get(waitSegmentId) || '';
+                                    const waitContentClass = isWaitTaxiRequest ? 'taxi-request' : (isWaitTransitCost ? 'transit-cost' : '');
+                                    timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTimelineClockHtml(departureTime)}</div><div class="timeline-content ${waitContentClass}" id="${waitSegmentId}" onclick="handleSegmentClick('${waitSegmentId}', event)"><div class="timeline-header"><span class="material-symbols-outlined" style="font-size:20px;color:#F59E0B;">schedule</span><div class="timeline-title">Wait</div></div><div class="timeline-duration">${formatWaitTime(waitTimeMinutes)}</div>${transit.departure_stop ? `<div class="timeline-location">${transit.departure_stop.name}</div>` : ''}${(isWaitTransitCost || isWaitTaxiRequest) ? `<div class="segment-cost-label">${isWaitTaxiRequest ? 'Taxi cost' : 'Transit cost'}</div><div class="segment-cost-input-wrap"><span class="cost-input-prefix" aria-hidden="true">£</span><input type="number" step="0.01" min="0" placeholder="0.00" value="${waitCostValue}" class="cost-input" onchange="updateSegmentCost('${waitSegmentId}', this.value)" onclick="event.stopPropagation();"></div>` : ''}</div></div>`;
+                                }
+                                currentTime = departureTime;
+                            }
+                            const onboardSec = transitLegSeconds(step, transit);
+                            const boardingMs =
+                                transit.departure_time?.value != null ? transit.departure_time.value * 1000 : currentTime.getTime();
+                            let arrivalMs;
+                            if (transit.arrival_time?.value != null) {
+                                arrivalMs = transit.arrival_time.value * 1000;
+                            } else if (onboardSec > 0) {
+                                arrivalMs = boardingMs + onboardSec * 1000;
+                            } else {
+                                arrivalMs = currentTime.getTime();
+                            }
+                            const arrivalTime = new Date(arrivalMs);
+                            const transitSegmentId = `route-${routeIndex}-segment-${segmentIndex}`;
+                            const isTransitCostSegment = transitCostSegments.has(transitSegmentId);
+                            const isTaxiRequestSegment = taxiRequestSegments.has(transitSegmentId);
+                            const transitCostValue = transitCostSegments.get(transitSegmentId) || '';
+                            const transitContentClass = isTaxiRequestSegment ? 'taxi-request' : (isTransitCostSegment ? 'transit-cost' : '');
+                            timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTimelineClockHtml(arrivalTime)}</div><div class="timeline-content ${transitContentClass}" id="${transitSegmentId}" onclick="handleSegmentClick('${transitSegmentId}', event)"><div class="timeline-header"><div class="timeline-icon">${getTimelineIcon(step)}</div><div class="timeline-title">${transitName}</div></div><div class="timeline-duration">${step.duration.text}${transit.num_stops ? ' (' + transit.num_stops + ' stops)' : ''}</div>${transit.departure_stop ? `<div class="timeline-location">${transit.departure_stop.name}</div>` : ''}${transit.arrival_stop ? `<div class="timeline-location">→ ${transit.arrival_stop.name}</div>` : ''}${(isTransitCostSegment || isTaxiRequestSegment) ? `<div class="segment-cost-label">${isTaxiRequestSegment ? 'Taxi cost' : 'Transit cost'}</div><div class="segment-cost-input-wrap"><span class="cost-input-prefix" aria-hidden="true">£</span><input type="number" step="0.01" min="0" placeholder="0.00" value="${transitCostValue}" class="cost-input" onchange="updateSegmentCost('${transitSegmentId}', this.value)" onclick="event.stopPropagation();"></div>` : ''}</div></div>`;
+                            currentTime = arrivalTime;
+                            segmentIndex++;
+                        }
+                    }
+                });
+                timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTimelineClockHtml(currentTime)}</div><div class="timeline-content"><div class="timeline-header"><span class="material-symbols-outlined" style="font-size:20px;color:#fff;">place</span><div class="timeline-title">Arrive</div></div><div class="timeline-location">${requestData.to.address}</div></div></div></div>`;
+                routeCard.innerHTML = `<div class="route-header"><div class="route-title">Route ${routeIndex + 1}</div><div class="route-duration">${leg.duration.text}</div></div><div>${timelineHtml}</div>`;
+                routesList.appendChild(routeCard);
+            });
+        }
+        function handleSegmentClick(segmentId, event) {
+            event.stopPropagation();
+            const hasTransitCost = transitCostSegments.has(segmentId);
+            const hasTaxiRequest = taxiRequestSegments.has(segmentId);
+            if (clickTimers.has(segmentId)) {
+                clearTimeout(clickTimers.get(segmentId));
+                clickTimers.delete(segmentId);
+                if (hasTaxiRequest) {
+                    taxiRequestSegments.delete(segmentId);
+                    transitCostSegments.delete(segmentId);
+                } else {
+                    const existingCost = transitCostSegments.get(segmentId) || '';
+                    taxiRequestSegments.add(segmentId);
+                    if (existingCost) transitCostSegments.set(segmentId, existingCost);
+                }
+            } else if (hasTransitCost && !hasTaxiRequest) {
+                const existingCost = transitCostSegments.get(segmentId) || '';
+                taxiRequestSegments.add(segmentId);
+                if (existingCost) transitCostSegments.set(segmentId, existingCost);
+            } else if (hasTaxiRequest) {
+                taxiRequestSegments.delete(segmentId);
+                transitCostSegments.delete(segmentId);
+            } else {
+                const timer = setTimeout(() => {
+                    transitCostSegments.set(segmentId, '');
+                    taxiRequestSegments.delete(segmentId);
+                    clickTimers.delete(segmentId);
+                    updateRequestButton();
+                    displayRoutes();
+                    if (selectedRouteIndex !== null) renderRoute(routes[selectedRouteIndex]);
+                }, 300);
+                clickTimers.set(segmentId, timer);
+            }
+            updateRequestButton();
+            displayRoutes();
+            if (selectedRouteIndex !== null) renderRoute(routes[selectedRouteIndex]);
+        }
+        function updateSegmentCost(segmentId, value) {
+            if (transitCostSegments.has(segmentId) || taxiRequestSegments.has(segmentId)) transitCostSegments.set(segmentId, value);
+        }
+        function updateRequestButton() {
+            const requestButton = document.getElementById('requestButton');
+            if (!requestButton) return;
+            if (transitCostSegments.size > 0 || taxiRequestSegments.size > 0) requestButton.classList.add('visible');
+            else requestButton.classList.remove('visible');
+        }
+        function triggerMapResizeSoon() {
+            if (typeof google === 'undefined' || !google.maps) return;
+            const run = () => {
+                try {
+                    if (map) google.maps.event.trigger(map, 'resize');
+                    if (mapProposed) google.maps.event.trigger(mapProposed, 'resize');
+                } catch (_e) {}
+            };
+            run();
+            if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(run);
+            setTimeout(run, 250);
+        }
+
+        function mountMainMapInto(slotEl) {
+            const node = document.getElementById('map');
+            if (node && slotEl && node.parentElement !== slotEl) slotEl.appendChild(node);
+            triggerMapResizeSoon();
+        }
+
+        function restoreMainMapToDefaultMount() {
+            const m = document.getElementById('mapDefaultMount');
+            const node = document.getElementById('map');
+            if (m && node && node.parentElement !== m) m.appendChild(node);
+            triggerMapResizeSoon();
+        }
+
+        function clearProposedRoute() {
+            proposedRoutePolylines.forEach((p) => p.setMap(null));
+            proposedTaxiPolylines.forEach((p) => p.setMap(null));
+            proposedRouteMarkers.forEach((mk) => mk.setMap(null));
+            proposedRoutePolylines = [];
+            proposedTaxiPolylines = [];
+            proposedRouteMarkers = [];
+        }
+
+        function resetMapCostPanelDomState() {
+            mapCostActiveMode = 'off';
+            ['mapCostTransitOnly', 'mapCostWithTaxi', 'mapCarryoverBlock'].forEach((id) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.classList.add('hidden');
+            });
+            const nextBtn = document.getElementById('mapCostNextBtn');
+            if (nextBtn) nextBtn.classList.remove('hidden');
+            const tc = document.getElementById('transitCostSummaryUnderProposed');
+            if (tc) {
+                tc.classList.add('hidden');
+                tc.innerHTML = '';
+            }
+            const host = document.getElementById('taxiLegRowsHost');
+            if (host) host.innerHTML = '';
+            const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
+            if (mapContainer) mapContainer.classList.remove('auth-cost-mode');
+            restoreMainMapToDefaultMount();
+            clearProposedRoute();
+        }
+
+        /** Walk / transit leaf index used by map renderers and timeline segment ids. */
+        function resolveStepForSegmentId(segmentId) {
+            const m = String(segmentId).match(/^route-(\d+)-segment-(\d+)$/);
+            if (!m) return null;
+            const ri = parseInt(m[1], 10);
+            const wantIdx = parseInt(m[2], 10);
+            const route = routes[ri];
+            if (!route?.routes?.[0]?.legs) return null;
+            let idx = 0;
+            for (const leg of route.routes[0].legs) {
+                for (const step of leg.steps || []) {
+                    if (step.travel_mode !== 'WALKING' && step.travel_mode !== 'TRANSIT') continue;
+                    if (idx === wantIdx) return step;
+                    idx++;
+                }
+            }
+            return null;
+        }
+
+        function describeSegmentForUi(segmentId) {
+            if (!segmentId) return '';
+            if (String(segmentId).includes('-wait-')) {
+                const mw = String(segmentId).match(/^route-(\d+)-wait-(\d+)$/);
+                if (mw) {
+                    const mockSeg = `route-${parseInt(mw[1], 10)}-segment-${parseInt(mw[2], 10)}`;
+                    const st = resolveStepForSegmentId(mockSeg);
+                    if (st?.travel_mode === 'TRANSIT' && st.transit?.departure_stop?.name) {
+                        return `Wait · ${st.transit.departure_stop.name}`;
+                    }
+                }
+                return 'Wait before transit';
+            }
+            const step = resolveStepForSegmentId(segmentId);
+            if (step?.travel_mode === 'TRANSIT' && step.transit) {
+                const t = step.transit;
+                const line = t.line?.short_name || t.line?.name || 'Transit';
+                const from = t.departure_stop?.name || '';
+                const to = t.arrival_stop?.name || '';
+                let s = line;
+                if (from) s += ` · ${from}`;
+                if (to) s += ` → ${to}`;
+                return s;
+            }
+            if (step?.travel_mode === 'WALKING') return 'Walk';
+            const rs = routeSegments.find((r) => r.id === segmentId);
+            if (rs?.step?.travel_mode === 'TRANSIT' && rs.step.transit) {
+                const t = rs.step.transit;
+                const line = t.line?.short_name || t.line?.name || 'Transit';
+                const from = t.departure_stop?.name || '';
+                const to = t.arrival_stop?.name || '';
+                let s = line;
+                if (from) s += ` · ${from}`;
+                if (to) s += ` → ${to}`;
+                return s;
+            }
+            if (rs?.step?.travel_mode === 'WALKING') return 'Walk';
+            return String(segmentId);
+        }
+
+        function renderRedPolylineForSegmentStep(targetMap, step, bounds) {
+            let path = [];
+            if (step.polyline?.points) {
+                try {
+                    path = google.maps.geometry.encoding.decodePath(step.polyline.points);
+                } catch (_e) {}
+            }
+            if (!path.length && step.start_location && step.end_location) path = [step.start_location, step.end_location];
+            if (!path.length) return;
+            const polyline = new google.maps.Polyline({
+                path,
+                geodesic: true,
+                strokeColor: '#EF4444',
+                strokeOpacity: 1,
+                strokeWeight: 6,
+                map: targetMap,
+                zIndex: 3,
+            });
+            if (targetMap === mapProposed) proposedRoutePolylines.push(polyline);
+            else routePolylines.push(polyline);
+            path.forEach((pt) => bounds.extend(pt));
+        }
+
+        function drawStraightTaxiLeg(targetMap, start, end, bounds) {
+            if (!start || !end) return;
+            const polyline = new google.maps.Polyline({
+                path: [start, end],
+                geodesic: false,
+                strokeColor: '#EF4444',
+                strokeOpacity: 1,
+                strokeWeight: 8,
+                map: targetMap,
+                zIndex: 4,
+            });
+            if (targetMap === mapProposed) proposedTaxiPolylines.push(polyline);
+            else taxiPolylines.push(polyline);
+            bounds.extend(start);
+            bounds.extend(end);
+        }
+
+        /**
+         * Full journey on one map: default colours for normal legs; straight red for taxi (when drawTaxiChords);
+         * curvy red for paid transit legs only when highlightTransitCostCurvesInRed (transit-only cost step).
+         */
+        function paintAuthorizationRouteWithHighlights(targetMap, route, bucket, opts) {
+            const useProposed = bucket === 'proposed';
+            const drawTaxiChords = opts.drawTaxiChords !== false;
+            const highlightTransitCostCurvesInRed = opts.highlightTransitCostCurvesInRed !== false;
+            const bounds = new google.maps.LatLngBounds();
+            const hasMeaningfulTransitCost = (segmentId) => {
+                const v = transitCostSegments.get(segmentId);
+                if (v == null) return false;
+                const s = String(v).trim();
+                if (s === '') return false;
+                const n = parseFloat(s.replace(/,/g, ''));
+                if (!Number.isNaN(n) && n <= 0) return false;
+                return true;
+            };
+            if (!route?.routes?.[0]?.legs || !targetMap) return bounds;
+            route.routes[0].legs.forEach((leg) => {
+                bounds.extend(leg.start_location);
+                bounds.extend(leg.end_location);
+                const startMarker = new google.maps.Marker({
+                    position: leg.start_location,
+                    map: targetMap,
+                    label: 'A',
+                    icon: { url: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png' },
+                });
+                if (useProposed) proposedRouteMarkers.push(startMarker);
+                else routeMarkers.push(startMarker);
+
+                let tempSegmentIndex = 0;
+                const stepsWithStatus = [];
+                leg.steps.forEach((step) => {
+                    if (step.travel_mode === 'WALKING' || step.travel_mode === 'TRANSIT') {
+                        const segmentId = `route-${selectedRouteIndex}-segment-${tempSegmentIndex}`;
+                        const isTaxi = drawTaxiChords && taxiRequestSegments.has(segmentId);
+                        stepsWithStatus.push({ step, segmentId, isTaxi });
+                        tempSegmentIndex++;
+                    }
+                });
+                for (let i = 0; i < stepsWithStatus.length; i++) {
+                    const { step, segmentId, isTaxi } = stepsWithStatus[i];
+                    if (isTaxi) {
+                        drawStraightTaxiLeg(targetMap, step.start_location, step.end_location, bounds);
+                        continue;
+                    }
+                    const cost = hasMeaningfulTransitCost(segmentId);
+                    if (highlightTransitCostCurvesInRed && step.travel_mode === 'TRANSIT' && cost) {
+                        renderRedPolylineForSegmentStep(targetMap, step, bounds);
+                        continue;
+                    }
+                    let path = [];
+                    if (step.polyline?.points) {
+                        try {
+                            path = google.maps.geometry.encoding.decodePath(step.polyline.points);
+                        } catch (_e) {}
+                    }
+                    if (!path.length && step.start_location && step.end_location) path = [step.start_location, step.end_location];
+                    if (path.length) {
+                        const style = getColorForTravelMode(step.travel_mode, step.transit?.line?.vehicle?.type);
+                        const polylineOptions = {
+                            path,
+                            geodesic: true,
+                            strokeColor: style.color,
+                            strokeOpacity: 0.85,
+                            strokeWeight: 5,
+                            map: targetMap,
+                            zIndex: 2,
+                        };
+                        if (step.travel_mode === 'WALKING') {
+                            polylineOptions.icons = [
+                                {
+                                    icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, strokeWeight: 5, scale: 1 },
+                                    offset: '0%',
+                                    repeat: '20px',
+                                },
+                            ];
+                        }
+                        const polyline = new google.maps.Polyline(polylineOptions);
+                        if (useProposed) proposedRoutePolylines.push(polyline);
+                        else routePolylines.push(polyline);
+                        path.forEach((point) => bounds.extend(point));
+                    }
+                }
+                const endMarker = new google.maps.Marker({
+                    position: leg.end_location,
+                    map: targetMap,
+                    label: 'B',
+                    icon: { url: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png' },
+                });
+                if (useProposed) proposedRouteMarkers.push(endMarker);
+                else routeMarkers.push(endMarker);
+            });
+            return bounds;
+        }
+
+        function renderTransitCostHighlightsOnPrimaryMap(route) {
+            clearRoute();
+            if (!route?.routes?.[0]?.legs || !map) return;
+            const bounds = paintAuthorizationRouteWithHighlights(map, route, 'primary', {
+                drawTaxiChords: false,
+                highlightTransitCostCurvesInRed: true,
+            });
+            if (!bounds.isEmpty()) map.fitBounds(bounds);
+        }
+
+        function ensureMapProposed() {
+            const el = document.getElementById('mapProposed');
+            if (!el || !requestData) return null;
+            if (!mapProposed) {
+                const center = map?.getCenter?.() || { lat: requestData.from.lat, lng: requestData.from.lng };
+                mapProposed = new google.maps.Map(el, {
+                    zoom: map?.getZoom?.() ?? 11,
+                    center,
+                    mapTypeId: google.maps.MapTypeId.ROADMAP,
+                });
+            }
+            triggerMapResizeSoon();
+            return mapProposed;
+        }
+
+        function renderProposedOverlaysOnSecondMap(route) {
+            clearProposedRoute();
+            if (!mapProposed || !route?.routes?.[0]?.legs) return;
+            const bounds = paintAuthorizationRouteWithHighlights(mapProposed, route, 'proposed', { drawTaxiChords: true });
+            if (!bounds.isEmpty()) mapProposed.fitBounds(bounds);
+            else if (map?.getCenter) mapProposed.setCenter(map.getCenter());
+        }
+
+        function populateTransitOnlyStageList() {
+            const el = document.getElementById('transitOnlyStageList');
+            if (!el) return;
+            const lines = [];
+            transitCostSegments.forEach((cost, segmentId) => {
+                if (taxiRequestSegments.has(segmentId)) return;
+                if (cost == null || String(cost).trim() === '') return;
+                lines.push({ segmentId, cost: String(cost).trim() });
+            });
+            if (!lines.length) {
+                el.innerHTML = '<div class="text-gray-500 text-xs">No transit costs entered.</div>';
+                return;
+            }
+            el.innerHTML = lines
+                .map(
+                    (l) =>
+                        `<div class="flex justify-between gap-2 border-b border-[#283039] py-1"><span>${escapeHtml(describeSegmentForUi(l.segmentId))}</span><span class="font-semibold text-red-300">£${escapeHtml(l.cost)}</span></div>`,
+                )
+                .join('');
+        }
+
+        function populateTaxiCostSummaryUnderProposed() {
+            const el = document.getElementById('transitCostSummaryUnderProposed');
+            if (!el) return;
+            const parts = [];
+            transitCostSegments.forEach((cost, segmentId) => {
+                if (taxiRequestSegments.has(segmentId)) return;
+                if (cost == null || String(cost).trim() === '') return;
+                parts.push(
+                    `<div class="flex justify-between gap-2"><span>${escapeHtml(describeSegmentForUi(segmentId))}</span><span>£${escapeHtml(String(cost).trim())}</span></div>`,
+                );
+            });
+            if (!parts.length) {
+                el.classList.add('hidden');
+                el.innerHTML = '';
+                return;
+            }
+            el.innerHTML = `<div class="text-xs text-gray-400 mb-1">Transit cost on legs you are not replacing with a taxi</div>${parts.join('')}`;
+            el.classList.remove('hidden');
+        }
+
+        function buildTaxiLegRows() {
+            const host = document.getElementById('taxiLegRowsHost');
+            if (!host) return;
+            host.innerHTML = '';
+            const ids = Array.from(taxiRequestSegments).sort();
+            ids.forEach((segmentId) => {
+                const pref = transitCostSegments.get(segmentId) || '';
+                const row = document.createElement('div');
+                row.className = 'rounded-lg border border-[#374151] p-2 space-y-1 bg-[#111418]';
+                row.innerHTML = `
+                    <div class="text-xs text-gray-400">${escapeHtml(describeSegmentForUi(segmentId))}</div>
+                    <label class="text-xs text-gray-400 block">Taxi cost</label>
+                    <div class="segment-cost-input-wrap max-w-full"><span class="cost-input-prefix" aria-hidden="true">£</span><input type="number" step="0.01" min="0" placeholder="0.00" class="input-field taxi-cost-row flex-1 min-w-0" data-segment="${escapeHtml(segmentId)}" value="${escapeHtml(String(pref))}"></div>
+                    <label class="text-xs text-gray-400 block">Expected arrival if taking taxi</label>
+                    <input type="time" class="input-field taxi-time-row" data-segment="${escapeHtml(segmentId)}">
+                `;
+                host.appendChild(row);
+            });
+        }
+
+        async function handleNext() {
+            carryoverChoice = null;
+            await initializeMap();
+            const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
+            const routesList = document.getElementById('routesList');
+            const mapCostPanel = document.getElementById('mapCostPanel');
+            if (selectedRouteIndex === null || !routes[selectedRouteIndex]) return;
+            if (mapContainer && routesList) {
+                routesList.style.display = 'none';
+                mapContainer.classList.add('fullscreen');
+                mapContainer.classList.add('auth-cost-mode');
+            }
+            if (mapCostPanel) mapCostPanel.classList.remove('hidden');
+
+            const hasTaxi = taxiRequestSegments.size > 0;
+            mapCostActiveMode = hasTaxi ? 'with_taxi' : 'transit_only';
+            const transitOnlyEl = document.getElementById('mapCostTransitOnly');
+            const withTaxiEl = document.getElementById('mapCostWithTaxi');
+            const nextBtn = document.getElementById('mapCostNextBtn');
+            const carry = document.getElementById('mapCarryoverBlock');
+            if (carry) carry.classList.add('hidden');
+            if (nextBtn) nextBtn.classList.remove('hidden');
+
+            if (mapCostActiveMode === 'transit_only') {
+                if (withTaxiEl) withTaxiEl.classList.add('hidden');
+                if (transitOnlyEl) transitOnlyEl.classList.remove('hidden');
+                mountMainMapInto(document.getElementById('mapTransitOnlySlot'));
+                populateTransitOnlyStageList();
+                renderTransitCostHighlightsOnPrimaryMap(routes[selectedRouteIndex]);
+            } else {
+                if (transitOnlyEl) transitOnlyEl.classList.add('hidden');
+                if (withTaxiEl) withTaxiEl.classList.remove('hidden');
+                mountMainMapInto(document.getElementById('mapOriginalSlot'));
+                const pt = document.getElementById('publicTransportCostInput');
+                const oa = document.getElementById('originalArrivalInput');
+                if (pt) pt.value = '';
+                if (oa) oa.value = '';
+                clearRoute();
+                const origBounds = paintAuthorizationRouteWithHighlights(map, routes[selectedRouteIndex], 'primary', {
+                    drawTaxiChords: false,
+                    /* Original map = real PT geometry in operator colours; red stays on proposed (taxi) only. */
+                    highlightTransitCostCurvesInRed: false,
+                });
+                if (!origBounds.isEmpty()) map.fitBounds(origBounds);
+                populateTaxiCostSummaryUnderProposed();
+                buildTaxiLegRows();
+                ensureMapProposed();
+                renderProposedOverlaysOnSecondMap(routes[selectedRouteIndex]);
+            }
+            triggerMapResizeSoon();
+        }
+
+        async function showAuthorizationSubmitConfirmation() {
+            const fn = window.uiDialogs?.showConfirmation || window.showConfirmation;
+            const payload = {
+                title: 'Send authorization request?',
+                message:
+                    'Your office will receive this journey, map highlights, and the costs and times you entered.',
+                confirmText: 'Send request',
+                cancelText: 'Cancel',
+                tone: 'info',
+            };
+            if (typeof fn === 'function') {
+                return !!(await fn(payload));
+            }
+            return confirm(payload.message);
+        }
+
+        async function showAppAlert(title, message, tone = 'info') {
+            const fn = window.uiDialogs?.showAlert || window.showAlertDialog;
+            if (typeof fn === 'function') {
+                await fn({ title, message, tone });
+            } else {
+                alert(message || title);
+            }
+        }
+
+        async function mapCostPrimaryNext() {
+            if (mapCostActiveMode === 'transit_only') {
+                await submitAuthorizationFromMapFlow();
+                return;
+            }
+            if (mapCostActiveMode === 'with_taxi') {
+                const carry = document.getElementById('mapCarryoverBlock');
+                const nextBtn = document.getElementById('mapCostNextBtn');
+                if (carry && carry.classList.contains('hidden')) {
+                    carry.classList.remove('hidden');
+                    if (nextBtn) nextBtn.classList.add('hidden');
+                }
+            }
+        }
+
+        async function submitAuthorizationFromMapFlow() {
+            carryoverChoice = null;
+            const ok = await showAuthorizationSubmitConfirmation();
+            if (!ok) return;
+            await confirmAuthorizationRequest();
+        }
+
+        async function completeMapFlowWithCarryover(choice) {
+            const ok = await showAuthorizationSubmitConfirmation();
+            if (!ok) return;
+            carryoverChoice = choice;
+            await confirmAuthorizationRequest();
+        }
+
+        function backFromMapPanel() {
+            const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
+            const routesList = document.getElementById('routesList');
+            const mapCostPanel = document.getElementById('mapCostPanel');
+            resetMapCostPanelDomState();
+            if (mapContainer) mapContainer.classList.remove('fullscreen');
+            if (routesList) routesList.style.display = '';
+            if (mapCostPanel) mapCostPanel.classList.add('hidden');
+            triggerMapResizeSoon();
+            if (selectedRouteIndex !== null && routes[selectedRouteIndex]) renderRoute(routes[selectedRouteIndex]);
+        }
+
+        function setCarryoverChoice(choice) {
+            carryoverChoice = choice;
+        }
+
+        function buildCurrentRouteSegmentsSummary() {
+            if (selectedRouteIndex === null || !routes[selectedRouteIndex]?.routes?.[0]?.legs) return [];
+            const out = [];
+            let segmentIndex = 0;
+            routes[selectedRouteIndex].routes[0].legs.forEach((leg) => {
+                const steps = leg.steps || [];
+                for (let i = 0; i < steps.length; i++) {
+                    const step = steps[i];
+                    if (step.travel_mode !== 'WALKING' && step.travel_mode !== 'TRANSIT') continue;
+                    const segmentId = `route-${selectedRouteIndex}-segment-${segmentIndex}`;
+                    const base = {
+                        segmentId,
+                        travelMode: step.travel_mode,
+                        durationText: step.duration?.text || '',
+                        distanceText: step.distance?.text || '',
+                        isTaxiReplacement: taxiRequestSegments.has(segmentId),
+                        enteredCost: transitCostSegments.get(segmentId) || '',
+                    };
+                    if (step.travel_mode === 'TRANSIT') {
+                        base.label = step.transit?.line?.short_name || step.transit?.line?.name || 'Transit';
+                        base.from = step.transit?.departure_stop?.name || '';
+                        base.to = step.transit?.arrival_stop?.name || '';
+                    } else {
+                        // Collapse adjacent walk segments so review cards stay readable.
+                        let mergedDurationSec = step.duration?.value || 0;
+                        let mergedDistanceMeters = step.distance?.value || 0;
+                        while (i + 1 < steps.length && steps[i + 1]?.travel_mode === 'WALKING') {
+                            const nextWalk = steps[i + 1];
+                            mergedDurationSec += nextWalk.duration?.value || 0;
+                            mergedDistanceMeters += nextWalk.distance?.value || 0;
+                            i++;
+                            segmentIndex++;
+                        }
+                        base.label = 'Walk';
+                        const walkMinutes = Math.max(1, Math.round(mergedDurationSec / 60));
+                        base.durationText = `About ${walkMinutes} min`;
+                        if (mergedDistanceMeters > 0) {
+                            base.distanceText = mergedDistanceMeters >= 1000
+                                ? `${(mergedDistanceMeters / 1000).toFixed(1)} km`
+                                : `${Math.round(mergedDistanceMeters)} m`;
+                        }
+                    }
+                    out.push(base);
+                    segmentIndex++;
+                }
+            });
+            return out;
+        }
+
+        function getRouteWindowSummary() {
+            const route = selectedRouteIndex !== null ? routes[selectedRouteIndex] : null;
+            if (!route?.routes?.[0]) return { originalArrival: '', duration: '' };
+            const leg0 = route.routes[0].legs?.[0];
+            return {
+                originalArrival: leg0?.arrival_time?.text || '',
+                duration: leg0?.duration?.text || '',
+            };
+        }
+
+        function toLatLngLiteral(point) {
+            if (!point || typeof point !== 'object') return null;
+            const rawLat = point.lat ?? point.latitude;
+            const rawLng = point.lng ?? point.lon ?? point.longitude;
+            const lat = typeof rawLat === 'function' ? rawLat() : rawLat;
+            const lng = typeof rawLng === 'function' ? rawLng() : rawLng;
+            const numLat = Number(lat);
+            const numLng = Number(lng);
+            if (!Number.isFinite(numLat) || !Number.isFinite(numLng)) return null;
+            return { lat: numLat, lng: numLng };
+        }
+
+        function buildCurrentRouteVisualization() {
+            if (selectedRouteIndex === null || !routes[selectedRouteIndex]?.routes?.[0]?.legs) return null;
+            const out = [];
+            let segmentIndex = 0;
+            routes[selectedRouteIndex].routes[0].legs.forEach((leg) => {
+                (leg.steps || []).forEach((step) => {
+                    if (step.travel_mode !== 'WALKING' && step.travel_mode !== 'TRANSIT') return;
+                    const segmentId = `route-${selectedRouteIndex}-segment-${segmentIndex}`;
+                    out.push({
+                        segmentId,
+                        travelMode: step.travel_mode,
+                        transitVehicleType: step.travel_mode === 'TRANSIT'
+                            ? (step.transit?.line?.vehicle?.type || null)
+                            : null,
+                        isTaxiReplacement: taxiRequestSegments.has(segmentId),
+                        polyline: step.polyline?.points || '',
+                        startLocation: toLatLngLiteral(step.start_location),
+                        endLocation: toLatLngLiteral(step.end_location),
+                    });
+                    segmentIndex++;
+                });
+            });
+            return {
+                selectedRouteIndex,
+                segments: out,
+            };
+        }
+
+        function applyTaxiRowInputsToSegments(segments) {
+            document.querySelectorAll('input.taxi-cost-row').forEach((input) => {
+                const sid = input.getAttribute('data-segment');
+                const seg = segments.find((s) => s.segmentId === sid);
+                if (seg && input.value != null) seg.enteredCost = input.value;
+            });
+            document.querySelectorAll('input.taxi-time-row').forEach((input) => {
+                const sid = input.getAttribute('data-segment');
+                const seg = segments.find((s) => s.segmentId === sid);
+                if (seg) seg.proposedTaxiArrivalTime = input.value || '';
+            });
+        }
+
+        function appendWaitIntervalCostSegments(segments) {
+            const have = new Set(segments.map((s) => s.segmentId));
+            transitCostSegments.forEach((cost, id) => {
+                if (!String(id).includes('-wait-')) return;
+                if (taxiRequestSegments.has(id)) return;
+                if (cost == null || String(cost).trim() === '') return;
+                if (have.has(id)) return;
+                have.add(id);
+                segments.push({
+                    segmentId: id,
+                    travelMode: 'WAIT',
+                    label: 'Wait',
+                    durationText: '',
+                    distanceText: '',
+                    isTaxiReplacement: false,
+                    enteredCost: String(cost).trim(),
+                });
+            });
+        }
+
+        function buildAuthorizationPayloadForSubmit() {
+            if (selectedRouteIndex === null || !routes[selectedRouteIndex]) return null;
+            const routeMeta = getRouteWindowSummary();
+            const segments = buildCurrentRouteSegmentsSummary();
+            appendWaitIntervalCostSegments(segments);
+            applyTaxiRowInputsToSegments(segments);
+            const pt = document.getElementById('publicTransportCostInput')?.value?.trim() || '';
+            const origArrival = document.getElementById('originalArrivalInput')?.value?.trim() || '';
+            const taxiCostInputs = Array.from(document.querySelectorAll('input.taxi-cost-row'))
+                .map((el) => el.value.trim())
+                .filter(Boolean);
+            const taxiTimes = Array.from(document.querySelectorAll('input.taxi-time-row'))
+                .map((el) => el.value.trim())
+                .filter(Boolean);
+            const taxiJoined = taxiCostInputs.length ? taxiCostInputs.join(' / ') : '';
+            const proposedArrivalJoined = taxiTimes.join('; ');
+            let publicTransportCost = pt;
+            let taxiCost = taxiJoined;
+            let totalTransportCost = '';
+            if (mapCostActiveMode === 'transit_only') {
+                const transitOnlyCosts = [];
+                transitCostSegments.forEach((v, id) => {
+                    if (taxiRequestSegments.has(id)) return;
+                    if (v != null && String(v).trim() !== '') transitOnlyCosts.push(String(v).trim());
+                });
+                publicTransportCost = transitOnlyCosts.join(' + ');
+                taxiCost = '';
+                totalTransportCost = publicTransportCost;
+            } else if (mapCostActiveMode === 'with_taxi') {
+                const ptNum = parseFloat(pt);
+                const taxiSum = taxiCostInputs.reduce((s, v) => s + (parseFloat(v) || 0), 0);
+                const hasAny = (Number.isFinite(ptNum) && ptNum > 0) || taxiSum > 0;
+                totalTransportCost = hasAny ? String((Number.isFinite(ptNum) ? ptNum : 0) + taxiSum) : '';
+            } else {
+                publicTransportCost = document.getElementById('publicTransportCostInput')?.value || '';
+                taxiCost = document.getElementById('taxiCostInput')?.value || '';
+                totalTransportCost = document.getElementById('totalCostInput')?.value || '';
+            }
+            const carry = mapCostActiveMode === 'with_taxi' ? carryoverChoice : null;
+            return {
+                publicTransportCost,
+                taxiCost,
+                totalTransportCost,
+                originalArrival: mapCostActiveMode === 'with_taxi' ? origArrival : routeMeta.originalArrival || '',
+                proposedArrival: mapCostActiveMode === 'with_taxi' ? proposedArrivalJoined : '',
+                carryoverChoice: carry,
+                segments,
+                routeDuration: routeMeta.duration || '',
+                routeVisualization: buildCurrentRouteVisualization(),
+            };
+        }
+
+        async function confirmAuthorizationRequest() {
+            if (selectedRouteIndex === null || !routes[selectedRouteIndex]) return;
+            currentReviewPayload = buildAuthorizationPayloadForSubmit();
+            if (!currentReviewPayload) return;
+            driverContext = null;
+            let ctx = await getDriverContext({ forceRefresh: true });
+            if (!ctx?.officeId && typeof window.sotoSession?.bootstrap === 'function') {
+                try {
+                    await window.sotoSession.bootstrap(['driver']);
+                    driverContext = null;
+                    ctx = await getDriverContext({ forceRefresh: true });
+                } catch (e) {
+                    console.warn('[Authorization] Re-bootstrap before submit failed.', e);
+                }
+            }
+            if (!ctx?.uid) {
+                await showAppAlert('Sign in required', 'Could not identify driver session. Please sign in again.', 'warning');
+                return;
+            }
+            if (!ctx.officeId) {
+                await showAppAlert(
+                    'Office not linked',
+                    'Still no office linked to this login. Sign out, open the Driver Portal and sign in again (that refreshes your security token), then retry. If it continues, the office team must set officeId on your user in Firestore or ensure bootstrapSession sets the officeId claim for drivers.',
+                    'warning',
+                );
+                return;
+            }
+            try {
+                await addDoc(collection(window.db, 'authorizationRequests'), {
+                    requestType: 'authorization_request',
+                    status: 'pending',
+                    driverId: ctx.uid,
+                    driverName: ctx.name || 'Driver',
+                    driverEmail: ctx.email || null,
+                    officeId: ctx.officeId || null,
+                    createdAt: serverTimestamp(),
+                    from: requestData?.from || null,
+                    to: requestData?.to || null,
+                    departureTime: requestData?.departureTime || null,
+                    selectedRouteIndex,
+                    routeDuration: currentReviewPayload.routeDuration || '',
+                    summaryFields: {
+                        publicTransportCost: currentReviewPayload.publicTransportCost || '',
+                        taxiCost: currentReviewPayload.taxiCost || '',
+                        totalTransportCost: currentReviewPayload.totalTransportCost || '',
+                        originalArrival: currentReviewPayload.originalArrival || '',
+                        proposedArrival: currentReviewPayload.proposedArrival || '',
+                        carryoverChoice:
+                            currentReviewPayload.carryoverChoice == null || currentReviewPayload.carryoverChoice === ''
+                                ? null
+                                : String(currentReviewPayload.carryoverChoice),
+                    },
+                    segments: currentReviewPayload.segments || [],
+                    routeVisualization: currentReviewPayload.routeVisualization || null,
+                });
+                await showAppAlert('Request sent', 'Your authorization request was submitted successfully.', 'success');
+                closeAuthorizationRoutesLayer();
+                await loadAuthorizationRequests();
+            } catch (e) {
+                console.error('[Authorization] Failed to submit request', e);
+                await showAppAlert('Submit failed', 'Failed to submit authorization request. Please try again.', 'danger');
+            }
+        }
+        function getColorForTravelMode(travelMode, transitType) {
+            if (travelMode === 'WALKING') return { color: '#4285F4' };
+            if (travelMode === 'TRANSIT') {
+                if (transitType === 'BUS') return { color: '#9C27B0' };
+                /* Sky blue — not #EF4444 / #EA4335 so “red” stays reserved for taxi / cost legs only */
+                if (transitType === 'TRAIN') return { color: '#0ea5e9' };
+                if (transitType === 'SUBWAY') return { color: '#34A853' };
+                return { color: '#FBBC04' };
+            }
+            return { color: '#3b82f6' };
+        }
+        function clearRoute() {
+            routePolylines.forEach((polyline) => polyline.setMap(null));
+            routeMarkers.forEach((marker) => marker.setMap(null));
+            taxiPolylines.forEach((polyline) => polyline.setMap(null));
+            segmentPolylines.forEach((item) => item.polyline?.setMap?.(null));
+            routePolylines = [];
+            routeMarkers = [];
+            taxiPolylines = [];
+            segmentPolylines = [];
+            routeSegments = [];
+        }
+        function renderRoute(route) {
+            clearRoute();
+            const bounds = new google.maps.LatLngBounds();
+            const routeData = route.routes[0];
+            let totalSegments = 0;
+            routeData.legs.forEach((leg) => leg.steps.forEach((step) => { if (step.travel_mode === 'WALKING' || step.travel_mode === 'TRANSIT') totalSegments++; }));
+            let allTaxiRequests = true;
+            for (let i = 0; i < totalSegments; i++) {
+                if (!taxiRequestSegments.has(`route-${selectedRouteIndex}-segment-${i}`)) { allTaxiRequests = false; break; }
+            }
+            routeData.legs.forEach((leg) => {
+                bounds.extend(leg.start_location);
+                bounds.extend(leg.end_location);
+                const startMarker = new google.maps.Marker({ position: leg.start_location, map, label: 'A', icon: { url: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png' } });
+                routeMarkers.push(startMarker);
+                if (allTaxiRequests && totalSegments > 0) {
+                    const taxiPolyline = new google.maps.Polyline({ path: [leg.start_location, leg.end_location], geodesic: false, strokeColor: '#EF4444', strokeOpacity: 1, strokeWeight: 8, map });
+                    taxiPolylines.push(taxiPolyline);
+                } else {
+                    let tempSegmentIndex = 0;
+                    const stepsWithStatus = [];
+                    leg.steps.forEach((step) => {
+                        if (step.travel_mode === 'WALKING' || step.travel_mode === 'TRANSIT') {
+                            const segmentId = `route-${selectedRouteIndex}-segment-${tempSegmentIndex}`;
+                            stepsWithStatus.push({ step, segmentId, isTaxiRequest: taxiRequestSegments.has(segmentId) });
+                            tempSegmentIndex++;
+                        }
+                    });
+                    for (let i = 0; i < stepsWithStatus.length; i++) {
+                        const current = stepsWithStatus[i];
+                        if (current.step.travel_mode === 'TRANSIT' && current.isTaxiRequest) {
+                            const taxiPolyline = new google.maps.Polyline({ path: [current.step.start_location, current.step.end_location], geodesic: false, strokeColor: '#EF4444', strokeOpacity: 1, strokeWeight: 8, map });
+                            taxiPolylines.push(taxiPolyline);
+                            continue;
+                        }
+                        let path = [];
+                        if (current.step.polyline?.points) {
+                            try { path = google.maps.geometry.encoding.decodePath(current.step.polyline.points); } catch (_e) {}
+                        }
+                        if (!path.length && current.step.start_location && current.step.end_location) path = [current.step.start_location, current.step.end_location];
+                        if (path.length) {
+                            const style = getColorForTravelMode(current.step.travel_mode, current.step.transit?.line?.vehicle?.type);
+                            const polylineOptions = { path, geodesic: true, strokeColor: style.color, strokeOpacity: 0.8, strokeWeight: 5, map };
+                            if (current.step.travel_mode === 'WALKING') {
+                                polylineOptions.icons = [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, strokeWeight: 5, scale: 1 }, offset: '0%', repeat: '20px' }];
+                            }
+                            const polyline = new google.maps.Polyline(polylineOptions);
+                            routePolylines.push(polyline);
+                            segmentPolylines.push({ polyline, segmentId: current.segmentId });
+                            path.forEach((point) => bounds.extend(point));
+                        }
+                    }
+                }
+                const endMarker = new google.maps.Marker({ position: leg.end_location, map, label: 'B', icon: { url: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png' } });
+                routeMarkers.push(endMarker);
+            });
+            if (!bounds.isEmpty()) map.fitBounds(bounds);
+        }
+        function selectRoute(index) {
+            selectedRouteIndex = index;
+            selectedSegments.clear();
+            transitCostSegments.clear();
+            taxiRequestSegments.clear();
+            clickTimers.forEach((timer) => clearTimeout(timer));
+            clickTimers.clear();
+            updateRequestButton();
+            document.querySelectorAll('.route-card').forEach((card, i) => card.classList.toggle('selected', i === index));
+            routeSegments = [];
+            let segmentIndex = 0;
+            routes[index].routes[0].legs.forEach((leg) => {
+                leg.steps.forEach((step) => {
+                    if (step.travel_mode === 'WALKING' || step.travel_mode === 'TRANSIT') {
+                        routeSegments.push({ id: `route-${index}-segment-${segmentIndex}`, routeIndex: index, step, startLocation: step.start_location, endLocation: step.end_location, polylineIndex: segmentIndex });
+                        segmentIndex++;
+                    }
+                });
+            });
+            if (routes[index]) renderRoute(routes[index]);
+            displayRoutes();
+        }
+        function showError(message) {
+            clearPoweredByGoogleAttribution();
+            const pickerCards = document.getElementById('routePickerCards');
+            const pickerPanel = document.getElementById('routePickerPanel');
+            const routesList = document.getElementById('routesList');
+            if (pickerCards) pickerCards.innerHTML = `<div class="error-message">${escapeHtml(message)}</div>`;
+            if (pickerPanel) pickerPanel.hidden = false;
+            if (routesList) routesList.setAttribute('hidden', '');
+            const titleEl = document.getElementById('routeScreenTitle');
+            if (titleEl) titleEl.textContent = 'Route options';
+        }
+        window.handleSegmentClick = handleSegmentClick;
+        window.updateSegmentCost = updateSegmentCost;
+        window.handleNext = handleNext;
+        window.mapCostPrimaryNext = mapCostPrimaryNext;
+        window.submitAuthorizationFromMapFlow = submitAuthorizationFromMapFlow;
+        window.completeMapFlowWithCarryover = completeMapFlowWithCarryover;
+        window.authorizationRoutesNavigateBack = authorizationRoutesNavigateBack;
+        
+        /** Valid in-flight journey in session (e.g. after Proceed) — used to resume route picker without re-entering addresses. */
+        function tryGetPendingAuthorizationRequest() {
+            try {
+                const raw = sessionStorage.getItem('authorizationRequest');
+                if (!raw) return null;
+                const d = JSON.parse(raw);
+                const latOk = (v) => (typeof v === 'number' && Number.isFinite(v)) || (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)));
+                if (!d || !latOk(d.from?.lat) || !latOk(d.from?.lng) || !latOk(d.to?.lat) || !latOk(d.to?.lng)) return null;
+                return d;
+            } catch (_e) {
+                return null;
+            }
+        }
+
+        // Open authorization modal
+        function openAuthorizationModal() {
+            if (tryGetPendingAuthorizationRequest()) {
+                openAuthorizationRoutesLayer();
+                return;
+            }
+            // Lock background page scroll while modal is open (especially iOS).
+            modalScrollY = window.scrollY || window.pageYOffset || 0;
+            document.body.classList.add('modal-open');
+            document.body.style.position = 'fixed';
+            document.body.style.top = `-${modalScrollY}px`;
+            document.body.style.left = '0';
+            document.body.style.right = '0';
+            document.body.style.width = '100%';
+            
+            document.getElementById('authorizationModal').classList.remove('hidden');
+            // Initialize autocomplete when modal opens
+            setTimeout(() => {
+                if (window.google && window.google.maps && window.google.maps.places) {
+                    googleMapsLoaded = true;
+                    initializeAutocomplete();
+                }
+                validateForm();
+            }, 100);
+        }
+        
+        /** Close modal (X button or leaving form) and clear the request form. */
+        function closeAuthorizationModal() {
+            hideAuthorizationModal();
+            sessionStorage.removeItem('authorizationRequest');
+            resetAuthorizationRequestFormFields();
+        }
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (window.google && window.google.maps && window.google.maps.places) {
+                googleMapsLoaded = true;
+            }
+
+            await waitForFirestoreReady();
+
+            try {
+                if (typeof window.sotoSession?.bootstrap === 'function') {
+                    await window.sotoSession.bootstrap(['driver']);
+                }
+            } catch (e) {
+                console.warn('[Authorization] Session bootstrap failed or was skipped.', e);
+            }
+
+            if (typeof unsubscribeAuthStateChange === 'function') {
+                unsubscribeAuthStateChange();
+                unsubscribeAuthStateChange = null;
+            }
+            if (window.auth && typeof window.auth.onAuthStateChanged === 'function') {
+                unsubscribeAuthStateChange = window.auth.onAuthStateChanged(async (user) => {
+                    driverContext = null;
+                    if (user) {
+                        setAuthorizationListShellLoading();
+                        try {
+                            if (!(await waitForFirestoreReady())) return;
+                            await loadAuthorizationRequests();
+                            void startAuthorizationRequestsListener();
+                        } catch (e) {
+                            console.error('[Authorization] Initial list load failed', e);
+                        } finally {
+                            setAuthorizationListShellReady();
+                        }
+                    } else {
+                        if (typeof unsubscribeAuthorizationRequests === 'function') {
+                            unsubscribeAuthorizationRequests();
+                            unsubscribeAuthorizationRequests = null;
+                        }
+                        renderAuthorizationRequests([]);
+                        setAuthorizationListShellReady();
+                    }
+                });
+            }
+        });
+
+        window.addEventListener('beforeunload', () => {
+            if (typeof unsubscribeAuthorizationRequests === 'function') {
+                unsubscribeAuthorizationRequests();
+                unsubscribeAuthorizationRequests = null;
+            }
+            if (typeof unsubscribeAuthStateChange === 'function') {
+                unsubscribeAuthStateChange();
+                unsubscribeAuthStateChange = null;
+            }
+        });
+    </script>
+</body>
+</html>
+

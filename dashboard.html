@@ -1,0 +1,1878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <link crossorigin="" href="https://fonts.gstatic.com/" rel="preconnect"/>
+    <link as="style" href="https://fonts.googleapis.com/css2?display=swap&amp;family=Inter%3Awght%40400%3B500%3B700%3B900&amp;family=Noto+Sans%3Awght%40400%3B500%3B700%3B900" onload="this.rel='stylesheet'" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/logos/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/logos/favicon-16.png">
+    <link rel="icon" type="image/svg+xml" href="/assets/logos/favicon.svg">
+    <link rel="icon" type="image/x-icon" href="/assets/logos/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/logos/apple-touch-icon.png">
+    <link rel="stylesheet" href="/assets/css/responsive-nav.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+    <title>Dashboard - SOTO Routes</title>
+    <script src="/assets/js/tailwind-runtime.js"></script>
+    <script src="/js/mobile-nav.js"></script>
+    <script src="/js/session-manager.js"></script>
+    <script src="/js/availability-model.js"></script>
+    <script src="/js/settings.js"></script>
+    <script src="../js/ui-dialogs.js"></script>
+    <script>
+        tailwind.config = { plugins: { forms: {}, containerQueries: {} } };
+    </script>
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, getDocs, getDoc, doc, query, where, onSnapshot, updateDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getAuth, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+        const firebaseConfig = {
+            apiKey: "AIzaSyCkXzYFC1jQcA6yw6qY1Ao3luEYU4Rd0yA",
+            authDomain: "soto-routes.firebaseapp.com",
+            projectId: "soto-routes",
+            storageBucket: "soto-routes.firebasestorage.app",
+            messagingSenderId: "440989695549",
+            appId: "1:440989695549:web:0bce8b92a46f7f79953454",
+            measurementId: "G-4E3G40QQ9L"
+        };
+        const app = initializeApp(firebaseConfig);
+        window.firestore = getFirestore(app);
+        window.auth = getAuth(app);
+        window.firebase = { functions: getFunctions(app), httpsCallable };
+        window.firebaseGetDoc = getDoc;
+        window.firebaseGetDocs = getDocs;
+        window.firebaseDoc = doc;
+        window.firebaseCollection = collection;
+        window.firebaseQuery = query;
+        window.firebaseWhere = where;
+        window.firebaseOnSnapshot = onSnapshot;
+        window.firebaseUpdateDoc = updateDoc;
+        window.firebaseDeleteDoc = deleteDoc;
+        window.signOut = signOut;
+    </script>
+    <style type="text/tailwindcss">
+        :root { --primary-color: #0d7ff2; --success-color: #22c55e; }
+    </style>
+    <style>
+        .spinner-wrapper { width: 64px; height: 64px; position: relative; }
+        .spinner { width: 64px; height: 64px; border-radius: 50%; position: absolute; top: 0; left: 0; animation: spin 1.7s linear infinite; filter: blur(1px); }
+        .spinner::before { content: ''; position: absolute; inset: 0; border-radius: 50%; background-image: linear-gradient(rgb(186, 66, 255) 35%, rgb(0, 225, 255)); box-shadow: 0px -5px 20px 0px rgb(186, 66, 255), 0px 5px 20px 0px rgb(0, 225, 255); }
+        .spinner1 { background-color: rgb(36, 36, 36); width: 52px; height: 52px; border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        #dashboard-map-inner .leaflet-container { background: #0f1419; }
+        #dashboard-map-leaflet { touch-action: none; }
+        .driver-marker-wrap { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; flex-shrink: 0; }
+        .driver-marker-photos { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; max-width: 156px; }
+        .driver-marker-photos .driver-marker-single { width: 36px; height: 36px; min-width: 36px; min-height: 36px; }
+        .driver-marker-hline { height: 3px; background: #000; min-width: 24px; width: 100%; max-width: 160px; margin-top: 4px; }
+        .driver-marker-vline { width: 0; height: 0; margin-top: -1px; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 10px solid #000; }
+        .driver-marker-vline.red,
+        .driver-marker-vline.green { border-top-color: #000; }
+        .driver-marker-hline.red,
+        .driver-marker-hline.green { background: #000; }
+        .driver-marker-single { width: 36px; height: 36px; min-width: 36px; min-height: 36px; border-radius: 50%; object-fit: cover; border: 2px solid; box-sizing: border-box; flex-shrink: 0; aspect-ratio: 1; }
+        .driver-marker-single.green { border-color: #22c55e; }
+        .driver-marker-single.red { border-color: #ef4444; }
+        .driver-marker-status { font-size: 11px; font-weight: 700; line-height: 1; padding: 2px 6px; border-radius: 10px; flex-shrink: 0; }
+        .driver-marker-status.green { color: #22c55e; background: rgba(34,197,94,0.15); }
+        .driver-marker-status.red { color: #ef4444; background: rgba(239,68,68,0.15); }
+        .driver-div-icon { background: none !important; border: none !important; }
+        .timeline-step { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid #283039; font-size: 13px; }
+        .timeline-step:last-child { border-bottom: none; }
+        .timeline-step:hover { background: rgba(40,48,57,0.5); }
+        .timeline-time { color: #9cabba; font-variant-numeric: tabular-nums; flex-shrink: 0; width: 4.5rem; }
+        .timeline-icon { flex-shrink: 0; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; }
+        .timeline-icon.startday { color: #22c55e; }
+        .timeline-icon.collect { color: #22c55e; }
+        .timeline-icon.deliver, .timeline-icon.carryover { color: #ef4444; }
+        .timeline-icon.ended { color: #6b7280; }
+        .timeline-icon.paused { color: #f97316; }
+        .timeline-icon-wrap { flex-shrink: 0; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; }
+        .timeline-paused-start { border: 2px solid #ef4444; border-radius: 2px; color: #e5e7eb; }
+        .timeline-paused-start .material-symbols-outlined { font-size: 14px; }
+        .timeline-paused-end { border: 2px solid #22c55e; border-radius: 6px; color: #f97316; }
+        .timeline-paused-end .material-symbols-outlined { font-size: 14px; }
+        .timeline-name { color: #e5e7eb; flex: 1; min-width: 0; }
+        .timeline-step-desc { color: #9cabba; font-size: 11px; margin-top: 1px; }
+        .live-support-card {
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+        }
+    </style>
+</head>
+<body class="bg-[#111418] text-white" style="font-family: Inter, 'Noto Sans', sans-serif;">
+    <div class="relative flex h-auto min-h-screen w-full flex-col dark group/design-root overflow-x-hidden">
+        <div class="flex h-full grow flex-col">
+            <header class="relative flex items-center justify-between whitespace-nowrap border-b border-solid border-b-[#283039] px-6 py-3" data-soto-nav>
+                <div class="flex items-center gap-4">
+                    <div class="size-8 text-[var(--primary-color)]">
+                        <svg fill="none" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M13.8261 17.4264C16.7203 18.1174 20.2244 18.5217 24 18.5217C27.7756 18.5217 31.2797 18.1174 34.1739 17.4264C36.9144 16.7722 39.9967 15.2331 41.3563 14.1648L24.8486 40.6391C24.4571 41.267 23.5429 41.267 23.1514 40.6391L6.64374 14.1648C8.00331 15.2331 11.0856 16.7722 13.8261 17.4264Z" fill="currentColor"></path>
+                            <path clip-rule="evenodd" d="M39.998 12.236C39.9944 12.2537 39.9875 12.2845 39.9748 12.3294C39.9436 12.4399 39.8949 12.5741 39.8346 12.7175C39.8168 12.7597 39.7989 12.8007 39.7813 12.8398C38.5103 13.7113 35.9788 14.9393 33.7095 15.4811C30.9875 16.131 27.6413 16.5217 24 16.5217C20.3587 16.5217 17.0125 16.131 14.2905 15.4811C12.0012 14.9346 9.44505 13.6897 8.18538 12.8168C8.17384 12.7925 8.16216 12.767 8.15052 12.7408C8.09919 12.6249 8.05721 12.5114 8.02977 12.411C8.00356 12.3152 8.00039 12.2667 8.00004 12.2612C8.00004 12.261 8 12.2607 8.00004 12.2612C8.00004 12.2359 8.0104 11.9233 8.68485 11.3686C9.34546 10.8254 10.4222 10.2469 11.9291 9.72276C14.9242 8.68098 19.1919 8 24 8C28.8081 8 33.0758 8.68098 36.0709 9.72276C37.5778 10.2469 38.6545 10.8254 39.3151 11.3686C39.9006 11.8501 39.9857 12.1489 39.998 12.236ZM4.95178 15.2312L21.4543 41.6973C22.6288 43.5809 25.3712 43.5809 26.5457 41.6973L43.0534 15.223C43.0709 15.1948 43.0878 15.1662 43.104 15.1371L41.3563 14.1648C43.104 15.1371 43.1038 15.1374 43.104 15.1371L43.1051 15.135L43.1065 15.1325L43.1101 15.1261L43.1199 15.1082C43.1276 15.094 43.1377 15.0754 43.1497 15.0527C43.1738 15.0075 43.2062 14.9455 43.244 14.8701C43.319 14.7208 43.4196 14.511 43.5217 14.2683C43.6901 13.8679 44 13.0689 44 12.2609C44 10.5573 43.003 9.22254 41.8558 8.2791C40.6947 7.32427 39.1354 6.55361 37.385 5.94477C33.8654 4.72057 29.133 4 24 4C18.867 4 14.1346 4.72057 10.615 5.94478C8.86463 6.55361 7.30529 7.32428 6.14419 8.27911C4.99695 9.22255 3.99999 10.5573 3.99999 12.2609C3.99999 13.1275 4.29264 13.9078 4.49321 14.3607C4.60375 14.6102 4.71348 14.8196 4.79687 14.9689C4.83898 15.0444 4.87547 15.1065 4.9035 15.1529C4.91754 15.1762 4.92954 15.1957 4.93916 15.2111L4.94662 15.223L4.95178 15.2312ZM35.9868 18.996L24 38.22L12.0131 18.996C12.4661 19.1391 12.9179 19.2658 13.3617 19.3718C16.4281 20.1039 20.0901 20.5217 24 20.5217C27.9099 20.5217 31.5719 20.1039 34.6383 19.3718C35.082 19.2658 35.5339 19.1391 35.9868 18.996Z" fill="currentColor" fill-rule="evenodd"></path>
+                        </svg>
+                    </div>
+                    <h2 class="text-xl font-bold">SOTO Routes</h2>
+                </div>
+                <nav class="flex flex-1 justify-center gap-2" data-soto-nav-links>
+                    <a class="bg-[#283039] text-white text-xs font-medium rounded-md px-3 py-2" href="/pages/dashboard.html">Dashboard</a>
+                    <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/optimisation.html">Optimisation</a>
+                    <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/drivers.html">Drivers</a>
+                    <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/availability.html">Availability</a>
+                    <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/expenses.html">Expenses</a>
+                    <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/wait-times.html">Wait Times</a>
+                    <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/messages.html">Messages</a>
+                    <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="#">Authorization</a>
+                </nav>
+                <div class="flex items-center gap-4">
+                    <button type="button" class="mobile-nav-toggle" data-soto-nav-toggle aria-label="Toggle navigation" aria-expanded="false">
+                        <span class="material-symbols-outlined text-xl">menu</span>
+                    </button>
+                    <div class="relative">
+                        <button class="flex items-center justify-center rounded-full h-10 w-10 bg-[#283039] hover:bg-[#3a444e] transition-colors relative" onclick="showNotifications()">
+                            <span class="material-symbols-outlined text-xl">notifications</span>
+                            <span class="notification-badge absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold hidden">0</span>
+                        </button>
+                        <div id="notificationDropdown" class="hidden absolute right-0 mt-2 w-96 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50 max-h-[28rem] overflow-y-auto">
+                            <div class="px-4 py-3 border-b border-[#283039]"><h3 class="text-white font-semibold text-sm">Notifications</h3></div>
+                            <div id="notificationsList" class="max-h-64 overflow-y-auto"></div>
+                        </div>
+                    </div>
+                    <div class="relative">
+                        <button onclick="toggleProfileDropdown()" class="flex items-center justify-center rounded-full size-10 bg-black overflow-hidden hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
+                            <img id="officeLogoImg" src="/assets/logos/favicon.svg" alt="Office Logo" class="w-full h-full object-cover" onerror="this.src='/assets/logos/favicon.svg'">
+                        </button>
+                        <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-48 bg-[#1a1f24] border border-[#283039] rounded-lg shadow-lg z-50 py-2 flex flex-col gap-2">
+                            <button onclick="showSettings()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors rounded-t-lg"><span class="material-symbols-outlined inline-block align-middle text-base mr-2">settings</span>Settings</button>
+                            <button onclick="showChangePassword()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors"><span class="material-symbols-outlined inline-block align-middle text-base mr-2">lock</span>Change Password</button>
+                            <button onclick="viewUsage()" class="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#283039] transition-colors"><span class="material-symbols-outlined inline-block align-middle text-base mr-2">calendar_month</span>View Usage</button>
+                            <button onclick="logout()" class="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-[#283039] transition-colors rounded-b-lg"><span class="material-symbols-outlined inline-block align-middle text-base mr-2">logout</span>Logout</button>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <div id="loading-overlay" class="fixed inset-0 bg-[#0f1419] bg-opacity-95 flex items-center justify-center z-50">
+                <div class="text-center">
+                    <div class="spinner-wrapper mx-auto mb-4"><div class="spinner"></div><div class="spinner1"></div></div>
+                    <p class="text-white text-lg font-semibold">Loading dashboard...</p>
+                </div>
+            </div>
+
+            <main class="flex-1 px-6 py-4">
+                <div class="max-w-7xl mx-auto">
+                    <!-- Today + date -->
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h1 class="text-2xl font-bold tracking-tight mb-1">Today</h1>
+                            <p class="text-[#9cabba] text-sm" id="dashboard-date">—</p>
+                        </div>
+                    </div>
+
+                    <!-- Stats grid -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+                        <!-- 1. Drivers working today -->
+                        <div id="stat-drivers-working-wrap" class="relative bg-[#1a1f24] border border-[#283039] rounded-lg p-4 cursor-pointer hover:bg-[#283039] transition-colors" onclick="toggleDriversWorkingDropdown(event)">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-2xl text-[var(--primary-color)]">groups</span>
+                                <div class="flex-1 min-w-0">
+                                    <div class="text-[#9cabba] text-sm">Drivers working today</div>
+                                    <div class="text-xl font-bold text-white" id="stat-drivers-working">0</div>
+                                </div>
+                                <span class="material-symbols-outlined text-[#9cabba] text-lg">expand_more</span>
+                            </div>
+                            <div id="dropdown-drivers-working" class="hidden absolute left-0 right-0 top-full mt-1 z-[1100] bg-[#1a1f24] border border-[#283039] rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                                <div id="dropdown-drivers-working-list" class="py-2 text-sm"></div>
+                            </div>
+                        </div>
+                        <!-- 2. Active drivers -->
+                        <div id="stat-active-drivers-wrap" class="relative bg-[#1a1f24] border border-[#283039] rounded-lg p-4 cursor-pointer hover:bg-[#283039] transition-colors" onclick="toggleActiveDriversDropdown(event)">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-2xl text-[#9cabba]">location_on</span>
+                                <div class="flex-1 min-w-0">
+                                    <div class="text-[#9cabba] text-sm">Active drivers</div>
+                                    <div class="text-xl font-bold text-[#6b7280]" id="stat-active-drivers">—</div>
+                                </div>
+                                <span class="material-symbols-outlined text-[#9cabba] text-lg">expand_more</span>
+                            </div>
+                            <div id="dropdown-active-drivers" class="hidden absolute left-0 right-0 top-full mt-1 z-[1100] bg-[#1a1f24] border border-[#283039] rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                                <div id="dropdown-active-drivers-list" class="py-2 text-sm"></div>
+                            </div>
+                        </div>
+                        <!-- 3. Pending expenses -->
+                        <a href="/pages/expenses.html?tab=pending" class="bg-[#1a1f24] border border-[#283039] rounded-lg p-4 hover:bg-[#283039] transition-colors">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-2xl text-amber-500">receipt</span>
+                                <div>
+                                    <div class="text-[#9cabba] text-sm">Pending Expenses</div>
+                                    <div class="text-xl font-bold text-white" id="stat-pending-expenses">0</div>
+                                </div>
+                            </div>
+                        </a>
+                        <!-- 4. Validated expenses -->
+                        <a href="/pages/expenses.html?tab=validated" class="bg-[#1a1f24] border border-[#283039] rounded-lg p-4 hover:bg-[#283039] transition-colors">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-2xl text-green-500">check_circle</span>
+                                <div>
+                                    <div class="text-[#9cabba] text-sm">Validated Expenses</div>
+                                    <div class="text-xl font-bold text-white" id="stat-validated-expenses">0</div>
+                                </div>
+                            </div>
+                        </a>
+                        <!-- 5. Wait times -->
+                        <a href="/pages/wait-times.html" class="bg-[#1a1f24] border border-[#283039] rounded-lg p-4 hover:bg-[#283039] transition-colors">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-2xl text-purple-500">schedule</span>
+                                <div>
+                                    <div class="text-[#9cabba] text-sm">Wait Times</div>
+                                    <div class="text-xl font-bold text-white" id="stat-wait-times">0</div>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+
+                    <!-- Driver communications -->
+                    <section class="mb-6">
+                        <div class="bg-[#1a1f24] border border-[#283039] rounded-lg overflow-hidden">
+                            <div class="px-4 py-3 border-b border-[#283039] flex items-center justify-between gap-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-[#9cabba]">support_agent</span>
+                                    <h2 class="text-sm font-semibold text-white">Driver communications</h2>
+                                </div>
+                                <span class="text-xs text-[#9cabba]">Newest to oldest</span>
+                            </div>
+                            <div id="live-support-list" class="p-3 flex gap-3 overflow-x-auto">
+                                <div class="text-sm text-[#9cabba]">No pending driver communications.</div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Map + Timeline -->
+                    <div class="flex gap-4">
+                        <div id="dashboard-map-container" class="flex-1 min-w-0 bg-[#1a1f24] border border-[#283039] rounded-lg overflow-hidden">
+                            <div class="px-4 py-2 border-b border-[#283039] flex items-center justify-between gap-2 flex-wrap">
+                                <div class="flex items-center gap-2 flex-1 min-w-0">
+                                    <span class="material-symbols-outlined text-[#9cabba] shrink-0">map</span>
+                                    <span class="text-sm font-medium text-[#9cabba] shrink-0">Driver locations</span>
+                                    <input type="text" id="dashboard-map-driver-search" placeholder="Filter by name..." class="flex-1 min-w-0 max-w-[180px] ml-2 px-2 py-1.5 text-sm bg-[#111418] border border-[#283039] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#0d7ff2]" autocomplete="off">
+                                </div>
+                                <button type="button" onclick="toggleDashboardMapFullscreen()" class="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-[#283039] transition-colors text-[#9cabba] hover:text-white shrink-0" aria-label="Full screen map">
+                                    <span class="material-symbols-outlined text-xl">fullscreen</span>
+                                </button>
+                            </div>
+                            <div id="dashboard-map-inner" class="relative w-full" style="height: 400px; opacity: 0; transition: opacity 0.3s ease-in;">
+                                <div id="dashboard-map-leaflet" class="absolute inset-0 w-full h-full"></div>
+                                <div id="dashboard-map-placeholder" class="absolute inset-0 flex items-center justify-center bg-[#0f1419] text-[#9cabba] text-sm pointer-events-none">
+                                    <span>Loading map…</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="dashboard-timeline-panel" class="w-80 shrink-0 bg-[#1a1f24] border border-[#283039] rounded-lg overflow-hidden flex flex-col">
+                            <div class="px-4 py-2 border-b border-[#283039] flex items-center gap-2 shrink-0">
+                                <span class="material-symbols-outlined text-[#9cabba]">schedule</span>
+                                <span class="text-sm font-medium text-[#9cabba]">Timeline</span>
+                            </div>
+                            <div id="dashboard-timeline-list" class="flex-1 overflow-y-auto min-h-0" style="height: 368px;">
+                                <div class="px-4 py-6 text-center text-[#9cabba] text-sm">Loading timeline…</div>
+                            </div>
+                        </div>
+                    </div>
+    <!-- Map fullscreen overlay -->
+    <div id="dashboard-map-fullscreen" class="fixed inset-0 z-[9999] bg-black flex flex-col" style="display: none;">
+        <div class="flex items-center justify-between px-4 py-2 border-b border-[#283039] bg-[#1a1f24] shrink-0">
+            <span class="text-sm font-medium text-[#9cabba]">Driver locations — Full screen</span>
+            <button type="button" onclick="toggleDashboardMapFullscreen()" class="flex items-center justify-center w-10 h-10 rounded-lg hover:bg-[#283039] transition-colors text-white" aria-label="Exit full screen">
+                <span class="material-symbols-outlined text-2xl">fullscreen_exit</span>
+            </button>
+        </div>
+        <div id="dashboard-map-fullscreen-leaflet" class="flex-1 relative min-h-0"></div>
+    </div>
+
+    <!-- Driver communications request modal -->
+    <div id="liveSupportModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-[1200] overflow-y-auto">
+        <div class="min-h-full px-4 py-8 flex items-start justify-center">
+            <div class="bg-[#1a1f24] border border-[#283039] rounded-lg w-full max-w-6xl">
+                <div class="px-6 py-4 border-b border-[#283039] flex items-center justify-between gap-4">
+                    <h3 id="liveSupportModalTitle" class="text-lg font-semibold text-white">WaitTime Log Request</h3>
+                    <div class="flex items-center gap-2">
+                        <button type="button" id="liveSupportContactBtn" class="hidden py-2 px-3 rounded-lg border border-orange-400/45 bg-orange-500/15 text-orange-200 hover:bg-orange-500/25 hover:border-orange-300/70 text-sm font-semibold transition-colors">Contact office</button>
+                        <button type="button" id="liveSupportRejectBtn" class="hidden py-2 px-3 rounded-lg border border-red-400/45 bg-red-500/15 text-red-200 hover:bg-red-500/25 hover:border-red-300/70 text-sm font-semibold transition-colors">Reject</button>
+                        <button type="button" id="liveSupportConfirmBtn" class="py-2 px-3 rounded-lg border border-emerald-400/45 bg-emerald-500/15 text-emerald-100 hover:bg-emerald-500/25 hover:border-emerald-300/70 text-sm font-semibold transition-colors">Confirm</button>
+                        <button type="button" id="liveSupportModalClose" class="text-gray-400 hover:text-white transition-colors p-1">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
+                </div>
+                <div id="liveSupportModalBody" class="p-6 space-y-4"></div>
+                <div class="px-6 pb-6 flex justify-end">
+                    <button type="button" id="liveSupportCancelBtn" class="py-2 px-4 bg-[#283039] hover:bg-[#3a444e] rounded-lg text-white font-semibold transition-colors">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <script>
+        let currentSession = null;
+        let liveSupportModalScrollY = 0;
+        let liveSupportOriginalRouteMap = null;
+        let liveSupportRevisedRouteMap = null;
+        const notifyWarning = (m, t) => window.uiDialogs && window.uiDialogs.showAlert({ title: t || 'Heads Up', message: m, tone: 'warning' });
+        const notifyError = (m, t) => window.uiDialogs && window.uiDialogs.showAlert({ title: t || 'Error', message: m, tone: 'danger' });
+
+        function getCurrentOfficeId() { return currentSession?.officeId || null; }
+
+        async function loadOfficeLogo(officeId) {
+            if (!officeId || !document.getElementById('officeLogoImg')) return;
+            try {
+                const officeDocRef = window.firebaseDoc(window.firestore, 'offices', officeId);
+                const officeDoc = await window.firebaseGetDoc(officeDocRef);
+                if (officeDoc.exists() && officeDoc.data().logoUrl) {
+                    const logoImg = document.getElementById('officeLogoImg');
+                    logoImg.src = officeDoc.data().logoUrl;
+                    logoImg.onerror = () => { logoImg.src = '/assets/logos/favicon.svg'; };
+                }
+            } catch (e) { console.warn('[Dashboard] Logo load failed', e); }
+        }
+
+        // Expense counts for dashboard (pending and validated batches)
+        async function loadExpenseCounts(officeId) {
+            try {
+                const q = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'expenseBatches'),
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                const snap = await window.firebaseGetDocs(q);
+                let pending = 0, validated = 0;
+                snap.docs.forEach(doc => {
+                    const s = doc.data().status;
+                    if (s === 'pending') pending++;
+                    else if (s === 'validated') validated++;
+                });
+                return { pending, validated };
+            } catch (e) {
+                console.error('[Dashboard] Expense counts failed', e);
+                return { pending: 0, validated: 0 };
+            }
+        }
+
+        async function loadDriversCount(officeId) {
+            try {
+                const q = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'drivers'),
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                const snap = await window.firebaseGetDocs(q);
+                return snap.docs.length;
+            } catch (e) {
+                console.error('[Dashboard] Drivers count failed', e);
+                return 0;
+            }
+        }
+
+        async function loadDriversWorkingToday(officeId) {
+            const items = await loadDriversWorkingTodayList(officeId);
+            return items.length;
+        }
+
+        async function loadDriversWorkingTodayList(officeId) {
+            const items = [];
+            const seenUids = new Set();
+            try {
+                if (!officeId) {
+                    console.warn('[Dashboard] loadDriversWorkingTodayList called without officeId');
+                    return [];
+                }
+                const Model = window.AvailabilityModel;
+                const q = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'drivers'),
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                const driversSnap = await window.firebaseGetDocs(q);
+                const dateString = getTodayDateString();
+                const calendarRef = window.firebaseDoc(window.firestore, 'calendar', dateString);
+                const calendarDoc = await window.firebaseGetDoc(calendarRef);
+                const driversMap = (calendarDoc.exists() && calendarDoc.data().drivers) ? calendarDoc.data().drivers : {};
+                const driversOffLegacy = calendarDoc.exists() ? (calendarDoc.data().driversOff || []) : [];
+                const dateObj = new Date(dateString + 'T12:00:00');
+                for (const d of driversSnap.docs) {
+                    const data = d.data();
+                    const driverId = d.id || data.uid;
+                    const uid = data.uid || driverId;
+                    let driverForType = { ...data, uid: driverId };
+                    if (!Model || !Model.hasDriverTypeSet(driverForType)) {
+                        try {
+                            const userSnap = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'users', uid));
+                            if (userSnap.exists()) driverForType = { ...driverForType, ...userSnap.data() };
+                        } catch (e) {}
+                        if (!Model || !Model.hasDriverTypeSet(driverForType)) continue;
+                    }
+                    const template = Model.getDriverTemplate(driverForType);
+                    const entry = driversMap[driverId] || driversMap[uid] || null;
+                    let status = Model.getEffectiveStatus(template, entry, dateObj);
+                    if (entry && entry.status) status = entry.status;
+                    else if ((driversOffLegacy.includes(driverId) || driversOffLegacy.includes(uid)) && !entry) status = 'off';
+                    if (status === 'working') {
+                        if (seenUids.has(uid)) continue;
+                        seenUids.add(uid);
+                        let first = (data.firstName || data.name || '').trim();
+                        let last = (data.lastName || '').trim();
+                        let name = [first, last].filter(Boolean).join(' ').trim();
+                        if (!name || name.includes('@')) {
+                            try {
+                                const userSnap = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'users', uid));
+                                if (userSnap.exists()) {
+                                    const u = userSnap.data();
+                                    first = (u.firstName || u.name || '').trim();
+                                    last = (u.lastName || '').trim();
+                                    name = [first, last].filter(Boolean).join(' ').trim();
+                                }
+                            } catch (e) {}
+                        }
+                        items.push({ driverId: uid, name: (name && !name.includes('@')) ? name : 'Driver' });
+                    }
+                }
+            } catch (e) {
+                console.error('[Dashboard] Drivers working today list failed', e);
+            }
+            return items.sort((a, b) => a.name.localeCompare(b.name));
+        }
+
+        async function fetchActiveDriversList(officeId) {
+            const items = [];
+            try {
+                const dateStr = getTodayDateString();
+                const q = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'driverDaySessions'),
+                    window.firebaseWhere('officeId', '==', officeId),
+                    window.firebaseWhere('date', '==', dateStr)
+                );
+                const snap = await window.firebaseGetDocs(q);
+                for (const d of snap.docs) {
+                    const data = d.data();
+                    if (!data.dayStartedAt || data.dayEndedAt) continue;
+                    const displayName = await fetchDriverDisplayName(data.driverId);
+                    const name = displayName || (data.name && !String(data.name).includes('@') ? data.name : 'Driver');
+                    items.push({ driverId: data.driverId, name });
+                }
+            } catch (e) {
+                console.error('[Dashboard] Active drivers list failed', e);
+            }
+            return items.sort((a, b) => a.name.localeCompare(b.name));
+        }
+
+        function toggleDriversWorkingDropdown(e) {
+            e.stopPropagation();
+            const dd = document.getElementById('dropdown-drivers-working');
+            const other = document.getElementById('dropdown-active-drivers');
+            if (other && !other.classList.contains('hidden')) other.classList.add('hidden');
+            if (dd.classList.contains('hidden')) {
+                dd.classList.remove('hidden');
+                const list = document.getElementById('dropdown-drivers-working-list');
+                list.innerHTML = '<div class="px-3 py-2 text-[#9cabba]">Loading...</div>';
+                const officeId = getCurrentOfficeId();
+                loadDriversWorkingTodayList(officeId).then(items => {
+                    // Keep card count in sync with dropdown source of truth.
+                    const stat = document.getElementById('stat-drivers-working');
+                    if (stat) stat.textContent = String(items.length);
+                    if (items.length === 0) {
+                        list.innerHTML = '<div class="px-3 py-2 text-[#9cabba]">No drivers working today</div>';
+                    } else {
+                        list.innerHTML = items.map(it => '<a href="/pages/drivers.html?driver=' + encodeURIComponent(it.driverId) + '" class="block px-3 py-1.5 text-white hover:bg-[#283039]">' + (it.name || 'Driver') + '</a>').join('');
+                    }
+                }).catch(err => {
+                    console.error('[Dashboard] Drivers working dropdown load failed', err);
+                    list.innerHTML = '<div class="px-3 py-2 text-red-400">Failed to load drivers</div>';
+                });
+            } else {
+                dd.classList.add('hidden');
+            }
+        }
+
+        function toggleActiveDriversDropdown(e) {
+            e.stopPropagation();
+            const dd = document.getElementById('dropdown-active-drivers');
+            const other = document.getElementById('dropdown-drivers-working');
+            if (other && !other.classList.contains('hidden')) other.classList.add('hidden');
+            if (dd.classList.contains('hidden')) {
+                dd.classList.remove('hidden');
+                const list = document.getElementById('dropdown-active-drivers-list');
+                list.innerHTML = '<div class="px-3 py-2 text-[#9cabba]">Loading...</div>';
+                fetchActiveDriversList(getCurrentOfficeId()).then(items => {
+                    if (items.length === 0) list.innerHTML = '<div class="px-3 py-2 text-[#9cabba]">No active drivers</div>';
+                    else list.innerHTML = items.map(it => '<a href="/pages/drivers.html?driver=' + encodeURIComponent(it.driverId) + '" class="block px-3 py-1.5 text-white hover:bg-[#283039]">' + (it.name || 'Driver') + '</a>').join('');
+                });
+            } else {
+                dd.classList.add('hidden');
+            }
+        }
+
+        async function loadWaitTimesCount(officeId) {
+            try {
+                const q = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'waitTimes'),
+                    window.firebaseWhere('officeId', '==', officeId),
+                    window.firebaseWhere('processingStatus', '==', 'pending')
+                );
+                const snap = await window.firebaseGetDocs(q);
+                return snap.size;
+            } catch (e) {
+                console.error('[Dashboard] Wait times count failed', e);
+                return 0;
+            }
+        }
+
+        function toMillis(value) {
+            if (!value) return 0;
+            if (typeof value.toDate === 'function') return value.toDate().getTime();
+            if (value instanceof Date) return value.getTime();
+            const parsed = new Date(value).getTime();
+            return Number.isFinite(parsed) ? parsed : 0;
+        }
+
+        function formatSupportRelativeTime(ts) {
+            const ms = toMillis(ts);
+            if (!ms) return 'Unknown time';
+            const diffMin = Math.max(0, Math.floor((Date.now() - ms) / 60000));
+            if (diffMin < 1) return 'Just now';
+            if (diffMin < 60) return `${diffMin}m ago`;
+            const diffHours = Math.floor(diffMin / 60);
+            if (diffHours < 24) return `${diffHours}h ago`;
+            const diffDays = Math.floor(diffHours / 24);
+            return `${diffDays}d ago`;
+        }
+
+        function getSupportUrgencyStyle(createdAt) {
+            const elapsedMs = Math.max(0, Date.now() - toMillis(createdAt));
+            const ratio = Math.min(1, elapsedMs / (10 * 60 * 1000));
+            if (ratio < 0.34) {
+                return 'background-color: rgba(34, 197, 94, 0.2); border-color: rgba(34, 197, 94, 0.6);';
+            }
+            if (ratio < 0.67) {
+                return 'background-color: rgba(249, 115, 22, 0.22); border-color: rgba(249, 115, 22, 0.65);';
+            }
+            return 'background-color: rgba(239, 68, 68, 0.22); border-color: rgba(239, 68, 68, 0.65);';
+        }
+
+        function getSupportTypeLabel(type) {
+            if (type === 'authorization_request') return 'Authorization Request';
+            return 'WaitTime Log Request';
+        }
+
+        function lockLiveSupportBackgroundScroll() {
+            liveSupportModalScrollY = window.scrollY || window.pageYOffset || 0;
+            document.body.style.position = 'fixed';
+            document.body.style.top = `-${liveSupportModalScrollY}px`;
+            document.body.style.left = '0';
+            document.body.style.right = '0';
+            document.body.style.width = '100%';
+            document.body.style.overflow = 'hidden';
+        }
+
+        function unlockLiveSupportBackgroundScroll() {
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.left = '';
+            document.body.style.right = '';
+            document.body.style.width = '';
+            document.body.style.overflow = '';
+            window.scrollTo(0, liveSupportModalScrollY || 0);
+        }
+
+        function normalizeLatLng(location) {
+            if (!location || typeof location !== 'object') return null;
+            const rawLat = location.lat ?? location.latitude;
+            const rawLng = location.lng ?? location.lon ?? location.longitude;
+            const lat = typeof rawLat === 'function' ? rawLat() : rawLat;
+            const lng = typeof rawLng === 'function' ? rawLng() : rawLng;
+            const numLat = Number(lat);
+            const numLng = Number(lng);
+            if (!Number.isFinite(numLat) || !Number.isFinite(numLng)) return null;
+            return { lat: numLat, lng: numLng };
+        }
+
+        function decodeGooglePolyline(encoded) {
+            if (!encoded || typeof encoded !== 'string') return [];
+            const coords = [];
+            let index = 0;
+            let lat = 0;
+            let lng = 0;
+            while (index < encoded.length) {
+                let shift = 0;
+                let result = 0;
+                let byte = null;
+                do {
+                    byte = encoded.charCodeAt(index++) - 63;
+                    result |= (byte & 0x1f) << shift;
+                    shift += 5;
+                } while (byte >= 0x20 && index < encoded.length + 1);
+                const dLat = (result & 1) ? ~(result >> 1) : (result >> 1);
+                lat += dLat;
+                shift = 0;
+                result = 0;
+                do {
+                    byte = encoded.charCodeAt(index++) - 63;
+                    result |= (byte & 0x1f) << shift;
+                    shift += 5;
+                } while (byte >= 0x20 && index < encoded.length + 1);
+                const dLng = (result & 1) ? ~(result >> 1) : (result >> 1);
+                lng += dLng;
+                coords.push([lat / 1e5, lng / 1e5]);
+            }
+            return coords;
+        }
+
+        function clearAuthorizationRouteMaps() {
+            if (liveSupportOriginalRouteMap) {
+                liveSupportOriginalRouteMap.remove();
+                liveSupportOriginalRouteMap = null;
+            }
+            if (liveSupportRevisedRouteMap) {
+                liveSupportRevisedRouteMap.remove();
+                liveSupportRevisedRouteMap = null;
+            }
+        }
+
+        function renderAuthorizationRouteMaps(item) {
+            const originalHost = document.getElementById('authOriginalRouteMap');
+            const revisedHost = document.getElementById('authRevisedRouteMap');
+            if (!originalHost || !revisedHost || typeof L === 'undefined') return;
+            const routeSegments = item.routeVisualization?.segments || [];
+            if (!routeSegments.length) return;
+            clearAuthorizationRouteMaps();
+
+            liveSupportOriginalRouteMap = L.map(originalHost, { zoomControl: false, attributionControl: false });
+            liveSupportRevisedRouteMap = L.map(revisedHost, { zoomControl: false, attributionControl: false });
+            const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+            L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(liveSupportOriginalRouteMap);
+            L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(liveSupportRevisedRouteMap);
+            const startEndIcon = (letter, color) => L.divIcon({
+                className: '',
+                html: `<div style="width:24px;height:24px;border-radius:9999px;background:${color};color:#fff;font-weight:700;font-size:12px;line-height:24px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.45);">${letter}</div>`,
+                iconSize: [24, 24],
+                iconAnchor: [12, 12],
+            });
+
+            const bounds = [];
+            function colorForAuthorizationSegment(segment) {
+                const mode = String(segment.travelMode || '').toUpperCase();
+                if (mode !== 'TRANSIT') {
+                    return { color: '#60a5fa', dashArray: '7 6' };
+                }
+                const vt = String(segment.transitVehicleType || '').toUpperCase();
+                if (vt === 'BUS') {
+                    return { color: '#f97316', dashArray: null };
+                }
+                if (
+                    vt === 'TRAIN' ||
+                    vt === 'HEAVY_RAIL' ||
+                    vt === 'INTERCITY_TRAIN' ||
+                    vt === 'COMMUTER_TRAIN' ||
+                    vt === 'HIGH_SPEED_TRAIN' ||
+                    vt === 'RAIL' ||
+                    vt === 'SUBWAY' ||
+                    vt === 'TRAM' ||
+                    vt === 'LIGHT_RAIL' ||
+                    vt === 'MONORAIL' ||
+                    vt === 'FUNICULAR'
+                ) {
+                    return { color: '#a855f7', dashArray: null };
+                }
+                return { color: '#2563eb', dashArray: null };
+            }
+
+            routeSegments.forEach((segment) => {
+                const start = normalizeLatLng(segment.startLocation);
+                const end = normalizeLatLng(segment.endLocation);
+                const decoded = decodeGooglePolyline(segment.polyline || '');
+                const path = decoded.length
+                    ? decoded
+                    : (start && end ? [[start.lat, start.lng], [end.lat, end.lng]] : []);
+                if (!path.length) return;
+                path.forEach((pt) => bounds.push(pt));
+
+                const lineStyle = colorForAuthorizationSegment(segment);
+                const originalStyle = {
+                    color: lineStyle.color,
+                    weight: 5,
+                    opacity: 0.95,
+                    dashArray: lineStyle.dashArray,
+                };
+                const revisedStyle = segment.isTaxiReplacement
+                    ? { color: '#ef4444', weight: 6, opacity: 0.98, dashArray: null }
+                    : originalStyle;
+
+                L.polyline(path, originalStyle).addTo(liveSupportOriginalRouteMap);
+                const revisedPath = segment.isTaxiReplacement && start && end
+                    ? [[start.lat, start.lng], [end.lat, end.lng]]
+                    : path;
+                L.polyline(revisedPath, revisedStyle).addTo(liveSupportRevisedRouteMap);
+                revisedPath.forEach((pt) => bounds.push(pt));
+            });
+
+            if (bounds.length) {
+                const mapBounds = L.latLngBounds(bounds);
+                liveSupportOriginalRouteMap.fitBounds(mapBounds, { padding: [18, 18] });
+                liveSupportRevisedRouteMap.fitBounds(mapBounds, { padding: [18, 18] });
+                const start = bounds[0];
+                const end = bounds[bounds.length - 1];
+                L.marker(start, { icon: startEndIcon('A', '#16a34a') }).addTo(liveSupportOriginalRouteMap);
+                L.marker(end, { icon: startEndIcon('B', '#dc2626') }).addTo(liveSupportOriginalRouteMap);
+                L.marker(start, { icon: startEndIcon('A', '#16a34a') }).addTo(liveSupportRevisedRouteMap);
+                L.marker(end, { icon: startEndIcon('B', '#dc2626') }).addTo(liveSupportRevisedRouteMap);
+            } else {
+                const fallback = [54.5, -2];
+                liveSupportOriginalRouteMap.setView(fallback, 6);
+                liveSupportRevisedRouteMap.setView(fallback, 6);
+            }
+            setTimeout(() => {
+                liveSupportOriginalRouteMap?.invalidateSize();
+                liveSupportRevisedRouteMap?.invalidateSize();
+            }, 50);
+        }
+
+        function buildAuthorizationStagesHtml(segments) {
+            if (!Array.isArray(segments) || !segments.length) return '<div class="text-xs text-[#9cabba]">No route stage details.</div>';
+            const merged = [];
+            for (let i = 0; i < segments.length; i++) {
+                const current = segments[i];
+                const mode = (current?.travelMode || '').toUpperCase();
+                if (mode === 'WALKING') {
+                    let duration = current.durationText || '';
+                    let distance = current.distanceText || '';
+                    while (i + 1 < segments.length && (segments[i + 1]?.travelMode || '').toUpperCase() === 'WALKING') {
+                        const next = segments[i + 1];
+                        duration = duration || next.durationText || '';
+                        distance = distance || next.distanceText || '';
+                        i++;
+                    }
+                    merged.push({ label: 'Walk', travelMode: 'WALKING', durationText: duration, distanceText: distance, isTaxiReplacement: false, enteredCost: '' });
+                } else {
+                    merged.push(current);
+                }
+            }
+            return merged.map((s) => {
+                const detail = [s.durationText, s.distanceText].filter(Boolean).join(' · ');
+                const lineName = s.label || s.travelMode || 'Stage';
+                return `<div class="text-xs text-white">
+                    <span class="font-semibold">${escapeHtml(lineName)}</span>
+                    ${s.from || s.to ? `<span class="text-[#9cabba]"> ${escapeHtml((s.from ? s.from : '') + (s.to ? ` → ${s.to}` : ''))}</span>` : ''}
+                    ${detail ? `<div class="text-[11px] text-[#9cabba] mt-0.5">${escapeHtml(detail)}</div>` : ''}
+                    ${s.isTaxiReplacement ? '<div class="text-[11px] text-red-300 mt-0.5">Taxi replacement</div>' : ''}
+                    ${s.enteredCost ? `<div class="text-[11px] text-emerald-300 mt-0.5">Entered cost: £${escapeHtml(String(s.enteredCost))}</div>` : ''}
+                </div>`;
+            }).join('');
+        }
+
+        function renderLiveSupportList() {
+            void renderLiveSupportListAsync();
+        }
+
+        async function renderLiveSupportListAsync() {
+            const listEl = document.getElementById('live-support-list');
+            if (!listEl) return;
+            if (!liveSupportRequests.length) {
+                listEl.innerHTML = '<div class="text-sm text-[#9cabba]">No pending driver communications.</div>';
+                return;
+            }
+            const fragments = [];
+            for (let i = 0; i < liveSupportRequests.length; i++) {
+                const item = liveSupportRequests[i];
+                const style = getSupportUrgencyStyle(item.createdAt);
+                const submitted = formatSupportRelativeTime(item.createdAt);
+                const displayName = await resolveLiveSupportDisplayName(item);
+                const typeLabel = getSupportTypeLabel(item.requestType);
+                fragments.push(`
+                    <button type="button" onclick="void openLiveSupportModal('${item.id}')" class="live-support-card min-w-[230px] max-w-[260px] text-left border rounded-lg p-3 hover:brightness-110 transition-all" style="${style}">
+                        <div class="text-sm font-bold text-white truncate">${escapeHtml(displayName)}</div>
+                        <div class="text-xs text-white/90 font-semibold mt-2">${escapeHtml(typeLabel)}</div>
+                        <div class="text-xs text-white/70 mt-2">${escapeHtml('Submitted ' + submitted)}</div>
+                    </button>
+                `);
+            }
+            listEl.innerHTML = fragments.join('');
+        }
+
+        async function openLiveSupportModal(requestId) {
+            const item = liveSupportRequests.find((entry) => entry.id === requestId);
+            if (!item) return;
+            liveSupportSelectedRequest = item;
+            const modal = document.getElementById('liveSupportModal');
+            const body = document.getElementById('liveSupportModalBody');
+            const title = document.getElementById('liveSupportModalTitle');
+            if (!modal || !body || !title) return;
+            const displayName = await resolveLiveSupportDisplayName(item);
+            const typeLabel = getSupportTypeLabel(item.requestType);
+            title.textContent = typeLabel;
+            const rejectBtn = document.getElementById('liveSupportRejectBtn');
+            const confirmBtn = document.getElementById('liveSupportConfirmBtn');
+            const contactBtn = document.getElementById('liveSupportContactBtn');
+            const cancelBtn = document.getElementById('liveSupportCancelBtn');
+            body.innerHTML = `
+                <div class="grid grid-cols-1 gap-3 text-sm">
+                    <div><span class="text-[#9cabba]">Name:</span> <span class="text-white">${escapeHtml(displayName)}</span></div>
+                    <div><span class="text-[#9cabba]">Type of request:</span> <span class="text-white">${escapeHtml(typeLabel)}</span></div>
+                    <div><span class="text-[#9cabba]">Submitted:</span> <span class="text-white">${escapeHtml(formatSupportRelativeTime(item.createdAt))}</span></div>
+                </div>
+            `;
+            if (item.requestType === 'authorization_request') {
+                if (rejectBtn) rejectBtn.classList.remove('hidden');
+                if (contactBtn) contactBtn.classList.remove('hidden');
+                if (confirmBtn) confirmBtn.textContent = 'Confirm';
+                if (cancelBtn) cancelBtn.textContent = 'Close';
+                const hasRouteVisualization = Array.isArray(item.routeVisualization?.segments) && item.routeVisualization.segments.length > 0;
+                const fromAddress = item.from?.address || '—';
+                const toAddress = item.to?.address || '—';
+                body.innerHTML += `
+                    <div class="mt-4 bg-[#111418] border border-[#283039] rounded-lg p-4 space-y-4 text-sm">
+                        <div class="text-center text-sm font-semibold text-white border-b border-[#283039] pb-2">
+                            ${escapeHtml(fromAddress)} <span class="text-[#9cabba]">→</span> ${escapeHtml(toAddress)}
+                        </div>
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <div class="space-y-3">
+                                <div class="text-xs uppercase tracking-wide text-[#9cabba] font-semibold">Original route</div>
+                                <div class="bg-black border border-[#283039] rounded-lg overflow-hidden h-56">
+                                    ${hasRouteVisualization
+                                        ? '<div id="authOriginalRouteMap" class="w-full h-full"></div>'
+                                        : '<div class="h-full flex items-center justify-center text-[#9cabba] text-xs px-4 text-center">Map preview unavailable for this request.</div>'}
+                                </div>
+                                <div class="space-y-1.5">
+                                    <div><span class="text-[#9cabba]">Public transport cost:</span> <span class="text-white">${escapeHtml(item.summaryFields?.publicTransportCost || '—')}</span></div>
+                                    <div><span class="text-[#9cabba]">Original Arrival time:</span> <span class="text-white">${escapeHtml(item.summaryFields?.originalArrival || '—')}</span></div>
+                                </div>
+                            </div>
+                            <div class="space-y-3">
+                                <div class="text-xs uppercase tracking-wide text-[#9cabba] font-semibold">Amended route</div>
+                                <div class="bg-black border border-[#283039] rounded-lg overflow-hidden h-56">
+                                    ${hasRouteVisualization
+                                        ? '<div id="authRevisedRouteMap" class="w-full h-full"></div>'
+                                        : '<div class="h-full flex items-center justify-center text-[#9cabba] text-xs px-4 text-center">Map preview unavailable for this request.</div>'}
+                                </div>
+                                <div class="space-y-1.5">
+                                    <div><span class="text-[#9cabba]">Taxi cost:</span> <span class="text-white">${escapeHtml(item.summaryFields?.taxiCost || '—')}</span></div>
+                                    <div><span class="text-[#9cabba]">Total Transit cost:</span> <span class="text-white">${escapeHtml(item.summaryFields?.totalTransportCost || '—')}</span></div>
+                                    <div><span class="text-[#9cabba]">New arrival time:</span> <span class="text-white">${escapeHtml(item.summaryFields?.proposedArrival || '—')}</span></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div><span class="text-[#9cabba]">Carryover prevented:</span> <span class="text-white">${escapeHtml(item.summaryFields?.carryoverChoice || '—')}</span></div>
+                        <div class="pt-2 border-t border-[#283039] text-xs text-[#9cabba]">Route stages</div>
+                        ${buildAuthorizationStagesHtml(item.segments || [])}
+                    </div>
+                `;
+            } else {
+                clearAuthorizationRouteMaps();
+                if (rejectBtn) rejectBtn.classList.add('hidden');
+                if (contactBtn) contactBtn.classList.add('hidden');
+                if (confirmBtn) confirmBtn.textContent = 'Confirm log';
+                if (cancelBtn) cancelBtn.textContent = 'Close';
+                body.innerHTML += `
+                    <div class="pt-2 border-t border-[#283039] mt-3"></div>
+                    <div><span class="text-[#9cabba]">Customer name:</span> <span class="text-white">${escapeHtml(item.customerName || '—')}</span></div>
+                    <div><span class="text-[#9cabba]">Subject:</span> <span class="text-white">${escapeHtml(item.subject || '—')}</span></div>
+                    <div class="mt-4 bg-[#111418] border border-[#283039] rounded-lg p-4">
+                        <div class="text-xs text-[#9cabba] mb-2">Message</div>
+                        <p class="text-sm text-white whitespace-pre-wrap">${escapeHtml(item.message || '—')}</p>
+                    </div>
+                `;
+            }
+            modal.classList.remove('hidden');
+            lockLiveSupportBackgroundScroll();
+            if (item.requestType === 'authorization_request') {
+                setTimeout(() => renderAuthorizationRouteMaps(item), 30);
+            }
+        }
+
+        function closeLiveSupportModal() {
+            const modal = document.getElementById('liveSupportModal');
+            if (modal) modal.classList.add('hidden');
+            clearAuthorizationRouteMaps();
+            unlockLiveSupportBackgroundScroll();
+            liveSupportSelectedRequest = null;
+        }
+
+        async function confirmLiveSupportRequest() {
+            if (!liveSupportSelectedRequest || !window.firebaseDeleteDoc) return;
+            if (liveSupportSelectedRequest.requestType === 'authorization_request') {
+                await updateAuthorizationRequestStatus('approved');
+                return;
+            }
+            const confirmed = window.showConfirmation
+                ? await window.showConfirmation({
+                    title: 'Confirm Wait Time Log',
+                    message: 'Confirm log and remove this request from Driver communications?',
+                    confirmText: 'Confirm',
+                    cancelText: 'Cancel',
+                    tone: 'warning'
+                })
+                : window.confirm('Confirm log and remove this request from Driver communications?');
+            if (!confirmed) return;
+            try {
+                await window.firebaseDeleteDoc(window.firebaseDoc(window.firestore, 'waitTimeLogRequests', liveSupportSelectedRequest.id));
+                closeLiveSupportModal();
+            } catch (error) {
+                console.error('[Dashboard] Failed to confirm live support request', error);
+                notifyError('Could not confirm request. Please try again.');
+            }
+        }
+
+        async function updateAuthorizationRequestStatus(newStatus) {
+            if (!liveSupportSelectedRequest) return;
+            const confirmed = window.showConfirmation
+                ? await window.showConfirmation({
+                    title: 'Update Authorization Request',
+                    message: `Set this request to ${newStatus.replace('_', ' ')}?`,
+                    confirmText: 'Confirm',
+                    cancelText: 'Cancel',
+                    tone: 'warning'
+                })
+                : window.confirm(`Set this request to ${newStatus}?`);
+            if (!confirmed) return;
+            try {
+                const nowMs = Date.now();
+                const deleteAfterMs = nowMs + (48 * 60 * 60 * 1000);
+                await window.firebaseUpdateDoc(
+                    window.firebaseDoc(window.firestore, 'authorizationRequests', liveSupportSelectedRequest.id),
+                    { status: newStatus, reviewedAt: new Date(nowMs).toISOString(), deleteAtMs: deleteAfterMs }
+                );
+                closeLiveSupportModal();
+            } catch (error) {
+                console.error('[Dashboard] Failed updating authorization request status', error);
+                notifyError('Could not update authorization request. Please try again.');
+            }
+        }
+
+        function startLiveSupportListener() {
+            const officeId = getCurrentOfficeId();
+            if (!officeId || !window.firebaseOnSnapshot) return;
+            if (unsubscribeLiveSupport) unsubscribeLiveSupport();
+            const supportQuery = window.firebaseQuery(
+                window.firebaseCollection(window.firestore, 'waitTimeLogRequests'),
+                window.firebaseWhere('officeId', '==', officeId)
+            );
+            const authQuery = window.firebaseQuery(
+                window.firebaseCollection(window.firestore, 'authorizationRequests'),
+                window.firebaseWhere('officeId', '==', officeId)
+            );
+            let waitItems = [];
+            let authItems = [];
+            function applyCombined() {
+                liveSupportRequests = [...waitItems, ...authItems]
+                    .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+                renderLiveSupportList();
+            }
+            const unWait = window.firebaseOnSnapshot(supportQuery, (snapshot) => {
+                waitItems = snapshot.docs
+                    .map((d) => ({ id: d.id, ...d.data() }))
+                    .filter((item) => (item.requestType || 'wait_time_log_request') === 'wait_time_log_request')
+                    .filter((item) => (item.status || 'pending') === 'pending')
+                    .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+                applyCombined();
+            }, (error) => {
+                console.error('[Dashboard] Live support listener failed', error);
+            });
+            const unAuth = window.firebaseOnSnapshot(authQuery, (snapshot) => {
+                authItems = snapshot.docs
+                    .map((d) => ({ id: d.id, ...d.data() }))
+                    .filter((item) => (item.requestType || 'authorization_request') === 'authorization_request')
+                    .filter((item) => (item.status || 'pending') === 'pending')
+                    .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+                applyCombined();
+            }, (error) => {
+                console.error('[Dashboard] Authorization listener failed', error);
+            });
+            unsubscribeLiveSupport = () => {
+                if (typeof unWait === 'function') unWait();
+                if (typeof unAuth === 'function') unAuth();
+            };
+
+            if (liveSupportAgeInterval) clearInterval(liveSupportAgeInterval);
+            liveSupportAgeInterval = setInterval(renderLiveSupportList, 30000);
+        }
+
+        // Notifications (same pattern as other office pages)
+        async function checkOldExpenses(officeId) {
+            try {
+                const batchesQuery = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'expenseBatches'),
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                const batchesSnapshot = await window.firebaseGetDocs(batchesQuery);
+                const now = new Date();
+                let pendingCount = 0, validatedCount = 0;
+                const addHour = (d) => { const x = new Date(d); x.setHours(x.getHours() + 1); return x; };
+                batchesSnapshot.docs.forEach(doc => {
+                    const batch = doc.data();
+                    if (batch.status !== 'pending' && batch.status !== 'validated') return;
+                    const submittedAt = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date(batch.submittedAt);
+                    if (!submittedAt) return;
+                    let workingHours = 0, currentDate = new Date(submittedAt);
+                    while (currentDate < now) {
+                        const day = currentDate.getDay(), hour = currentDate.getHours();
+                        if (day >= 1 && day <= 5 && hour >= 8 && hour < 17) workingHours += 1;
+                        currentDate = addHour(currentDate);
+                    }
+                    if (workingHours > 24) {
+                        if (batch.status === 'pending') pendingCount++;
+                        else validatedCount++;
+                    }
+                });
+                return { total: pendingCount + validatedCount, pendingCount, validatedCount };
+            } catch (e) {
+                console.error('[Dashboard] checkOldExpenses failed', e);
+                return { total: 0, pendingCount: 0, validatedCount: 0 };
+            }
+        }
+        function getOverdueExpensesTab(result) {
+            if (!result || result.total === 0) return 'pending';
+            if (result.pendingCount > 0) return 'pending';
+            return 'validated';
+        }
+        function createOldExpenseNotificationElement(count, tab) {
+            const openTab = (tab === 'validated' || tab === 'pending') ? tab : 'pending';
+            const url = '/pages/expenses.html?tab=' + openTab;
+            const el = document.createElement('div');
+            el.className = 'px-4 py-3 border-b border-[#283039] cursor-pointer hover:bg-[#283039] transition-colors bg-[#283039]';
+            el.onclick = () => { document.getElementById('notificationDropdown').classList.add('hidden'); window.location.href = url; };
+            el.innerHTML = '<div class="flex items-start justify-between"><div class="flex-1"><div class="text-white text-sm font-medium">There ' + (count === 1 ? 'is' : 'are') + ' ' + count + ' expense' + (count === 1 ? '' : 's') + ' over 24 working hours old</div><div class="text-[#9cabba] text-xs mt-1">Click to view in ' + (openTab === 'validated' ? 'Validated' : 'Pending') + ' tab</div></div><div class="w-2 h-2 bg-red-500 rounded-full ml-2 mt-1"></div></div>';
+            return el;
+        }
+        async function updateNotificationCount() {
+            try {
+                const officeId = getCurrentOfficeId();
+                if (!officeId) return;
+                const notifQuery = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'availabilityNotifications'),
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                const notifSnap = await window.firebaseGetDocs(notifQuery);
+                const unseen = notifSnap.docs.filter(d => d.data().seen !== true);
+                const driverIds = new Set(unseen.map(d => d.data().driverId).filter(Boolean));
+                const availabilityCount = driverIds.size;
+                const oldResult = await checkOldExpenses(officeId);
+                const unreadCount = availabilityCount + (oldResult.total > 0 ? 1 : 0);
+                document.querySelectorAll('.notification-badge').forEach(badge => {
+                    if (unreadCount > 0) { badge.textContent = unreadCount > 99 ? '99+' : unreadCount; badge.classList.remove('hidden'); }
+                    else { badge.classList.add('hidden'); }
+                });
+            } catch (e) { console.error('[Dashboard] updateNotificationCount failed', e); }
+        }
+        async function loadNotifications() {
+            try {
+                const officeId = getCurrentOfficeId();
+                if (!officeId) return;
+                const list = document.getElementById('notificationsList');
+                if (!list) return;
+                const notifQuery = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'availabilityNotifications'),
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                const notifSnap = await window.firebaseGetDocs(notifQuery);
+                const oldResult = await checkOldExpenses(officeId);
+                const overdueTab = getOverdueExpensesTab(oldResult);
+                list.innerHTML = '';
+                if (oldResult.total > 0) list.appendChild(createOldExpenseNotificationElement(oldResult.total, overdueTab));
+                const unseen = notifSnap.docs.filter(d => d.data().seen !== true).map(d => ({ id: d.id, ...d.data() }));
+                if (oldResult.total === 0 && unseen.length === 0) list.innerHTML = '<div class="px-4 py-3 text-gray-400 text-sm text-center">No notifications yet</div>';
+            } catch (e) { console.error('[Dashboard] loadNotifications failed', e); }
+        }
+
+        let dashboardMap = null;
+        let dashboardMapFullscreen = null;
+        let driverMarkerLayer = null;
+        let driverMarkerLayerFullscreen = null;
+        let dashboardDriversCache = [];
+        let dashboardTimelineStepsCache = [];
+        let liveSupportRequests = [];
+        let liveSupportDriverNameCache = {};
+        let liveSupportSelectedRequest = null;
+        let unsubscribeLiveSupport = null;
+        let liveSupportAgeInterval = null;
+
+        function getTodayDateString() {
+            const d = new Date();
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+
+        function haversineMeters(lat1, lon1, lat2, lon2) {
+            const R = 6371000;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+            return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        function getDriverLastCoordinateAndStatus(session) {
+            const coord = (c) => (c && typeof c.lat === 'number' && typeof c.lng === 'number') ? { lat: c.lat, lng: c.lng } : null;
+            if (session.endDayCoordinate) return { ...coord(session.endDayCoordinate), status: 'ended' };
+            for (let j = 10; j >= 1; j--) {
+                const dc = session['job' + j + 'DeliverCoordinate'];
+                if (coord(dc)) return { ...coord(dc), status: 'deliver', job: j };
+                const cc = session['job' + j + 'CollectCoordinate'];
+                if (coord(cc)) return { ...coord(cc), status: 'collect', job: j };
+            }
+            if (session.carryoverDeliverCoordinate && coord(session.carryoverDeliverCoordinate))
+                return { ...coord(session.carryoverDeliverCoordinate), status: 'carryover' };
+            if (session.startDayCoordinate && coord(session.startDayCoordinate))
+                return { ...coord(session.startDayCoordinate), status: 'startday' };
+            return null;
+        }
+
+        function clusterDriversWithin50m(drivers) {
+            const CLUSTER_M = 50;
+            const clusters = [];
+            const used = new Set();
+            for (let i = 0; i < drivers.length; i++) {
+                if (used.has(i)) continue;
+                const group = [drivers[i]];
+                used.add(i);
+                for (let j = i + 1; j < drivers.length; j++) {
+                    if (used.has(j)) continue;
+                    const d = haversineMeters(drivers[i].lat, drivers[i].lng, drivers[j].lat, drivers[j].lng);
+                    if (d <= CLUSTER_M) { group.push(drivers[j]); used.add(j); }
+                }
+                clusters.push(group);
+            }
+            return clusters;
+        }
+
+        function toPhotoUrl(val) {
+            if (typeof val === 'string' && (val.startsWith('http') || val.startsWith('/'))) return val;
+            return '/assets/logos/favicon.svg';
+        }
+        function createDriverMarkerHtml(driver, isCluster) {
+            const borderClass = driver.statusColor === 'green' ? 'green' : 'red';
+            const lineClass = borderClass;
+            if (isCluster && driver.drivers) {
+                const maxShow = 9;
+                const drivers = driver.drivers.slice(0, maxShow);
+                const imgs = drivers.map(d =>
+                    '<img src="' + toPhotoUrl(d.photoUrl) + '" alt="" class="driver-marker-single ' + (d.statusColor === 'green' ? 'green' : 'red') + '">'
+                ).join('');
+                const extra = driver.drivers.length > maxShow ? '<span class="driver-marker-status ' + borderClass + '">+' + (driver.drivers.length - maxShow) + '</span>' : '';
+                return '<div class="driver-marker-wrap"><div class="driver-marker-photos">' + imgs + extra + '</div><div class="driver-marker-hline ' + lineClass + '"></div><div class="driver-marker-vline ' + lineClass + '"></div></div>';
+            }
+            return '<div class="driver-marker-wrap"><div class="driver-marker-photos"><img src="' + toPhotoUrl(driver.photoUrl) + '" alt="" class="driver-marker-single ' + borderClass + '"></div><div class="driver-marker-hline ' + lineClass + '"></div><div class="driver-marker-vline ' + lineClass + '"></div></div>';
+        }
+
+        function renderDriverMarkers(map, drivers) {
+            if (!map || !L) return;
+            const layer = map === dashboardMapFullscreen ? driverMarkerLayerFullscreen : driverMarkerLayer;
+            if (layer) map.removeLayer(layer);
+            const newLayer = L.layerGroup();
+            const active = drivers.filter(d => d.status !== 'ended');
+            if (active.length === 0) {
+                if (map === dashboardMap) {
+                    const ph = document.getElementById('dashboard-map-placeholder');
+                    if (ph) {
+                        ph.style.display = 'flex';
+                        const searchEl = document.getElementById('dashboard-map-driver-search');
+                        const hasFilter = searchEl && (searchEl.value || '').trim().length > 0;
+                        const hasCached = dashboardDriversCache.length > 0;
+                        ph.innerHTML = '<span>' + (hasFilter && hasCached ? 'No drivers match your search' : 'No active drivers on map today') + '</span>';
+                    }
+                }
+                if (map === dashboardMap) map.addLayer(newLayer);
+                return;
+            }
+            const placeholder = document.getElementById('dashboard-map-placeholder');
+            if (placeholder) placeholder.style.display = 'none';
+
+            const clusters = clusterDriversWithin50m(active);
+            const bounds = [];
+            clusters.forEach(cluster => {
+                if (cluster.length === 1) {
+                    const d = cluster[0];
+                    const icon = L.divIcon({
+                        html: createDriverMarkerHtml(d, false),
+                        className: 'driver-div-icon',
+                        iconSize: [48, 56],
+                        iconAnchor: [24, 56]
+                    });
+                    const m = L.marker([d.lat, d.lng], { icon }).addTo(newLayer);
+                    m.bindTooltip(d.name || 'Driver', { direction: 'top', offset: [0, -10] });
+                    bounds.push([d.lat, d.lng]);
+                } else {
+                    const avgLat = cluster.reduce((s, c) => s + c.lat, 0) / cluster.length;
+                    const avgLng = cluster.reduce((s, c) => s + c.lng, 0) / cluster.length;
+                    const n = Math.min(cluster.length, 9);
+                    const cols = 3;
+                    const rows = Math.ceil(n / cols);
+                    const avatarSize = 36; const gap = 6; const lineH = 4; const stemH = 12;
+                    const w = cols * avatarSize + (cols - 1) * gap;
+                    const h = rows * avatarSize + (rows - 1) * gap + lineH + stemH;
+                    const icon = L.divIcon({
+                        html: createDriverMarkerHtml({ drivers: cluster, statusColor: cluster[0].statusColor }, true),
+                        className: 'driver-div-icon',
+                        iconSize: [w, h],
+                        iconAnchor: [w / 2, h]
+                    });
+                    const m = L.marker([avgLat, avgLng], { icon }).addTo(newLayer);
+                    m.bindTooltip(cluster.map(c => c.name || 'Driver').join(', '), { direction: 'top' });
+                    bounds.push([avgLat, avgLng]);
+                }
+            });
+            if (bounds.length > 0 && bounds.length <= 20) {
+                try { map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 }); } catch (e) {}
+            }
+            if (map === dashboardMap) driverMarkerLayer = newLayer; else driverMarkerLayerFullscreen = newLayer;
+            map.addLayer(newLayer);
+        }
+
+        function initDashboardMap() {
+            const el = document.getElementById('dashboard-map-leaflet');
+            if (!el || !L) return;
+            if (dashboardMap) return;
+            dashboardMap = L.map('dashboard-map-leaflet', { center: [54.5, -2], zoom: 6, zoomControl: true });
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap'
+            }).addTo(dashboardMap);
+            dashboardMap.setMaxBounds([[49.5, -8.5], [61.5, 2.5]]);
+            const searchEl = document.getElementById('dashboard-map-driver-search');
+            if (searchEl) {
+                let searchDebounce;
+                searchEl.addEventListener('input', () => {
+                    clearTimeout(searchDebounce);
+                    searchDebounce = setTimeout(applyDriverMapFilter, 150);
+                });
+            }
+            window.addEventListener('resize', function onResize() {
+                if (dashboardMap && document.getElementById('dashboard-map-leaflet')) {
+                    dashboardMap.invalidateSize();
+                }
+            });
+        }
+
+        function initDashboardMapFullscreen() {
+            const el = document.getElementById('dashboard-map-fullscreen-leaflet');
+            if (!el || !L || !dashboardMap) return;
+            if (dashboardMapFullscreen) {
+                dashboardMapFullscreen.invalidateSize();
+                return;
+            }
+            dashboardMapFullscreen = L.map('dashboard-map-fullscreen-leaflet', {
+                center: dashboardMap.getCenter(),
+                zoom: dashboardMap.getZoom()
+            });
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap'
+            }).addTo(dashboardMapFullscreen);
+            dashboardMapFullscreen.setMaxBounds([[49.5, -8.5], [61.5, 2.5]]);
+            setTimeout(() => { if (dashboardMapFullscreen) dashboardMapFullscreen.invalidateSize(); }, 150);
+        }
+
+        async function fetchDriverSessionsWithPhotos(officeId, dateStr) {
+            const drivers = [];
+            const q = window.firebaseQuery(
+                window.firebaseCollection(window.firestore, 'driverDaySessions'),
+                window.firebaseWhere('officeId', '==', officeId),
+                window.firebaseWhere('date', '==', dateStr)
+            );
+            const snap = await window.firebaseGetDocs(q);
+            for (const d of snap.docs) {
+                const data = d.data();
+                if (!data.dayStartedAt || data.dayEndedAt) continue;
+                const info = getDriverLastCoordinateAndStatus(data);
+                if (!info || info.status === 'ended') continue;
+                let photoUrl = null;
+                let email = null;
+                let displayName = null;
+                try {
+                    const userSnap = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'users', data.driverId));
+                    if (userSnap.exists()) {
+                        const u = userSnap.data();
+                        photoUrl = u.photoURL || u.photoUrl;
+                        email = u.email || null;
+                        const first = (u.firstName || u.name || '').trim();
+                        const last = (u.lastName || '').trim();
+                        const n = [first, last].filter(Boolean).join(' ').trim();
+                        if (n && !n.includes('@')) displayName = n;
+                    }
+                    if (!photoUrl || !email || !displayName) {
+                        const drSnap = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'drivers', data.driverId));
+                        if (drSnap.exists()) {
+                            const dr = drSnap.data();
+                            if (!photoUrl) photoUrl = dr.photoURL || dr.photoUrl;
+                            if (!email) email = dr.email || null;
+                            if (!displayName) {
+                                const first = (dr.firstName || dr.name || '').trim();
+                                const last = (dr.lastName || '').trim();
+                                const n = [first, last].filter(Boolean).join(' ').trim();
+                                if (n && !n.includes('@')) displayName = n;
+                            }
+                        }
+                    }
+                } catch (e) {}
+                const statusColor = (info.status === 'startday' || info.status === 'collect') ? 'green' : 'red';
+                drivers.push({
+                    driverId: data.driverId,
+                    name: displayName || ((data.name && !String(data.name).includes('@')) ? data.name : 'Driver'),
+                    email: email || null,
+                    lat: info.lat,
+                    lng: info.lng,
+                    status: info.status,
+                    job: info.job,
+                    statusColor,
+                    photoUrl
+                });
+            }
+            return drivers;
+        }
+
+        function filterDriversByName(drivers, query) {
+            const q = (query || '').trim().toLowerCase();
+            if (!q) return drivers;
+            return drivers.filter(d => {
+                const name = (d.name || '').trim();
+                const parts = name.split(/\s+/);
+                const first = (parts[0] || '').toLowerCase();
+                const last = (parts.slice(1).join(' ') || '').toLowerCase();
+                return first.startsWith(q) || last.startsWith(q);
+            });
+        }
+
+        function filterTimelineStepsByName(steps, query) {
+            const q = (query || '').trim().toLowerCase();
+            if (!q) return steps;
+            return steps.filter(step => {
+                const name = (step.fullName || '').trim();
+                const parts = name.split(/\s+/);
+                const first = (parts[0] || '').toLowerCase();
+                const last = (parts.slice(1).join(' ') || '').toLowerCase();
+                return first.startsWith(q) || last.startsWith(q);
+            });
+        }
+
+        function applyDriverMapFilter() {
+            const searchEl = document.getElementById('dashboard-map-driver-search');
+            const query = searchEl ? searchEl.value : '';
+            const filtered = filterDriversByName(dashboardDriversCache, query);
+            renderDriverMarkers(dashboardMap, filtered);
+            if (dashboardMapFullscreen) {
+                renderDriverMarkers(dashboardMapFullscreen, filtered);
+            }
+            const filteredSteps = filterTimelineStepsByName(dashboardTimelineStepsCache, query);
+            renderTimeline(filteredSteps);
+        }
+
+        async function refreshDriverMap() {
+            const officeId = getCurrentOfficeId();
+            if (!officeId || !dashboardMap) return;
+            const dateStr = getTodayDateString();
+            const drivers = await fetchDriverSessionsWithPhotos(officeId, dateStr);
+            dashboardDriversCache = drivers;
+            applyDriverMapFilter();
+            refreshTimeline(officeId, dateStr);
+        }
+
+        function parseTimestamp(val) {
+            if (!val) return null;
+            if (val && typeof val.toDate === 'function') return val.toDate();
+            if (typeof val === 'string') return new Date(val);
+            if (val instanceof Date) return val;
+            return null;
+        }
+
+        function parseName(name) {
+            const s = (name || '').trim();
+            const parts = s.split(/\s+/);
+            const firstName = parts[0] || '';
+            const lastName = parts.slice(1).join(' ') || '';
+            return { firstName, lastName, full: s || 'Driver' };
+        }
+
+        function escapeHtml(value) {
+            if (value == null) return '';
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        async function fetchDriverDisplayName(driverId) {
+            if (!driverId) return 'Driver';
+            try {
+                const userSnap = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'users', driverId));
+                if (userSnap.exists()) {
+                    const u = userSnap.data();
+                    const first = (u.firstName || u.name || '').trim();
+                    const last = (u.lastName || '').trim();
+                    const name = [first, last].filter(Boolean).join(' ').trim();
+                    if (name && !name.includes('@')) return name;
+                }
+                const drSnap = await window.firebaseGetDoc(window.firebaseDoc(window.firestore, 'drivers', driverId));
+                if (drSnap.exists()) {
+                    const d = drSnap.data();
+                    const first = (d.firstName || d.name || '').trim();
+                    const last = (d.lastName || '').trim();
+                    const name = [first, last].filter(Boolean).join(' ').trim();
+                    if (name && !name.includes('@')) return name;
+                }
+            } catch (e) {}
+            return null;
+        }
+
+        async function resolveLiveSupportDisplayName(item) {
+            const fid = item && item.driverId;
+            const storedSansEmail = () => {
+                const raw = item && item.driverName;
+                if (!raw || typeof raw !== 'string') return '';
+                const t = raw.trim();
+                return t.includes('@') ? '' : t;
+            };
+            if (!fid) {
+                return storedSansEmail() || 'Driver';
+            }
+            if (liveSupportDriverNameCache[fid]) {
+                return liveSupportDriverNameCache[fid];
+            }
+            let resolved = '';
+            try {
+                const n = await fetchDriverDisplayName(fid);
+                if (n && typeof n === 'string' && !n.includes('@')) {
+                    resolved = n.trim();
+                }
+            } catch (e) {}
+            if (!resolved) {
+                resolved = storedSansEmail();
+            }
+            if (!resolved) {
+                resolved = 'Driver';
+            }
+            liveSupportDriverNameCache[fid] = resolved;
+            return resolved;
+        }
+
+        var WAIT_CATEGORY_LABELS = {
+            awaiting_release: 'Awaiting Release',
+            charging_vehicle: 'Charging Vehicle',
+            car_wash: 'Car Wash',
+            other: 'Other'
+        };
+
+        async function fetchTimelineSteps(officeId, dateStr) {
+            const steps = [];
+            const nameCache = {};
+            const q = window.firebaseQuery(
+                window.firebaseCollection(window.firestore, 'driverDaySessions'),
+                window.firebaseWhere('officeId', '==', officeId),
+                window.firebaseWhere('date', '==', dateStr)
+            );
+            const snap = await window.firebaseGetDocs(q);
+            for (const doc of snap.docs) {
+                const data = doc.data();
+                const driverId = data.driverId;
+                let displayName = nameCache[driverId];
+                if (displayName === undefined) {
+                    displayName = await fetchDriverDisplayName(driverId);
+                    if (!displayName) displayName = (data.name && !String(data.name).includes('@')) ? data.name : 'Driver';
+                    nameCache[driverId] = displayName;
+                }
+
+                const push = (coord, type, job) => {
+                    if (!coord) return;
+                    const dt = parseTimestamp(coord.datetime) || (type === 'startday' && parseTimestamp(data.dayStartedAt)) || (type === 'ended' && parseTimestamp(data.dayEndedAt));
+                    if (!dt) return;
+                    steps.push({ datetime: dt.getTime(), date: dt, fullName: displayName, type, job });
+                };
+
+                push(data.startDayCoordinate, 'startday');
+                push(data.carryoverDeliverCoordinate, 'carryover');
+                for (let j = 1; j <= 10; j++) {
+                    push(data['job' + j + 'CollectCoordinate'], 'collect', j);
+                    push(data['job' + j + 'DeliverCoordinate'], 'deliver', j);
+                }
+                push(data.endDayCoordinate, 'ended');
+            }
+
+            try {
+                // Wait time start/stop for timeline: stored in waitTimes (delayStartTime, delayEndTime, createdAt).
+                // driverDaySessions only holds live "wait in progress" state for portal buttons; it is cleared on submit.
+                const wtQ = window.firebaseQuery(
+                    window.firebaseCollection(window.firestore, 'waitTimes'),
+                    window.firebaseWhere('officeId', '==', officeId)
+                );
+                const wtSnap = await window.firebaseGetDocs(wtQ);
+                const dayStart = new Date(dateStr + 'T00:00:00').getTime();
+                const dayEnd = new Date(dateStr + 'T23:59:59.999').getTime();
+                for (const doc of wtSnap.docs) {
+                    const w = doc.data();
+                    const createdDt = parseTimestamp(w.createdAt);
+                    if (!createdDt) continue;
+                    const createdDay = createdDt.getFullYear() + '-' + String(createdDt.getMonth() + 1).padStart(2, '0') + '-' + String(createdDt.getDate()).padStart(2, '0');
+                    if (createdDay !== dateStr) continue;
+                    const status = w.processingStatus || 'pending';
+                    if (status === 'returned') continue;
+                    const driverId = w.driverId;
+                    let displayName = nameCache[driverId];
+                    if (displayName === undefined) {
+                        displayName = await fetchDriverDisplayName(driverId);
+                        if (!displayName) displayName = (w.driverName && !String(w.driverName).includes('@')) ? w.driverName : 'Driver';
+                        nameCache[driverId] = displayName;
+                    }
+                    const categoryLabel = WAIT_CATEGORY_LABELS[w.category] || w.category || 'Wait';
+                    const totalMinutes = (typeof w.totalMinutes === 'number' ? w.totalMinutes : 0) || ((w.hours || 0) * 60) + (w.minutes || 0);
+                    const datePart = createdDay + 'T';
+                    const parseTime = (timeStr) => {
+                        if (!timeStr || typeof timeStr !== 'string') return null;
+                        const m = timeStr.trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+                        if (!m) return null;
+                        const d = new Date(datePart + String(m[1]).padStart(2, '0') + ':' + m[2] + ':' + (m[3] || '00'));
+                        return isNaN(d.getTime()) ? null : d;
+                    };
+                    const startDt = parseTime(w.delayStartTime) || (totalMinutes > 0 ? new Date(createdDt.getTime() - totalMinutes * 60000) : null) || createdDt;
+                    const endDt = parseTime(w.delayEndTime) || createdDt;
+                    const startT = startDt.getTime();
+                    const endT = endDt.getTime();
+                    if (startT >= dayStart && startT <= dayEnd) {
+                        steps.push({ datetime: startT, date: startDt, fullName: displayName, type: 'paused_start', waitCategoryLabel: categoryLabel });
+                    }
+                    if (endT >= dayStart && endT <= dayEnd) {
+                        steps.push({ datetime: endT, date: endDt, fullName: displayName, type: 'paused_end', waitCategoryLabel: categoryLabel });
+                    }
+                }
+            } catch (e) { console.warn('Dashboard: could not load wait times for timeline', e); }
+
+            steps.sort((a, b) => b.datetime - a.datetime);
+            return steps;
+        }
+
+        function renderTimeline(steps) {
+            const list = document.getElementById('dashboard-timeline-list');
+            if (!list) return;
+            if (!steps.length) {
+                const searchEl = document.getElementById('dashboard-map-driver-search');
+                const hasFilter = searchEl && (searchEl.value || '').trim().length > 0;
+                const msg = hasFilter && dashboardTimelineStepsCache.length > 0
+                    ? 'No steps match your search'
+                    : 'No steps recorded today';
+                list.innerHTML = '<div class="px-4 py-6 text-center text-[#9cabba] text-sm">' + msg + '</div>';
+                return;
+            }
+            const formatTime = (d) => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+            const iconHtml = (step) => {
+                if (step.type === 'startday') return '<span class="material-symbols-outlined timeline-icon startday">home</span>';
+                if (step.type === 'ended') return '<span class="timeline-icon ended" title="End of day">🏁</span>';
+                if (step.type === 'carryover') return '<span class="timeline-icon carryover"><span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle">south</span> CO</span>';
+                if (step.type === 'collect') return '<span class="timeline-icon collect">▲' + (step.job || '') + '</span>';
+                if (step.type === 'deliver') return '<span class="timeline-icon deliver">▼' + (step.job || '') + '</span>';
+                if (step.type === 'paused_start') return '<span class="timeline-icon-wrap timeline-paused-start" title="Wait started"><span class="material-symbols-outlined">local_cafe</span></span>';
+                if (step.type === 'paused_end') return '<span class="timeline-icon-wrap timeline-paused-end" title="Wait ended / Resumed"><span class="material-symbols-outlined">local_cafe</span></span>';
+                return '<span class="timeline-icon">•</span>';
+            };
+            list.innerHTML = steps.map(step => {
+                const name = step.fullName || (step.firstName + ' ' + step.lastName).trim() || 'Driver';
+                const isPaused = step.type === 'paused_start' || step.type === 'paused_end';
+                const nameBlock = isPaused && step.waitCategoryLabel
+                    ? name + ' <span class="text-[#9cabba] text-xs">(' + (step.waitCategoryLabel || 'Wait') + ')</span>'
+                    : name;
+                return '<div class="timeline-step">' +
+                    '<span class="timeline-time">' + formatTime(step.date) + '</span>' +
+                    iconHtml(step) +
+                    '<div class="timeline-name">' + nameBlock + '</div></div>';
+            }).join('');
+        }
+
+        async function refreshTimeline(officeId, dateStr) {
+            const list = document.getElementById('dashboard-timeline-list');
+            if (!list) return;
+            try {
+                const steps = await fetchTimelineSteps(officeId || getCurrentOfficeId(), dateStr || getTodayDateString());
+                dashboardTimelineStepsCache = steps;
+                const searchEl = document.getElementById('dashboard-map-driver-search');
+                const query = searchEl ? searchEl.value : '';
+                const filtered = filterTimelineStepsByName(steps, query);
+                renderTimeline(filtered);
+            } catch (e) {
+                list.innerHTML = '<div class="px-4 py-6 text-center text-red-400 text-sm">Failed to load timeline</div>';
+            }
+        }
+
+        async function loadDashboardData() {
+            const officeId = getCurrentOfficeId();
+            if (!officeId) return;
+            const [expenseCounts, driversWorking, waitTimesCount] = await Promise.all([
+                loadExpenseCounts(officeId),
+                loadDriversWorkingToday(officeId),
+                loadWaitTimesCount(officeId)
+            ]);
+            const totalDrivers = await loadDriversCount(officeId);
+            document.getElementById('stat-pending-expenses').textContent = expenseCounts.pending;
+            document.getElementById('stat-validated-expenses').textContent = expenseCounts.validated;
+            document.getElementById('stat-drivers-working').textContent = driversWorking;
+            document.getElementById('stat-wait-times').textContent = waitTimesCount;
+
+            const dateStr = getTodayDateString();
+            const q = window.firebaseQuery(
+                window.firebaseCollection(window.firestore, 'driverDaySessions'),
+                window.firebaseWhere('officeId', '==', officeId),
+                window.firebaseWhere('date', '==', dateStr)
+            );
+            const snap = await window.firebaseGetDocs(q);
+            let activeCount = 0;
+            snap.docs.forEach(d => {
+                const data = d.data();
+                if (data.dayStartedAt && !data.dayEndedAt) activeCount++;
+            });
+            document.getElementById('stat-active-drivers').textContent = activeCount;
+        }
+
+        function setDashboardDate() {
+            const el = document.getElementById('dashboard-date');
+            if (!el) return;
+            const d = new Date();
+            el.textContent = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        }
+
+        let unsubscribeExpenses = null;
+        let unsubscribeDriverSessions = null;
+
+        async function init() {
+            try {
+                currentSession = await window.sotoSession.bootstrap(['office', 'admin']);
+                if (!currentSession) return;
+                if (currentSession.officeId) {
+                    await loadOfficeLogo(currentSession.officeId);
+                    setDashboardDate();
+                    initDashboardMap();
+                    await loadDashboardData();
+                    await refreshDriverMap();
+                    await updateNotificationCount();
+                    setupRealtimeListeners();
+                    startLiveSupportListener();
+                    setupLiveSupportModalHandlers();
+                    
+                    // Show the map now that everything is loaded
+                    const mapInner = document.getElementById('dashboard-map-inner');
+                    if (mapInner) {
+                        mapInner.style.opacity = '1';
+                        setTimeout(function () {
+                            if (dashboardMap) {
+                                dashboardMap.invalidateSize();
+                            }
+                        }, 350);
+                    }
+                }
+            } catch (e) {
+                console.error('[Dashboard] Bootstrap failed', e);
+                return;
+            }
+            const el = document.getElementById('loading-overlay');
+            if (el) { el.style.opacity = '0'; el.style.transition = 'opacity 0.3s ease-out'; setTimeout(() => { el.style.display = 'none'; }, 300); }
+        }
+
+        function setupRealtimeListeners() {
+            const officeId = getCurrentOfficeId();
+            if (!officeId || !window.firebaseOnSnapshot) return;
+            const dateStr = getTodayDateString();
+
+            if (unsubscribeExpenses) unsubscribeExpenses();
+            const expenseQ = window.firebaseQuery(
+                window.firebaseCollection(window.firestore, 'expenseBatches'),
+                window.firebaseWhere('officeId', '==', officeId)
+            );
+            unsubscribeExpenses = window.firebaseOnSnapshot(expenseQ, () => {
+                loadExpenseCounts(officeId).then(r => {
+                    document.getElementById('stat-pending-expenses').textContent = r.pending;
+                    document.getElementById('stat-validated-expenses').textContent = r.validated;
+                });
+            });
+
+            if (unsubscribeDriverSessions) unsubscribeDriverSessions();
+            const sessionQ = window.firebaseQuery(
+                window.firebaseCollection(window.firestore, 'driverDaySessions'),
+                window.firebaseWhere('officeId', '==', officeId),
+                window.firebaseWhere('date', '==', dateStr)
+            );
+            unsubscribeDriverSessions = window.firebaseOnSnapshot(sessionQ, (snap) => {
+                let activeCount = 0;
+                snap.docs.forEach(d => {
+                    const data = d.data();
+                    if (data.dayStartedAt && !data.dayEndedAt) activeCount++;
+                });
+                const el = document.getElementById('stat-active-drivers');
+                if (el) el.textContent = activeCount;
+                refreshDriverMap();
+            });
+        }
+
+        function setupLiveSupportModalHandlers() {
+            window.openLiveSupportModal = openLiveSupportModal;
+            const modal = document.getElementById('liveSupportModal');
+            const closeBtn = document.getElementById('liveSupportModalClose');
+            const cancelBtn = document.getElementById('liveSupportCancelBtn');
+            const confirmBtn = document.getElementById('liveSupportConfirmBtn');
+            const rejectBtn = document.getElementById('liveSupportRejectBtn');
+            const contactBtn = document.getElementById('liveSupportContactBtn');
+            if (closeBtn) closeBtn.addEventListener('click', closeLiveSupportModal);
+            if (cancelBtn) cancelBtn.addEventListener('click', closeLiveSupportModal);
+            if (confirmBtn) confirmBtn.addEventListener('click', confirmLiveSupportRequest);
+            if (rejectBtn) rejectBtn.addEventListener('click', () => updateAuthorizationRequestStatus('rejected'));
+            if (contactBtn) contactBtn.addEventListener('click', () => updateAuthorizationRequestStatus('contact_office'));
+            if (modal) {
+                modal.addEventListener('click', (event) => {
+                    if (event.target === modal) closeLiveSupportModal();
+                });
+            }
+        }
+
+        async function logout() {
+            try { await window.signOut(window.auth); } catch (e) {}
+            window.sotoSession?.clearSession();
+            window.location.href = '/pages/soto-routes-login.html';
+        }
+        function toggleDashboardMapFullscreen() {
+            const overlay = document.getElementById('dashboard-map-fullscreen');
+            if (!overlay) return;
+            const isOpen = overlay.style.display === 'flex';
+            overlay.style.display = isOpen ? 'none' : 'flex';
+            document.body.style.overflow = isOpen ? '' : 'hidden';
+            if (!isOpen) {
+                setTimeout(() => {
+                    initDashboardMapFullscreen();
+                    refreshDriverMap();
+                }, 100);
+            }
+        }
+        function toggleProfileDropdown() { document.getElementById('profileDropdown').classList.toggle('hidden'); }
+        document.addEventListener('click', function(e) {
+            const d = document.getElementById('profileDropdown');
+            if (!e.target.closest('button[onclick="toggleProfileDropdown()"]') && d && !d.contains(e.target)) d.classList.add('hidden');
+            const dw = document.getElementById('stat-drivers-working-wrap');
+            const da = document.getElementById('stat-active-drivers-wrap');
+            if (dw && !dw.contains(e.target)) document.getElementById('dropdown-drivers-working')?.classList.add('hidden');
+            if (da && !da.contains(e.target)) document.getElementById('dropdown-active-drivers')?.classList.add('hidden');
+        });
+        async function showNotifications() {
+            const dropdown = document.getElementById('notificationDropdown');
+            if (!dropdown) return;
+            dropdown.classList.toggle('hidden');
+            if (!dropdown.classList.contains('hidden')) await loadNotifications();
+        }
+        function showChangePassword() {
+            if (typeof window.showChangePasswordFromNav === 'function') {
+                window.showChangePasswordFromNav();
+            } else {
+                window.location.href = '/pages/availability.html';
+            }
+            document.getElementById('profileDropdown').classList.add('hidden');
+        }
+        async function showSettings() {
+            const modal = document.getElementById('settingsModal');
+            const dropdown = document.getElementById('profileDropdown');
+            if (dropdown) dropdown.classList.add('hidden');
+            if (!modal) return;
+            modal.classList.remove('hidden');
+            const useAsanaApi = window.sotoSettings?.getUseAsanaApiForRoutes() || false;
+            const toggle = document.getElementById('useAsanaApiToggle');
+            if (toggle) toggle.checked = useAsanaApi;
+            const officeId = getCurrentOfficeId();
+            if (officeId) {
+                try {
+                    const officeRef = window.firebaseDoc(window.firestore, 'offices', officeId);
+                    const officeSnap = await window.firebaseGetDoc(officeRef);
+                    const data = officeSnap.exists() ? officeSnap.data() : {};
+                    const overdueToggle = document.getElementById('overdueNotificationToggle');
+                    const overdueEmail = document.getElementById('overdueNotificationEmail');
+                    if (overdueToggle) overdueToggle.checked = !!data.overdueNotificationEnabled;
+                    if (overdueEmail) overdueEmail.value = data.overdueNotificationEmail || '';
+                } catch (e) {
+                    console.warn('Could not load office settings for overdue notification', e);
+                }
+            }
+        }
+        function hideSettings() {
+            const modal = document.getElementById('settingsModal');
+            if (modal) modal.classList.add('hidden');
+        }
+        function handleAsanaApiToggle(checked) {
+            if (window.sotoSettings) {
+                window.sotoSettings.setUseAsanaApiForRoutes(checked);
+            }
+        }
+        async function handleOverdueNotificationToggle(checked) {
+            const officeId = getCurrentOfficeId();
+            if (!officeId) return;
+            const emailEl = document.getElementById('overdueNotificationEmail');
+            const email = (emailEl && emailEl.value) ? emailEl.value.trim() : '';
+            try {
+                await window.firebaseUpdateDoc(window.firebaseDoc(window.firestore, 'offices', officeId), {
+                    overdueNotificationEnabled: !!checked,
+                    overdueNotificationEmail: email || ''
+                });
+            } catch (e) {
+                console.error('Failed to save overdue notification setting', e);
+                if (window.uiDialogs) window.uiDialogs.showAlert({ title: 'Settings', message: 'Could not save. You may not have permission to update office settings.', tone: 'danger' });
+            }
+        }
+        async function saveOverdueNotificationEmail() {
+            const officeId = getCurrentOfficeId();
+            if (!officeId) return;
+            const toggle = document.getElementById('overdueNotificationToggle');
+            const emailEl = document.getElementById('overdueNotificationEmail');
+            const enabled = toggle ? toggle.checked : false;
+            const email = (emailEl && emailEl.value) ? emailEl.value.trim() : '';
+            try {
+                await window.firebaseUpdateDoc(window.firebaseDoc(window.firestore, 'offices', officeId), {
+                    overdueNotificationEnabled: !!enabled,
+                    overdueNotificationEmail: email
+                });
+            } catch (e) {
+                console.error('Failed to save overdue notification email', e);
+                if (window.uiDialogs) window.uiDialogs.showAlert({ title: 'Settings', message: 'Could not save. You may not have permission to update office settings.', tone: 'danger' });
+            }
+        }
+        function viewUsage() {
+            if (currentSession && currentSession.officeId) window.location.href = '/pages/office-calendar.html?officeId=' + currentSession.officeId;
+        }
+
+        if (document.readyState === 'complete' || document.readyState === 'interactive') init();
+        else document.addEventListener('DOMContentLoaded', init);
+    </script>
+<!-- Settings Modal -->
+<div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-6 w-full max-w-md">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-xl font-bold text-white">Settings</h3>
+            <button onclick="hideSettings()" class="text-gray-400 hover:text-white">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div class="space-y-4">
+            <div class="flex items-center justify-between py-3 border-b border-[#283039]">
+                <div class="flex-1">
+                    <label for="useAsanaApiToggle" class="block text-sm font-medium text-white mb-1">Use Asana API for route input</label>
+                    <p class="text-xs text-gray-400">When enabled, routes button will redirect to automatic routes page</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                    <input type="checkbox" id="useAsanaApiToggle" class="sr-only peer" onchange="handleAsanaApiToggle(this.checked)">
+                    <div class="w-11 h-6 bg-[#283039] peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+            </div>
+            <div class="py-3 border-b border-[#283039]">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex-1">
+                        <label for="overdueNotificationToggle" class="block text-sm font-medium text-white mb-1">Receive an email notification when expenses are overdue</label>
+                        <p class="text-xs text-gray-400">One email when expense batches first pass 24 working hours</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                        <input type="checkbox" id="overdueNotificationToggle" class="sr-only peer" onchange="handleOverdueNotificationToggle(this.checked)">
+                        <div class="w-11 h-6 bg-[#283039] peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+                <input type="email" id="overdueNotificationEmail" placeholder="Email address for notifications" class="w-full mt-2 px-3 py-2 bg-[#111418] border border-[#283039] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500" onblur="saveOverdueNotificationEmail()">
+            </div>
+        </div>
+        <div class="mt-6 flex justify-end">
+            <button onclick="hideSettings()" class="px-4 py-2 bg-[#283039] hover:bg-[#3a444e] text-white rounded-lg transition-colors font-medium">Close</button>
+        </div>
+    </div>
+</div>
+</body>
+</html>
