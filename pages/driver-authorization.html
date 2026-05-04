@@ -560,13 +560,12 @@
             height: auto;
             overflow-y: auto;
         }
+        /*
+         * Cost flow moves #map into slots inside .map-top-panel. The empty #mapDefaultMount
+         * still had height:100% + flex share, which reserved ~half the screen as blank black.
+         */
         .map-container.fullscreen.auth-cost-mode #mapDefaultMount {
-            flex: 0 0 auto;
-        }
-        .map-container.fullscreen.auth-cost-mode #mapDefaultMount #map {
-            flex: 0 0 clamp(120px, 24vh, 220px);
-            min-height: 120px;
-            max-height: 240px;
+            display: none;
         }
         .auth-map-shell {
             width: 100%;
