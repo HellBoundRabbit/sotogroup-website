@@ -440,7 +440,8 @@
             background: #ffffff !important;
             border: 1px solid #e5e7eb !important;
             border-radius: 8px;
-            z-index: 10050 !important;
+            /* Above #authorizationModal (z-50), below #authorizationRoutesLayer (z-70) and ui-dialogs — a high value hid the route flow after Proceed. */
+            z-index: 60 !important;
             box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.15);
         }
 
@@ -1151,7 +1152,15 @@
                 alert('Please select valid addresses for both From and To locations.');
                 return;
             }
-            
+
+            try {
+                fromInput?.blur();
+                toInput?.blur();
+                if (document.activeElement && typeof document.activeElement.blur === 'function') {
+                    document.activeElement.blur();
+                }
+            } catch (_e) {}
+
             // Get departure time
             let departureTime = null;
             if (leaveAtRadio.value === 'custom' && customDateTime.value) {
@@ -1160,23 +1169,24 @@
                 departureTime = new Date().toISOString();
             }
             
-            // Store data in sessionStorage for route flow state
-            sessionStorage.setItem('authorizationRequest', JSON.stringify({
-                from: {
-                    address: fromInput.value,
-                    place: fromPlace,
-                    lat: fromPlace.geometry.location.lat(),
-                    lng: fromPlace.geometry.location.lng()
-                },
-                to: {
-                    address: toInput.value,
-                    place: toPlace,
-                    lat: toPlace.geometry.location.lat(),
-                    lng: toPlace.geometry.location.lng()
-                },
-                departureTime: departureTime
-            }));
-            
+            // Store only serializable fields (Places objects break JSON and are unused after reload).
+            sessionStorage.setItem(
+                'authorizationRequest',
+                JSON.stringify({
+                    from: {
+                        address: fromInput.value.trim(),
+                        lat: fromPlace.geometry.location.lat(),
+                        lng: fromPlace.geometry.location.lng(),
+                    },
+                    to: {
+                        address: toInput.value.trim(),
+                        lat: toPlace.geometry.location.lat(),
+                        lng: toPlace.geometry.location.lng(),
+                    },
+                    departureTime: departureTime,
+                }),
+            );
+
             openAuthorizationRoutesLayer();
         }
 
@@ -1216,9 +1226,18 @@
         function openAuthorizationRoutesLayer() {
             const layer = document.getElementById('authorizationRoutesLayer');
             if (!layer) return;
+            try {
+                document.getElementById('fromAddress')?.blur();
+                document.getElementById('toAddress')?.blur();
+            } catch (_e) {}
             layer.classList.remove('hidden');
             hideAuthorizationModal();
-            initializeMap().then(() => loadRoutes());
+            initializeMap()
+                .then(() => loadRoutes())
+                .catch((e) => {
+                    console.error('[Authorization] Route layer init failed', e);
+                    showError('Could not load your journey. Please try Proceed again or reopen from the + button.');
+                });
         }
 
         /** @param {boolean} [alsoClearAlternativesBackup] default true — set false when returning from route list to the multi-option picker. */
@@ -1821,13 +1840,23 @@
             }
         }
         async function initializeMap() {
-            await waitForGoogleMaps();
+            await Promise.race([
+                waitForGoogleMaps(),
+                new Promise((_, rej) => setTimeout(() => rej(new Error('Google Maps did not become ready in time')), 45000)),
+            ]);
             const storedData = sessionStorage.getItem('authorizationRequest');
             if (!storedData) {
                 showError('No route data found. Please go back and create a new request.');
                 return;
             }
-            requestData = JSON.parse(storedData);
+            let parsed;
+            try {
+                parsed = JSON.parse(storedData);
+            } catch (_e) {
+                showError('Saved journey data was invalid. Please use the + button and enter your addresses again.');
+                return;
+            }
+            requestData = parsed;
             if (!map) {
                 map = new google.maps.Map(document.getElementById('map'), { zoom: 10, center: { lat: requestData.from.lat, lng: requestData.from.lng }, mapTypeId: google.maps.MapTypeId.ROADMAP });
                 directionsService = new google.maps.DirectionsService();
@@ -2474,7 +2503,7 @@
                 if (pt) pt.value = '';
                 if (oa) oa.value = '';
                 clearRoute();
-                const origBounds = paintAuthorizationRouteWithHighlights(map, routes[selectedRouteIndex], 'primary', { drawTaxiChords: true });
+                const origBounds = paintAuthorizationRouteWithHighlights(map, routes[selectedRouteIndex], 'primary', { drawTaxiChords: false });
                 if (!origBounds.isEmpty()) map.fitBounds(origBounds);
                 populateTaxiCostSummaryUnderProposed();
                 buildTaxiLegRows();
