@@ -17,6 +17,7 @@
     <title>Authorization Request - SOTO Routes</title>
     <script src="/assets/js/tailwind-runtime.js"></script>
     <script src="/js/session-manager.js"></script>
+    <script src="/js/ui-dialogs.js"></script>
     <script src="/js/authorization-routes-api-adapter.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
     <!--
@@ -494,6 +495,33 @@
             gap: 8px;
         }
         .request-button.visible { display: flex; }
+        /* Map cost step: same chrome as routes layer header (Back + gradient Next). */
+        .map-cost-panel-header {
+            background: #1a1f24;
+            border-bottom: 1px solid #283039;
+            padding: 12px 16px;
+            position: relative;
+            flex-shrink: 0;
+        }
+        .map-cost-next-btn {
+            position: absolute;
+            top: 12px;
+            right: 16px;
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 8px;
+            color: #ffffff;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .map-cost-next-btn.hidden {
+            display: none !important;
+        }
         .routes-list {
             width: 100%;
             max-width: 600px;
@@ -643,6 +671,10 @@
         @keyframes spin { to { transform: rotate(360deg); } }
         .error-message { background: #7f1d1d; border: 1px solid #991b1b; border-radius: 8px; padding: 16px; color: #fca5a5; margin: 16px; }
         .cost-input { margin-top: 8px; padding: 6px 10px; background: #283039 !important; border: 1px solid #3a444e !important; border-radius: 6px; color: #fff !important; font-size: 14px; width: 100%; max-width: 120px; }
+        .segment-cost-input-wrap { display: flex; align-items: center; gap: 6px; margin-top: 8px; max-width: 148px; }
+        .segment-cost-input-wrap .cost-input-prefix { color: #e5e7eb; font-size: 15px; font-weight: 600; flex-shrink: 0; line-height: 1; }
+        .segment-cost-input-wrap .cost-input,
+        .segment-cost-input-wrap .input-field { margin-top: 0; flex: 1; min-width: 0; max-width: none; }
         .segment-cost-label { font-size: 12px; color: #9ca3af; margin-top: 4px; }
         .route-picker-panel { flex: 1; max-width: 600px; width: 100%; background: #1a1f24; border-right: 1px solid #283039; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; min-height: 0; }
         .route-picker-panel[hidden], #routesList[hidden] { display: none !important; }
@@ -679,8 +711,13 @@
         </div>
     </div>
 
-    <!-- Main Content -->
-    <div id="mainContent" class="container max-w-2xl mx-auto px-4 py-6 pb-24">
+    <div id="authPageLoading" class="container max-w-2xl mx-auto px-4 py-20 flex flex-col items-center justify-center min-h-[45vh] text-center">
+        <div class="w-10 h-10 border-2 border-gray-600 border-t-blue-500 rounded-full animate-spin mb-4" role="status" aria-label="Loading"></div>
+        <p class="text-gray-400 text-sm">Loading authorization requests…</p>
+    </div>
+
+    <!-- Main Content (shown after list is ready) -->
+    <div id="mainContent" class="hidden container max-w-2xl mx-auto px-4 py-6 pb-24">
         <!-- Empty State -->
         <div id="emptyState" class="text-center py-16">
             <span class="material-symbols-outlined text-6xl text-gray-600 mb-4">verified_user</span>
@@ -695,7 +732,7 @@
     </div>
 
     <!-- Floating Add Button -->
-    <button onclick="openAuthorizationModal()" class="fixed bottom-6 right-6 z-40">
+    <button type="button" id="authFloatingAdd" onclick="openAuthorizationModal()" class="hidden fixed bottom-6 right-6 z-40">
         <div class="spinner-wrapper">
             <div class="spinner"></div>
             <div class="spinner1">
@@ -846,32 +883,34 @@
                         <div id="map"></div>
                     </div>
                     <div id="mapCostPanel" class="map-top-panel hidden">
-                        <div class="flex items-center justify-between mb-2 shrink-0">
-                            <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] border border-[#3a444e] text-sm" onclick="backFromMapPanel()">Back</button>
-                            <button type="button" id="mapCostNextBtn" class="px-3 py-2 rounded-lg bg-[#0d7ff2] text-white text-sm font-semibold" onclick="mapCostPrimaryNext()">Next</button>
+                        <div class="map-cost-panel-header">
+                            <button type="button" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#283039] border border-[#3a444e] text-sm" onclick="backFromMapPanel()">
+                                <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span>
+                                Back
+                            </button>
+                            <button type="button" id="mapCostNextBtn" class="map-cost-next-btn" onclick="mapCostPrimaryNext()">
+                                <span class="material-symbols-outlined" style="font-size:18px;">arrow_forward</span>
+                                Next
+                            </button>
                         </div>
                         <!-- Transit cost only (no taxi): one map + stage lines + confirm -->
-                        <div id="mapCostTransitOnly" class="hidden space-y-2 text-sm">
-                            <div class="auth-map-shell mx-auto w-full max-w-md" style="height:clamp(120px, 28vh, 260px);">
+                        <div id="mapCostTransitOnly" class="hidden space-y-2 text-sm px-4 pb-3">
+                            <div class="auth-map-shell w-full max-w-none" style="height:clamp(220px, 52vh, min(62vh, 520px));">
                                 <div id="mapTransitOnlySlot" class="w-full h-full"></div>
                             </div>
                             <div id="transitOnlyStageList" class="text-xs text-gray-200 space-y-1 px-1"></div>
-                            <div id="transitOnlyConfirmStep" class="hidden border border-[#374151] rounded-lg p-3 bg-[#111418]">
-                                <p class="text-gray-300 text-xs mb-2">Send this authorization request to your office?</p>
-                                <div class="flex gap-2 flex-wrap">
-                                    <button type="button" class="px-3 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold" onclick="submitAuthorizationFromMapFlow()">Send request</button>
-                                    <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] text-sm" onclick="mapCostTransitOnlyBackToEdit()">Back</button>
-                                </div>
-                            </div>
                         </div>
                         <!-- Taxi (and optional transit cost): two maps + fields -->
-                        <div id="mapCostWithTaxi" class="hidden space-y-2 text-sm">
+                        <div id="mapCostWithTaxi" class="hidden space-y-2 text-sm px-4 pb-3">
                             <div class="text-xs text-gray-400 font-semibold">Original route</div>
                             <div class="auth-map-shell w-full" style="height:clamp(110px, 22vh, 200px);">
                                 <div id="mapOriginalSlot" class="w-full h-full"></div>
                             </div>
-                            <label class="text-xs text-gray-400 block">Original transport cost (£)</label>
-                            <input id="publicTransportCostInput" type="number" step="0.01" min="0" placeholder="Enter amount" class="input-field">
+                            <label class="text-xs text-gray-400 block">Original transport cost</label>
+                            <div class="segment-cost-input-wrap max-w-full">
+                                <span class="cost-input-prefix" aria-hidden="true">£</span>
+                                <input id="publicTransportCostInput" type="number" step="0.01" min="0" placeholder="0.00" class="input-field flex-1 min-w-0">
+                            </div>
                             <label class="text-xs text-gray-400 block">Original arrival time</label>
                             <input id="originalArrivalInput" type="time" class="input-field">
                             <div class="text-xs text-gray-400 font-semibold pt-1">Proposed route</div>
@@ -886,7 +925,7 @@
                             <input id="proposedArrivalInput" type="hidden" value="">
                             <input id="taxiCostInput" type="hidden" value="">
                         </div>
-                        <div id="mapCarryoverBlock" class="hidden border-t border-[#283039] pt-3 mt-2">
+                        <div id="mapCarryoverBlock" class="hidden border-t border-[#283039] pt-3 mt-2 px-4 pb-3">
                             <div class="text-xs text-gray-300 mb-2">Will this prevent a carryover?</div>
                             <div class="flex flex-wrap gap-2">
                                 <button type="button" class="px-3 py-2 rounded-lg bg-[#283039] text-xs" onclick="completeMapFlowWithCarryover('yes')">Yes</button>
@@ -1235,11 +1274,6 @@
 
             const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
 
-            const transitConfirm = document.getElementById('transitOnlyConfirmStep');
-            if (transitConfirm && !transitConfirm.classList.contains('hidden')) {
-                mapCostTransitOnlyBackToEdit();
-                return;
-            }
             const carryBlock = document.getElementById('mapCarryoverBlock');
             if (carryBlock && !carryBlock.classList.contains('hidden')) {
                 carryBlock.classList.add('hidden');
@@ -1498,6 +1532,62 @@
                 });
         }
 
+        const AUTHORIZATION_ANSWERED_TTL_MS = 48 * 60 * 60 * 1000;
+
+        function reviewedAtToMs(reviewedAt) {
+            if (reviewedAt == null) return null;
+            if (typeof reviewedAt.toMillis === 'function') return reviewedAt.toMillis();
+            if (typeof reviewedAt.toDate === 'function') return reviewedAt.toDate().getTime();
+            if (typeof reviewedAt === 'string') {
+                const t = Date.parse(reviewedAt);
+                return Number.isFinite(t) ? t : null;
+            }
+            if (typeof reviewedAt === 'number' && Number.isFinite(reviewedAt)) return reviewedAt;
+            return null;
+        }
+
+        function shouldDeleteExpiredAuthorization(data, nowMs) {
+            const status = data?.status || 'pending';
+            if (status === 'pending') return false;
+            if (!['approved', 'rejected', 'contact_office'].includes(status)) return false;
+            const reviewedMs = reviewedAtToMs(data.reviewedAt);
+            if (reviewedMs != null && nowMs - reviewedMs >= AUTHORIZATION_ANSWERED_TTL_MS) return true;
+            const deleteAtMs = typeof data.deleteAtMs === 'number' ? data.deleteAtMs : null;
+            if (deleteAtMs != null && nowMs >= deleteAtMs) return true;
+            return false;
+        }
+
+        async function deleteExpiredAuthorizationRequestsForDriver(ctx) {
+            if (!ctx?.uid || !window.db) return;
+            const qAuth = query(collection(window.db, 'authorizationRequests'), where('driverId', '==', ctx.uid));
+            const snap = await getDocs(qAuth);
+            const nowMs = Date.now();
+            const deletes = [];
+            snap.docs.forEach((d) => {
+                if (shouldDeleteExpiredAuthorization(d.data(), nowMs)) {
+                    deletes.push(deleteDoc(doc(window.db, 'authorizationRequests', d.id)));
+                }
+            });
+            if (!deletes.length) return;
+            try {
+                await Promise.all(deletes);
+            } catch (e) {
+                console.warn('[Authorization] Expired answered-request cleanup failed. Deploy latest Firestore rules if delete is denied.', e);
+            }
+        }
+
+        function setAuthorizationListShellReady() {
+            document.getElementById('authPageLoading')?.classList.add('hidden');
+            document.getElementById('mainContent')?.classList.remove('hidden');
+            document.getElementById('authFloatingAdd')?.classList.remove('hidden');
+        }
+
+        function setAuthorizationListShellLoading() {
+            document.getElementById('authPageLoading')?.classList.remove('hidden');
+            document.getElementById('mainContent')?.classList.add('hidden');
+            document.getElementById('authFloatingAdd')?.classList.add('hidden');
+        }
+
         async function startAuthorizationRequestsListener() {
             if (!(await waitForFirestoreReady())) return;
             const ctx = await getDriverContext();
@@ -1521,6 +1611,7 @@
             if (!(await waitForFirestoreReady())) return;
             const ctx = await getDriverContext();
             if (!ctx?.uid) return;
+            await deleteExpiredAuthorizationRequestsForDriver(ctx);
             try {
                 const qAuth = query(
                     collection(window.db, 'authorizationRequests'),
@@ -1840,7 +1931,7 @@
             if (step.travel_mode === 'TRANSIT' && step.transit) {
                 const transitType = step.transit.line?.vehicle?.type;
                 if (transitType === 'BUS') return '<span class="material-symbols-outlined" style="font-size:20px;color:#9C27B0;">directions_bus</span>';
-                if (transitType === 'TRAIN') return '<span class="material-symbols-outlined" style="font-size:20px;color:#EA4335;">train</span>';
+                if (transitType === 'TRAIN') return '<span class="material-symbols-outlined" style="font-size:20px;color:#0ea5e9;">train</span>';
                 if (transitType === 'SUBWAY') return '<span class="material-symbols-outlined" style="font-size:20px;color:#34A853;">subway</span>';
             }
             return '<span class="material-symbols-outlined" style="font-size:20px;">arrow_forward</span>';
@@ -1929,7 +2020,7 @@
                                     const isWaitTaxiRequest = taxiRequestSegments.has(waitSegmentId);
                                     const waitCostValue = transitCostSegments.get(waitSegmentId) || '';
                                     const waitContentClass = isWaitTaxiRequest ? 'taxi-request' : (isWaitTransitCost ? 'transit-cost' : '');
-                                    timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTimelineClockHtml(departureTime)}</div><div class="timeline-content ${waitContentClass}" id="${waitSegmentId}" onclick="handleSegmentClick('${waitSegmentId}', event)"><div class="timeline-header"><span class="material-symbols-outlined" style="font-size:20px;color:#F59E0B;">schedule</span><div class="timeline-title">Wait</div></div><div class="timeline-duration">${formatWaitTime(waitTimeMinutes)}</div>${transit.departure_stop ? `<div class="timeline-location">${transit.departure_stop.name}</div>` : ''}${(isWaitTransitCost || isWaitTaxiRequest) ? `<div class="segment-cost-label">${isWaitTaxiRequest ? 'Taxi Cost:' : 'Transit Cost:'}</div><input type="number" step="0.01" min="0" placeholder="£0.00" value="${waitCostValue}" class="cost-input" onchange="updateSegmentCost('${waitSegmentId}', this.value)" onclick="event.stopPropagation();">` : ''}</div></div>`;
+                                    timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTimelineClockHtml(departureTime)}</div><div class="timeline-content ${waitContentClass}" id="${waitSegmentId}" onclick="handleSegmentClick('${waitSegmentId}', event)"><div class="timeline-header"><span class="material-symbols-outlined" style="font-size:20px;color:#F59E0B;">schedule</span><div class="timeline-title">Wait</div></div><div class="timeline-duration">${formatWaitTime(waitTimeMinutes)}</div>${transit.departure_stop ? `<div class="timeline-location">${transit.departure_stop.name}</div>` : ''}${(isWaitTransitCost || isWaitTaxiRequest) ? `<div class="segment-cost-label">${isWaitTaxiRequest ? 'Taxi cost' : 'Transit cost'}</div><div class="segment-cost-input-wrap"><span class="cost-input-prefix" aria-hidden="true">£</span><input type="number" step="0.01" min="0" placeholder="0.00" value="${waitCostValue}" class="cost-input" onchange="updateSegmentCost('${waitSegmentId}', this.value)" onclick="event.stopPropagation();"></div>` : ''}</div></div>`;
                                 }
                                 currentTime = departureTime;
                             }
@@ -1950,7 +2041,7 @@
                             const isTaxiRequestSegment = taxiRequestSegments.has(transitSegmentId);
                             const transitCostValue = transitCostSegments.get(transitSegmentId) || '';
                             const transitContentClass = isTaxiRequestSegment ? 'taxi-request' : (isTransitCostSegment ? 'transit-cost' : '');
-                            timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTimelineClockHtml(arrivalTime)}</div><div class="timeline-content ${transitContentClass}" id="${transitSegmentId}" onclick="handleSegmentClick('${transitSegmentId}', event)"><div class="timeline-header"><div class="timeline-icon">${getTimelineIcon(step)}</div><div class="timeline-title">${transitName}</div></div><div class="timeline-duration">${step.duration.text}${transit.num_stops ? ' (' + transit.num_stops + ' stops)' : ''}</div>${transit.departure_stop ? `<div class="timeline-location">${transit.departure_stop.name}</div>` : ''}${transit.arrival_stop ? `<div class="timeline-location">→ ${transit.arrival_stop.name}</div>` : ''}${(isTransitCostSegment || isTaxiRequestSegment) ? `<div class="segment-cost-label">${isTaxiRequestSegment ? 'Taxi Cost:' : 'Transit Cost:'}</div><input type="number" step="0.01" min="0" placeholder="£0.00" value="${transitCostValue}" class="cost-input" onchange="updateSegmentCost('${transitSegmentId}', this.value)" onclick="event.stopPropagation();">` : ''}</div></div>`;
+                            timelineHtml += `<div class="timeline-item"><div class="timeline-dot"></div><div class="timeline-time">${formatTimelineClockHtml(arrivalTime)}</div><div class="timeline-content ${transitContentClass}" id="${transitSegmentId}" onclick="handleSegmentClick('${transitSegmentId}', event)"><div class="timeline-header"><div class="timeline-icon">${getTimelineIcon(step)}</div><div class="timeline-title">${transitName}</div></div><div class="timeline-duration">${step.duration.text}${transit.num_stops ? ' (' + transit.num_stops + ' stops)' : ''}</div>${transit.departure_stop ? `<div class="timeline-location">${transit.departure_stop.name}</div>` : ''}${transit.arrival_stop ? `<div class="timeline-location">→ ${transit.arrival_stop.name}</div>` : ''}${(isTransitCostSegment || isTaxiRequestSegment) ? `<div class="segment-cost-label">${isTaxiRequestSegment ? 'Taxi cost' : 'Transit cost'}</div><div class="segment-cost-input-wrap"><span class="cost-input-prefix" aria-hidden="true">£</span><input type="number" step="0.01" min="0" placeholder="0.00" value="${transitCostValue}" class="cost-input" onchange="updateSegmentCost('${transitSegmentId}', this.value)" onclick="event.stopPropagation();"></div>` : ''}</div></div>`;
                             currentTime = arrivalTime;
                             segmentIndex++;
                         }
@@ -2044,7 +2135,7 @@
 
         function resetMapCostPanelDomState() {
             mapCostActiveMode = 'off';
-            ['mapCostTransitOnly', 'mapCostWithTaxi', 'transitOnlyConfirmStep', 'mapCarryoverBlock'].forEach((id) => {
+            ['mapCostTransitOnly', 'mapCostWithTaxi', 'mapCarryoverBlock'].forEach((id) => {
                 const el = document.getElementById(id);
                 if (!el) return;
                 el.classList.add('hidden');
@@ -2064,9 +2155,50 @@
             clearProposedRoute();
         }
 
+        /** Walk / transit leaf index used by map renderers and timeline segment ids. */
+        function resolveStepForSegmentId(segmentId) {
+            const m = String(segmentId).match(/^route-(\d+)-segment-(\d+)$/);
+            if (!m) return null;
+            const ri = parseInt(m[1], 10);
+            const wantIdx = parseInt(m[2], 10);
+            const route = routes[ri];
+            if (!route?.routes?.[0]?.legs) return null;
+            let idx = 0;
+            for (const leg of route.routes[0].legs) {
+                for (const step of leg.steps || []) {
+                    if (step.travel_mode !== 'WALKING' && step.travel_mode !== 'TRANSIT') continue;
+                    if (idx === wantIdx) return step;
+                    idx++;
+                }
+            }
+            return null;
+        }
+
         function describeSegmentForUi(segmentId) {
             if (!segmentId) return '';
-            if (String(segmentId).includes('-wait-')) return 'Wait before transit';
+            if (String(segmentId).includes('-wait-')) {
+                const mw = String(segmentId).match(/^route-(\d+)-wait-(\d+)$/);
+                if (mw) {
+                    const mockSeg = `route-${parseInt(mw[1], 10)}-segment-${parseInt(mw[2], 10)}`;
+                    const st = resolveStepForSegmentId(mockSeg);
+                    if (st?.travel_mode === 'TRANSIT' && st.transit?.departure_stop?.name) {
+                        return `Wait · ${st.transit.departure_stop.name}`;
+                    }
+                }
+                return 'Wait before transit';
+            }
+            const step = resolveStepForSegmentId(segmentId);
+            if (step?.travel_mode === 'TRANSIT' && step.transit) {
+                const t = step.transit;
+                const line = t.line?.short_name || t.line?.name || 'Transit';
+                const from = t.departure_stop?.name || '';
+                const to = t.arrival_stop?.name || '';
+                let s = line;
+                if (from) s += ` · ${from}`;
+                if (to) s += ` → ${to}`;
+                return s;
+            }
+            if (step?.travel_mode === 'WALKING') return 'Walk';
             const rs = routeSegments.find((r) => r.id === segmentId);
             if (rs?.step?.travel_mode === 'TRANSIT' && rs.step.transit) {
                 const t = rs.step.transit;
@@ -2122,31 +2254,101 @@
             bounds.extend(end);
         }
 
-        function renderTransitCostHighlightsOnPrimaryMap(route) {
-            clearRoute();
-            if (!route?.routes?.[0]?.legs || !map) return;
+        /**
+         * Full journey on one map: default colours for normal legs; straight red for taxi;
+         * curvy red only for transit legs where a cost was entered (no duplicate brand colour).
+         */
+        function paintAuthorizationRouteWithHighlights(targetMap, route, bucket, opts) {
+            const useProposed = bucket === 'proposed';
+            const drawTaxiChords = opts.drawTaxiChords !== false;
             const bounds = new google.maps.LatLngBounds();
             const hasCost = (segmentId) => {
                 const v = transitCostSegments.get(segmentId);
                 return v != null && String(v).trim() !== '';
             };
+            if (!route?.routes?.[0]?.legs || !targetMap) return bounds;
             route.routes[0].legs.forEach((leg) => {
+                bounds.extend(leg.start_location);
+                bounds.extend(leg.end_location);
+                const startMarker = new google.maps.Marker({
+                    position: leg.start_location,
+                    map: targetMap,
+                    label: 'A',
+                    icon: { url: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png' },
+                });
+                if (useProposed) proposedRouteMarkers.push(startMarker);
+                else routeMarkers.push(startMarker);
+
                 let tempSegmentIndex = 0;
                 const stepsWithStatus = [];
                 leg.steps.forEach((step) => {
                     if (step.travel_mode === 'WALKING' || step.travel_mode === 'TRANSIT') {
                         const segmentId = `route-${selectedRouteIndex}-segment-${tempSegmentIndex}`;
-                        stepsWithStatus.push({ step, segmentId });
+                        const isTaxi = drawTaxiChords && taxiRequestSegments.has(segmentId);
+                        stepsWithStatus.push({ step, segmentId, isTaxi });
                         tempSegmentIndex++;
                     }
                 });
                 for (let i = 0; i < stepsWithStatus.length; i++) {
-                    const { step, segmentId } = stepsWithStatus[i];
-                    if (!hasCost(segmentId) || taxiRequestSegments.has(segmentId)) continue;
-                    if (step.travel_mode !== 'TRANSIT') continue;
-                    renderRedPolylineForSegmentStep(map, step, bounds);
+                    const { step, segmentId, isTaxi } = stepsWithStatus[i];
+                    if (isTaxi) {
+                        drawStraightTaxiLeg(targetMap, step.start_location, step.end_location, bounds);
+                        continue;
+                    }
+                    const cost = hasCost(segmentId);
+                    if (step.travel_mode === 'TRANSIT' && cost) {
+                        renderRedPolylineForSegmentStep(targetMap, step, bounds);
+                        continue;
+                    }
+                    let path = [];
+                    if (step.polyline?.points) {
+                        try {
+                            path = google.maps.geometry.encoding.decodePath(step.polyline.points);
+                        } catch (_e) {}
+                    }
+                    if (!path.length && step.start_location && step.end_location) path = [step.start_location, step.end_location];
+                    if (path.length) {
+                        const style = getColorForTravelMode(step.travel_mode, step.transit?.line?.vehicle?.type);
+                        const polylineOptions = {
+                            path,
+                            geodesic: true,
+                            strokeColor: style.color,
+                            strokeOpacity: 0.85,
+                            strokeWeight: 5,
+                            map: targetMap,
+                            zIndex: 2,
+                        };
+                        if (step.travel_mode === 'WALKING') {
+                            polylineOptions.icons = [
+                                {
+                                    icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, strokeWeight: 5, scale: 1 },
+                                    offset: '0%',
+                                    repeat: '20px',
+                                },
+                            ];
+                        }
+                        const polyline = new google.maps.Polyline(polylineOptions);
+                        if (useProposed) proposedRoutePolylines.push(polyline);
+                        else routePolylines.push(polyline);
+                        path.forEach((point) => bounds.extend(point));
+                    }
                 }
+                const endMarker = new google.maps.Marker({
+                    position: leg.end_location,
+                    map: targetMap,
+                    label: 'B',
+                    icon: { url: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png' },
+                });
+                if (useProposed) proposedRouteMarkers.push(endMarker);
+                else routeMarkers.push(endMarker);
             });
+            return bounds;
+        }
+
+        function renderTransitCostHighlightsOnPrimaryMap(route) {
+            clearRoute();
+            if (!route?.routes?.[0]?.legs || !map) return;
+            const bounds = paintAuthorizationRouteWithHighlights(map, route, 'primary', { drawTaxiChords: false });
             if (!bounds.isEmpty()) map.fitBounds(bounds);
         }
 
@@ -2165,87 +2367,10 @@
             return mapProposed;
         }
 
-        /**
-         * Proposed map: same journey as the main map — full walk/transit geometry in normal colours,
-         * taxi-request legs as straight red chords, optional curvy red overlay on transit legs with a cost only.
-         */
         function renderProposedOverlaysOnSecondMap(route) {
             clearProposedRoute();
             if (!mapProposed || !route?.routes?.[0]?.legs) return;
-            const bounds = new google.maps.LatLngBounds();
-            const hasCost = (segmentId) => {
-                const v = transitCostSegments.get(segmentId);
-                return v != null && String(v).trim() !== '';
-            };
-            route.routes[0].legs.forEach((leg) => {
-                bounds.extend(leg.start_location);
-                bounds.extend(leg.end_location);
-                proposedRouteMarkers.push(
-                    new google.maps.Marker({
-                        position: leg.start_location,
-                        map: mapProposed,
-                        label: 'A',
-                        icon: { url: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png' },
-                    }),
-                );
-                let tempSegmentIndex = 0;
-                const stepsWithStatus = [];
-                leg.steps.forEach((step) => {
-                    if (step.travel_mode === 'WALKING' || step.travel_mode === 'TRANSIT') {
-                        const segmentId = `route-${selectedRouteIndex}-segment-${tempSegmentIndex}`;
-                        stepsWithStatus.push({ step, segmentId, isTaxi: taxiRequestSegments.has(segmentId) });
-                        tempSegmentIndex++;
-                    }
-                });
-                for (let i = 0; i < stepsWithStatus.length; i++) {
-                    const { step, segmentId, isTaxi } = stepsWithStatus[i];
-                    if (isTaxi) {
-                        drawStraightTaxiLeg(mapProposed, step.start_location, step.end_location, bounds);
-                        continue;
-                    }
-                    let path = [];
-                    if (step.polyline?.points) {
-                        try {
-                            path = google.maps.geometry.encoding.decodePath(step.polyline.points);
-                        } catch (_e) {}
-                    }
-                    if (!path.length && step.start_location && step.end_location) path = [step.start_location, step.end_location];
-                    if (path.length) {
-                        const style = getColorForTravelMode(step.travel_mode, step.transit?.line?.vehicle?.type);
-                        const polylineOptions = {
-                            path,
-                            geodesic: true,
-                            strokeColor: style.color,
-                            strokeOpacity: 0.85,
-                            strokeWeight: 5,
-                            map: mapProposed,
-                            zIndex: 2,
-                        };
-                        if (step.travel_mode === 'WALKING') {
-                            polylineOptions.icons = [
-                                {
-                                    icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, strokeWeight: 5, scale: 1 },
-                                    offset: '0%',
-                                    repeat: '20px',
-                                },
-                            ];
-                        }
-                        proposedRoutePolylines.push(new google.maps.Polyline(polylineOptions));
-                        path.forEach((point) => bounds.extend(point));
-                    }
-                    if (step.travel_mode === 'TRANSIT' && hasCost(segmentId)) {
-                        renderRedPolylineForSegmentStep(mapProposed, step, bounds);
-                    }
-                }
-                proposedRouteMarkers.push(
-                    new google.maps.Marker({
-                        position: leg.end_location,
-                        map: mapProposed,
-                        label: 'B',
-                        icon: { url: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png' },
-                    }),
-                );
-            });
+            const bounds = paintAuthorizationRouteWithHighlights(mapProposed, route, 'proposed', { drawTaxiChords: true });
             if (!bounds.isEmpty()) mapProposed.fitBounds(bounds);
             else if (map?.getCenter) mapProposed.setCenter(map.getCenter());
         }
@@ -2302,8 +2427,8 @@
                 row.className = 'rounded-lg border border-[#374151] p-2 space-y-1 bg-[#111418]';
                 row.innerHTML = `
                     <div class="text-xs text-gray-400">${escapeHtml(describeSegmentForUi(segmentId))}</div>
-                    <label class="text-xs text-gray-400 block">Taxi cost (£)</label>
-                    <input type="number" step="0.01" min="0" class="input-field taxi-cost-row" data-segment="${escapeHtml(segmentId)}" value="${escapeHtml(String(pref))}">
+                    <label class="text-xs text-gray-400 block">Taxi cost</label>
+                    <div class="segment-cost-input-wrap max-w-full"><span class="cost-input-prefix" aria-hidden="true">£</span><input type="number" step="0.01" min="0" placeholder="0.00" class="input-field taxi-cost-row flex-1 min-w-0" data-segment="${escapeHtml(segmentId)}" value="${escapeHtml(String(pref))}"></div>
                     <label class="text-xs text-gray-400 block">Expected arrival if taking taxi</label>
                     <input type="time" class="input-field taxi-time-row" data-segment="${escapeHtml(segmentId)}">
                 `;
@@ -2331,8 +2456,6 @@
             const withTaxiEl = document.getElementById('mapCostWithTaxi');
             const nextBtn = document.getElementById('mapCostNextBtn');
             const carry = document.getElementById('mapCarryoverBlock');
-            const confirmStep = document.getElementById('transitOnlyConfirmStep');
-            if (confirmStep) confirmStep.classList.add('hidden');
             if (carry) carry.classList.add('hidden');
             if (nextBtn) nextBtn.classList.remove('hidden');
 
@@ -2350,10 +2473,9 @@
                 const oa = document.getElementById('originalArrivalInput');
                 if (pt) pt.value = '';
                 if (oa) oa.value = '';
-                const savedTaxi = taxiRequestSegments;
-                taxiRequestSegments = new Set();
-                renderRoute(routes[selectedRouteIndex]);
-                taxiRequestSegments = savedTaxi;
+                clearRoute();
+                const origBounds = paintAuthorizationRouteWithHighlights(map, routes[selectedRouteIndex], 'primary', { drawTaxiChords: true });
+                if (!origBounds.isEmpty()) map.fitBounds(origBounds);
                 populateTaxiCostSummaryUnderProposed();
                 buildTaxiLegRows();
                 ensureMapProposed();
@@ -2362,14 +2484,34 @@
             triggerMapResizeSoon();
         }
 
-        function mapCostPrimaryNext() {
+        async function showAuthorizationSubmitConfirmation() {
+            const fn = window.uiDialogs?.showConfirmation || window.showConfirmation;
+            const payload = {
+                title: 'Send authorization request?',
+                message:
+                    'Your office will receive this journey, map highlights, and the costs and times you entered.',
+                confirmText: 'Send request',
+                cancelText: 'Cancel',
+                tone: 'info',
+            };
+            if (typeof fn === 'function') {
+                return !!(await fn(payload));
+            }
+            return confirm(payload.message);
+        }
+
+        async function showAppAlert(title, message, tone = 'info') {
+            const fn = window.uiDialogs?.showAlert || window.showAlertDialog;
+            if (typeof fn === 'function') {
+                await fn({ title, message, tone });
+            } else {
+                alert(message || title);
+            }
+        }
+
+        async function mapCostPrimaryNext() {
             if (mapCostActiveMode === 'transit_only') {
-                const confirmStep = document.getElementById('transitOnlyConfirmStep');
-                const nextBtn = document.getElementById('mapCostNextBtn');
-                if (confirmStep && confirmStep.classList.contains('hidden')) {
-                    confirmStep.classList.remove('hidden');
-                    if (nextBtn) nextBtn.classList.add('hidden');
-                }
+                await submitAuthorizationFromMapFlow();
                 return;
             }
             if (mapCostActiveMode === 'with_taxi') {
@@ -2382,19 +2524,16 @@
             }
         }
 
-        function mapCostTransitOnlyBackToEdit() {
-            const confirmStep = document.getElementById('transitOnlyConfirmStep');
-            const nextBtn = document.getElementById('mapCostNextBtn');
-            if (confirmStep) confirmStep.classList.add('hidden');
-            if (nextBtn) nextBtn.classList.remove('hidden');
-        }
-
         async function submitAuthorizationFromMapFlow() {
             carryoverChoice = null;
+            const ok = await showAuthorizationSubmitConfirmation();
+            if (!ok) return;
             await confirmAuthorizationRequest();
         }
 
         async function completeMapFlowWithCarryover(choice) {
+            const ok = await showAuthorizationSubmitConfirmation();
+            if (!ok) return;
             carryoverChoice = choice;
             await confirmAuthorizationRequest();
         }
@@ -2615,12 +2754,14 @@
                 }
             }
             if (!ctx?.uid) {
-                alert('Could not identify driver session. Please sign in again.');
+                await showAppAlert('Sign in required', 'Could not identify driver session. Please sign in again.', 'warning');
                 return;
             }
             if (!ctx.officeId) {
-                alert(
+                await showAppAlert(
+                    'Office not linked',
                     'Still no office linked to this login. Sign out, open the Driver Portal and sign in again (that refreshes your security token), then retry. If it continues, the office team must set officeId on your user in Firestore or ensure bootstrapSession sets the officeId claim for drivers.',
+                    'warning',
                 );
                 return;
             }
@@ -2652,19 +2793,20 @@
                     segments: currentReviewPayload.segments || [],
                     routeVisualization: currentReviewPayload.routeVisualization || null,
                 });
-                alert('Authorization request submitted successfully.');
+                await showAppAlert('Request sent', 'Your authorization request was submitted successfully.', 'success');
                 closeAuthorizationRoutesLayer();
                 await loadAuthorizationRequests();
             } catch (e) {
                 console.error('[Authorization] Failed to submit request', e);
-                alert('Failed to submit authorization request. Please try again.');
+                await showAppAlert('Submit failed', 'Failed to submit authorization request. Please try again.', 'danger');
             }
         }
         function getColorForTravelMode(travelMode, transitType) {
             if (travelMode === 'WALKING') return { color: '#4285F4' };
             if (travelMode === 'TRANSIT') {
                 if (transitType === 'BUS') return { color: '#9C27B0' };
-                if (transitType === 'TRAIN') return { color: '#EA4335' };
+                /* Sky blue — not #EF4444 / #EA4335 so “red” stays reserved for taxi / cost legs only */
+                if (transitType === 'TRAIN') return { color: '#0ea5e9' };
                 if (transitType === 'SUBWAY') return { color: '#34A853' };
                 return { color: '#FBBC04' };
             }
@@ -2776,7 +2918,6 @@
         window.updateSegmentCost = updateSegmentCost;
         window.handleNext = handleNext;
         window.mapCostPrimaryNext = mapCostPrimaryNext;
-        window.mapCostTransitOnlyBackToEdit = mapCostTransitOnlyBackToEdit;
         window.submitAuthorizationFromMapFlow = submitAuthorizationFromMapFlow;
         window.completeMapFlowWithCarryover = completeMapFlowWithCarryover;
         window.authorizationRoutesNavigateBack = authorizationRoutesNavigateBack;
@@ -2816,11 +2957,6 @@
                 googleMapsLoaded = true;
             }
 
-            const mainContent = document.getElementById('mainContent');
-            if (mainContent) {
-                mainContent.classList.remove('hidden');
-            }
-
             await waitForFirestoreReady();
 
             try {
@@ -2836,17 +2972,26 @@
                 unsubscribeAuthStateChange = null;
             }
             if (window.auth && typeof window.auth.onAuthStateChanged === 'function') {
-                unsubscribeAuthStateChange = window.auth.onAuthStateChanged((user) => {
+                unsubscribeAuthStateChange = window.auth.onAuthStateChanged(async (user) => {
                     driverContext = null;
                     if (user) {
-                        void startAuthorizationRequestsListener();
-                        void loadAuthorizationRequests();
+                        setAuthorizationListShellLoading();
+                        try {
+                            if (!(await waitForFirestoreReady())) return;
+                            await loadAuthorizationRequests();
+                            void startAuthorizationRequestsListener();
+                        } catch (e) {
+                            console.error('[Authorization] Initial list load failed', e);
+                        } finally {
+                            setAuthorizationListShellReady();
+                        }
                     } else {
                         if (typeof unsubscribeAuthorizationRequests === 'function') {
                             unsubscribeAuthorizationRequests();
                             unsubscribeAuthorizationRequests = null;
                         }
                         renderAuthorizationRequests([]);
+                        setAuthorizationListShellReady();
                     }
                 });
             }

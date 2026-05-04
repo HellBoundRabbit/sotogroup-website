@@ -934,7 +934,7 @@
             if (!confirmed) return;
             try {
                 const nowMs = Date.now();
-                const deleteAfterMs = nowMs + (24 * 60 * 60 * 1000);
+                const deleteAfterMs = nowMs + (48 * 60 * 60 * 1000);
                 await window.firebaseUpdateDoc(
                     window.firebaseDoc(window.firestore, 'authorizationRequests', liveSupportSelectedRequest.id),
                     { status: newStatus, reviewedAt: new Date(nowMs).toISOString(), deleteAtMs: deleteAfterMs }
