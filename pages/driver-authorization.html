@@ -30,7 +30,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, where, updateDoc, doc, deleteDoc, getDoc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, where, updateDoc, doc, deleteDoc, getDoc, setDoc, serverTimestamp, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
         
@@ -71,6 +71,7 @@
         window.deleteDoc = deleteDoc;
         window.setDoc = setDoc;
         window.serverTimestamp = serverTimestamp;
+        window.onSnapshot = onSnapshot;
         
         console.log('Firebase initialized successfully!');
     </script>
@@ -600,14 +601,7 @@
             <div class="flex items-center gap-3">
                 <h1 class="text-xl font-semibold">Authorization</h1>
             </div>
-            <button onclick="window.location.href='/pages/driver-authorization-approved.html'" class="touch-target">
-                <div class="spinner-wrapper">
-                    <div class="spinner-green"></div>
-                    <div class="spinner1">
-                        <span class="material-symbols-outlined spinner-icon">task_alt</span>
-                    </div>
-                </div>
-            </button>
+            <div class="touch-target w-14 shrink-0" aria-hidden="true"></div>
         </div>
     </div>
 
@@ -1178,6 +1172,7 @@
         let driverContext = null;
         let currentReviewPayload = null;
         let unsubscribeAuthorizationRequests = null;
+        let unsubscribeAuthStateChange = null;
 
         /**
          * Firebase is initialised in a `type="module"` block (async). Inline script must not call
@@ -1203,10 +1198,16 @@
         }
 
         function getStatusLabel(status) {
-            if (status === 'approved') return 'Authorised';
+            if (status === 'approved') return 'Accepted';
             if (status === 'rejected') return 'Rejected';
             if (status === 'contact_office') return 'Contact office';
-            return 'Pending office review';
+            return 'Requested';
+        }
+
+        function authorizationRequestCardClass(status) {
+            const s = status || 'pending';
+            if (s === 'approved' || s === 'rejected' || s === 'contact_office') return `status-${s}`;
+            return 'status-pending';
         }
 
         function formatSubmittedAt(value) {
@@ -1342,13 +1343,13 @@
             emptyState.classList.add('hidden');
             requestsSection.classList.remove('hidden');
             requestsSection.innerHTML = items.map((item) => `
-                <div class="authorization-request-card status-${item.status || 'pending'}">
+                <div class="authorization-request-card ${authorizationRequestCardClass(item.status)}">
                     <div class="flex items-start justify-between gap-2">
                         <div>
                             <div class="text-sm font-semibold text-white">${escapeHtml(item.from?.address || 'From')} → ${escapeHtml(item.to?.address || 'To')}</div>
                             <div class="text-xs text-gray-400 mt-1">Submitted: ${escapeHtml(formatSubmittedAt(item.createdAt))}</div>
                         </div>
-                        <span class="text-xs font-semibold text-white">${escapeHtml(getStatusLabel(item.status))}</span>
+                        <span class="authorization-status-pill text-xs font-semibold shrink-0">${escapeHtml(getStatusLabel(item.status))}</span>
                     </div>
                 </div>
             `).join('');
@@ -1375,7 +1376,7 @@
                 collection(window.db, 'authorizationRequests'),
                 where('driverId', '==', ctx.uid)
             );
-            unsubscribeAuthorizationRequests = onSnapshot(qAuth, (snap) => {
+            unsubscribeAuthorizationRequests = window.onSnapshot(qAuth, (snap) => {
                 renderAuthorizationRequests(mapAndSortAuthorizationDocs(snap.docs));
             }, (e) => {
                 console.error('[Authorization] Authorization request listener failed', e);
@@ -2284,14 +2285,35 @@
                 console.warn('[Authorization] Session bootstrap failed or was skipped.', e);
             }
 
-            await startAuthorizationRequestsListener();
-            loadAuthorizationRequests();
+            if (typeof unsubscribeAuthStateChange === 'function') {
+                unsubscribeAuthStateChange();
+                unsubscribeAuthStateChange = null;
+            }
+            if (window.auth && typeof window.auth.onAuthStateChanged === 'function') {
+                unsubscribeAuthStateChange = window.auth.onAuthStateChanged((user) => {
+                    driverContext = null;
+                    if (user) {
+                        void startAuthorizationRequestsListener();
+                        void loadAuthorizationRequests();
+                    } else {
+                        if (typeof unsubscribeAuthorizationRequests === 'function') {
+                            unsubscribeAuthorizationRequests();
+                            unsubscribeAuthorizationRequests = null;
+                        }
+                        renderAuthorizationRequests([]);
+                    }
+                });
+            }
         });
 
         window.addEventListener('beforeunload', () => {
             if (typeof unsubscribeAuthorizationRequests === 'function') {
                 unsubscribeAuthorizationRequests();
                 unsubscribeAuthorizationRequests = null;
+            }
+            if (typeof unsubscribeAuthStateChange === 'function') {
+                unsubscribeAuthStateChange();
+                unsubscribeAuthStateChange = null;
             }
         });
     </script>
