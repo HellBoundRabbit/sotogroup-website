@@ -87,6 +87,11 @@
             overflow: hidden;
             touch-action: none;
         }
+
+        /* Above sticky nav / modal / Places (≤60); below ui-dialogs overlay (9998) so confirm/alert still wins. */
+        #authorizationRoutesLayer {
+            z-index: 9990;
+        }
         
         .touch-target {
             min-height: 44px;
@@ -851,7 +856,7 @@
     </div>
     
     <!-- In-page routes experience (single-page flow) -->
-    <div id="authorizationRoutesLayer" class="hidden fixed inset-0 z-[70] bg-[#0f1419] text-white">
+    <div id="authorizationRoutesLayer" class="hidden fixed inset-0 bg-[#0f1419] text-white">
         <div class="h-full flex flex-col">
             <div class="bg-[#1a1f24] border-b border-[#283039] px-4 py-3 relative">
                 <button type="button" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#283039] border border-[#3a444e] text-sm" onclick="authorizationRoutesNavigateBack()">
@@ -2284,16 +2289,22 @@
         }
 
         /**
-         * Full journey on one map: default colours for normal legs; straight red for taxi;
-         * curvy red only for transit legs where a cost was entered (no duplicate brand colour).
+         * Full journey on one map: default colours for normal legs; straight red for taxi (when drawTaxiChords);
+         * curvy red for paid transit legs only when highlightTransitCostCurvesInRed (transit-only cost step).
          */
         function paintAuthorizationRouteWithHighlights(targetMap, route, bucket, opts) {
             const useProposed = bucket === 'proposed';
             const drawTaxiChords = opts.drawTaxiChords !== false;
+            const highlightTransitCostCurvesInRed = opts.highlightTransitCostCurvesInRed !== false;
             const bounds = new google.maps.LatLngBounds();
-            const hasCost = (segmentId) => {
+            const hasMeaningfulTransitCost = (segmentId) => {
                 const v = transitCostSegments.get(segmentId);
-                return v != null && String(v).trim() !== '';
+                if (v == null) return false;
+                const s = String(v).trim();
+                if (s === '') return false;
+                const n = parseFloat(s.replace(/,/g, ''));
+                if (!Number.isNaN(n) && n <= 0) return false;
+                return true;
             };
             if (!route?.routes?.[0]?.legs || !targetMap) return bounds;
             route.routes[0].legs.forEach((leg) => {
@@ -2324,8 +2335,8 @@
                         drawStraightTaxiLeg(targetMap, step.start_location, step.end_location, bounds);
                         continue;
                     }
-                    const cost = hasCost(segmentId);
-                    if (step.travel_mode === 'TRANSIT' && cost) {
+                    const cost = hasMeaningfulTransitCost(segmentId);
+                    if (highlightTransitCostCurvesInRed && step.travel_mode === 'TRANSIT' && cost) {
                         renderRedPolylineForSegmentStep(targetMap, step, bounds);
                         continue;
                     }
@@ -2377,7 +2388,10 @@
         function renderTransitCostHighlightsOnPrimaryMap(route) {
             clearRoute();
             if (!route?.routes?.[0]?.legs || !map) return;
-            const bounds = paintAuthorizationRouteWithHighlights(map, route, 'primary', { drawTaxiChords: false });
+            const bounds = paintAuthorizationRouteWithHighlights(map, route, 'primary', {
+                drawTaxiChords: false,
+                highlightTransitCostCurvesInRed: true,
+            });
             if (!bounds.isEmpty()) map.fitBounds(bounds);
         }
 
@@ -2503,7 +2517,11 @@
                 if (pt) pt.value = '';
                 if (oa) oa.value = '';
                 clearRoute();
-                const origBounds = paintAuthorizationRouteWithHighlights(map, routes[selectedRouteIndex], 'primary', { drawTaxiChords: false });
+                const origBounds = paintAuthorizationRouteWithHighlights(map, routes[selectedRouteIndex], 'primary', {
+                    drawTaxiChords: false,
+                    /* Original map = real PT geometry in operator colours; red stays on proposed (taxi) only. */
+                    highlightTransitCostCurvesInRed: false,
+                });
                 if (!origBounds.isEmpty()) map.fitBounds(origBounds);
                 populateTaxiCostSummaryUnderProposed();
                 buildTaxiLegRows();
@@ -2951,8 +2969,26 @@
         window.completeMapFlowWithCarryover = completeMapFlowWithCarryover;
         window.authorizationRoutesNavigateBack = authorizationRoutesNavigateBack;
         
+        /** Valid in-flight journey in session (e.g. after Proceed) — used to resume route picker without re-entering addresses. */
+        function tryGetPendingAuthorizationRequest() {
+            try {
+                const raw = sessionStorage.getItem('authorizationRequest');
+                if (!raw) return null;
+                const d = JSON.parse(raw);
+                const latOk = (v) => (typeof v === 'number' && Number.isFinite(v)) || (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)));
+                if (!d || !latOk(d.from?.lat) || !latOk(d.from?.lng) || !latOk(d.to?.lat) || !latOk(d.to?.lng)) return null;
+                return d;
+            } catch (_e) {
+                return null;
+            }
+        }
+
         // Open authorization modal
         function openAuthorizationModal() {
+            if (tryGetPendingAuthorizationRequest()) {
+                openAuthorizationRoutesLayer();
+                return;
+            }
             // Lock background page scroll while modal is open (especially iOS).
             modalScrollY = window.scrollY || window.pageYOffset || 0;
             document.body.classList.add('modal-open');
