@@ -189,6 +189,41 @@ exports.checkOverdueExpenses = onSchedule(
     return null;
 });
 
+/**
+ * Deletes reviewed authorization requests after their 24h grace period.
+ * Requests are tagged client-side with `deleteAtMs` when office decides.
+ */
+exports.cleanupExpiredAuthorizationRequests = onSchedule(
+  { schedule: "every 30 minutes", timeZone: "Europe/London" },
+  async () => {
+    const nowMs = Date.now();
+    const snap = await db.collection("authorizationRequests")
+        .where("deleteAtMs", "<=", nowMs)
+        .limit(500)
+        .get();
+
+    if (snap.empty) return null;
+
+    const batch = db.batch();
+    let deleteCount = 0;
+    snap.docs.forEach((docSnap) => {
+      const data = docSnap.data() || {};
+      const status = data.status || "pending";
+      if (status === "approved" || status === "rejected" || status === "contact_office") {
+        batch.delete(docSnap.ref);
+        deleteCount += 1;
+      }
+    });
+
+    if (deleteCount > 0) {
+      await batch.commit();
+      functions.logger.info("Deleted expired authorization requests", { count: deleteCount });
+    }
+
+    return null;
+  }
+);
+
 /** Login URL used in driver login emails – short branded link. */
 const DRIVER_LOGIN_URL = "https://sotogroup.uk/login";
 
