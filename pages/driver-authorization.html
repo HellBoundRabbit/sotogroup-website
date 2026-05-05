@@ -88,9 +88,9 @@
             touch-action: none;
         }
 
-        /* Above sticky nav / modal / Places (≤60); below ui-dialogs overlay (9998) so confirm/alert still wins. */
+        /* Above modal (z-50) and Places suggestions (z-60). Match Tailwind z-[120] on the node. */
         #authorizationRoutesLayer {
-            z-index: 9990;
+            z-index: 120;
         }
         
         .touch-target {
@@ -747,6 +747,15 @@
         </div>
     </button>
 
+    <!-- Enable with ?authdebug=1 or ?authDebug=1 (same flag); localStorage authUiDebug=1; ?authdebug=0 / ?authDebug=0 forces off -->
+    <div id="authUiDebugHud" class="hidden fixed bottom-0 left-0 right-0 z-[100] max-h-[32vh] overflow-auto border-t border-emerald-800 bg-black/95 px-2 py-1.5 text-[10px] leading-tight text-emerald-100 shadow-lg">
+        <div class="mb-1 flex items-center justify-between gap-2 text-emerald-300">
+            <span class="font-semibold">Auth UI debug</span>
+            <button type="button" class="touch-target rounded bg-emerald-900 px-2 py-1 text-[10px] text-white" onclick="document.getElementById('authUiDebugHud').classList.add('hidden')">Hide</button>
+        </div>
+        <pre id="authUiDebugHudBody" class="whitespace-pre-wrap break-all font-mono"></pre>
+    </div>
+
     <!-- Authorization Request Modal -->
     <div id="authorizationModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 overflow-y-auto">
         <div class="authorization-modal-shell">
@@ -855,8 +864,8 @@
         </div>
     </div>
     
-    <!-- In-page routes experience (single-page flow) -->
-    <div id="authorizationRoutesLayer" class="hidden fixed inset-0 bg-[#0f1419] text-white">
+    <!-- Route flow: simple full-screen panel (shown only after Proceed). -->
+    <div id="authorizationRoutesLayer" class="hidden fixed inset-0 z-[120] bg-[#0f1419] text-white">
         <div class="h-full flex flex-col">
             <div class="bg-[#1a1f24] border-b border-[#283039] px-4 py-3 relative">
                 <button type="button" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#283039] border border-[#3a444e] text-sm" onclick="authorizationRoutesNavigateBack()">
@@ -952,6 +961,83 @@
         let toPlace = null;
         let googleMapsLoaded = false;
         let modalScrollY = 0;
+
+        const AUTH_UI_DEBUG_MAX_LINES = 100;
+        const authUiDebugBuffer = [];
+
+        function authUiDebugEnabled() {
+            try {
+                const sp = new URLSearchParams(window.location.search || '');
+                /* Query keys are case-sensitive; accept camelCase for convenience. */
+                if (sp.get('authdebug') === '0' || sp.get('authDebug') === '0') return false;
+                if (sp.get('authdebug') === '1' || sp.get('authDebug') === '1') return true;
+            } catch (_e) {}
+            try {
+                return window.localStorage.getItem('authUiDebug') === '1';
+            } catch (_e2) {
+                return false;
+            }
+        }
+
+        function authUiDebugLog(tag, detail) {
+            try {
+                console.info('[AuthUI]', tag, detail !== undefined ? detail : '');
+            } catch (_c) {}
+            let payload = '';
+            try {
+                payload = detail !== undefined ? ` ${typeof detail === 'string' ? detail : JSON.stringify(detail)}` : '';
+            } catch (_e) {
+                payload = ' [unserializable]';
+            }
+            const ts = new Date().toISOString().slice(11, 23);
+            const line = `${ts} ${tag}${payload}`;
+            if (!authUiDebugEnabled()) return;
+            authUiDebugBuffer.push(line);
+            while (authUiDebugBuffer.length > AUTH_UI_DEBUG_MAX_LINES) authUiDebugBuffer.shift();
+            const hud = document.getElementById('authUiDebugHud');
+            const body = document.getElementById('authUiDebugHudBody');
+            if (hud && body) {
+                hud.classList.remove('hidden');
+                body.textContent = authUiDebugBuffer.join('\n');
+            }
+        }
+
+        /**
+         * FAB hidden only while routes layer is visible.
+         * Also drives mainContent pointer-events so the auth list cannot eat taps if the overlay mis-stacks,
+         * and clears stale pointer-events when the layer is hidden without a matching close (heal).
+         */
+        function syncFabVisibilityWithRoutesLayer() {
+            const layer = document.getElementById('authorizationRoutesLayer');
+            const fab = document.getElementById('authFloatingAdd');
+            const main = document.getElementById('mainContent');
+            const layerHidden = !layer || layer.classList.contains('hidden');
+            if (main) main.style.pointerEvents = layerHidden ? '' : 'none';
+            if (!fab) return;
+            if (layerHidden) {
+                fab.classList.remove('hidden');
+                fab.style.removeProperty('display');
+            } else {
+                fab.classList.add('hidden');
+            }
+        }
+
+        function authUiRouteUiSnapshot(label) {
+            const layer = document.getElementById('authorizationRoutesLayer');
+            const fab = document.getElementById('authFloatingAdd');
+            const main = document.getElementById('mainContent');
+            authUiDebugLog('ui_snapshot:' + label, {
+                layerHidden: layer ? layer.classList.contains('hidden') : null,
+                fabHidden: fab ? fab.classList.contains('hidden') : null,
+                mainPointerEvents: main ? main.style.pointerEvents || '(default)' : null,
+                mainContentHidden: main ? main.classList.contains('hidden') : null,
+                authLoadingHidden: document.getElementById('authPageLoading')?.classList.contains('hidden'),
+            });
+        }
+
+        window.authUiDebugLog = authUiDebugLog;
+        window.authUiDebugEnabled = authUiDebugEnabled;
+        window.authUiRouteUiSnapshot = authUiRouteUiSnapshot;
 
         const AUTOCOMPLETE_FIELDS = ['geometry', 'formatted_address', 'name', 'address_components'];
 
@@ -1148,12 +1234,14 @@
         
         // Proceed to routes (single-page: open in-page route flow)
         function proceedToRoutes() {
+            authUiDebugLog('proceedToRoutes:start');
             const fromInput = document.getElementById('fromAddress');
             const toInput = document.getElementById('toAddress');
             const leaveAtRadio = document.querySelector('input[name="leaveAt"]:checked');
             const customDateTime = document.getElementById('customDateTime');
             
             if (!fromPlace || !toPlace) {
+                authUiDebugLog('proceedToRoutes:abort', { reason: 'missing_place' });
                 alert('Please select valid addresses for both From and To locations.');
                 return;
             }
@@ -1192,6 +1280,7 @@
                 }),
             );
 
+            authUiDebugLog('proceedToRoutes:session_set', { hasSession: !!sessionStorage.getItem('authorizationRequest') });
             openAuthorizationRoutesLayer();
         }
 
@@ -1227,21 +1316,49 @@
             validateForm();
         }
 
+        function setAuthorizationRoutesLayerDisplayed(visible) {
+            const el = document.getElementById('authorizationRoutesLayer');
+            if (!el) return;
+            if (visible) {
+                el.classList.remove('hidden');
+            } else {
+                el.classList.add('hidden');
+            }
+        }
+
         /** Show routes layer before hiding the modal to avoid flashing the underlying page between states. */
         function openAuthorizationRoutesLayer() {
             const layer = document.getElementById('authorizationRoutesLayer');
-            if (!layer) return;
+            if (!layer) {
+                authUiDebugLog('openAuthorizationRoutesLayer:no_layer');
+                return;
+            }
             try {
                 document.getElementById('fromAddress')?.blur();
                 document.getElementById('toAddress')?.blur();
             } catch (_e) {}
-            layer.classList.remove('hidden');
+            authUiDebugLog('openAuthorizationRoutesLayer:show', {
+                layerHiddenBefore: layer.classList.contains('hidden'),
+                fabHiddenBefore: document.getElementById('authFloatingAdd')?.classList.contains('hidden'),
+            });
+            setAuthorizationRoutesLayerDisplayed(true);
+            document.getElementById('mainContent')?.classList.add('hidden');
             hideAuthorizationModal();
+            syncFabVisibilityWithRoutesLayer();
             initializeMap()
                 .then(() => loadRoutes())
+                .then(() => {
+                    authUiDebugLog('openAuthorizationRoutesLayer:loadRoutes_done');
+                    authUiRouteUiSnapshot('after_loadRoutes_done');
+                    [0, 50, 250, 1000].forEach((ms) =>
+                        setTimeout(() => authUiRouteUiSnapshot('after_loadRoutes_' + ms + 'ms'), ms),
+                    );
+                })
                 .catch((e) => {
                     console.error('[Authorization] Route layer init failed', e);
-                    showError('Could not load your journey. Please try Proceed again or reopen from the + button.');
+                    authUiDebugLog('openAuthorizationRoutesLayer:catch', { message: e && e.message ? e.message : String(e) });
+                    closeAuthorizationRoutesLayer('route_init_failed');
+                    alert('Could not load your journey. Please tap + and try again.');
                 });
         }
 
@@ -1267,9 +1384,10 @@
             if (requestButton) requestButton.classList.remove('visible');
         }
 
-        function closeAuthorizationRoutesLayer() {
-            const layer = document.getElementById('authorizationRoutesLayer');
-            if (layer) layer.classList.add('hidden');
+        function closeAuthorizationRoutesLayer(source) {
+            authUiDebugLog('closeAuthorizationRoutesLayer', { source: source || 'unknown' });
+            setAuthorizationRoutesLayerDisplayed(false);
+            document.getElementById('mainContent')?.classList.remove('hidden');
             sessionStorage.removeItem('authorizationRequest');
             const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
             const routesList = document.getElementById('routesList');
@@ -1290,6 +1408,7 @@
             const titleEl = document.getElementById('routeScreenTitle');
             if (titleEl) titleEl.textContent = 'Route options';
             clearPoweredByGoogleAttribution();
+            syncFabVisibilityWithRoutesLayer();
         }
 
         function authorizationRoutesNavigateBack() {
@@ -1332,7 +1451,7 @@
                 return;
             }
 
-            closeAuthorizationRoutesLayer();
+            closeAuthorizationRoutesLayer('navigate_back');
         }
 
         let map;
@@ -1602,11 +1721,20 @@
 
         function setAuthorizationListShellReady() {
             document.getElementById('authPageLoading')?.classList.add('hidden');
-            document.getElementById('mainContent')?.classList.remove('hidden');
-            document.getElementById('authFloatingAdd')?.classList.remove('hidden');
+            const layer = document.getElementById('authorizationRoutesLayer');
+            const routesOpen = !!(layer && !layer.classList.contains('hidden'));
+            const main = document.getElementById('mainContent');
+            if (main && !routesOpen) main.classList.remove('hidden');
+            authUiDebugLog('setAuthorizationListShellReady', {
+                routesLayerHidden: layer?.classList.contains('hidden'),
+                routesOpen,
+                mainContentHidden: main?.classList.contains('hidden'),
+            });
+            syncFabVisibilityWithRoutesLayer();
         }
 
         function setAuthorizationListShellLoading() {
+            authUiDebugLog('setAuthorizationListShellLoading');
             document.getElementById('authPageLoading')?.classList.remove('hidden');
             document.getElementById('mainContent')?.classList.add('hidden');
             document.getElementById('authFloatingAdd')?.classList.add('hidden');
@@ -1649,9 +1777,18 @@
             }
         }
 
+        function ensureDirectionsService() {
+            if (!directionsService && typeof google !== 'undefined' && google.maps) {
+                directionsService = new google.maps.DirectionsService();
+            }
+            return directionsService;
+        }
+
         function directionsRoutePromise(request) {
+            const ds = ensureDirectionsService();
+            if (!ds) return Promise.resolve(null);
             return new Promise((resolve) => {
-                directionsService.route(request, (response, status) => {
+                ds.route(request, (response, status) => {
                     const ok = status === google.maps.DirectionsStatus.OK || status === 'OK';
                     resolve(ok ? response : null);
                 });
@@ -1845,34 +1982,52 @@
             }
         }
         async function initializeMap() {
+            authUiDebugLog('initializeMap:wait_maps');
             await Promise.race([
                 waitForGoogleMaps(),
                 new Promise((_, rej) => setTimeout(() => rej(new Error('Google Maps did not become ready in time')), 45000)),
             ]);
+            authUiDebugLog('initializeMap:maps_ready', { googleMapsLoaded });
             const storedData = sessionStorage.getItem('authorizationRequest');
             if (!storedData) {
+                authUiDebugLog('initializeMap:no_session');
                 showError('No route data found. Please go back and create a new request.');
-                return;
+                throw new Error('No route data in session (authorizationRequest).');
             }
             let parsed;
             try {
                 parsed = JSON.parse(storedData);
             } catch (_e) {
+                authUiDebugLog('initializeMap:bad_json');
                 showError('Saved journey data was invalid. Please use the + button and enter your addresses again.');
-                return;
+                throw new Error('Invalid authorizationRequest JSON in session.');
             }
             requestData = parsed;
             if (!map) {
-                map = new google.maps.Map(document.getElementById('map'), { zoom: 10, center: { lat: requestData.from.lat, lng: requestData.from.lng }, mapTypeId: google.maps.MapTypeId.ROADMAP });
-                directionsService = new google.maps.DirectionsService();
+                const mapEl = document.getElementById('map');
+                if (!mapEl) {
+                    authUiDebugLog('initializeMap:no_map_element');
+                    throw new Error('Map container #map not found.');
+                }
+                map = new google.maps.Map(mapEl, { zoom: 10, center: { lat: requestData.from.lat, lng: requestData.from.lng }, mapTypeId: google.maps.MapTypeId.ROADMAP });
             }
+            authUiDebugLog('initializeMap:done', { hasMap: !!map });
         }
         async function loadRoutes() {
+            authUiDebugLog('loadRoutes:start', { hasRequestData: !!requestData });
             await waitForGoogleMaps();
             if (!requestData) {
                 const storedData = sessionStorage.getItem('authorizationRequest');
-                if (!storedData) return;
-                requestData = JSON.parse(storedData);
+                if (!storedData) {
+                    showError('No saved journey found. Tap + and enter From / To again.');
+                    return;
+                }
+                try {
+                    requestData = JSON.parse(storedData);
+                } catch (e) {
+                    showError('Saved journey data was invalid. Tap + to start again.');
+                    return;
+                }
             }
             routesPickerConfirmed = false;
             routeAlternatives = [];
@@ -2968,28 +3123,15 @@
         window.submitAuthorizationFromMapFlow = submitAuthorizationFromMapFlow;
         window.completeMapFlowWithCarryover = completeMapFlowWithCarryover;
         window.authorizationRoutesNavigateBack = authorizationRoutesNavigateBack;
-        
-        /** Valid in-flight journey in session (e.g. after Proceed) — used to resume route picker without re-entering addresses. */
-        function tryGetPendingAuthorizationRequest() {
-            try {
-                const raw = sessionStorage.getItem('authorizationRequest');
-                if (!raw) return null;
-                const d = JSON.parse(raw);
-                const latOk = (v) => (typeof v === 'number' && Number.isFinite(v)) || (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)));
-                if (!d || !latOk(d.from?.lat) || !latOk(d.from?.lng) || !latOk(d.to?.lat) || !latOk(d.to?.lng)) return null;
-                return d;
-            } catch (_e) {
-                return null;
-            }
-        }
 
-        // Open authorization modal
         function openAuthorizationModal() {
-            if (tryGetPendingAuthorizationRequest()) {
-                openAuthorizationRoutesLayer();
-                return;
+            authUiDebugLog('openAuthorizationModal');
+            const routesEl = document.getElementById('authorizationRoutesLayer');
+            if (routesEl && !routesEl.classList.contains('hidden')) {
+                closeAuthorizationRoutesLayer('open_modal');
             }
-            // Lock background page scroll while modal is open (especially iOS).
+            sessionStorage.removeItem('authorizationRequest');
+
             modalScrollY = window.scrollY || window.pageYOffset || 0;
             document.body.classList.add('modal-open');
             document.body.style.position = 'fixed';
@@ -2997,9 +3139,9 @@
             document.body.style.left = '0';
             document.body.style.right = '0';
             document.body.style.width = '100%';
-            
+
             document.getElementById('authorizationModal').classList.remove('hidden');
-            // Initialize autocomplete when modal opens
+            syncFabVisibilityWithRoutesLayer();
             setTimeout(() => {
                 if (window.google && window.google.maps && window.google.maps.places) {
                     googleMapsLoaded = true;
@@ -3015,8 +3157,10 @@
             sessionStorage.removeItem('authorizationRequest');
             resetAuthorizationRequestFormFields();
         }
-        
-        // Initialize on page load
+
+        window.openAuthorizationModal = openAuthorizationModal;
+        window.openAuthorizationRoutesLayer = openAuthorizationRoutesLayer;
+
         document.addEventListener('DOMContentLoaded', async () => {
             if (window.google && window.google.maps && window.google.maps.places) {
                 googleMapsLoaded = true;
@@ -3038,6 +3182,7 @@
             }
             if (window.auth && typeof window.auth.onAuthStateChanged === 'function') {
                 unsubscribeAuthStateChange = window.auth.onAuthStateChanged(async (user) => {
+                    authUiDebugLog('onAuthStateChanged', { uid: user && user.uid ? user.uid : null });
                     driverContext = null;
                     if (user) {
                         setAuthorizationListShellLoading();
@@ -3060,6 +3205,9 @@
                     }
                 });
             }
+
+            syncFabVisibilityWithRoutesLayer();
+            authUiDebugLog('DOMContentLoaded:boot_complete', { authUiDebug: authUiDebugEnabled() });
         });
 
         window.addEventListener('beforeunload', () => {
