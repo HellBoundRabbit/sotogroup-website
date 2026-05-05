@@ -91,6 +91,17 @@
         /* Above modal (z-50) and Places suggestions (z-60). Match Tailwind z-[120] on the node. */
         #authorizationRoutesLayer {
             z-index: 120;
+            /* iOS: fill viewport; h-full alone can collapse when parent chain omits height */
+            min-height: 100dvh;
+            min-height: -webkit-fill-available;
+        }
+        /* When the route list is the only visible column, it must grow in the flex row or the body shows through as “empty black”. */
+        .routes-list:not([hidden]) {
+            flex: 1 1 0%;
+            min-width: 0;
+            min-height: 0;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
         }
         
         .touch-target {
@@ -699,8 +710,8 @@
     </style>
 </head>
 <body class="bg-black text-white min-h-screen">
-    <!-- Top Navigation -->
-    <div class="bg-black border-b border-gray-800 sticky top-0 z-50">
+    <!-- Top Navigation (hidden while full-screen route flow is open so it does not sit above the overlay) -->
+    <div id="authorizationPageHeader" class="bg-black border-b border-gray-800 sticky top-0 z-50">
         <div class="flex items-center justify-between px-4 py-3">
             <button onclick="window.location.href='/pages/driver-portal.html'" class="touch-target">
                 <div class="spinner-wrapper">
@@ -864,10 +875,9 @@
         </div>
     </div>
     
-    <!-- Route flow: simple full-screen panel (shown only after Proceed). -->
-    <div id="authorizationRoutesLayer" class="hidden fixed inset-0 z-[120] bg-[#0f1419] text-white">
-        <div class="h-full flex flex-col">
-            <div class="bg-[#1a1f24] border-b border-[#283039] px-4 py-3 relative">
+    <!-- Route flow: full-screen panel (shown only after Proceed). Root is a flex column so the body area always gets a real height on mobile. -->
+    <div id="authorizationRoutesLayer" class="hidden fixed inset-0 z-[120] flex w-full min-h-0 flex-col bg-[#0f1419] text-white">
+            <div class="relative shrink-0 border-b border-[#283039] bg-[#1a1f24] px-4 py-3">
                 <button type="button" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#283039] border border-[#3a444e] text-sm" onclick="authorizationRoutesNavigateBack()">
                     <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span>
                     Back
@@ -879,7 +889,7 @@
                     Next
                 </button>
             </div>
-            <div class="flex-1 min-h-0 flex flex-col md:flex-row">
+            <div class="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
                 <div id="routePickerPanel" class="route-picker-panel">
                     <div class="route-picker-lead">
                         <div class="route-picker-title">Public transport routes</div>
@@ -952,7 +962,6 @@
                     </div>
                 </div>
             </div>
-        </div>
     </div>
     
     <script>
@@ -1343,6 +1352,7 @@
             });
             setAuthorizationRoutesLayerDisplayed(true);
             document.getElementById('mainContent')?.classList.add('hidden');
+            document.getElementById('authorizationPageHeader')?.classList.add('hidden');
             hideAuthorizationModal();
             syncFabVisibilityWithRoutesLayer();
             initializeMap()
@@ -1388,6 +1398,7 @@
             authUiDebugLog('closeAuthorizationRoutesLayer', { source: source || 'unknown' });
             setAuthorizationRoutesLayerDisplayed(false);
             document.getElementById('mainContent')?.classList.remove('hidden');
+            document.getElementById('authorizationPageHeader')?.classList.remove('hidden');
             sessionStorage.removeItem('authorizationRequest');
             const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
             const routesList = document.getElementById('routesList');
