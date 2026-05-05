@@ -87,22 +87,6 @@
             overflow: hidden;
             touch-action: none;
         }
-
-        /* Above modal (z-50) and Places suggestions (z-60). Match Tailwind z-[120] on the node. */
-        #authorizationRoutesLayer {
-            z-index: 120;
-            /* iOS: fill viewport; h-full alone can collapse when parent chain omits height */
-            min-height: 100dvh;
-            min-height: -webkit-fill-available;
-        }
-        /* When the route list is the only visible column, it must grow in the flex row or the body shows through as “empty black”. */
-        .routes-list:not([hidden]) {
-            flex: 1 1 0%;
-            min-width: 0;
-            min-height: 0;
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-        }
         
         .touch-target {
             min-height: 44px;
@@ -710,8 +694,8 @@
     </style>
 </head>
 <body class="bg-black text-white min-h-screen">
-    <!-- Top Navigation (hidden while full-screen route flow is open so it does not sit above the overlay) -->
-    <div id="authorizationPageHeader" class="bg-black border-b border-gray-800 sticky top-0 z-50">
+    <!-- Top Navigation -->
+    <div class="bg-black border-b border-gray-800 sticky top-0 z-50">
         <div class="flex items-center justify-between px-4 py-3">
             <button onclick="window.location.href='/pages/driver-portal.html'" class="touch-target">
                 <div class="spinner-wrapper">
@@ -757,15 +741,6 @@
             </div>
         </div>
     </button>
-
-    <!-- Enable with ?authdebug=1 or ?authDebug=1 (same flag); localStorage authUiDebug=1; ?authdebug=0 / ?authDebug=0 forces off -->
-    <div id="authUiDebugHud" class="hidden fixed bottom-0 left-0 right-0 z-[100] max-h-[32vh] overflow-auto border-t border-emerald-800 bg-black/95 px-2 py-1.5 text-[10px] leading-tight text-emerald-100 shadow-lg">
-        <div class="mb-1 flex items-center justify-between gap-2 text-emerald-300">
-            <span class="font-semibold">Auth UI debug</span>
-            <button type="button" class="touch-target rounded bg-emerald-900 px-2 py-1 text-[10px] text-white" onclick="document.getElementById('authUiDebugHud').classList.add('hidden')">Hide</button>
-        </div>
-        <pre id="authUiDebugHudBody" class="whitespace-pre-wrap break-all font-mono"></pre>
-    </div>
 
     <!-- Authorization Request Modal -->
     <div id="authorizationModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 overflow-y-auto">
@@ -875,9 +850,10 @@
         </div>
     </div>
     
-    <!-- Route flow: full-screen panel (shown only after Proceed). Root is a flex column so the body area always gets a real height on mobile. -->
-    <div id="authorizationRoutesLayer" class="hidden fixed inset-0 z-[120] flex w-full min-h-0 flex-col bg-[#0f1419] text-white">
-            <div class="relative shrink-0 border-b border-[#283039] bg-[#1a1f24] px-4 py-3">
+    <!-- In-page routes experience (single-page flow) -->
+    <div id="authorizationRoutesLayer" class="hidden fixed inset-0 z-[70] bg-[#0f1419] text-white">
+        <div class="h-full flex flex-col">
+            <div class="bg-[#1a1f24] border-b border-[#283039] px-4 py-3 relative">
                 <button type="button" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#283039] border border-[#3a444e] text-sm" onclick="authorizationRoutesNavigateBack()">
                     <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span>
                     Back
@@ -889,7 +865,7 @@
                     Next
                 </button>
             </div>
-            <div class="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+            <div class="flex-1 min-h-0 flex flex-col md:flex-row">
                 <div id="routePickerPanel" class="route-picker-panel">
                     <div class="route-picker-lead">
                         <div class="route-picker-title">Public transport routes</div>
@@ -962,6 +938,7 @@
                     </div>
                 </div>
             </div>
+        </div>
     </div>
     
     <script>
@@ -970,83 +947,6 @@
         let toPlace = null;
         let googleMapsLoaded = false;
         let modalScrollY = 0;
-
-        const AUTH_UI_DEBUG_MAX_LINES = 100;
-        const authUiDebugBuffer = [];
-
-        function authUiDebugEnabled() {
-            try {
-                const sp = new URLSearchParams(window.location.search || '');
-                /* Query keys are case-sensitive; accept camelCase for convenience. */
-                if (sp.get('authdebug') === '0' || sp.get('authDebug') === '0') return false;
-                if (sp.get('authdebug') === '1' || sp.get('authDebug') === '1') return true;
-            } catch (_e) {}
-            try {
-                return window.localStorage.getItem('authUiDebug') === '1';
-            } catch (_e2) {
-                return false;
-            }
-        }
-
-        function authUiDebugLog(tag, detail) {
-            try {
-                console.info('[AuthUI]', tag, detail !== undefined ? detail : '');
-            } catch (_c) {}
-            let payload = '';
-            try {
-                payload = detail !== undefined ? ` ${typeof detail === 'string' ? detail : JSON.stringify(detail)}` : '';
-            } catch (_e) {
-                payload = ' [unserializable]';
-            }
-            const ts = new Date().toISOString().slice(11, 23);
-            const line = `${ts} ${tag}${payload}`;
-            if (!authUiDebugEnabled()) return;
-            authUiDebugBuffer.push(line);
-            while (authUiDebugBuffer.length > AUTH_UI_DEBUG_MAX_LINES) authUiDebugBuffer.shift();
-            const hud = document.getElementById('authUiDebugHud');
-            const body = document.getElementById('authUiDebugHudBody');
-            if (hud && body) {
-                hud.classList.remove('hidden');
-                body.textContent = authUiDebugBuffer.join('\n');
-            }
-        }
-
-        /**
-         * FAB hidden only while routes layer is visible.
-         * Also drives mainContent pointer-events so the auth list cannot eat taps if the overlay mis-stacks,
-         * and clears stale pointer-events when the layer is hidden without a matching close (heal).
-         */
-        function syncFabVisibilityWithRoutesLayer() {
-            const layer = document.getElementById('authorizationRoutesLayer');
-            const fab = document.getElementById('authFloatingAdd');
-            const main = document.getElementById('mainContent');
-            const layerHidden = !layer || layer.classList.contains('hidden');
-            if (main) main.style.pointerEvents = layerHidden ? '' : 'none';
-            if (!fab) return;
-            if (layerHidden) {
-                fab.classList.remove('hidden');
-                fab.style.removeProperty('display');
-            } else {
-                fab.classList.add('hidden');
-            }
-        }
-
-        function authUiRouteUiSnapshot(label) {
-            const layer = document.getElementById('authorizationRoutesLayer');
-            const fab = document.getElementById('authFloatingAdd');
-            const main = document.getElementById('mainContent');
-            authUiDebugLog('ui_snapshot:' + label, {
-                layerHidden: layer ? layer.classList.contains('hidden') : null,
-                fabHidden: fab ? fab.classList.contains('hidden') : null,
-                mainPointerEvents: main ? main.style.pointerEvents || '(default)' : null,
-                mainContentHidden: main ? main.classList.contains('hidden') : null,
-                authLoadingHidden: document.getElementById('authPageLoading')?.classList.contains('hidden'),
-            });
-        }
-
-        window.authUiDebugLog = authUiDebugLog;
-        window.authUiDebugEnabled = authUiDebugEnabled;
-        window.authUiRouteUiSnapshot = authUiRouteUiSnapshot;
 
         const AUTOCOMPLETE_FIELDS = ['geometry', 'formatted_address', 'name', 'address_components'];
 
@@ -1243,14 +1143,12 @@
         
         // Proceed to routes (single-page: open in-page route flow)
         function proceedToRoutes() {
-            authUiDebugLog('proceedToRoutes:start');
             const fromInput = document.getElementById('fromAddress');
             const toInput = document.getElementById('toAddress');
             const leaveAtRadio = document.querySelector('input[name="leaveAt"]:checked');
             const customDateTime = document.getElementById('customDateTime');
             
             if (!fromPlace || !toPlace) {
-                authUiDebugLog('proceedToRoutes:abort', { reason: 'missing_place' });
                 alert('Please select valid addresses for both From and To locations.');
                 return;
             }
@@ -1289,7 +1187,6 @@
                 }),
             );
 
-            authUiDebugLog('proceedToRoutes:session_set', { hasSession: !!sessionStorage.getItem('authorizationRequest') });
             openAuthorizationRoutesLayer();
         }
 
@@ -1325,50 +1222,21 @@
             validateForm();
         }
 
-        function setAuthorizationRoutesLayerDisplayed(visible) {
-            const el = document.getElementById('authorizationRoutesLayer');
-            if (!el) return;
-            if (visible) {
-                el.classList.remove('hidden');
-            } else {
-                el.classList.add('hidden');
-            }
-        }
-
         /** Show routes layer before hiding the modal to avoid flashing the underlying page between states. */
         function openAuthorizationRoutesLayer() {
             const layer = document.getElementById('authorizationRoutesLayer');
-            if (!layer) {
-                authUiDebugLog('openAuthorizationRoutesLayer:no_layer');
-                return;
-            }
+            if (!layer) return;
             try {
                 document.getElementById('fromAddress')?.blur();
                 document.getElementById('toAddress')?.blur();
             } catch (_e) {}
-            authUiDebugLog('openAuthorizationRoutesLayer:show', {
-                layerHiddenBefore: layer.classList.contains('hidden'),
-                fabHiddenBefore: document.getElementById('authFloatingAdd')?.classList.contains('hidden'),
-            });
-            setAuthorizationRoutesLayerDisplayed(true);
-            document.getElementById('mainContent')?.classList.add('hidden');
-            document.getElementById('authorizationPageHeader')?.classList.add('hidden');
+            layer.classList.remove('hidden');
             hideAuthorizationModal();
-            syncFabVisibilityWithRoutesLayer();
             initializeMap()
                 .then(() => loadRoutes())
-                .then(() => {
-                    authUiDebugLog('openAuthorizationRoutesLayer:loadRoutes_done');
-                    authUiRouteUiSnapshot('after_loadRoutes_done');
-                    [0, 50, 250, 1000].forEach((ms) =>
-                        setTimeout(() => authUiRouteUiSnapshot('after_loadRoutes_' + ms + 'ms'), ms),
-                    );
-                })
                 .catch((e) => {
                     console.error('[Authorization] Route layer init failed', e);
-                    authUiDebugLog('openAuthorizationRoutesLayer:catch', { message: e && e.message ? e.message : String(e) });
-                    closeAuthorizationRoutesLayer('route_init_failed');
-                    alert('Could not load your journey. Please tap + and try again.');
+                    showError('Could not load your journey. Please try Proceed again or reopen from the + button.');
                 });
         }
 
@@ -1394,11 +1262,9 @@
             if (requestButton) requestButton.classList.remove('visible');
         }
 
-        function closeAuthorizationRoutesLayer(source) {
-            authUiDebugLog('closeAuthorizationRoutesLayer', { source: source || 'unknown' });
-            setAuthorizationRoutesLayerDisplayed(false);
-            document.getElementById('mainContent')?.classList.remove('hidden');
-            document.getElementById('authorizationPageHeader')?.classList.remove('hidden');
+        function closeAuthorizationRoutesLayer() {
+            const layer = document.getElementById('authorizationRoutesLayer');
+            if (layer) layer.classList.add('hidden');
             sessionStorage.removeItem('authorizationRequest');
             const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
             const routesList = document.getElementById('routesList');
@@ -1419,7 +1285,6 @@
             const titleEl = document.getElementById('routeScreenTitle');
             if (titleEl) titleEl.textContent = 'Route options';
             clearPoweredByGoogleAttribution();
-            syncFabVisibilityWithRoutesLayer();
         }
 
         function authorizationRoutesNavigateBack() {
@@ -1462,7 +1327,7 @@
                 return;
             }
 
-            closeAuthorizationRoutesLayer('navigate_back');
+            closeAuthorizationRoutesLayer();
         }
 
         let map;
@@ -1732,20 +1597,11 @@
 
         function setAuthorizationListShellReady() {
             document.getElementById('authPageLoading')?.classList.add('hidden');
-            const layer = document.getElementById('authorizationRoutesLayer');
-            const routesOpen = !!(layer && !layer.classList.contains('hidden'));
-            const main = document.getElementById('mainContent');
-            if (main && !routesOpen) main.classList.remove('hidden');
-            authUiDebugLog('setAuthorizationListShellReady', {
-                routesLayerHidden: layer?.classList.contains('hidden'),
-                routesOpen,
-                mainContentHidden: main?.classList.contains('hidden'),
-            });
-            syncFabVisibilityWithRoutesLayer();
+            document.getElementById('mainContent')?.classList.remove('hidden');
+            document.getElementById('authFloatingAdd')?.classList.remove('hidden');
         }
 
         function setAuthorizationListShellLoading() {
-            authUiDebugLog('setAuthorizationListShellLoading');
             document.getElementById('authPageLoading')?.classList.remove('hidden');
             document.getElementById('mainContent')?.classList.add('hidden');
             document.getElementById('authFloatingAdd')?.classList.add('hidden');
@@ -1788,18 +1644,9 @@
             }
         }
 
-        function ensureDirectionsService() {
-            if (!directionsService && typeof google !== 'undefined' && google.maps) {
-                directionsService = new google.maps.DirectionsService();
-            }
-            return directionsService;
-        }
-
         function directionsRoutePromise(request) {
-            const ds = ensureDirectionsService();
-            if (!ds) return Promise.resolve(null);
             return new Promise((resolve) => {
-                ds.route(request, (response, status) => {
+                directionsService.route(request, (response, status) => {
                     const ok = status === google.maps.DirectionsStatus.OK || status === 'OK';
                     resolve(ok ? response : null);
                 });
@@ -1993,52 +1840,34 @@
             }
         }
         async function initializeMap() {
-            authUiDebugLog('initializeMap:wait_maps');
             await Promise.race([
                 waitForGoogleMaps(),
                 new Promise((_, rej) => setTimeout(() => rej(new Error('Google Maps did not become ready in time')), 45000)),
             ]);
-            authUiDebugLog('initializeMap:maps_ready', { googleMapsLoaded });
             const storedData = sessionStorage.getItem('authorizationRequest');
             if (!storedData) {
-                authUiDebugLog('initializeMap:no_session');
                 showError('No route data found. Please go back and create a new request.');
-                throw new Error('No route data in session (authorizationRequest).');
+                return;
             }
             let parsed;
             try {
                 parsed = JSON.parse(storedData);
             } catch (_e) {
-                authUiDebugLog('initializeMap:bad_json');
                 showError('Saved journey data was invalid. Please use the + button and enter your addresses again.');
-                throw new Error('Invalid authorizationRequest JSON in session.');
+                return;
             }
             requestData = parsed;
             if (!map) {
-                const mapEl = document.getElementById('map');
-                if (!mapEl) {
-                    authUiDebugLog('initializeMap:no_map_element');
-                    throw new Error('Map container #map not found.');
-                }
-                map = new google.maps.Map(mapEl, { zoom: 10, center: { lat: requestData.from.lat, lng: requestData.from.lng }, mapTypeId: google.maps.MapTypeId.ROADMAP });
+                map = new google.maps.Map(document.getElementById('map'), { zoom: 10, center: { lat: requestData.from.lat, lng: requestData.from.lng }, mapTypeId: google.maps.MapTypeId.ROADMAP });
+                directionsService = new google.maps.DirectionsService();
             }
-            authUiDebugLog('initializeMap:done', { hasMap: !!map });
         }
         async function loadRoutes() {
-            authUiDebugLog('loadRoutes:start', { hasRequestData: !!requestData });
             await waitForGoogleMaps();
             if (!requestData) {
                 const storedData = sessionStorage.getItem('authorizationRequest');
-                if (!storedData) {
-                    showError('No saved journey found. Tap + and enter From / To again.');
-                    return;
-                }
-                try {
-                    requestData = JSON.parse(storedData);
-                } catch (e) {
-                    showError('Saved journey data was invalid. Tap + to start again.');
-                    return;
-                }
+                if (!storedData) return;
+                requestData = JSON.parse(storedData);
             }
             routesPickerConfirmed = false;
             routeAlternatives = [];
@@ -2414,6 +2243,16 @@
             return String(segmentId);
         }
 
+        /** Curvy red highlight only when the driver entered a positive £ amount (not 0 / empty). */
+        function segmentHasPositiveTransitCost(segmentId) {
+            const raw = transitCostSegments.get(segmentId);
+            if (raw == null) return false;
+            const s = String(raw).trim().replace(/^£\s*/, '');
+            if (s === '') return false;
+            const n = parseFloat(s.replace(/,/g, ''));
+            return Number.isFinite(n) && n > 0;
+        }
+
         function renderRedPolylineForSegmentStep(targetMap, step, bounds) {
             let path = [];
             if (step.polyline?.points) {
@@ -2455,23 +2294,14 @@
         }
 
         /**
-         * Full journey on one map: default colours for normal legs; straight red for taxi (when drawTaxiChords);
-         * curvy red for paid transit legs only when highlightTransitCostCurvesInRed (transit-only cost step).
+         * Full journey on one map: default colours for normal legs; straight red for taxi;
+         * curvy red only for transit legs where a cost was entered (no duplicate brand colour).
          */
         function paintAuthorizationRouteWithHighlights(targetMap, route, bucket, opts) {
             const useProposed = bucket === 'proposed';
             const drawTaxiChords = opts.drawTaxiChords !== false;
-            const highlightTransitCostCurvesInRed = opts.highlightTransitCostCurvesInRed !== false;
             const bounds = new google.maps.LatLngBounds();
-            const hasMeaningfulTransitCost = (segmentId) => {
-                const v = transitCostSegments.get(segmentId);
-                if (v == null) return false;
-                const s = String(v).trim();
-                if (s === '') return false;
-                const n = parseFloat(s.replace(/,/g, ''));
-                if (!Number.isNaN(n) && n <= 0) return false;
-                return true;
-            };
+            const hasCost = segmentHasPositiveTransitCost;
             if (!route?.routes?.[0]?.legs || !targetMap) return bounds;
             route.routes[0].legs.forEach((leg) => {
                 bounds.extend(leg.start_location);
@@ -2501,8 +2331,8 @@
                         drawStraightTaxiLeg(targetMap, step.start_location, step.end_location, bounds);
                         continue;
                     }
-                    const cost = hasMeaningfulTransitCost(segmentId);
-                    if (highlightTransitCostCurvesInRed && step.travel_mode === 'TRANSIT' && cost) {
+                    const cost = hasCost(segmentId);
+                    if (step.travel_mode === 'TRANSIT' && cost) {
                         renderRedPolylineForSegmentStep(targetMap, step, bounds);
                         continue;
                     }
@@ -2554,10 +2384,7 @@
         function renderTransitCostHighlightsOnPrimaryMap(route) {
             clearRoute();
             if (!route?.routes?.[0]?.legs || !map) return;
-            const bounds = paintAuthorizationRouteWithHighlights(map, route, 'primary', {
-                drawTaxiChords: false,
-                highlightTransitCostCurvesInRed: true,
-            });
+            const bounds = paintAuthorizationRouteWithHighlights(map, route, 'primary', { drawTaxiChords: false });
             if (!bounds.isEmpty()) map.fitBounds(bounds);
         }
 
@@ -2588,10 +2415,10 @@
             const el = document.getElementById('transitOnlyStageList');
             if (!el) return;
             const lines = [];
-            transitCostSegments.forEach((cost, segmentId) => {
+            transitCostSegments.forEach((_cost, segmentId) => {
                 if (taxiRequestSegments.has(segmentId)) return;
-                if (cost == null || String(cost).trim() === '') return;
-                lines.push({ segmentId, cost: String(cost).trim() });
+                if (!segmentHasPositiveTransitCost(segmentId)) return;
+                lines.push({ segmentId, cost: String(transitCostSegments.get(segmentId)).trim() });
             });
             if (!lines.length) {
                 el.innerHTML = '<div class="text-gray-500 text-xs">No transit costs entered.</div>';
@@ -2609,11 +2436,12 @@
             const el = document.getElementById('transitCostSummaryUnderProposed');
             if (!el) return;
             const parts = [];
-            transitCostSegments.forEach((cost, segmentId) => {
+            transitCostSegments.forEach((_cost, segmentId) => {
                 if (taxiRequestSegments.has(segmentId)) return;
-                if (cost == null || String(cost).trim() === '') return;
+                if (!segmentHasPositiveTransitCost(segmentId)) return;
+                const c = String(transitCostSegments.get(segmentId)).trim();
                 parts.push(
-                    `<div class="flex justify-between gap-2"><span>${escapeHtml(describeSegmentForUi(segmentId))}</span><span>£${escapeHtml(String(cost).trim())}</span></div>`,
+                    `<div class="flex justify-between gap-2"><span>${escapeHtml(describeSegmentForUi(segmentId))}</span><span>£${escapeHtml(c)}</span></div>`,
                 );
             });
             if (!parts.length) {
@@ -2683,11 +2511,7 @@
                 if (pt) pt.value = '';
                 if (oa) oa.value = '';
                 clearRoute();
-                const origBounds = paintAuthorizationRouteWithHighlights(map, routes[selectedRouteIndex], 'primary', {
-                    drawTaxiChords: false,
-                    /* Original map = real PT geometry in operator colours; red stays on proposed (taxi) only. */
-                    highlightTransitCostCurvesInRed: false,
-                });
+                const origBounds = paintAuthorizationRouteWithHighlights(map, routes[selectedRouteIndex], 'primary', { drawTaxiChords: false });
                 if (!origBounds.isEmpty()) map.fitBounds(origBounds);
                 populateTaxiCostSummaryUnderProposed();
                 buildTaxiLegRows();
@@ -3134,15 +2958,10 @@
         window.submitAuthorizationFromMapFlow = submitAuthorizationFromMapFlow;
         window.completeMapFlowWithCarryover = completeMapFlowWithCarryover;
         window.authorizationRoutesNavigateBack = authorizationRoutesNavigateBack;
-
+        
+        // Open authorization modal
         function openAuthorizationModal() {
-            authUiDebugLog('openAuthorizationModal');
-            const routesEl = document.getElementById('authorizationRoutesLayer');
-            if (routesEl && !routesEl.classList.contains('hidden')) {
-                closeAuthorizationRoutesLayer('open_modal');
-            }
-            sessionStorage.removeItem('authorizationRequest');
-
+            // Lock background page scroll while modal is open (especially iOS).
             modalScrollY = window.scrollY || window.pageYOffset || 0;
             document.body.classList.add('modal-open');
             document.body.style.position = 'fixed';
@@ -3150,9 +2969,9 @@
             document.body.style.left = '0';
             document.body.style.right = '0';
             document.body.style.width = '100%';
-
+            
             document.getElementById('authorizationModal').classList.remove('hidden');
-            syncFabVisibilityWithRoutesLayer();
+            // Initialize autocomplete when modal opens
             setTimeout(() => {
                 if (window.google && window.google.maps && window.google.maps.places) {
                     googleMapsLoaded = true;
@@ -3168,10 +2987,8 @@
             sessionStorage.removeItem('authorizationRequest');
             resetAuthorizationRequestFormFields();
         }
-
-        window.openAuthorizationModal = openAuthorizationModal;
-        window.openAuthorizationRoutesLayer = openAuthorizationRoutesLayer;
-
+        
+        // Initialize on page load
         document.addEventListener('DOMContentLoaded', async () => {
             if (window.google && window.google.maps && window.google.maps.places) {
                 googleMapsLoaded = true;
@@ -3193,7 +3010,6 @@
             }
             if (window.auth && typeof window.auth.onAuthStateChanged === 'function') {
                 unsubscribeAuthStateChange = window.auth.onAuthStateChanged(async (user) => {
-                    authUiDebugLog('onAuthStateChanged', { uid: user && user.uid ? user.uid : null });
                     driverContext = null;
                     if (user) {
                         setAuthorizationListShellLoading();
@@ -3216,9 +3032,6 @@
                     }
                 });
             }
-
-            syncFabVisibilityWithRoutesLayer();
-            authUiDebugLog('DOMContentLoaded:boot_complete', { authUiDebug: authUiDebugEnabled() });
         });
 
         window.addEventListener('beforeunload', () => {
