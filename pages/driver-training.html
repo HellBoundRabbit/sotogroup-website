@@ -963,6 +963,7 @@
             { key: 'all-jobs', title: 'All Jobs', sectionId: 'standards', subs: [{ title: 'Collection' }, { title: 'On the drive' }, { title: 'Delivery' }] },
             { key: 'johnsons', title: 'Johnsons Fleet Services', sectionId: 'standards', subs: [{ title: 'Collection' }] },
             { key: 'motorway', title: 'Motorway', sectionId: 'standards', subs: [{ title: 'Standards' }] },
+            { key: 'quiz-standards', title: 'Standards quiz', sectionId: 'standards', subs: [{ title: 'Quiz' }] },
             { key: 'apps-model', title: 'MoDel', sectionId: 'apps', subs: [{ title: 'Tutorial' }] },
             { key: 'apps-google-maps', title: 'Google Maps', sectionId: 'apps', subs: [{ title: 'Tutorial' }] },
             { key: 'apps-whatsapp', title: 'WhatsApp', sectionId: 'apps', subs: [{ title: 'General group' }] },
@@ -1088,6 +1089,19 @@
         var userTrainingComplete = 0;
         var userInPersonTrainingComplete = 0;
         var userEquipmentCollected = 0;
+
+        var currentQuizQuestions = [];
+        var currentQuizIndex = 0;
+        var currentQuizScore = 0;
+        var currentQuizAnswered = false;
+        var currentQuizKey = null;
+
+        function quizKeyToQuestionBank(key) {
+            if (key === 'quiz-apps') return QUIZ_APPS;
+            if (key === 'quiz-standards') return QUIZ_STANDARDS;
+            if (key === 'quiz-payment') return typeof QUIZ_PAYMENT !== 'undefined' ? QUIZ_PAYMENT : [];
+            return [];
+        }
 
         function setCategorySubCompleted(categoryKey, subIndex, completed) {
             var progress = getTrainingProgress();
@@ -1311,23 +1325,57 @@
         }
 
         function openTrainingModal(key) {
-            var data = TRAINING_MODALS[key];
-            if (!data) return;
             var overlay = document.getElementById('trainingModalOverlay');
             var titleEl = document.getElementById('trainingModalTitle');
             var bodyEl = document.getElementById('trainingModalBody');
-            titleEl.textContent = data.title;
+            if (!overlay || !titleEl || !bodyEl) return;
 
             var cat = TRAINING_CATEGORIES.find(function (c) { return c.key === key; });
             var section = cat ? TRAINING_SECTIONS.find(function (s) { return s.id === cat.sectionId; }) : null;
             var colorClass = section ? section.colorClass : 'standards';
             overlay.classList.remove('category-standards', 'category-apps', 'category-payment');
             overlay.classList.add('category-' + colorClass);
+
+            if (key.indexOf('quiz-') === 0) {
+                var bank = quizKeyToQuestionBank(key);
+                if (!bank || !bank.length) {
+                    titleEl.textContent = cat ? cat.title : 'Quiz';
+                    bodyEl.innerHTML = '<p class="text-gray-300">Quiz content is not available for this topic yet.</p>';
+                    overlay.classList.add('is-open');
+                    overlay.setAttribute('aria-hidden', 'false');
+                    document.body.style.overflow = 'hidden';
+                    return;
+                }
+                currentQuizKey = key;
+                currentQuizQuestions = bank.slice();
+                currentQuizIndex = 0;
+                currentQuizScore = 0;
+                currentQuizAnswered = false;
+                titleEl.textContent = cat ? cat.title : 'Quiz';
+                renderQuizQuestion();
+                overlay.classList.add('is-open');
+                overlay.setAttribute('aria-hidden', 'false');
+                document.body.style.overflow = 'hidden';
+                return;
+            }
+
+            var data = TRAINING_MODALS[key];
+            if (!data) return;
+            titleEl.textContent = data.title;
             bodyEl.innerHTML = buildModalBodyHtml(key);
             overlay.classList.add('is-open');
             overlay.setAttribute('aria-hidden', 'false');
             document.body.style.overflow = 'hidden';
         }
+
+        function retryCurrentQuiz() {
+            if (!currentQuizQuestions.length) return;
+            currentQuizIndex = 0;
+            currentQuizScore = 0;
+            currentQuizAnswered = false;
+            renderQuizQuestion();
+        }
+        window.retryCurrentQuiz = retryCurrentQuiz;
 
         function renderQuizQuestion() {
             var bodyEl = document.getElementById('trainingModalBody');
@@ -1337,7 +1385,8 @@
                 var pass = pct >= 70;
                 bodyEl.innerHTML = '<div class="quiz-result ' + (pass ? 'pass' : 'fail') + '">' +
                     '<p>You got <strong>' + currentQuizScore + '</strong> out of <strong>' + currentQuizQuestions.length + '</strong> (' + pct + '%)</p>' +
-                    (pass ? '<p>Well done. You can mark this quiz complete below.</p>' : '<p>Review the training materials and try again.</p>') +
+                    (pass ? '<p>Well done. You can mark this quiz complete below.</p>' : '<p>Review the training materials and try again.</p>' +
+                        (!pass ? '<p class="mt-4"><button type="button" onclick="retryCurrentQuiz()" class="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-700 text-white border border-gray-600">Try again</button></p>' : '')) +
                     '</div>' +
                     (currentQuizKey && TRAINING_CATEGORIES.find(function(c){ return c.key === currentQuizKey; }) && TRAINING_CATEGORIES.find(function(c){ return c.key === currentQuizKey; }).subs.length ?
                         '<div class="mt-6 pt-4 border-t border-white/10"><p class="font-semibold text-white mb-3">Mark complete</p><ul class="space-y-2">' +

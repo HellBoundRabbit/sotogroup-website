@@ -1192,6 +1192,87 @@
     <script>
         let currentSession = null;
         let currentUser = null;
+
+        /** When true, Start/End day hold actions stay disabled regardless of session (training gate, unread messages). */
+        let suppressDriverDayHold = false;
+
+        function isOnlineTrainingComplete(userParam) {
+            const u = userParam || currentUser;
+            if (!u) return false;
+            return u.trainingComplete === 1 || u.trainingComplete === '1' || u.trainingComplete === true;
+        }
+
+        function localTrainingProgressHasAnyComplete(uid) {
+            if (!uid) return false;
+            try {
+                const raw = localStorage.getItem('driver_training_progress_' + uid);
+                if (!raw) return false;
+                const p = JSON.parse(raw);
+                if (!p || typeof p !== 'object') return false;
+                return Object.keys(p).some(function (key) {
+                    const arr = p[key];
+                    return Array.isArray(arr) && arr.some(Boolean);
+                });
+            } catch (e) {
+                return false;
+            }
+        }
+
+        /** First visit with no training progress: ask whether they need full onboarding (same dialog system as alerts). */
+        async function maybeShowDriverExperiencePrompt() {
+            if (!currentUser || !currentUser.uid || !window.db || !window.updateDoc || !window.doc || !window.serverTimestamp) return;
+            if (isOnlineTrainingComplete(currentUser)) return;
+            if (currentUser.driverExperiencePromptAnsweredAt !== undefined && currentUser.driverExperiencePromptAnsweredAt !== null) return;
+            if (localTrainingProgressHasAnyComplete(currentUser.uid)) return;
+
+            const isNew = await uiDialogs.showConfirm({
+                title: 'New to the company?',
+                message:
+                    'If you are joining us as a new driver, choose the first option—you will unlock the rest of the portal after training and onboarding.\n\n' +
+                    'If you have already trained with us and only need portal access now, choose the second option and we will mark training and setup steps complete.',
+                confirmText: "Yes, I'm new",
+                cancelText: "No, I've already trained",
+                tone: 'info',
+            });
+
+            const baseUpdates = {
+                driverExperiencePromptAnsweredAt: window.serverTimestamp(),
+                updatedAt: window.serverTimestamp(),
+            };
+
+            try {
+                if (isNew) {
+                    await window.updateDoc(window.doc(window.db, 'users', currentUser.uid), {
+                        ...baseUpdates,
+                        driverNewToCompany: true,
+                    });
+                    Object.assign(currentUser, {
+                        driverNewToCompany: true,
+                        driverExperiencePromptAnsweredAt: true,
+                    });
+                } else {
+                    await window.updateDoc(window.doc(window.db, 'users', currentUser.uid), {
+                        ...baseUpdates,
+                        driverNewToCompany: false,
+                        trainingComplete: 1,
+                        inPersonTrainingComplete: 1,
+                        equipmentCollected: 1,
+                    });
+                    Object.assign(currentUser, {
+                        driverNewToCompany: false,
+                        trainingComplete: 1,
+                        inPersonTrainingComplete: 1,
+                        equipmentCollected: 1,
+                        driverExperiencePromptAnsweredAt: true,
+                    });
+                }
+            } catch (err) {
+                console.error('driverExperiencePrompt:', err);
+                notifyError(err.message || 'Could not save your answer. Try again.', 'Notice');
+                return;
+            }
+        }
+
         const notifyError = (message, title = 'Error') => uiDialogs.showAlert({ title, message, tone: 'danger' });
         const notifyWarning = (message, title = 'Heads Up') => uiDialogs.showAlert({ title, message, tone: 'warning' });
         const notifySuccess = (message, title = 'Success') => uiDialogs.showAlert({ title, message, tone: 'success' });
@@ -1605,6 +1686,7 @@
         }
 
         async function finishDriverPortalInit() {
+            await maybeShowDriverExperiencePrompt();
             await checkAndDisableFeatures();
             await loadDriverDaySessionAndUpdateButtons();
             setupHoldToConfirmButtons();
@@ -1681,15 +1763,18 @@
 
             // When pause is active: grey out Start and End, Pause becomes red and glowing
             if (cardPause && glowPause) {
-                if (activePause) {
-                    glowPause.className = 'spinner-red-glow-pulse';
+            if (activePause) {
+                glowPause.className = 'spinner-red-glow-pulse';
                     glowPause.style.width = '44px';
                     glowPause.style.height = '44px';
                 } else {
                     glowPause.className = 'spinner-orange';
                 }
             }
-            if (activePause) {
+            if (suppressDriverDayHold) {
+                if (cardStart) cardStart.classList.add('disabled');
+                if (cardEnd) cardEnd.classList.add('disabled');
+            } else if (activePause) {
                 if (cardStart) cardStart.classList.add('disabled');
                 if (cardEnd) cardEnd.classList.add('disabled');
             } else {
@@ -1698,12 +1783,14 @@
             }
 
             // Toggle End Day enabled/disabled state (grey when disabled)
-            if (dayStarted && !activePause) {
-                cardEnd.classList.remove('disabled');
-                if (glowEnd) glowEnd.className = 'spinner-red';
-            } else if (!dayStarted || activePause) {
-                if (!activePause) cardEnd.classList.add('disabled');
-                if (glowEnd) glowEnd.className = 'spinner-grey';
+            if (!suppressDriverDayHold) {
+                if (dayStarted && !activePause) {
+                    cardEnd.classList.remove('disabled');
+                    if (glowEnd) glowEnd.className = 'spinner-red';
+                } else if (!dayStarted || activePause) {
+                    if (!activePause) cardEnd.classList.add('disabled');
+                    if (glowEnd) glowEnd.className = 'spinner-grey';
+                }
             }
 
             if (!dayStarted) {
@@ -3023,9 +3110,35 @@
         // Check for unread messages and disable/grey out features
         async function checkAndDisableFeatures() {
             try {
+                suppressDriverDayHold = false;
+
+                const expensesCard = document.getElementById('expensesCard');
+                const waitTimesCard = document.getElementById('waitTimesCard');
+                const messagesCard = document.getElementById('messagesCard');
+                const availabilityCard = document.getElementById('availabilityCard');
+                const authorizationCard = document.getElementById('authorizationCard');
+                const trainingCard = document.getElementById('trainingCard');
+                const btnStartDayCard = document.getElementById('btnStartDayCard');
+                const btnEndDayCard = document.getElementById('btnEndDayCard');
+
+                // Progression gate: same for Start/End Day as for the other tiles — only Training (+ Account) until equipment collected.
+                const equipmentCollected = currentUser.equipmentCollected === 1 || currentUser.equipmentCollected === '1';
+                if (!equipmentCollected) {
+                    suppressDriverDayHold = true;
+                    const progressionMessage = 'Complete your progression (Training, in-person training day, and equipment) to unlock the portal. Only Training is available until then.';
+                    if (expensesCard) { expensesCard.classList.add('disabled'); expensesCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    if (waitTimesCard) { waitTimesCard.classList.add('disabled'); waitTimesCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    if (messagesCard) { messagesCard.classList.add('disabled'); messagesCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    if (availabilityCard) { availabilityCard.classList.add('disabled'); availabilityCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    if (authorizationCard) { authorizationCard.classList.add('disabled'); authorizationCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    if (btnStartDayCard) { btnStartDayCard.classList.add('disabled'); btnStartDayCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    if (btnEndDayCard) { btnEndDayCard.classList.add('disabled'); btnEndDayCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
+                    return;
+                }
+
                 const officeId = getCurrentOfficeId();
                 if (!officeId || !currentUser?.uid) {
-                    console.warn('Missing office or user context for checkAndDisableFeatures.');
+                    console.warn('Missing office or user context for office-level feature flags and messages.');
                     return;
                 }
 
@@ -3048,31 +3161,6 @@
                     }
                 } catch (officeError) {
                     console.warn('Could not fetch office features:', officeError);
-                }
-
-                // Disable features based on office settings
-                const expensesCard = document.getElementById('expensesCard');
-                const waitTimesCard = document.getElementById('waitTimesCard');
-                const messagesCard = document.getElementById('messagesCard');
-                const availabilityCard = document.getElementById('availabilityCard');
-                const authorizationCard = document.getElementById('authorizationCard');
-                const trainingCard = document.getElementById('trainingCard');
-                const btnStartDayCard = document.getElementById('btnStartDayCard');
-                const btnEndDayCard = document.getElementById('btnEndDayCard');
-
-                // Progression gate: only Training clickable until equipment collected (induction → training → in-person → equipment)
-                const equipmentCollected = (currentUser.equipmentCollected === 1 || currentUser.equipmentCollected === '1');
-                if (!equipmentCollected) {
-                    const progressionMessage = 'Complete your progression (Training, in-person training day, and equipment) to unlock the portal. Only Training is available until then.';
-                    if (expensesCard) { expensesCard.classList.add('disabled'); expensesCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
-                    if (waitTimesCard) { waitTimesCard.classList.add('disabled'); waitTimesCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
-                    if (messagesCard) { messagesCard.classList.add('disabled'); messagesCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
-                    if (availabilityCard) { availabilityCard.classList.add('disabled'); availabilityCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
-                    if (authorizationCard) { authorizationCard.classList.add('disabled'); authorizationCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
-                    if (btnStartDayCard) { btnStartDayCard.classList.add('disabled'); btnStartDayCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
-                    if (btnEndDayCard) { btnEndDayCard.classList.add('disabled'); btnEndDayCard.onclick = () => notifyInfo(progressionMessage, 'Complete progression first'); }
-                    // Training stays enabled; Account is not in this list
-                    return;
                 }
 
                 if (!activeFeatures.expenses && expensesCard) {
@@ -3126,6 +3214,7 @@
                 // Grey out ALL features if there are unread messages (only if messages feature is enabled)
                 // EXCEPT: Messages button and Account button only
                 if (unreadMessages.length > 0 && activeFeatures.messages) {
+                    suppressDriverDayHold = true;
                     // Grey out Expenses
                     if (expensesCard && activeFeatures.expenses) {
                         expensesCard.classList.add('disabled');
