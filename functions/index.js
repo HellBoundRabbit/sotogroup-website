@@ -13,6 +13,7 @@ const { onSchedule } = require("firebase-functions/scheduler");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
+const crypto = require("crypto");
 
 const RESEND_API_KEY = defineSecret("RESEND_API_KEY");
 
@@ -65,6 +66,84 @@ const ROUTES_AUTH_TRANSIT_FIELD_MASK = [
 
 admin.initializeApp();
 const db = admin.firestore();
+
+/**
+ * Initial driver password: 6 digits (meets Firebase Auth minimum length 6).
+ * Drivers replace it on first login via the portal (required flow).
+ */
+function generateTemporaryDriverPin() {
+  return String(crypto.randomInt(100000, 1000000));
+}
+
+/** @param {import("firebase-functions/v2/https").CallableRequest} req */
+async function assertOfficeOrAdmin(req) {
+  if (!req.auth || !req.auth.uid) {
+    throw new HttpsError("unauthenticated", "Sign in required.");
+  }
+  const token = req.auth.token || {};
+  const role = token.role;
+  const officeId = token.officeId || null;
+  if (role === "admin") {
+    return { role: "admin", officeId, uid: req.auth.uid };
+  }
+  if (role === "office") {
+    if (!officeId || typeof officeId !== "string") {
+      throw new HttpsError("failed-precondition", "Office account is missing officeId.");
+    }
+    return { role: "office", officeId, uid: req.auth.uid };
+  }
+  throw new HttpsError("permission-denied", "Office or admin access required.");
+}
+
+/**
+ * @param {FirebaseFirestore.Query} q
+ */
+async function deleteByQueryBatches(q) {
+  const col = q;
+  while (true) {
+    const snap = await col.limit(450).get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+  }
+}
+
+async function removeDriverFromCalendarDocs(officeId, driverId) {
+  const snap = await db.collection("calendar").where("officeId", "==", officeId).get();
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  for (const doc of snap.docs) {
+    const data = doc.data() || {};
+    const drivers = data.drivers && typeof data.drivers === "object" ? { ...data.drivers } : {};
+    if (!drivers[driverId]) continue;
+    delete drivers[driverId];
+    let driversOff = Array.isArray(data.driversOff) ? [...data.driversOff] : [];
+    driversOff = driversOff.filter((id) => id !== driverId);
+    await doc.ref.set(
+      { drivers, driversOff, updatedAt: now },
+      { merge: true },
+    );
+  }
+}
+
+async function deleteDriverDaySessions(driverUid) {
+  const col = db.collection("driverDaySessions");
+  const prefix = `${driverUid}_`;
+  while (true) {
+    const snap = await col
+      .orderBy(admin.firestore.FieldPath.documentId())
+      .startAt(prefix)
+      .endAt(prefix + "\uf8ff")
+      .limit(450)
+      .get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach((d) => {
+      if (String(d.id).startsWith(prefix)) batch.delete(d.ref);
+    });
+    await batch.commit();
+  }
+}
 
 /** Working hours: 8am–5pm Mon–Fri. Returns whole hours between start and end. */
 function calculateWorkingHours(startDate, endDate) {
@@ -848,3 +927,146 @@ exports.computeAuthorizationTransitRoutes = onCall(
       return { success: true, routes };
     },
 );
+
+/* —— Driver accounts (Drivers page → createDriver / listDrivers / deleteDriver) —— */
+
+exports.createDriver = onCall(async (req) => {
+  const ctx = await assertOfficeOrAdmin(req);
+  const raw = req.data || {};
+  const fn = String(raw.firstName || "").trim();
+  const ln = String(raw.lastName || "").trim();
+  const em = String(raw.email || "").trim().toLowerCase();
+  const pc = String(raw.homePostcode || "").trim();
+
+  if (!fn || !ln || !em) {
+    throw new HttpsError("invalid-argument", "firstName, lastName, and email are required.");
+  }
+
+  let targetOfficeId = ctx.officeId || null;
+  if (!targetOfficeId && ctx.role === "admin") {
+    targetOfficeId = raw.officeId ? String(raw.officeId).trim() : null;
+  }
+  if (!targetOfficeId) {
+    throw new HttpsError("invalid-argument", "officeId is required.");
+  }
+
+  const temporaryPassword = generateTemporaryDriverPin();
+  let uid;
+
+  try {
+    const record = await admin.auth().createUser({
+      email: em,
+      password: temporaryPassword,
+      displayName: `${fn} ${ln}`.trim(),
+    });
+    uid = record.uid;
+  } catch (e) {
+    if (e.code === "auth/email-already-exists") {
+      throw new HttpsError("already-exists", "A user with this email already exists.");
+    }
+    functions.logger.error("createDriver auth failed", { message: e.message, code: e.code });
+    throw new HttpsError("internal", e.message || "Could not create login.");
+  }
+
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const userRef = db.collection("users").doc(uid);
+  const driverRef = db.collection("drivers").doc(uid);
+
+  try {
+    const batch = db.batch();
+    batch.set(userRef, {
+      email: em,
+      firstName: fn,
+      lastName: ln,
+      name: `${fn} ${ln}`.trim(),
+      role: "driver",
+      officeId: targetOfficeId,
+      homePostcode: pc,
+      createdAt: now,
+      hasChangedPassword: 0,
+      updatedAt: now,
+    });
+    batch.set(
+      driverRef,
+      {
+        uid,
+        firstName: fn,
+        lastName: ln,
+        email: em,
+        homePostcode: pc,
+        officeId: targetOfficeId,
+        createdAt: now,
+      },
+      { merge: true },
+    );
+    await batch.commit();
+  } catch (e) {
+    try {
+      await admin.auth().deleteUser(uid);
+    } catch (_) { /* noop */ }
+    functions.logger.error("createDriver Firestore failed", { message: e.message });
+    throw new HttpsError("internal", e.message || "Could not save driver profile.");
+  }
+
+  return { temporaryPassword };
+});
+
+exports.listDrivers = onCall(async (req) => {
+  const ctx = await assertOfficeOrAdmin(req);
+  let officeId = (req.data || {}).officeId || null;
+  if (!officeId) officeId = ctx.officeId;
+  if (!officeId || typeof officeId !== "string") {
+    throw new HttpsError("invalid-argument", "officeId is required.");
+  }
+  if (ctx.role === "office" && officeId !== ctx.officeId) {
+    throw new HttpsError("permission-denied", "Cannot list another office's drivers.");
+  }
+
+  const snap = await db.collection("drivers").where("officeId", "==", officeId).get();
+  const drivers = snap.docs.map((d) => ({ id: d.id, uid: d.id, ...d.data() }));
+  return { drivers };
+});
+
+exports.deleteDriver = onCall(async (req) => {
+  const ctx = await assertOfficeOrAdmin(req);
+  const driverId = String((req.data || {}).driverId || "").trim();
+  if (!driverId) {
+    throw new HttpsError("invalid-argument", "driverId is required.");
+  }
+
+  const driverRef = db.collection("drivers").doc(driverId);
+  const driverSnap = await driverRef.get();
+  if (!driverSnap.exists) {
+    throw new HttpsError("not-found", "Driver not found.");
+  }
+
+  const drv = driverSnap.data() || {};
+  const officeId = drv.officeId || null;
+
+  if (ctx.role === "office") {
+    if (!officeId || officeId !== ctx.officeId) {
+      throw new HttpsError("permission-denied", "Cannot delete a driver outside your office.");
+    }
+  }
+
+  try {
+    await deleteByQueryBatches(db.collection("expenseBatches").where("driverId", "==", driverId));
+    await deleteByQueryBatches(db.collection("waitTimes").where("driverId", "==", driverId));
+    await deleteByQueryBatches(db.collection("authorizationRequests").where("driverId", "==", driverId));
+    await deleteByQueryBatches(db.collection("availabilityNotifications").where("driverId", "==", driverId));
+    if (officeId) {
+      await removeDriverFromCalendarDocs(officeId, driverId);
+    }
+    await deleteDriverDaySessions(driverId);
+    await db.collection("users").doc(driverId).delete().catch(() => {});
+    await driverRef.delete().catch(() => {});
+    await admin.auth().deleteUser(driverId).catch((e) => {
+      functions.logger.warn("deleteDriver: auth delete", { driverId, code: e.code });
+    });
+  } catch (e) {
+    functions.logger.error("deleteDriver failed", { driverId, message: e.message });
+    throw new HttpsError("internal", e.message || "Deletion failed.");
+  }
+
+  return { success: true };
+});
