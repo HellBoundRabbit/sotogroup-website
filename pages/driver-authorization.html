@@ -709,8 +709,8 @@
                 <h1 class="text-xl font-semibold">Authorization</h1>
             </div>
             <div class="touch-target w-14 shrink-0" aria-hidden="true"></div>
-        </div>
-    </div>
+                    </div>
+                </div>
 
     <div id="authPageLoading" class="container max-w-2xl mx-auto px-4 py-20 flex flex-col items-center justify-center min-h-[45vh] text-center">
         <div class="w-10 h-10 border-2 border-gray-600 border-t-blue-500 rounded-full animate-spin mb-4" role="status" aria-label="Loading"></div>
@@ -922,7 +922,11 @@
                             </div>
                             <div id="transitCostSummaryUnderProposed" class="text-xs text-gray-200 space-y-1 hidden"></div>
                             <div id="taxiLegRowsHost" class="space-y-2"></div>
-                            <input id="totalCostInput" type="hidden" value="">
+                            <label class="text-xs text-gray-400 block pt-1">Total cost including taxi</label>
+                            <div class="segment-cost-input-wrap max-w-full">
+                                <span class="cost-input-prefix" aria-hidden="true">£</span>
+                                <input id="totalCostInput" type="number" step="0.01" min="0" placeholder="0.00" class="input-field flex-1 min-w-0">
+                            </div>
                             <input id="proposedArrivalInput" type="hidden" value="">
                             <input id="taxiCostInput" type="hidden" value="">
                         </div>
@@ -1000,7 +1004,7 @@
             });
             setTimeout(run, 280);
         }
-
+        
         // Initialize autocomplete for address inputs
         async function initializeAutocomplete() {
             await waitForGoogleMaps();
@@ -1160,7 +1164,7 @@
                     document.activeElement.blur();
                 }
             } catch (_e) {}
-
+            
             // Get departure time
             let departureTime = null;
             if (leaveAtRadio.value === 'custom' && customDateTime.value) {
@@ -1173,14 +1177,14 @@
             sessionStorage.setItem(
                 'authorizationRequest',
                 JSON.stringify({
-                    from: {
+                from: {
                         address: fromInput.value.trim(),
-                        lat: fromPlace.geometry.location.lat(),
+                    lat: fromPlace.geometry.location.lat(),
                         lng: fromPlace.geometry.location.lng(),
-                    },
-                    to: {
+                },
+                to: {
                         address: toInput.value.trim(),
-                        lat: toPlace.geometry.location.lat(),
+                    lat: toPlace.geometry.location.lat(),
                         lng: toPlace.geometry.location.lng(),
                     },
                     departureTime: departureTime,
@@ -2178,6 +2182,8 @@
             }
             const host = document.getElementById('taxiLegRowsHost');
             if (host) host.innerHTML = '';
+            const totIn = document.getElementById('totalCostInput');
+            if (totIn) totIn.value = '';
             const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
             if (mapContainer) mapContainer.classList.remove('auth-cost-mode');
             restoreMainMapToDefaultMount();
@@ -2508,8 +2514,10 @@
                 mountMainMapInto(document.getElementById('mapOriginalSlot'));
                 const pt = document.getElementById('publicTransportCostInput');
                 const oa = document.getElementById('originalArrivalInput');
+                const tot = document.getElementById('totalCostInput');
                 if (pt) pt.value = '';
                 if (oa) oa.value = '';
+                if (tot) tot.value = '';
                 clearRoute();
                 const origBounds = paintAuthorizationRouteWithHighlights(map, routes[selectedRouteIndex], 'primary', { drawTaxiChords: false });
                 if (!origBounds.isEmpty()) map.fitBounds(origBounds);
@@ -2752,10 +2760,7 @@
                 taxiCost = '';
                 totalTransportCost = publicTransportCost;
             } else if (mapCostActiveMode === 'with_taxi') {
-                const ptNum = parseFloat(pt);
-                const taxiSum = taxiCostInputs.reduce((s, v) => s + (parseFloat(v) || 0), 0);
-                const hasAny = (Number.isFinite(ptNum) && ptNum > 0) || taxiSum > 0;
-                totalTransportCost = hasAny ? String((Number.isFinite(ptNum) ? ptNum : 0) + taxiSum) : '';
+                totalTransportCost = document.getElementById('totalCostInput')?.value?.trim() || '';
             } else {
                 publicTransportCost = document.getElementById('publicTransportCostInput')?.value || '';
                 taxiCost = document.getElementById('taxiCostInput')?.value || '';
@@ -2993,7 +2998,7 @@
             if (window.google && window.google.maps && window.google.maps.places) {
                 googleMapsLoaded = true;
             }
-
+            
             await waitForFirestoreReady();
 
             try {
