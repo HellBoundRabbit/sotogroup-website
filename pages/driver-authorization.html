@@ -89,15 +89,21 @@
         }
 
         /*
-         * Full-screen route flow must always stack above #mainContent and the sticky header (z-50).
-         * The Tailwind runtime bundle may omit arbitrary utilities (e.g. z-[70], bg-[#0f1419]); without them
-         * the layer can be transparent / wrong z-index so drivers only see the list after Proceed.
+         * Full-screen route flow: stack above list + sticky nav. Use !important so missing Tailwind
+         * arbitrary utilities cannot leave this layer transparent or behind the list.
+         * z-index 9990 stays below ui-dialogs overlays (9998) so confirm/alert still work.
          */
         #authorizationRoutesLayer {
-            position: fixed;
-            inset: 0;
-            z-index: 90;
-            background-color: #0f1419;
+            position: fixed !important;
+            inset: 0 !important;
+            z-index: 9990 !important;
+            background-color: #0f1419 !important;
+            width: 100vw !important;
+            max-width: 100vw !important;
+            min-height: 100vh !important;
+            min-height: 100dvh !important;
+            box-sizing: border-box;
+            isolation: isolate;
         }
         
         .touch-target {
@@ -958,6 +964,12 @@
     </div>
     
     <script>
+        /* Last paint order: keep route overlay above list even if an ancestor created a stacking context. */
+        (function elevateAuthorizationRoutesLayer() {
+            const el = document.getElementById('authorizationRoutesLayer');
+            if (el) document.body.appendChild(el);
+        })();
+
         let fromAutocomplete, toAutocomplete;
         let fromPlace = null;
         let toPlace = null;
@@ -1314,6 +1326,13 @@
                 .then(() => loadRoutes())
                 .catch((e) => {
                     console.error('[Authorization] Route layer init failed', e);
+                    if (typeof logDriverAuth === 'function') {
+                        logDriverAuth('routesLayer', 'initializeMap/loadRoutes rejected', { err: String(e?.message || e) });
+                        logDriverAuthDom('routesLayer:onError');
+                    }
+                    const layerEl = document.getElementById('authorizationRoutesLayer');
+                    if (layerEl) layerEl.classList.add('hidden');
+                    syncFloatingAddVisibility();
                     showError('Could not load your journey. Please try Proceed again or reopen from the + button.');
                 });
         }
@@ -1704,17 +1723,20 @@
             document.getElementById('authFloatingAdd')?.classList.add('hidden');
         }
 
-        /** + button only when list shell is ready and the route picker/map flow is not open (avoids list>proceed>list>+ confusion). */
+        /**
+         * + only when the list shell is ready and the new-request modal is closed.
+         * Do NOT tie visibility to the routes layer: if that overlay fails to paint, DOM still thinks
+         * routes are "open" and hiding + leaves drivers stuck on the list with no +.
+         * While routes work, #authorizationRoutesLayer (z-index 9990) sits above the + (z-40).
+         */
         function syncFloatingAddVisibility() {
             const add = document.getElementById('authFloatingAdd');
             const main = document.getElementById('mainContent');
-            const layer = document.getElementById('authorizationRoutesLayer');
             const modal = document.getElementById('authorizationModal');
             if (!add) return;
             const listReady = main && !main.classList.contains('hidden');
-            const routesOpen = layer && !layer.classList.contains('hidden');
             const formOpen = modal && !modal.classList.contains('hidden');
-            if (listReady && !routesOpen && !formOpen) add.classList.remove('hidden');
+            if (listReady && !formOpen) add.classList.remove('hidden');
             else add.classList.add('hidden');
         }
 
