@@ -87,22 +87,6 @@
             overflow: hidden;
             touch-action: none;
         }
-
-        /* Above modal (z-50) and Places suggestions (z-60). Match Tailwind z-[120] on the node. */
-        #authorizationRoutesLayer {
-            z-index: 120;
-            /* iOS: fill viewport; h-full alone can collapse when parent chain omits height */
-            min-height: 100dvh;
-            min-height: -webkit-fill-available;
-        }
-        /* When the route list is the only visible column, it must grow in the flex row or the body shows through as “empty black”. */
-        .routes-list:not([hidden]) {
-            flex: 1 1 0%;
-            min-width: 0;
-            min-height: 0;
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-        }
         
         .touch-target {
             min-height: 44px;
@@ -710,8 +694,8 @@
     </style>
 </head>
 <body class="bg-black text-white min-h-screen">
-    <!-- Top Navigation (hidden while full-screen route flow is open so it does not sit above the overlay) -->
-    <div id="authorizationPageHeader" class="bg-black border-b border-gray-800 sticky top-0 z-50">
+    <!-- Top Navigation -->
+    <div class="bg-black border-b border-gray-800 sticky top-0 z-50">
         <div class="flex items-center justify-between px-4 py-3">
             <button onclick="window.location.href='/pages/driver-portal.html'" class="touch-target">
                 <div class="spinner-wrapper">
@@ -725,8 +709,8 @@
                 <h1 class="text-xl font-semibold">Authorization</h1>
             </div>
             <div class="touch-target w-14 shrink-0" aria-hidden="true"></div>
-        </div>
-    </div>
+                    </div>
+                </div>
 
     <div id="authPageLoading" class="container max-w-2xl mx-auto px-4 py-20 flex flex-col items-center justify-center min-h-[45vh] text-center">
         <div class="w-10 h-10 border-2 border-gray-600 border-t-blue-500 rounded-full animate-spin mb-4" role="status" aria-label="Loading"></div>
@@ -757,15 +741,6 @@
             </div>
         </div>
     </button>
-
-    <!-- Enable with ?authdebug=1 or ?authDebug=1 (same flag); localStorage authUiDebug=1; ?authdebug=0 / ?authDebug=0 forces off -->
-    <div id="authUiDebugHud" class="hidden fixed bottom-0 left-0 right-0 z-[100] max-h-[32vh] overflow-auto border-t border-emerald-800 bg-black/95 px-2 py-1.5 text-[10px] leading-tight text-emerald-100 shadow-lg">
-        <div class="mb-1 flex items-center justify-between gap-2 text-emerald-300">
-            <span class="font-semibold">Auth UI debug</span>
-            <button type="button" class="touch-target rounded bg-emerald-900 px-2 py-1 text-[10px] text-white" onclick="document.getElementById('authUiDebugHud').classList.add('hidden')">Hide</button>
-        </div>
-        <pre id="authUiDebugHudBody" class="whitespace-pre-wrap break-all font-mono"></pre>
-    </div>
 
     <!-- Authorization Request Modal -->
     <div id="authorizationModal" class="hidden fixed inset-0 bg-black bg-opacity-75 z-50 overflow-y-auto">
@@ -875,9 +850,10 @@
         </div>
     </div>
     
-    <!-- Route flow: full-screen panel (shown only after Proceed). Root is a flex column so the body area always gets a real height on mobile. -->
-    <div id="authorizationRoutesLayer" class="hidden fixed inset-0 z-[120] flex w-full min-h-0 flex-col bg-[#0f1419] text-white">
-            <div class="relative shrink-0 border-b border-[#283039] bg-[#1a1f24] px-4 py-3">
+    <!-- In-page routes experience (single-page flow) -->
+    <div id="authorizationRoutesLayer" class="hidden fixed inset-0 z-[70] bg-[#0f1419] text-white">
+        <div class="h-full flex flex-col">
+            <div class="bg-[#1a1f24] border-b border-[#283039] px-4 py-3 relative">
                 <button type="button" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#283039] border border-[#3a444e] text-sm" onclick="authorizationRoutesNavigateBack()">
                     <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span>
                     Back
@@ -889,7 +865,7 @@
                     Next
                 </button>
             </div>
-            <div class="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+            <div class="flex-1 min-h-0 flex flex-col md:flex-row">
                 <div id="routePickerPanel" class="route-picker-panel">
                     <div class="route-picker-lead">
                         <div class="route-picker-title">Public transport routes</div>
@@ -946,7 +922,11 @@
                             </div>
                             <div id="transitCostSummaryUnderProposed" class="text-xs text-gray-200 space-y-1 hidden"></div>
                             <div id="taxiLegRowsHost" class="space-y-2"></div>
-                            <input id="totalCostInput" type="hidden" value="">
+                            <label class="text-xs text-gray-400 block pt-1">Total cost including taxi</label>
+                            <div class="segment-cost-input-wrap max-w-full">
+                                <span class="cost-input-prefix" aria-hidden="true">£</span>
+                                <input id="totalCostInput" type="number" step="0.01" min="0" placeholder="0.00" class="input-field flex-1 min-w-0">
+                            </div>
                             <input id="proposedArrivalInput" type="hidden" value="">
                             <input id="taxiCostInput" type="hidden" value="">
                         </div>
@@ -962,6 +942,7 @@
                     </div>
                 </div>
             </div>
+        </div>
     </div>
     
     <script>
@@ -971,82 +952,52 @@
         let googleMapsLoaded = false;
         let modalScrollY = 0;
 
-        const AUTH_UI_DEBUG_MAX_LINES = 100;
-        const authUiDebugBuffer = [];
-
-        function authUiDebugEnabled() {
-            try {
-                const sp = new URLSearchParams(window.location.search || '');
-                /* Query keys are case-sensitive; accept camelCase for convenience. */
-                if (sp.get('authdebug') === '0' || sp.get('authDebug') === '0') return false;
-                if (sp.get('authdebug') === '1' || sp.get('authDebug') === '1') return true;
-            } catch (_e) {}
-            try {
-                return window.localStorage.getItem('authUiDebug') === '1';
-            } catch (_e2) {
-                return false;
-            }
-        }
-
-        function authUiDebugLog(tag, detail) {
-            try {
-                console.info('[AuthUI]', tag, detail !== undefined ? detail : '');
-            } catch (_c) {}
-            let payload = '';
-            try {
-                payload = detail !== undefined ? ` ${typeof detail === 'string' ? detail : JSON.stringify(detail)}` : '';
-            } catch (_e) {
-                payload = ' [unserializable]';
-            }
-            const ts = new Date().toISOString().slice(11, 23);
-            const line = `${ts} ${tag}${payload}`;
-            if (!authUiDebugEnabled()) return;
-            authUiDebugBuffer.push(line);
-            while (authUiDebugBuffer.length > AUTH_UI_DEBUG_MAX_LINES) authUiDebugBuffer.shift();
-            const hud = document.getElementById('authUiDebugHud');
-            const body = document.getElementById('authUiDebugHudBody');
-            if (hud && body) {
-                hud.classList.remove('hidden');
-                body.textContent = authUiDebugBuffer.join('\n');
-            }
-        }
-
         /**
-         * FAB hidden only while routes layer is visible.
-         * Also drives mainContent pointer-events so the auth list cannot eat taps if the overlay mis-stacks,
-         * and clears stale pointer-events when the layer is hidden without a matching close (heal).
+         * Driver authorization flow tracing. In DevTools Console filter: `[DriverAuth]`
+         * Disable noise: localStorage.setItem('driverAuthDebug', '0') then reload.
+         * Re-enable: localStorage.removeItem('driverAuthDebug')
          */
-        function syncFabVisibilityWithRoutesLayer() {
-            const layer = document.getElementById('authorizationRoutesLayer');
-            const fab = document.getElementById('authFloatingAdd');
-            const main = document.getElementById('mainContent');
-            const layerHidden = !layer || layer.classList.contains('hidden');
-            if (main) main.style.pointerEvents = layerHidden ? '' : 'none';
-            if (!fab) return;
-            if (layerHidden) {
-                fab.classList.remove('hidden');
-                fab.style.removeProperty('display');
-            } else {
-                fab.classList.add('hidden');
+        function driverAuthDebugOn() {
+            try {
+                return window.localStorage?.getItem('driverAuthDebug') !== '0';
+            } catch (_e) {
+                return true;
             }
         }
-
-        function authUiRouteUiSnapshot(label) {
+        function logDriverAuth(stage, message, extra) {
+            if (!driverAuthDebugOn()) return;
+            const prefix = `[DriverAuth][${stage}]`;
+            if (extra !== undefined) console.log(prefix, message, extra);
+            else console.log(prefix, message);
+        }
+        function logDriverAuthDom(stage, extra) {
+            if (!driverAuthDebugOn()) return;
             const layer = document.getElementById('authorizationRoutesLayer');
-            const fab = document.getElementById('authFloatingAdd');
-            const main = document.getElementById('mainContent');
-            authUiDebugLog('ui_snapshot:' + label, {
-                layerHidden: layer ? layer.classList.contains('hidden') : null,
-                fabHidden: fab ? fab.classList.contains('hidden') : null,
-                mainPointerEvents: main ? main.style.pointerEvents || '(default)' : null,
-                mainContentHidden: main ? main.classList.contains('hidden') : null,
-                authLoadingHidden: document.getElementById('authPageLoading')?.classList.contains('hidden'),
+            const modal = document.getElementById('authorizationModal');
+            const pickerPanel = document.getElementById('routePickerPanel');
+            const routesList = document.getElementById('routesList');
+            const mapCostPanel = document.getElementById('mapCostPanel');
+            const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
+            const carry = document.getElementById('mapCarryoverBlock');
+            logDriverAuth(stage, 'DOM + state', {
+                routesLayerHidden: !!layer?.classList.contains('hidden'),
+                modalHidden: !!modal?.classList.contains('hidden'),
+                routePickerPanelHidden: !!pickerPanel?.hidden,
+                routesListHiddenAttr: routesList ? routesList.hasAttribute('hidden') : null,
+                routesListDisplay: routesList?.style?.display ?? '',
+                mapCostPanelHidden: mapCostPanel ? mapCostPanel.classList.contains('hidden') : null,
+                mapContainerFullscreen: !!mapContainer?.classList.contains('fullscreen'),
+                mapCarryoverHidden: carry ? carry.classList.contains('hidden') : null,
+                mapCostActiveMode: typeof mapCostActiveMode !== 'undefined' ? mapCostActiveMode : '(n/a)',
+                routesPickerConfirmed: typeof routesPickerConfirmed !== 'undefined' ? routesPickerConfirmed : null,
+                selectedRouteIndex: typeof selectedRouteIndex !== 'undefined' ? selectedRouteIndex : null,
+                routeAlternativesCount: typeof routeAlternatives !== 'undefined' ? routeAlternatives.length : null,
+                routesCount: typeof routes !== 'undefined' ? routes.length : null,
+                taxiRequestSegments: typeof taxiRequestSegments !== 'undefined' ? taxiRequestSegments.size : null,
+                transitCostSegments: typeof transitCostSegments !== 'undefined' ? transitCostSegments.size : null,
+                ...(extra && typeof extra === 'object' ? extra : {}),
             });
         }
-
-        window.authUiDebugLog = authUiDebugLog;
-        window.authUiDebugEnabled = authUiDebugEnabled;
-        window.authUiRouteUiSnapshot = authUiRouteUiSnapshot;
 
         const AUTOCOMPLETE_FIELDS = ['geometry', 'formatted_address', 'name', 'address_components'];
 
@@ -1062,9 +1013,15 @@
         
         // Initialize Google Maps
         window.initGoogleMaps = function() {
+            logDriverAuth('maps', 'initGoogleMaps callback fired', {
+                hasMaps: !!(window.google && window.google.maps),
+                hasPlaces: !!(window.google?.maps?.places),
+            });
             if (window.google && window.google.maps && window.google.maps.places) {
                 googleMapsLoaded = true;
                 initializeAutocomplete();
+            } else {
+                logDriverAuth('maps', 'initGoogleMaps: maps/places not ready — autocomplete not started');
             }
         };
         
@@ -1100,7 +1057,7 @@
             });
             setTimeout(run, 280);
         }
-
+        
         // Initialize autocomplete for address inputs
         async function initializeAutocomplete() {
             await waitForGoogleMaps();
@@ -1243,14 +1200,15 @@
         
         // Proceed to routes (single-page: open in-page route flow)
         function proceedToRoutes() {
-            authUiDebugLog('proceedToRoutes:start');
+            logDriverAuth('proceed', 'Proceed clicked');
+            logDriverAuthDom('proceed:before');
             const fromInput = document.getElementById('fromAddress');
             const toInput = document.getElementById('toAddress');
             const leaveAtRadio = document.querySelector('input[name="leaveAt"]:checked');
             const customDateTime = document.getElementById('customDateTime');
             
             if (!fromPlace || !toPlace) {
-                authUiDebugLog('proceedToRoutes:abort', { reason: 'missing_place' });
+                logDriverAuth('proceed', 'blocked: missing fromPlace or toPlace', { hasFromPlace: !!fromPlace, hasToPlace: !!toPlace });
                 alert('Please select valid addresses for both From and To locations.');
                 return;
             }
@@ -1262,7 +1220,7 @@
                     document.activeElement.blur();
                 }
             } catch (_e) {}
-
+            
             // Get departure time
             let departureTime = null;
             if (leaveAtRadio.value === 'custom' && customDateTime.value) {
@@ -1275,26 +1233,30 @@
             sessionStorage.setItem(
                 'authorizationRequest',
                 JSON.stringify({
-                    from: {
+                from: {
                         address: fromInput.value.trim(),
-                        lat: fromPlace.geometry.location.lat(),
+                    lat: fromPlace.geometry.location.lat(),
                         lng: fromPlace.geometry.location.lng(),
-                    },
-                    to: {
+                },
+                to: {
                         address: toInput.value.trim(),
-                        lat: toPlace.geometry.location.lat(),
+                    lat: toPlace.geometry.location.lat(),
                         lng: toPlace.geometry.location.lng(),
                     },
                     departureTime: departureTime,
                 }),
             );
 
-            authUiDebugLog('proceedToRoutes:session_set', { hasSession: !!sessionStorage.getItem('authorizationRequest') });
+            logDriverAuth('proceed', 'sessionStorage authorizationRequest set', {
+                leaveAt: leaveAtRadio?.value,
+                departureTime,
+            });
             openAuthorizationRoutesLayer();
         }
 
         /** Hides modal and restores scroll; does not reset the form (used when transitioning to route flow). */
         function hideAuthorizationModal() {
+            logDriverAuth('modal', 'hideAuthorizationModal');
             const modal = document.getElementById('authorizationModal');
             if (modal) modal.classList.add('hidden');
             document.body.classList.remove('modal-open');
@@ -1325,55 +1287,27 @@
             validateForm();
         }
 
-        function setAuthorizationRoutesLayerDisplayed(visible) {
-            const el = document.getElementById('authorizationRoutesLayer');
-            if (!el) return;
-            if (visible) {
-                el.classList.remove('hidden');
-            } else {
-                el.classList.add('hidden');
-            }
-        }
-
         /** Show routes layer before hiding the modal to avoid flashing the underlying page between states. */
         function openAuthorizationRoutesLayer() {
             const layer = document.getElementById('authorizationRoutesLayer');
-            if (!layer) {
-                authUiDebugLog('openAuthorizationRoutesLayer:no_layer');
-                return;
-            }
+            if (!layer) return;
             try {
                 document.getElementById('fromAddress')?.blur();
                 document.getElementById('toAddress')?.blur();
             } catch (_e) {}
-            authUiDebugLog('openAuthorizationRoutesLayer:show', {
-                layerHiddenBefore: layer.classList.contains('hidden'),
-                fabHiddenBefore: document.getElementById('authFloatingAdd')?.classList.contains('hidden'),
-            });
-            setAuthorizationRoutesLayerDisplayed(true);
-            document.getElementById('mainContent')?.classList.add('hidden');
-            document.getElementById('authorizationPageHeader')?.classList.add('hidden');
+            layer.classList.remove('hidden');
             hideAuthorizationModal();
-            syncFabVisibilityWithRoutesLayer();
             initializeMap()
                 .then(() => loadRoutes())
-                .then(() => {
-                    authUiDebugLog('openAuthorizationRoutesLayer:loadRoutes_done');
-                    authUiRouteUiSnapshot('after_loadRoutes_done');
-                    [0, 50, 250, 1000].forEach((ms) =>
-                        setTimeout(() => authUiRouteUiSnapshot('after_loadRoutes_' + ms + 'ms'), ms),
-                    );
-                })
                 .catch((e) => {
                     console.error('[Authorization] Route layer init failed', e);
-                    authUiDebugLog('openAuthorizationRoutesLayer:catch', { message: e && e.message ? e.message : String(e) });
-                    closeAuthorizationRoutesLayer('route_init_failed');
-                    alert('Could not load your journey. Please tap + and try again.');
+                    showError('Could not load your journey. Please try Proceed again or reopen from the + button.');
                 });
         }
 
         /** @param {boolean} [alsoClearAlternativesBackup] default true — set false when returning from route list to the multi-option picker. */
         function resetInLayerRouteFlowState(alsoClearAlternativesBackup) {
+            logDriverAuth('state', 'resetInLayerRouteFlowState', { alsoClearAlternativesBackup });
             resetMapCostPanelDomState();
             try {
                 clearRoute();
@@ -1394,11 +1328,11 @@
             if (requestButton) requestButton.classList.remove('visible');
         }
 
-        function closeAuthorizationRoutesLayer(source) {
-            authUiDebugLog('closeAuthorizationRoutesLayer', { source: source || 'unknown' });
-            setAuthorizationRoutesLayerDisplayed(false);
-            document.getElementById('mainContent')?.classList.remove('hidden');
-            document.getElementById('authorizationPageHeader')?.classList.remove('hidden');
+        function closeAuthorizationRoutesLayer() {
+            logDriverAuth('routesLayer', 'closeAuthorizationRoutesLayer');
+            logDriverAuthDom('routesLayer:close');
+            const layer = document.getElementById('authorizationRoutesLayer');
+            if (layer) layer.classList.add('hidden');
             sessionStorage.removeItem('authorizationRequest');
             const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
             const routesList = document.getElementById('routesList');
@@ -1419,25 +1353,36 @@
             const titleEl = document.getElementById('routeScreenTitle');
             if (titleEl) titleEl.textContent = 'Route options';
             clearPoweredByGoogleAttribution();
-            syncFabVisibilityWithRoutesLayer();
         }
 
         function authorizationRoutesNavigateBack() {
             const layer = document.getElementById('authorizationRoutesLayer');
-            if (!layer || layer.classList.contains('hidden')) return;
+            if (!layer || layer.classList.contains('hidden')) {
+                logDriverAuth('back', 'authorizationRoutesNavigateBack no-op (layer missing or hidden)');
+                return;
+            }
+            logDriverAuth('back', 'authorizationRoutesNavigateBack', {
+                routesPickerConfirmed,
+                snapshotCount: routeAlternativesSnapshot?.length,
+            });
+            logDriverAuthDom('back:start');
 
             const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
 
             const carryBlock = document.getElementById('mapCarryoverBlock');
             if (carryBlock && !carryBlock.classList.contains('hidden')) {
+                logDriverAuth('back', 'branch: hide carryover block');
                 carryBlock.classList.add('hidden');
                 const nb = document.getElementById('mapCostNextBtn');
                 if (nb) nb.classList.remove('hidden');
+                logDriverAuthDom('back:afterCarryover');
                 return;
             }
 
             if (mapContainer && mapContainer.classList.contains('fullscreen')) {
+                logDriverAuth('back', 'branch: backFromMapPanel (fullscreen map cost)');
                 backFromMapPanel();
+                logDriverAuthDom('back:afterMapPanel');
                 return;
             }
 
@@ -1459,10 +1404,13 @@
                 if (titleEl) titleEl.textContent = 'Route options';
                 setPoweredByGoogleAttribution();
                 renderRoutePickerCards(routeAlternatives);
+                logDriverAuth('back', 'branch: returned to multi-route picker');
+                logDriverAuthDom('back:picker');
                 return;
             }
 
-            closeAuthorizationRoutesLayer('navigate_back');
+            logDriverAuth('back', 'branch: closeAuthorizationRoutesLayer (exit flow)');
+            closeAuthorizationRoutesLayer();
         }
 
         let map;
@@ -1732,20 +1680,11 @@
 
         function setAuthorizationListShellReady() {
             document.getElementById('authPageLoading')?.classList.add('hidden');
-            const layer = document.getElementById('authorizationRoutesLayer');
-            const routesOpen = !!(layer && !layer.classList.contains('hidden'));
-            const main = document.getElementById('mainContent');
-            if (main && !routesOpen) main.classList.remove('hidden');
-            authUiDebugLog('setAuthorizationListShellReady', {
-                routesLayerHidden: layer?.classList.contains('hidden'),
-                routesOpen,
-                mainContentHidden: main?.classList.contains('hidden'),
-            });
-            syncFabVisibilityWithRoutesLayer();
+            document.getElementById('mainContent')?.classList.remove('hidden');
+            document.getElementById('authFloatingAdd')?.classList.remove('hidden');
         }
 
         function setAuthorizationListShellLoading() {
-            authUiDebugLog('setAuthorizationListShellLoading');
             document.getElementById('authPageLoading')?.classList.remove('hidden');
             document.getElementById('mainContent')?.classList.add('hidden');
             document.getElementById('authFloatingAdd')?.classList.add('hidden');
@@ -1788,18 +1727,9 @@
             }
         }
 
-        function ensureDirectionsService() {
-            if (!directionsService && typeof google !== 'undefined' && google.maps) {
-                directionsService = new google.maps.DirectionsService();
-            }
-            return directionsService;
-        }
-
         function directionsRoutePromise(request) {
-            const ds = ensureDirectionsService();
-            if (!ds) return Promise.resolve(null);
             return new Promise((resolve) => {
-                ds.route(request, (response, status) => {
+                directionsService.route(request, (response, status) => {
                     const ok = status === google.maps.DirectionsStatus.OK || status === 'OK';
                     resolve(ok ? response : null);
                 });
@@ -1921,8 +1851,12 @@
             return chunks;
         }
         function renderRoutePickerCards(alts) {
+            logDriverAuth('picker', 'renderRoutePickerCards', { count: alts?.length ?? 0, hasRequestData: !!requestData });
             const host = document.getElementById('routePickerCards');
-            if (!host || !requestData) return;
+            if (!host || !requestData) {
+                logDriverAuth('picker', 'renderRoutePickerCards abort: missing host or requestData');
+                return;
+            }
             host.innerHTML = '';
             const depFallback = requestData.departureTime ? new Date(requestData.departureTime) : new Date();
             alts.forEach((resp, index) => {
@@ -1949,9 +1883,16 @@
             });
         }
         function confirmRoutePickerSelection(index) {
-            if (routesPickerConfirmed) return;
+            if (routesPickerConfirmed) {
+                logDriverAuth('picker', 'confirmRoutePickerSelection ignored (already confirmed)', { index });
+                return;
+            }
             const chosen = routeAlternatives[index];
-            if (!chosen) return;
+            if (!chosen) {
+                logDriverAuth('picker', 'confirmRoutePickerSelection abort: no route at index', { index, alternativesLen: routeAlternatives.length });
+                return;
+            }
+            logDriverAuth('picker', 'confirmRoutePickerSelection', { index, singleRoute: routeAlternatives.length <= 1 });
             routes = [chosen];
             routeAlternatives = [];
             routesPickerConfirmed = true;
@@ -1962,6 +1903,7 @@
             const t = document.getElementById('routeScreenTitle');
             if (t) t.textContent = 'Click a step once to request a transit cost. Click twice to request a taxi.';
             selectRoute(0);
+            logDriverAuthDom('picker:afterConfirm');
         }
         function setPoweredByGoogleAttribution() {
             const el = document.getElementById('routeInfo');
@@ -1993,52 +1935,46 @@
             }
         }
         async function initializeMap() {
-            authUiDebugLog('initializeMap:wait_maps');
+            logDriverAuth('maps', 'initializeMap start', { googleMapsLoaded });
             await Promise.race([
                 waitForGoogleMaps(),
                 new Promise((_, rej) => setTimeout(() => rej(new Error('Google Maps did not become ready in time')), 45000)),
             ]);
-            authUiDebugLog('initializeMap:maps_ready', { googleMapsLoaded });
             const storedData = sessionStorage.getItem('authorizationRequest');
             if (!storedData) {
-                authUiDebugLog('initializeMap:no_session');
+                logDriverAuth('maps', 'initializeMap abort: no sessionStorage authorizationRequest');
                 showError('No route data found. Please go back and create a new request.');
-                throw new Error('No route data in session (authorizationRequest).');
+                return;
             }
             let parsed;
             try {
                 parsed = JSON.parse(storedData);
             } catch (_e) {
-                authUiDebugLog('initializeMap:bad_json');
+                logDriverAuth('maps', 'initializeMap abort: JSON.parse failed');
                 showError('Saved journey data was invalid. Please use the + button and enter your addresses again.');
-                throw new Error('Invalid authorizationRequest JSON in session.');
+                return;
             }
             requestData = parsed;
             if (!map) {
-                const mapEl = document.getElementById('map');
-                if (!mapEl) {
-                    authUiDebugLog('initializeMap:no_map_element');
-                    throw new Error('Map container #map not found.');
-                }
-                map = new google.maps.Map(mapEl, { zoom: 10, center: { lat: requestData.from.lat, lng: requestData.from.lng }, mapTypeId: google.maps.MapTypeId.ROADMAP });
+                logDriverAuth('maps', 'creating primary google.maps.Map');
+                map = new google.maps.Map(document.getElementById('map'), { zoom: 10, center: { lat: requestData.from.lat, lng: requestData.from.lng }, mapTypeId: google.maps.MapTypeId.ROADMAP });
+                directionsService = new google.maps.DirectionsService();
+            } else {
+                logDriverAuth('maps', 'reuse existing map instance');
             }
-            authUiDebugLog('initializeMap:done', { hasMap: !!map });
+            logDriverAuth('maps', 'initializeMap done', { hasRequestData: !!requestData });
         }
         async function loadRoutes() {
-            authUiDebugLog('loadRoutes:start', { hasRequestData: !!requestData });
+            logDriverAuth('loadRoutes', 'start');
             await waitForGoogleMaps();
             if (!requestData) {
                 const storedData = sessionStorage.getItem('authorizationRequest');
                 if (!storedData) {
-                    showError('No saved journey found. Tap + and enter From / To again.');
+                    logDriverAuth('loadRoutes', 'early return: no requestData and no sessionStorage');
                     return;
                 }
-                try {
-                    requestData = JSON.parse(storedData);
-                } catch (e) {
-                    showError('Saved journey data was invalid. Tap + to start again.');
-                    return;
-                }
+                requestData = JSON.parse(storedData);
+                logDriverAuth('loadRoutes', 'restored requestData from sessionStorage');
             }
             routesPickerConfirmed = false;
             routeAlternatives = [];
@@ -2074,11 +2010,21 @@
                 }
                 setPoweredByGoogleAttribution();
                 routeAlternativesSnapshot = routeAlternatives.length > 1 ? routeAlternatives.slice() : [];
-                if (!routeAlternatives.length) return showError('No public transport routes found for this journey. Please try different locations or times.');
-                if (routeAlternatives.length === 1) return confirmRoutePickerSelection(0);
+                if (!routeAlternatives.length) {
+                    logDriverAuth('loadRoutes', 'no alternatives → showError');
+                    return showError('No public transport routes found for this journey. Please try different locations or times.');
+                }
+                if (routeAlternatives.length === 1) {
+                    logDriverAuth('loadRoutes', 'single option → auto confirmRoutePickerSelection(0)');
+                    return confirmRoutePickerSelection(0);
+                }
+                logDriverAuth('loadRoutes', 'multi options → renderRoutePickerCards', { count: routeAlternatives.length });
                 renderRoutePickerCards(routeAlternatives);
+                logDriverAuthDom('loadRoutes:afterPickerCards');
             } catch (error) {
                 console.error('Error loading routes:', error);
+                logDriverAuth('loadRoutes', 'catch', { message: String(error?.message || error) });
+                logDriverAuthDom('loadRoutes:catch');
                 showError('An error occurred while loading routes. Please try again.');
             }
         }
@@ -2169,8 +2115,10 @@
         }
 
         function displayRoutes() {
+            logDriverAuth('timeline', 'displayRoutes', { routesLen: routes.length, selectedRouteIndex });
             const routesList = document.getElementById('routesList');
             if (routes.length === 0) {
+                logDriverAuth('timeline', 'displayRoutes: empty routes → error placeholder');
                 routesList.innerHTML = '<div class="error-message">No routes found.</div>';
                 return;
             }
@@ -2251,30 +2199,43 @@
                 routeCard.innerHTML = `<div class="route-header"><div class="route-title">Route ${routeIndex + 1}</div><div class="route-duration">${leg.duration.text}</div></div><div>${timelineHtml}</div>`;
                 routesList.appendChild(routeCard);
             });
+            logDriverAuthDom('timeline:afterDisplayRoutes');
         }
         function handleSegmentClick(segmentId, event) {
             event.stopPropagation();
             const hasTransitCost = transitCostSegments.has(segmentId);
             const hasTaxiRequest = taxiRequestSegments.has(segmentId);
+            const hadTimer = clickTimers.has(segmentId);
+            logDriverAuth('segment', 'handleSegmentClick', {
+                segmentId,
+                hasTransitCost,
+                hasTaxiRequest,
+                hadTimer,
+            });
             if (clickTimers.has(segmentId)) {
                 clearTimeout(clickTimers.get(segmentId));
                 clickTimers.delete(segmentId);
                 if (hasTaxiRequest) {
+                    logDriverAuth('segment', 'branch: second click on taxi — clear taxi+transit');
                     taxiRequestSegments.delete(segmentId);
                     transitCostSegments.delete(segmentId);
                 } else {
+                    logDriverAuth('segment', 'branch: second click while pending — promote to taxi');
                     const existingCost = transitCostSegments.get(segmentId) || '';
                     taxiRequestSegments.add(segmentId);
                     if (existingCost) transitCostSegments.set(segmentId, existingCost);
                 }
             } else if (hasTransitCost && !hasTaxiRequest) {
+                logDriverAuth('segment', 'branch: had transit cost only → add taxi');
                 const existingCost = transitCostSegments.get(segmentId) || '';
                 taxiRequestSegments.add(segmentId);
                 if (existingCost) transitCostSegments.set(segmentId, existingCost);
             } else if (hasTaxiRequest) {
+                logDriverAuth('segment', 'branch: clear taxi request');
                 taxiRequestSegments.delete(segmentId);
                 transitCostSegments.delete(segmentId);
             } else {
+                logDriverAuth('segment', 'branch: first click → 300ms timer for transit cost mode');
                 const timer = setTimeout(() => {
                     transitCostSegments.set(segmentId, '');
                     taxiRequestSegments.delete(segmentId);
@@ -2282,6 +2243,7 @@
                     updateRequestButton();
                     displayRoutes();
                     if (selectedRouteIndex !== null) renderRoute(routes[selectedRouteIndex]);
+                    logDriverAuth('segment', 'timer fired: transit cost slot opened', { segmentId });
                 }, 300);
                 clickTimers.set(segmentId, timer);
             }
@@ -2290,13 +2252,22 @@
             if (selectedRouteIndex !== null) renderRoute(routes[selectedRouteIndex]);
         }
         function updateSegmentCost(segmentId, value) {
-            if (transitCostSegments.has(segmentId) || taxiRequestSegments.has(segmentId)) transitCostSegments.set(segmentId, value);
+            if (transitCostSegments.has(segmentId) || taxiRequestSegments.has(segmentId)) {
+                transitCostSegments.set(segmentId, value);
+                logDriverAuth('segment', 'updateSegmentCost', { segmentId, valueLen: value != null ? String(value).length : 0 });
+            }
         }
         function updateRequestButton() {
             const requestButton = document.getElementById('requestButton');
             if (!requestButton) return;
-            if (transitCostSegments.size > 0 || taxiRequestSegments.size > 0) requestButton.classList.add('visible');
+            const show = transitCostSegments.size > 0 || taxiRequestSegments.size > 0;
+            if (show) requestButton.classList.add('visible');
             else requestButton.classList.remove('visible');
+            logDriverAuth('ui', 'updateRequestButton', {
+                visible: show,
+                transitCostSegments: transitCostSegments.size,
+                taxiRequestSegments: taxiRequestSegments.size,
+            });
         }
         function triggerMapResizeSoon() {
             if (typeof google === 'undefined' || !google.maps) return;
@@ -2312,6 +2283,7 @@
         }
 
         function mountMainMapInto(slotEl) {
+            logDriverAuth('maps', 'mountMainMapInto', { slotId: slotEl?.id || null });
             const node = document.getElementById('map');
             if (node && slotEl && node.parentElement !== slotEl) slotEl.appendChild(node);
             triggerMapResizeSoon();
@@ -2334,6 +2306,7 @@
         }
 
         function resetMapCostPanelDomState() {
+            logDriverAuth('mapCost', 'resetMapCostPanelDomState');
             mapCostActiveMode = 'off';
             ['mapCostTransitOnly', 'mapCostWithTaxi', 'mapCarryoverBlock'].forEach((id) => {
                 const el = document.getElementById(id);
@@ -2349,6 +2322,8 @@
             }
             const host = document.getElementById('taxiLegRowsHost');
             if (host) host.innerHTML = '';
+            const totIn = document.getElementById('totalCostInput');
+            if (totIn) totIn.value = '';
             const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
             if (mapContainer) mapContainer.classList.remove('auth-cost-mode');
             restoreMainMapToDefaultMount();
@@ -2414,6 +2389,16 @@
             return String(segmentId);
         }
 
+        /** Curvy red highlight only when the driver entered a positive £ amount (not 0 / empty). */
+        function segmentHasPositiveTransitCost(segmentId) {
+            const raw = transitCostSegments.get(segmentId);
+            if (raw == null) return false;
+            const s = String(raw).trim().replace(/^£\s*/, '');
+            if (s === '') return false;
+            const n = parseFloat(s.replace(/,/g, ''));
+            return Number.isFinite(n) && n > 0;
+        }
+
         function renderRedPolylineForSegmentStep(targetMap, step, bounds) {
             let path = [];
             if (step.polyline?.points) {
@@ -2455,23 +2440,14 @@
         }
 
         /**
-         * Full journey on one map: default colours for normal legs; straight red for taxi (when drawTaxiChords);
-         * curvy red for paid transit legs only when highlightTransitCostCurvesInRed (transit-only cost step).
+         * Full journey on one map: default colours for normal legs; straight red for taxi;
+         * curvy red only for transit legs where a cost was entered (no duplicate brand colour).
          */
         function paintAuthorizationRouteWithHighlights(targetMap, route, bucket, opts) {
             const useProposed = bucket === 'proposed';
             const drawTaxiChords = opts.drawTaxiChords !== false;
-            const highlightTransitCostCurvesInRed = opts.highlightTransitCostCurvesInRed !== false;
             const bounds = new google.maps.LatLngBounds();
-            const hasMeaningfulTransitCost = (segmentId) => {
-                const v = transitCostSegments.get(segmentId);
-                if (v == null) return false;
-                const s = String(v).trim();
-                if (s === '') return false;
-                const n = parseFloat(s.replace(/,/g, ''));
-                if (!Number.isNaN(n) && n <= 0) return false;
-                return true;
-            };
+            const hasCost = segmentHasPositiveTransitCost;
             if (!route?.routes?.[0]?.legs || !targetMap) return bounds;
             route.routes[0].legs.forEach((leg) => {
                 bounds.extend(leg.start_location);
@@ -2501,8 +2477,8 @@
                         drawStraightTaxiLeg(targetMap, step.start_location, step.end_location, bounds);
                         continue;
                     }
-                    const cost = hasMeaningfulTransitCost(segmentId);
-                    if (highlightTransitCostCurvesInRed && step.travel_mode === 'TRANSIT' && cost) {
+                    const cost = hasCost(segmentId);
+                    if (step.travel_mode === 'TRANSIT' && cost) {
                         renderRedPolylineForSegmentStep(targetMap, step, bounds);
                         continue;
                     }
@@ -2554,10 +2530,7 @@
         function renderTransitCostHighlightsOnPrimaryMap(route) {
             clearRoute();
             if (!route?.routes?.[0]?.legs || !map) return;
-            const bounds = paintAuthorizationRouteWithHighlights(map, route, 'primary', {
-                drawTaxiChords: false,
-                highlightTransitCostCurvesInRed: true,
-            });
+            const bounds = paintAuthorizationRouteWithHighlights(map, route, 'primary', { drawTaxiChords: false });
             if (!bounds.isEmpty()) map.fitBounds(bounds);
         }
 
@@ -2588,10 +2561,10 @@
             const el = document.getElementById('transitOnlyStageList');
             if (!el) return;
             const lines = [];
-            transitCostSegments.forEach((cost, segmentId) => {
+            transitCostSegments.forEach((_cost, segmentId) => {
                 if (taxiRequestSegments.has(segmentId)) return;
-                if (cost == null || String(cost).trim() === '') return;
-                lines.push({ segmentId, cost: String(cost).trim() });
+                if (!segmentHasPositiveTransitCost(segmentId)) return;
+                lines.push({ segmentId, cost: String(transitCostSegments.get(segmentId)).trim() });
             });
             if (!lines.length) {
                 el.innerHTML = '<div class="text-gray-500 text-xs">No transit costs entered.</div>';
@@ -2609,11 +2582,12 @@
             const el = document.getElementById('transitCostSummaryUnderProposed');
             if (!el) return;
             const parts = [];
-            transitCostSegments.forEach((cost, segmentId) => {
+            transitCostSegments.forEach((_cost, segmentId) => {
                 if (taxiRequestSegments.has(segmentId)) return;
-                if (cost == null || String(cost).trim() === '') return;
+                if (!segmentHasPositiveTransitCost(segmentId)) return;
+                const c = String(transitCostSegments.get(segmentId)).trim();
                 parts.push(
-                    `<div class="flex justify-between gap-2"><span>${escapeHtml(describeSegmentForUi(segmentId))}</span><span>£${escapeHtml(String(cost).trim())}</span></div>`,
+                    `<div class="flex justify-between gap-2"><span>${escapeHtml(describeSegmentForUi(segmentId))}</span><span>£${escapeHtml(c)}</span></div>`,
                 );
             });
             if (!parts.length) {
@@ -2646,12 +2620,17 @@
         }
 
         async function handleNext() {
+            logDriverAuth('mapCost', 'handleNext (Next button) start');
+            logDriverAuthDom('mapCost:handleNext:start');
             carryoverChoice = null;
             await initializeMap();
             const mapContainer = document.querySelector('#authorizationRoutesLayer .map-container');
             const routesList = document.getElementById('routesList');
             const mapCostPanel = document.getElementById('mapCostPanel');
-            if (selectedRouteIndex === null || !routes[selectedRouteIndex]) return;
+            if (selectedRouteIndex === null || !routes[selectedRouteIndex]) {
+                logDriverAuth('mapCost', 'handleNext early return: no selected route', { selectedRouteIndex, routesLen: routes.length });
+                return;
+            }
             if (mapContainer && routesList) {
                 routesList.style.display = 'none';
                 mapContainer.classList.add('fullscreen');
@@ -2680,14 +2659,12 @@
                 mountMainMapInto(document.getElementById('mapOriginalSlot'));
                 const pt = document.getElementById('publicTransportCostInput');
                 const oa = document.getElementById('originalArrivalInput');
+                const tot = document.getElementById('totalCostInput');
                 if (pt) pt.value = '';
                 if (oa) oa.value = '';
+                if (tot) tot.value = '';
                 clearRoute();
-                const origBounds = paintAuthorizationRouteWithHighlights(map, routes[selectedRouteIndex], 'primary', {
-                    drawTaxiChords: false,
-                    /* Original map = real PT geometry in operator colours; red stays on proposed (taxi) only. */
-                    highlightTransitCostCurvesInRed: false,
-                });
+                const origBounds = paintAuthorizationRouteWithHighlights(map, routes[selectedRouteIndex], 'primary', { drawTaxiChords: false });
                 if (!origBounds.isEmpty()) map.fitBounds(origBounds);
                 populateTaxiCostSummaryUnderProposed();
                 buildTaxiLegRows();
@@ -2723,6 +2700,7 @@
         }
 
         async function mapCostPrimaryNext() {
+            logDriverAuth('mapCost', 'mapCostPrimaryNext', { mapCostActiveMode });
             if (mapCostActiveMode === 'transit_only') {
                 await submitAuthorizationFromMapFlow();
                 return;
@@ -2731,8 +2709,10 @@
                 const carry = document.getElementById('mapCarryoverBlock');
                 const nextBtn = document.getElementById('mapCostNextBtn');
                 if (carry && carry.classList.contains('hidden')) {
+                    logDriverAuth('mapCost', 'show carryover block; hide map Next btn');
                     carry.classList.remove('hidden');
                     if (nextBtn) nextBtn.classList.add('hidden');
+                    logDriverAuthDom('mapCost:carryoverShown');
                 }
             }
         }
@@ -2928,10 +2908,7 @@
                 taxiCost = '';
                 totalTransportCost = publicTransportCost;
             } else if (mapCostActiveMode === 'with_taxi') {
-                const ptNum = parseFloat(pt);
-                const taxiSum = taxiCostInputs.reduce((s, v) => s + (parseFloat(v) || 0), 0);
-                const hasAny = (Number.isFinite(ptNum) && ptNum > 0) || taxiSum > 0;
-                totalTransportCost = hasAny ? String((Number.isFinite(ptNum) ? ptNum : 0) + taxiSum) : '';
+                totalTransportCost = document.getElementById('totalCostInput')?.value?.trim() || '';
             } else {
                 publicTransportCost = document.getElementById('publicTransportCostInput')?.value || '';
                 taxiCost = document.getElementById('taxiCostInput')?.value || '';
@@ -2952,9 +2929,16 @@
         }
 
         async function confirmAuthorizationRequest() {
-            if (selectedRouteIndex === null || !routes[selectedRouteIndex]) return;
+            logDriverAuth('submit', 'confirmAuthorizationRequest start');
+            if (selectedRouteIndex === null || !routes[selectedRouteIndex]) {
+                logDriverAuth('submit', 'confirmAuthorizationRequest abort: no route');
+                return;
+            }
             currentReviewPayload = buildAuthorizationPayloadForSubmit();
-            if (!currentReviewPayload) return;
+            if (!currentReviewPayload) {
+                logDriverAuth('submit', 'confirmAuthorizationRequest abort: buildAuthorizationPayloadForSubmit null');
+                return;
+            }
             driverContext = null;
             let ctx = await getDriverContext({ forceRefresh: true });
             if (!ctx?.officeId && typeof window.sotoSession?.bootstrap === 'function') {
@@ -2967,10 +2951,12 @@
                 }
             }
             if (!ctx?.uid) {
+                logDriverAuth('submit', 'confirmAuthorizationRequest abort: no ctx.uid');
                 await showAppAlert('Sign in required', 'Could not identify driver session. Please sign in again.', 'warning');
                 return;
             }
             if (!ctx.officeId) {
+                logDriverAuth('submit', 'confirmAuthorizationRequest abort: no officeId on driver');
                 await showAppAlert(
                     'Office not linked',
                     'Still no office linked to this login. Sign out, open the Driver Portal and sign in again (that refreshes your security token), then retry. If it continues, the office team must set officeId on your user in Firestore or ensure bootstrapSession sets the officeId claim for drivers.',
@@ -2979,6 +2965,7 @@
                 return;
             }
             try {
+                logDriverAuth('submit', 'writing authorizationRequests doc…');
                 await addDoc(collection(window.db, 'authorizationRequests'), {
                     requestType: 'authorization_request',
                     status: 'pending',
@@ -3006,11 +2993,13 @@
                     segments: currentReviewPayload.segments || [],
                     routeVisualization: currentReviewPayload.routeVisualization || null,
                 });
+                logDriverAuth('submit', 'Firestore addDoc success');
                 await showAppAlert('Request sent', 'Your authorization request was submitted successfully.', 'success');
                 closeAuthorizationRoutesLayer();
                 await loadAuthorizationRequests();
             } catch (e) {
                 console.error('[Authorization] Failed to submit request', e);
+                logDriverAuth('submit', 'Firestore addDoc failed', { err: String(e?.message || e) });
                 await showAppAlert('Submit failed', 'Failed to submit authorization request. Please try again.', 'danger');
             }
         }
@@ -3037,6 +3026,7 @@
             routeSegments = [];
         }
         function renderRoute(route) {
+            logDriverAuth('maps', 'renderRoute (overview polyline on main map)', { selectedRouteIndex });
             clearRoute();
             const bounds = new google.maps.LatLngBounds();
             const routeData = route.routes[0];
@@ -3095,6 +3085,7 @@
             if (!bounds.isEmpty()) map.fitBounds(bounds);
         }
         function selectRoute(index) {
+            logDriverAuth('selectRoute', 'selectRoute', { index, routesLen: routes.length });
             selectedRouteIndex = index;
             selectedSegments.clear();
             transitCostSegments.clear();
@@ -3134,15 +3125,12 @@
         window.submitAuthorizationFromMapFlow = submitAuthorizationFromMapFlow;
         window.completeMapFlowWithCarryover = completeMapFlowWithCarryover;
         window.authorizationRoutesNavigateBack = authorizationRoutesNavigateBack;
-
+        
+        // Open authorization modal
         function openAuthorizationModal() {
-            authUiDebugLog('openAuthorizationModal');
-            const routesEl = document.getElementById('authorizationRoutesLayer');
-            if (routesEl && !routesEl.classList.contains('hidden')) {
-                closeAuthorizationRoutesLayer('open_modal');
-            }
-            sessionStorage.removeItem('authorizationRequest');
-
+            logDriverAuth('modal', 'openAuthorizationModal (+ button)');
+            logDriverAuthDom('modal:open');
+            // Lock background page scroll while modal is open (especially iOS).
             modalScrollY = window.scrollY || window.pageYOffset || 0;
             document.body.classList.add('modal-open');
             document.body.style.position = 'fixed';
@@ -3150,9 +3138,9 @@
             document.body.style.left = '0';
             document.body.style.right = '0';
             document.body.style.width = '100%';
-
+            
             document.getElementById('authorizationModal').classList.remove('hidden');
-            syncFabVisibilityWithRoutesLayer();
+            // Initialize autocomplete when modal opens
             setTimeout(() => {
                 if (window.google && window.google.maps && window.google.maps.places) {
                     googleMapsLoaded = true;
@@ -3164,19 +3152,21 @@
         
         /** Close modal (X button or leaving form) and clear the request form. */
         function closeAuthorizationModal() {
+            logDriverAuth('modal', 'closeAuthorizationModal (X / cleared)');
+            logDriverAuthDom('modal:close');
             hideAuthorizationModal();
             sessionStorage.removeItem('authorizationRequest');
             resetAuthorizationRequestFormFields();
         }
-
-        window.openAuthorizationModal = openAuthorizationModal;
-        window.openAuthorizationRoutesLayer = openAuthorizationRoutesLayer;
-
+        
+        // Initialize on page load
         document.addEventListener('DOMContentLoaded', async () => {
+            logDriverAuth('lifecycle', 'DOMContentLoaded');
             if (window.google && window.google.maps && window.google.maps.places) {
                 googleMapsLoaded = true;
+                logDriverAuth('lifecycle', 'Maps already present at DOMContentLoaded');
             }
-
+            
             await waitForFirestoreReady();
 
             try {
@@ -3193,7 +3183,7 @@
             }
             if (window.auth && typeof window.auth.onAuthStateChanged === 'function') {
                 unsubscribeAuthStateChange = window.auth.onAuthStateChanged(async (user) => {
-                    authUiDebugLog('onAuthStateChanged', { uid: user && user.uid ? user.uid : null });
+                    logDriverAuth('lifecycle', 'onAuthStateChanged', { signedIn: !!user });
                     driverContext = null;
                     if (user) {
                         setAuthorizationListShellLoading();
@@ -3216,9 +3206,6 @@
                     }
                 });
             }
-
-            syncFabVisibilityWithRoutesLayer();
-            authUiDebugLog('DOMContentLoaded:boot_complete', { authUiDebug: authUiDebugEnabled() });
         });
 
         window.addEventListener('beforeunload', () => {
