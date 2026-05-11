@@ -87,6 +87,18 @@
             overflow: hidden;
             touch-action: none;
         }
+
+        /*
+         * Full-screen route flow must always stack above #mainContent and the sticky header (z-50).
+         * The Tailwind runtime bundle may omit arbitrary utilities (e.g. z-[70], bg-[#0f1419]); without them
+         * the layer can be transparent / wrong z-index so drivers only see the list after Proceed.
+         */
+        #authorizationRoutesLayer {
+            position: fixed;
+            inset: 0;
+            z-index: 90;
+            background-color: #0f1419;
+        }
         
         .touch-target {
             min-height: 44px;
@@ -1266,6 +1278,7 @@
             document.body.style.right = '';
             document.body.style.width = '';
             window.scrollTo(0, modalScrollY || 0);
+            syncFloatingAddVisibility();
         }
 
         function resetAuthorizationRequestFormFields() {
@@ -1353,6 +1366,7 @@
             const titleEl = document.getElementById('routeScreenTitle');
             if (titleEl) titleEl.textContent = 'Route options';
             clearPoweredByGoogleAttribution();
+            syncFloatingAddVisibility();
         }
 
         function authorizationRoutesNavigateBack() {
@@ -1681,13 +1695,27 @@
         function setAuthorizationListShellReady() {
             document.getElementById('authPageLoading')?.classList.add('hidden');
             document.getElementById('mainContent')?.classList.remove('hidden');
-            document.getElementById('authFloatingAdd')?.classList.remove('hidden');
+            syncFloatingAddVisibility();
         }
 
         function setAuthorizationListShellLoading() {
             document.getElementById('authPageLoading')?.classList.remove('hidden');
             document.getElementById('mainContent')?.classList.add('hidden');
             document.getElementById('authFloatingAdd')?.classList.add('hidden');
+        }
+
+        /** + button only when list shell is ready and the route picker/map flow is not open (avoids list>proceed>list>+ confusion). */
+        function syncFloatingAddVisibility() {
+            const add = document.getElementById('authFloatingAdd');
+            const main = document.getElementById('mainContent');
+            const layer = document.getElementById('authorizationRoutesLayer');
+            const modal = document.getElementById('authorizationModal');
+            if (!add) return;
+            const listReady = main && !main.classList.contains('hidden');
+            const routesOpen = layer && !layer.classList.contains('hidden');
+            const formOpen = modal && !modal.classList.contains('hidden');
+            if (listReady && !routesOpen && !formOpen) add.classList.remove('hidden');
+            else add.classList.add('hidden');
         }
 
         async function startAuthorizationRequestsListener() {
@@ -3140,6 +3168,7 @@
             document.body.style.width = '100%';
             
             document.getElementById('authorizationModal').classList.remove('hidden');
+            syncFloatingAddVisibility();
             // Initialize autocomplete when modal opens
             setTimeout(() => {
                 if (window.google && window.google.maps && window.google.maps.places) {
@@ -3157,6 +3186,7 @@
             hideAuthorizationModal();
             sessionStorage.removeItem('authorizationRequest');
             resetAuthorizationRequestFormFields();
+            syncFloatingAddVisibility();
         }
         
         // Initialize on page load
