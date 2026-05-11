@@ -87,24 +87,6 @@
             overflow: hidden;
             touch-action: none;
         }
-
-        /*
-         * Full-screen route flow: stack above list + sticky nav. Use !important so missing Tailwind
-         * arbitrary utilities cannot leave this layer transparent or behind the list.
-         * z-index 9990 stays below ui-dialogs overlays (9998) so confirm/alert still work.
-         */
-        #authorizationRoutesLayer {
-            position: fixed !important;
-            inset: 0 !important;
-            z-index: 9990 !important;
-            background-color: #0f1419 !important;
-            width: 100vw !important;
-            max-width: 100vw !important;
-            min-height: 100vh !important;
-            min-height: 100dvh !important;
-            box-sizing: border-box;
-            isolation: isolate;
-        }
         
         .touch-target {
             min-height: 44px;
@@ -964,12 +946,6 @@
     </div>
     
     <script>
-        /* Last paint order: keep route overlay above list even if an ancestor created a stacking context. */
-        (function elevateAuthorizationRoutesLayer() {
-            const el = document.getElementById('authorizationRoutesLayer');
-            if (el) document.body.appendChild(el);
-        })();
-
         let fromAutocomplete, toAutocomplete;
         let fromPlace = null;
         let toPlace = null;
@@ -1290,7 +1266,6 @@
             document.body.style.right = '';
             document.body.style.width = '';
             window.scrollTo(0, modalScrollY || 0);
-            syncFloatingAddVisibility();
         }
 
         function resetAuthorizationRequestFormFields() {
@@ -1326,13 +1301,6 @@
                 .then(() => loadRoutes())
                 .catch((e) => {
                     console.error('[Authorization] Route layer init failed', e);
-                    if (typeof logDriverAuth === 'function') {
-                        logDriverAuth('routesLayer', 'initializeMap/loadRoutes rejected', { err: String(e?.message || e) });
-                        logDriverAuthDom('routesLayer:onError');
-                    }
-                    const layerEl = document.getElementById('authorizationRoutesLayer');
-                    if (layerEl) layerEl.classList.add('hidden');
-                    syncFloatingAddVisibility();
                     showError('Could not load your journey. Please try Proceed again or reopen from the + button.');
                 });
         }
@@ -1385,7 +1353,6 @@
             const titleEl = document.getElementById('routeScreenTitle');
             if (titleEl) titleEl.textContent = 'Route options';
             clearPoweredByGoogleAttribution();
-            syncFloatingAddVisibility();
         }
 
         function authorizationRoutesNavigateBack() {
@@ -1714,30 +1681,13 @@
         function setAuthorizationListShellReady() {
             document.getElementById('authPageLoading')?.classList.add('hidden');
             document.getElementById('mainContent')?.classList.remove('hidden');
-            syncFloatingAddVisibility();
+            document.getElementById('authFloatingAdd')?.classList.remove('hidden');
         }
 
         function setAuthorizationListShellLoading() {
             document.getElementById('authPageLoading')?.classList.remove('hidden');
             document.getElementById('mainContent')?.classList.add('hidden');
             document.getElementById('authFloatingAdd')?.classList.add('hidden');
-        }
-
-        /**
-         * + only when the list shell is ready and the new-request modal is closed.
-         * Do NOT tie visibility to the routes layer: if that overlay fails to paint, DOM still thinks
-         * routes are "open" and hiding + leaves drivers stuck on the list with no +.
-         * While routes work, #authorizationRoutesLayer (z-index 9990) sits above the + (z-40).
-         */
-        function syncFloatingAddVisibility() {
-            const add = document.getElementById('authFloatingAdd');
-            const main = document.getElementById('mainContent');
-            const modal = document.getElementById('authorizationModal');
-            if (!add) return;
-            const listReady = main && !main.classList.contains('hidden');
-            const formOpen = modal && !modal.classList.contains('hidden');
-            if (listReady && !formOpen) add.classList.remove('hidden');
-            else add.classList.add('hidden');
         }
 
         async function startAuthorizationRequestsListener() {
@@ -3190,7 +3140,6 @@
             document.body.style.width = '100%';
             
             document.getElementById('authorizationModal').classList.remove('hidden');
-            syncFloatingAddVisibility();
             // Initialize autocomplete when modal opens
             setTimeout(() => {
                 if (window.google && window.google.maps && window.google.maps.places) {
@@ -3208,7 +3157,6 @@
             hideAuthorizationModal();
             sessionStorage.removeItem('authorizationRequest');
             resetAuthorizationRequestFormFields();
-            syncFloatingAddVisibility();
         }
         
         // Initialize on page load
