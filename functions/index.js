@@ -1111,6 +1111,22 @@ const XERO_SCOPES = [
 const XERO_CONTACT_NAME = "SotoRoutes Expenses";
 const XERO_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
+/** Gen2 runs on Cloud Run; public invoker lets browser OPTIONS preflight reach callable CORS handling. Auth is still enforced via Firebase ID token in the callable body. */
+const XERO_CALLABLE_OPTIONS = {
+  region: "us-central1",
+  invoker: "public",
+  cors: [
+    "https://sotogroup.uk",
+    "https://www.sotogroup.uk",
+    "https://soto-routes.web.app",
+    "https://soto-routes.firebaseapp.com",
+    "http://localhost:5000",
+    "http://localhost:8080",
+    "http://127.0.0.1:5000",
+    "http://127.0.0.1:8080",
+  ],
+};
+
 function getXeroClientId() {
   return (process.env.XERO_CLIENT_ID || "").trim();
 }
@@ -1283,7 +1299,7 @@ function buildXeroLineItemsForBatch(batch, accountCode) {
 }
 
 exports.xeroGetAuthorizationUrl = onCall(
-    { region: "us-central1", cors: true },
+    XERO_CALLABLE_OPTIONS,
     async (req) => {
       const ctx = await assertOfficeOrAdmin(req);
       const officeId = resolveOfficeIdForXero(req, ctx);
@@ -1328,7 +1344,7 @@ exports.xeroGetAuthorizationUrl = onCall(
 );
 
 exports.xeroExchangeCode = onCall(
-    { region: "us-central1", cors: true },
+    XERO_CALLABLE_OPTIONS,
     async (req) => {
       const ctx = await assertOfficeOrAdmin(req);
       const { code, state } = req.data || {};
@@ -1431,7 +1447,7 @@ exports.xeroExchangeCode = onCall(
 );
 
 exports.xeroDisconnect = onCall(
-    { region: "us-central1", cors: true },
+    XERO_CALLABLE_OPTIONS,
     async (req) => {
       const ctx = await assertOfficeOrAdmin(req);
       const officeId = resolveOfficeIdForXero(req, ctx);
@@ -1451,7 +1467,7 @@ exports.xeroDisconnect = onCall(
 );
 
 exports.xeroCreateDraftBillsForBatches = onCall(
-    { region: "us-central1", cors: true },
+    XERO_CALLABLE_OPTIONS,
     async (req) => {
       const ctx = await assertOfficeOrAdmin(req);
       const officeId = resolveOfficeIdForXero(req, ctx);
