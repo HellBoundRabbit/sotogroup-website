@@ -59,7 +59,7 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
-        const functions = getFunctions(app);
+        const functions = getFunctions(app, 'us-central1');
         const storage = getStorage(app);
         
         // Make Firebase available globally
@@ -560,6 +560,198 @@
         const notifyInfo = (message, title = 'Notice') => uiDialogs.showAlert({ title, message, tone: 'info' });
         const getCurrentOfficeId = () => currentUser?.officeId || currentSession?.officeId || null;
 
+        let xeroOAuthPopup = null;
+
+        function getXeroRedirectUri() {
+            return `${window.location.origin}/pages/xero-callback.html`;
+        }
+
+        function registerXeroOAuthListenerOnce() {
+            if (window._sotoExpensesXeroOAuthListener) return;
+            window._sotoExpensesXeroOAuthListener = true;
+            window.addEventListener('message', async function (ev) {
+                const d = ev.data;
+                if (!d || d.source !== 'soto-xero-oauth') return;
+                if (ev.origin !== window.location.origin) return;
+                if (d.error) {
+                    if (d.error !== 'access_denied') {
+                        notifyWarning('Xero sign-in did not complete.', 'Xero');
+                    }
+                    return;
+                }
+                if (!d.code || !d.state) return;
+                try {
+                    const exchange = window.firebase.httpsCallable(window.firebase.functions, 'xeroExchangeCode');
+                    await exchange({
+                        code: d.code,
+                        state: d.state,
+                        officeId: getCurrentOfficeId(),
+                    });
+                    notifySuccess('Xero connected. Draft bills can be created when you transfer paid expenses.', 'Xero');
+                    await refreshXeroSettingsInModal();
+                } catch (err) {
+                    console.error(err);
+                    const msg = (err && err.message) ? err.message : 'Could not complete Xero connection.';
+                    notifyError(msg, 'Xero');
+                }
+            }, false);
+        }
+
+        async function refreshXeroSettingsInModal() {
+            const officeId = getCurrentOfficeId();
+            const toggle = document.getElementById('xeroExpenseIntegrationToggle');
+            const statusEl = document.getElementById('xeroConnectionStatus');
+            const connectBtn = document.getElementById('xeroConnectBtn');
+            const disconnectBtn = document.getElementById('xeroDisconnectBtn');
+            const hint = document.getElementById('xeroRedirectUriHint');
+            if (hint) hint.textContent = getXeroRedirectUri();
+            if (!officeId || !toggle) return;
+            try {
+                const officeSnap = await window.getDoc(window.doc(window.db, 'offices', officeId));
+                const data = officeSnap.exists() ? officeSnap.data() : {};
+                toggle.checked = !!data.xeroExpenseIntegrationEnabled;
+                const connected = !!(data.xeroTenantName && String(data.xeroTenantName).trim());
+                if (statusEl) {
+                    statusEl.textContent = connected
+                        ? `Connected: ${data.xeroTenantName}`
+                        : 'Not connected — use Connect Xero to sign in.';
+                }
+                if (connectBtn) connectBtn.disabled = false;
+                if (disconnectBtn) disconnectBtn.disabled = !connected;
+            } catch (e) {
+                console.warn('refreshXeroSettingsInModal', e);
+            }
+        }
+
+        async function connectXeroOffice() {
+            const officeId = getCurrentOfficeId();
+            if (!officeId) {
+                notifyWarning('No office context.', 'Xero');
+                return;
+            }
+            const redirectUri = getXeroRedirectUri();
+            try {
+                const getUrl = window.firebase.httpsCallable(window.firebase.functions, 'xeroGetAuthorizationUrl');
+                const { data } = await getUrl({ redirectUri, officeId });
+                if (!data || !data.url) {
+                    notifyError('Could not start Xero sign-in.', 'Xero');
+                    return;
+                }
+                const w = 520;
+                const h = 720;
+                const left = Math.max(0, window.screenX + (window.outerWidth - w) / 2);
+                const top = Math.max(0, window.screenY + (window.outerHeight - h) / 2);
+                const features = `width=${w},height=${h},left=${left},top=${top},scrollbars=yes,resizable=yes`;
+                xeroOAuthPopup = window.open(data.url, 'soto_xero_oauth', features);
+                if (!xeroOAuthPopup) {
+                    notifyWarning('Pop-up was blocked. Allow pop-ups for this site, then try Connect Xero again.', 'Xero');
+                }
+            } catch (err) {
+                console.error(err);
+                notifyError((err && err.message) || 'Could not start Xero sign-in.', 'Xero');
+            }
+        }
+
+        async function disconnectXeroOffice() {
+            const officeId = getCurrentOfficeId();
+            if (!officeId) return;
+            const ok = await showConfirmation({
+                title: 'Disconnect Xero?',
+                message: 'This office will stop sending draft bills to Xero until you connect again. Existing Xero data is not changed.',
+                confirmText: 'Disconnect',
+                cancelText: 'Cancel',
+                tone: 'warning',
+            });
+            if (!ok) return;
+            try {
+                const fn = window.firebase.httpsCallable(window.firebase.functions, 'xeroDisconnect');
+                await fn({ officeId });
+                notifySuccess('Xero disconnected for this office.', 'Xero');
+                await refreshXeroSettingsInModal();
+            } catch (err) {
+                console.error(err);
+                notifyError((err && err.message) || 'Could not disconnect Xero.', 'Xero');
+            }
+        }
+
+        async function handleXeroExpenseIntegrationToggle(checked) {
+            const officeId = getCurrentOfficeId();
+            if (!officeId) return;
+            try {
+                await window.updateDoc(window.doc(window.db, 'offices', officeId), {
+                    xeroExpenseIntegrationEnabled: !!checked,
+                });
+            } catch (e) {
+                console.error(e);
+                if (window.uiDialogs) {
+                    window.uiDialogs.showAlert({
+                        title: 'Settings',
+                        message: 'Could not save Xero setting. You may not have permission to update office settings.',
+                        tone: 'danger',
+                    });
+                }
+                const toggle = document.getElementById('xeroExpenseIntegrationToggle');
+                if (toggle) toggle.checked = !checked;
+            }
+        }
+
+        /**
+         * When Xero is enabled: create draft bills first; on any failure return false (do not export).
+         * When disabled: confirm device-only transfer; return false if user chooses Back.
+         */
+        async function confirmXeroGateBeforeTransfer(paidBatches) {
+            const officeId = getCurrentOfficeId();
+            if (!officeId) {
+                notifyWarning('Unable to determine office context.');
+                return false;
+            }
+            let officeData = {};
+            try {
+                const officeSnap = await window.getDoc(window.doc(window.db, 'offices', officeId));
+                officeData = officeSnap.exists() ? officeSnap.data() : {};
+            } catch (e) {
+                console.warn(e);
+            }
+            const xeroOn = !!officeData.xeroExpenseIntegrationEnabled;
+            const xeroConnected = !!(officeData.xeroTenantName && String(officeData.xeroTenantName).trim());
+
+            if (xeroOn) {
+                if (!xeroConnected) {
+                    notifyWarning(
+                        'Turn on “Post draft bills to Xero” is enabled, but Xero is not connected. Open Settings → Connect Xero, or turn the toggle off to transfer files only.',
+                        'Xero',
+                    );
+                    return false;
+                }
+                try {
+                    const createFn = window.firebase.httpsCallable(window.firebase.functions, 'xeroCreateDraftBillsForBatches');
+                    await createFn({
+                        officeId,
+                        batchIds: paidBatches.map((b) => b.id),
+                    });
+                } catch (err) {
+                    console.error(err);
+                    const msg = (err && err.message)
+                        ? err.message
+                        : 'Xero could not create draft bills. Nothing was transferred.';
+                    notifyError(msg, 'Xero');
+                    return false;
+                }
+                return true;
+            }
+
+            const confirmed = await showConfirmation({
+                title: 'Transfer without Xero?',
+                message:
+                    'You are about to transfer these paid expense batches to your device only. No draft bills will be created in Xero.\n\n' +
+                    '(Enable “Post draft bills to Xero” in Settings if you want each batch sent to Xero as a draft bill before files are saved.)',
+                confirmText: 'Yes, transfer',
+                cancelText: 'Back',
+                tone: 'warning',
+            });
+            return !!confirmed;
+        }
+
         // Initialize function
         async function initializeExpensesApp() {
             console.log('=== EXPENSES INITIALIZATION START ===');
@@ -600,7 +792,8 @@
                 await loadOfficeLogo(getCurrentOfficeId());
                 await initializeNotifications();
                 initializeSearch();
-                
+                registerXeroOAuthListenerOnce();
+
                 console.log('Loading expense batches...');
                 await loadAllBatches();
                 document.getElementById('loadingOverlay').style.display = 'none';
@@ -1834,6 +2027,7 @@
                     const overdueEmail = document.getElementById('overdueNotificationEmail');
                     if (overdueToggle) overdueToggle.checked = !!data.overdueNotificationEnabled;
                     if (overdueEmail) overdueEmail.value = data.overdueNotificationEmail || '';
+                    await refreshXeroSettingsInModal();
                 } catch (e) {
                     console.warn('Could not load office settings for overdue notification', e);
                 }
@@ -1930,6 +2124,8 @@
                 });
                 
                 if (useDownloads) {
+                    const gateOk = await confirmXeroGateBeforeTransfer(paidBatches);
+                    if (!gateOk) return;
                     await downloadAllPDFsAsZIP(paidBatches, button, originalText);
                 }
                 return;
@@ -1943,6 +2139,13 @@
                 const directoryHandle = await window.showDirectoryPicker({
                     mode: 'readwrite'
                 });
+
+                const gateOk = await confirmXeroGateBeforeTransfer(paidBatches);
+                if (!gateOk) {
+                    button.disabled = false;
+                    button.innerHTML = originalText;
+                    return;
+                }
                 
                 button.innerHTML = '<span class="material-symbols-outlined animate-spin">hourglass_empty</span> Generating PDFs...';
                 
@@ -1996,6 +2199,12 @@
                         tone: 'warning'
                     });
                     if (useDownloads) {
+                        const gateOkZip = await confirmXeroGateBeforeTransfer(paidBatches);
+                        if (!gateOkZip) {
+                            button.disabled = false;
+                            button.innerHTML = originalText;
+                            return;
+                        }
                         await downloadAllPDFsAsZIP(paidBatches, button, originalText);
                     } else {
                         button.disabled = false;
@@ -2987,7 +3196,7 @@
 
 <!-- Settings Modal -->
 <div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-    <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-6 w-full max-w-md">
+    <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-6 w-full max-w-lg">
         <div class="flex justify-between items-center mb-4">
             <h3 class="text-xl font-bold text-white">Settings</h3>
             <button onclick="hideSettings()" class="text-gray-400 hover:text-white">
@@ -3027,6 +3236,30 @@
                         </label>
                     </div>
                     <input type="email" id="overdueNotificationEmail" placeholder="Email address for notifications" class="w-full mt-2 px-3 py-2 bg-[#111418] border border-[#283039] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500" onblur="saveOverdueNotificationEmail()">
+                </div>
+                <div class="py-3 border-b border-[#283039]">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex-1">
+                            <label for="xeroExpenseIntegrationToggle" class="block text-sm font-medium text-white mb-1">
+                                Post draft bills to Xero when transferring paid expenses
+                            </label>
+                            <p class="text-xs text-gray-400">When enabled, each paid batch becomes a <strong class="text-gray-300">draft bill</strong> in Xero before PDFs are saved. Xero must be connected below. No existing Xero data is edited or deleted.</p>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                            <input type="checkbox" id="xeroExpenseIntegrationToggle" class="sr-only peer" onchange="handleXeroExpenseIntegrationToggle(this.checked)">
+                            <div class="w-11 h-6 bg-[#283039] peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </label>
+                    </div>
+                    <p id="xeroConnectionStatus" class="text-xs text-gray-500 mb-2">Loading…</p>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" id="xeroConnectBtn" onclick="connectXeroOffice()" class="px-3 py-2 bg-[#13B5EA] hover:bg-[#0fa0d1] text-white text-sm rounded-lg font-medium transition-colors">
+                            Connect Xero
+                        </button>
+                        <button type="button" id="xeroDisconnectBtn" onclick="disconnectXeroOffice()" class="px-3 py-2 bg-[#283039] hover:bg-[#3a444e] text-white text-sm rounded-lg border border-gray-600 transition-colors">
+                            Disconnect
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">Register this redirect URL in your Xero Developer Portal (Web app): <code id="xeroRedirectUriHint" class="text-gray-400 break-all"></code></p>
                 </div>
             </div>
             

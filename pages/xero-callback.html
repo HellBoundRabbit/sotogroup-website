@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Xero — SOTO Routes</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #111418; color: #e5e7eb; margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1rem; text-align: center; }
+    p { margin: 0.5rem 0; font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+  <div>
+    <p><strong>SOTO Routes</strong> — Xero sign-in</p>
+    <p id="msg">Completing sign-in…</p>
+  </div>
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var code = params.get('code');
+      var state = params.get('state');
+      var err = params.get('error');
+      var desc = params.get('error_description');
+      var msg = document.getElementById('msg');
+      try {
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage({
+            source: 'soto-xero-oauth',
+            code: code,
+            state: state,
+            error: err,
+            error_description: desc
+          }, '*');
+          msg.textContent = 'You can close this window.';
+        } else {
+          msg.textContent = 'This page must be opened from SOTO Routes (Expenses settings). You can close this tab.';
+        }
+      } catch (e) {
+        msg.textContent = 'Something went wrong. You can close this window.';
+      }
+      setTimeout(function () {
+        try { window.close(); } catch (_) {}
+      }, 400);
+    })();
+  </script>
+</body>
+</html>
