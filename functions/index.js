@@ -8,7 +8,8 @@
  * to 0 and then to 1 again.
  *
  * Xero (callable): xeroGetAuthorizationUrl, xeroExchangeCode, xeroDisconnect,
- * xeroCreateDraftBillsForBatches — set `XERO_CLIENT_ID` and `XERO_CLIENT_SECRET` as
+ * xeroCreateDraftBillsForBatches — OAuth scopes use granular accounting.* (post–Mar 2026 apps).
+ * Set `XERO_CLIENT_ID` and `XERO_CLIENT_SECRET` as
  * environment variables on the deployed functions (Google Cloud console or a
  * `functions/.env` file for local emulator). Draft bills only (ACCPAY + DRAFT);
  * tokens live in xeroOfficeTokens/{officeId} (Firestore rules deny client access).
@@ -1099,10 +1100,13 @@ exports.deleteDriver = onCall(async (req) => {
 const XERO_AUTH_BASE = "https://login.xero.com/identity/connect/authorize";
 const XERO_TOKEN_URL = "https://identity.xero.com/connect/token";
 const XERO_API_BASE = "https://api.xero.com/api.xro/2.0";
+// Apps created on/after 2026-03-02 cannot use broad `accounting.transactions`; use granular scopes.
+// Draft bills (ACCPAY) → accounting.invoices; chart of accounts (GET /Accounts) → accounting.settings.
 const XERO_SCOPES = [
   "offline_access",
-  "accounting.transactions",
+  "accounting.invoices",
   "accounting.contacts",
+  "accounting.settings",
   "openid",
   "profile",
   "email",
@@ -1111,10 +1115,13 @@ const XERO_SCOPES = [
 const XERO_CONTACT_NAME = "SotoRoutes Expenses";
 const XERO_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
-/** Gen2 runs on Cloud Run; public invoker lets browser OPTIONS preflight reach callable CORS handling. Auth is still enforced via Firebase ID token in the callable body. */
+/**
+ * Gen2 callables are anonymously invokable at the Cloud Run edge like your other `onCall` functions;
+ * **do not** set `invoker: "public"` here — it led to HTTP 403 on OPTIONS (no CORS headers), which Chrome reports as a CORS failure.
+ * Office/admin access is still enforced via `assertOfficeOrAdmin` and the Firebase ID token on each request.
+ */
 const XERO_CALLABLE_OPTIONS = {
   region: "us-central1",
-  invoker: "public",
   cors: [
     "https://sotogroup.uk",
     "https://www.sotogroup.uk",
