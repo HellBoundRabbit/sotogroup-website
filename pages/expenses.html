@@ -1025,8 +1025,11 @@
                                         storagePath: storagePath
                                     });
                                     photoDeletePromises.push(window.deleteObject(photoRef).catch(function (err) {
-                                        // Missing objects are expected for some historical batches.
-                                        if (err && err.code === 'storage/object-not-found') return;
+                                        // Already removed (transfer cleanup, manual delete) — still shows as HTTP 404 in DevTools.
+                                        var c = err && err.code;
+                                        if (c === 'storage/object-not-found' || c === 'storage/not-found') return;
+                                        var msg = (err && err.message) ? String(err.message) : '';
+                                        if (/not\s*found|does not exist|404/i.test(msg)) return;
                                         console.warn('Expired batch photo delete failed', err);
                                     }));
                                 }
