@@ -1042,7 +1042,7 @@
             </button>
         </div>
         
-        <div class="space-y-4 min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-4">
+        <div class="space-y-4 min-h-0 max-h-[calc(100vh-10rem)] overflow-y-auto overscroll-y-contain px-5 pt-4 pb-5">
             <div class="flex items-center justify-between py-3 border-b border-[#283039]">
                 <div class="flex-1">
                     <label for="useAsanaApiToggle" class="block text-sm font-medium text-white mb-1">
@@ -1075,10 +1075,6 @@
                 </div>
                 <input type="email" id="overdueNotificationEmail" placeholder="Email address for notifications" class="w-full mt-2 px-3 py-2 bg-[#111418] border border-[#283039] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500" onblur="saveOverdueNotificationEmail()">
             </div>
-        </div>
-        
-        <div class="shrink-0 flex justify-end px-5 pb-5 pt-3 border-t border-[#283039]">
-            <button type="button" onclick="hideSettings()" class="px-4 py-2 bg-[#283039] hover:bg-[#3a444e] text-white rounded-lg transition-colors font-medium">Close</button>
         </div>
     </div>
     </div>
