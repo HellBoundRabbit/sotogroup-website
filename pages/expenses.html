@@ -658,7 +658,7 @@
                 await loadOfficeLogo(getCurrentOfficeId());
                 await initializeNotifications();
                 initializeSearch();
-                registerXeroOAuthListenerOnce();
+                if (window.sotoXeroOfficeSettingsPanel) window.sotoXeroOfficeSettingsPanel.ensureOAuthListener();
 
                 console.log('Loading expense batches...');
                 await loadAllBatches();
