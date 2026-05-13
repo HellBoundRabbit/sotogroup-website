@@ -113,7 +113,7 @@
             state: d.state,
             officeId: officeId,
           });
-          notify('success', 'Xero', 'Xero connected. Draft bills can be created when you transfer paid expenses.');
+          notify('success', 'Xero', 'Xero connected. Use Sync with Xero on the Validated expenses tab to create draft bills.');
           await refresh();
         } catch (err) {
           console.error(err);
@@ -238,8 +238,8 @@
       '<div class="py-3 border-b border-[#283039]" data-soto-xero-office-settings>',
       '<div class="flex items-start justify-between gap-3">',
       '<div class="flex-1 min-w-0">',
-      '<label for="xeroExpenseIntegrationToggle" class="block text-sm font-medium text-white mb-1">Post draft bills to Xero when transferring paid expenses</label>',
-      '<p class="text-xs text-gray-400">When enabled, each paid batch becomes a draft bill in Xero before PDFs are saved.</p>',
+      '<label for="xeroExpenseIntegrationToggle" class="block text-sm font-medium text-white mb-1">Post draft bills to Xero</label>',
+      '<p class="text-xs text-gray-400">When enabled, validated batches must be synced to Xero from the Expenses → Validated tab before you can mark them as paid. PDF export only saves files to your computer.</p>',
       '<p id="xeroConnectionStatus" class="text-sm text-gray-300 mt-3 mb-2">Loading…</p>',
       '<div class="flex flex-wrap gap-2">',
       '<button type="button" id="xeroConnectBtn" class="px-3 py-2 bg-[#13B5EA] hover:bg-[#0fa0d1] text-white text-sm rounded-lg font-medium transition-colors">Connect Xero</button>',
