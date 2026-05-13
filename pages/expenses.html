@@ -376,13 +376,21 @@
         </div>
 
         <div id="content-validated" class="tab-content hidden">
-            <!-- Group by Driver Toggle -->
-            <div id="validated-header" class="mb-4 flex items-center justify-between">
-                <button id="groupByDriverBtn" onclick="toggleGroupByDriver()" 
-                    class="px-4 py-2 bg-[#283039] hover:bg-[#3a444e] text-white rounded-lg transition-colors flex items-center gap-2">
-                    <span class="material-symbols-outlined text-lg">group</span>
-                    <span id="groupByDriverText">Group by Driver</span>
-                </button>
+            <div id="validated-header" class="mb-4 space-y-3">
+                <div class="flex items-center justify-between gap-3 flex-wrap">
+                    <button id="groupByDriverBtn" onclick="toggleGroupByDriver()" 
+                        class="px-4 py-2 bg-[#283039] hover:bg-[#3a444e] text-white rounded-lg transition-colors flex items-center gap-2">
+                        <span class="material-symbols-outlined text-lg">group</span>
+                        <span id="groupByDriverText">Group by Driver</span>
+                    </button>
+                </div>
+                <div id="validated-xero-sync-wrap" class="hidden">
+                    <button type="button" id="syncXeroValidatedBtn" onclick="syncAllUnsyncedValidatedToXero()"
+                        class="w-full px-6 py-3 bg-[#13B5EA] hover:bg-[#0fa0d1] text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#13B5EA]">
+                        <span class="material-symbols-outlined">cloud_upload</span>
+                        Sync with Xero
+                    </button>
+                </div>
             </div>
             <div id="validated-list" class="space-y-3"></div>
             <div id="validated-empty" class="hidden text-center py-16 text-gray-500">
@@ -561,61 +569,189 @@
         const notifyInfo = (message, title = 'Notice') => uiDialogs.showAlert({ title, message, tone: 'info' });
         const getCurrentOfficeId = () => currentUser?.officeId || currentSession?.officeId || null;
 
+        /** Office Xero flags (refreshed from Firestore). */
+        let officeXeroIntegrationEnabled = false;
+        let officeXeroConnected = false;
+
+        async function loadOfficeXeroFlags() {
+            const officeId = getCurrentOfficeId();
+            officeXeroIntegrationEnabled = false;
+            officeXeroConnected = false;
+            if (!officeId) return;
+            try {
+                const officeSnap = await window.getDoc(window.doc(window.db, 'offices', officeId));
+                const d = officeSnap.exists() ? officeSnap.data() : {};
+                officeXeroIntegrationEnabled = !!d.xeroExpenseIntegrationEnabled;
+                officeXeroConnected = !!(d.xeroTenantName && String(d.xeroTenantName).trim());
+            } catch (e) {
+                console.warn('loadOfficeXeroFlags', e);
+            }
+        }
+
+        function isXeroExpenseWorkflowActive() {
+            return officeXeroIntegrationEnabled && officeXeroConnected;
+        }
+
+        function validatedNeedsXeroGrey(batch) {
+            return batch && batch.status === 'validated' && isXeroExpenseWorkflowActive() && !batch.xeroBillSynced;
+        }
+
+        function shouldShowInXeroMarker(batch) {
+            return !!(batch && batch.xeroBillSynced) && !officeXeroIntegrationEnabled;
+        }
+
         /**
-         * When Xero is enabled: create draft bills first; on any failure return false (do not export).
-         * When disabled: confirm device-only transfer; return false if user chooses Back.
+         * Paid-tab PDF / ZIP transfer: bills are created from the Validated tab (Sync with Xero), not here.
          */
-        async function confirmXeroGateBeforeTransfer(paidBatches) {
+        async function confirmXeroGateBeforeTransfer() {
+            return true;
+        }
+
+        function updateValidatedXeroSyncChrome() {
+            const wrap = document.getElementById('validated-xero-sync-wrap');
+            const btn = document.getElementById('syncXeroValidatedBtn');
+            if (!wrap || !btn) return;
+            if (activeTab !== 'validated') {
+                wrap.classList.add('hidden');
+                return;
+            }
+            const hasValidated = allBatches.some((b) => b.status === 'validated');
+            if (!officeXeroIntegrationEnabled || !officeXeroConnected) {
+                wrap.classList.add('hidden');
+                return;
+            }
+            if (!hasValidated) {
+                wrap.classList.add('hidden');
+                return;
+            }
+            wrap.classList.remove('hidden');
+            const unsynced = allBatches.filter((b) => b.status === 'validated' && !b.xeroBillSynced);
+            btn.disabled = unsynced.length === 0;
+        }
+
+        async function runXeroSyncForBatchIds(batchIds) {
             const officeId = getCurrentOfficeId();
             if (!officeId) {
                 notifyWarning('Unable to determine office context.');
-                return false;
+                return;
             }
-            let officeData = {};
+            if (!batchIds || !batchIds.length) return;
             try {
-                const officeSnap = await window.getDoc(window.doc(window.db, 'offices', officeId));
-                officeData = officeSnap.exists() ? officeSnap.data() : {};
-            } catch (e) {
-                console.warn(e);
-            }
-            const xeroOn = !!officeData.xeroExpenseIntegrationEnabled;
-            const xeroConnected = !!(officeData.xeroTenantName && String(officeData.xeroTenantName).trim());
-
-            if (xeroOn) {
-                if (!xeroConnected) {
+                const createFn = window.firebase.httpsCallable(window.firebase.functions, 'xeroCreateDraftBillsForBatches');
+                const res = await createFn({ officeId, batchIds });
+                const data = res && res.data ? res.data : {};
+                const results = Array.isArray(data.results) ? data.results : [];
+                const failed = results.filter((r) => !r.ok);
+                if (failed.length) {
+                    const msg = failed
+                        .slice(0, 5)
+                        .map((r) => (r.error || 'Unknown error'))
+                        .join('\n');
                     notifyWarning(
-                        'Turn on “Post draft bills to Xero” is enabled, but Xero is not connected. Open Settings → Connect Xero, or turn the toggle off to transfer files only.',
+                        failed.length === results.length
+                            ? 'No bills were created in Xero.\n\n' + msg
+                            : `${failed.length} batch(es) failed:\n\n` + msg + (failed.length > 5 ? '\n…' : ''),
                         'Xero',
                     );
-                    return false;
+                } else {
+                    notifySuccess(
+                        results.length === 1
+                            ? 'Draft bill created in Xero for 1 expense batch.'
+                            : `Draft bills created in Xero for ${results.length} expense batches.`,
+                        'Xero',
+                    );
                 }
-                try {
-                    const createFn = window.firebase.httpsCallable(window.firebase.functions, 'xeroCreateDraftBillsForBatches');
-                    await createFn({
-                        officeId,
-                        batchIds: paidBatches.map((b) => b.id),
-                    });
-                } catch (err) {
-                    console.error(err);
-                    const msg = (err && err.message)
-                        ? err.message
-                        : 'Xero could not create draft bills. Nothing was transferred.';
-                    notifyError(msg, 'Xero');
-                    return false;
-                }
-                return true;
+                await loadOfficeXeroFlags();
+                await loadAllBatches();
+            } catch (err) {
+                console.error(err);
+                const msg = err && err.message ? err.message : 'Xero sync failed.';
+                notifyError(msg, 'Xero');
             }
+        }
 
-            const confirmed = await showConfirmation({
-                title: 'Transfer without Xero?',
-                message:
-                    'You are about to transfer these paid expense batches to your device only. No draft bills will be created in Xero.\n\n' +
-                    '(Enable “Post draft bills to Xero” in Settings if you want each batch sent to Xero as a draft bill before files are saved.)',
-                confirmText: 'Yes, transfer',
-                cancelText: 'Back',
-                tone: 'warning',
+        async function syncAllUnsyncedValidatedToXero() {
+            const ids = allBatches.filter((b) => b.status === 'validated' && !b.xeroBillSynced).map((b) => b.id);
+            if (!ids.length) {
+                notifyInfo('All validated expenses are already synced with Xero.', 'Xero');
+                return;
+            }
+            const ok = await showConfirmation({
+                title: 'Sync with Xero?',
+                message: `Create ${ids.length} draft bill(s) in Xero for validated expenses that are not synced yet?`,
+                confirmText: 'Sync',
+                cancelText: 'Cancel',
+                tone: 'info',
             });
-            return !!confirmed;
+            if (!ok) return;
+            const btn = document.getElementById('syncXeroValidatedBtn');
+            const prev = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="material-symbols-outlined animate-spin">hourglass_empty</span> Syncing…';
+            }
+            try {
+                await runXeroSyncForBatchIds(ids);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = prev;
+                    updateValidatedXeroSyncChrome();
+                }
+            }
+        }
+
+        async function handleValidatedListRowClick(batchId) {
+            const batch = allBatches.find((b) => b.id === batchId);
+            if (!batch || batch.status !== 'validated') {
+                await openBatchDetail(batchId);
+                return;
+            }
+            if (!isXeroExpenseWorkflowActive() || batch.xeroBillSynced) {
+                await openBatchDetail(batchId);
+                return;
+            }
+            const ok = await showConfirmation({
+                title: 'Sync with Xero?',
+                message:
+                    'This expense batch is not in Xero yet. Create a draft bill for it now? You can mark it as paid after it appears in Xero.',
+                confirmText: 'Sync',
+                cancelText: 'Cancel',
+                tone: 'info',
+            });
+            if (!ok) return;
+            await runXeroSyncForBatchIds([batchId]);
+        }
+
+        async function syncDriverValidatedToXero(driverId, driverDisplayName) {
+            const safeName = driverDisplayName || 'this driver';
+            const ids = allBatches
+                .filter(
+                    (b) =>
+                        b.status === 'validated' &&
+                        !b.xeroBillSynced &&
+                        (b.driverId || b.driverEmail || 'unknown') === driverId,
+                )
+                .map((b) => b.id);
+            if (!ids.length) {
+                notifyInfo('No unsynced validated batches for ' + safeName + '.', 'Xero');
+                return;
+            }
+            const ok = await showConfirmation({
+                title: 'Sync with Xero?',
+                message: `Create ${ids.length} draft bill(s) in Xero for ${safeName}'s validated expenses?`,
+                confirmText: 'Sync',
+                cancelText: 'Cancel',
+                tone: 'info',
+            });
+            if (!ok) return;
+            await runXeroSyncForBatchIds(ids);
+        }
+
+        async function syncDriverValidatedToXeroClick(driverId) {
+            const sample = allBatches.find((b) => (b.driverId || b.driverEmail || 'unknown') === driverId);
+            const name = sample ? sample.driverName || 'Driver' : 'Driver';
+            await syncDriverValidatedToXero(driverId, name);
         }
 
         // Initialize function
@@ -656,6 +792,7 @@
                 }
 
                 await loadOfficeLogo(getCurrentOfficeId());
+                await loadOfficeXeroFlags();
                 await initializeNotifications();
                 initializeSearch();
                 if (window.sotoXeroOfficeSettingsPanel) window.sotoXeroOfficeSettingsPanel.ensureOAuthListener();
@@ -827,6 +964,7 @@
                 });
 
                 console.log('Total batches loaded:', allBatches.length);
+                await loadOfficeXeroFlags();
                 updateCounts();
                 displayBatches();
                 await checkAndDeleteExpiredTransferredBatches();
@@ -1033,6 +1171,114 @@
             displayBatches();
         }
 
+        /** Compact row under a driver group (validated tab). */
+        function renderValidatedGroupChildRow(batch) {
+            const date = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
+            const workingHours = calculateWorkingHours(date, new Date());
+            const color = getTimerColor(workingHours);
+            const flashClass = getTimerClass(workingHours);
+            const grey = validatedNeedsXeroGrey(batch);
+            const inXero = shouldShowInXeroMarker(batch);
+            const cardClass = grey
+                ? 'bg-[#283039] border border-dashed border-amber-500/50 rounded-lg p-3 cursor-pointer transition-all ml-4 opacity-[0.58] hover:opacity-100'
+                : 'bg-[#283039] border border-gray-700 hover:border-gray-600 rounded-lg p-3 cursor-pointer transition-colors ml-4';
+            const hint = grey ? '<p class="text-[11px] text-amber-200/90 mt-1">Tap to sync with Xero</p>' : '';
+            const marker = inXero ? '<span class="text-[10px] uppercase tracking-wide text-emerald-400 font-semibold mt-1 block">In Xero</span>' : '';
+            return (
+                '<div onclick="handleValidatedListRowClick(\'' +
+                batch.id +
+                '\')" class="' +
+                cardClass +
+                '">' +
+                '<div class="flex items-start justify-between mb-2">' +
+                '<div class="flex-1">' +
+                '<p class="text-sm text-gray-300 mb-1">' +
+                escapeHtml(batch.registration || 'No Reg') +
+                '</p>' +
+                '<p class="text-xs text-gray-400">' +
+                escapeHtml(date.toLocaleDateString()) +
+                '</p>' +
+                '<div class="text-xs ' +
+                color +
+                ' ' +
+                flashClass +
+                ' font-semibold mt-1">' +
+                workingHours +
+                'h since submission</div>' +
+                hint +
+                marker +
+                '</div>' +
+                '<span class="text-green-400 font-semibold">£' +
+                (batch.totalAmount != null ? Number(batch.totalAmount).toFixed(2) : '0.00') +
+                '</span>' +
+                '</div>' +
+                '<div class="text-xs text-gray-500 ml-4">' +
+                getBatchItemCount(batch) +
+                ' item' +
+                (getBatchItemCount(batch) !== 1 ? 's' : '') +
+                '</div>' +
+                '</div>'
+            );
+        }
+
+        /** Full-width card (validated tab, not grouped). */
+        function renderValidatedFullListCard(batch) {
+            const date = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
+            const workingHours = calculateWorkingHours(date, new Date());
+            const color = getTimerColor(workingHours);
+            const flashClass = getTimerClass(workingHours);
+            const grey = validatedNeedsXeroGrey(batch);
+            const inXero = shouldShowInXeroMarker(batch);
+            const border = grey ? 'border border-dashed border-amber-500/50' : 'border border-gray-800 hover:border-gray-700';
+            const opacity = grey ? 'opacity-[0.58] hover:opacity-100' : '';
+            const hint = grey ? '<p class="text-xs text-amber-200/90 mt-1">Tap to sync with Xero</p>' : '';
+            const marker = inXero ? '<span class="text-[10px] uppercase tracking-wide text-emerald-400 font-semibold mt-1 block">In Xero</span>' : '';
+            return (
+                '<div onclick="handleValidatedListRowClick(\'' +
+                batch.id +
+                '\')" class="bg-[#1a1f24] ' +
+                border +
+                ' rounded-lg p-4 cursor-pointer transition-colors ' +
+                opacity +
+                '">' +
+                '<div class="flex items-start justify-between mb-3">' +
+                '<div>' +
+                '<p class="font-semibold text-lg mb-1">' +
+                escapeHtml(batch.driverName || 'Unknown Driver') +
+                '</p>' +
+                '<p class="text-sm text-gray-400">' +
+                escapeHtml(batch.driverEmail || '') +
+                '</p>' +
+                '<div class="text-xs ' +
+                color +
+                ' ' +
+                flashClass +
+                ' font-semibold mt-1">' +
+                workingHours +
+                'h since submission</div>' +
+                hint +
+                marker +
+                '</div>' +
+                '<div class="license-plate">' +
+                escapeHtml(batch.registration || '') +
+                '</div>' +
+                '</div>' +
+                '<div class="flex items-center justify-between">' +
+                '<span class="text-gray-400 text-sm">' +
+                getBatchItemCount(batch) +
+                ' item' +
+                (getBatchItemCount(batch) !== 1 ? 's' : '') +
+                ' • ' +
+                escapeHtml(date.toLocaleDateString()) +
+                '</span>' +
+                '<span class="text-green-500 font-semibold text-xl">£' +
+                (batch.totalAmount != null ? Number(batch.totalAmount).toFixed(2) : '0.00') +
+                '</span>' +
+                '</div>' +
+                '</div>'
+            );
+        }
+
         function sortByOldestFirst(batches, tab) {
             return batches.slice().sort((a, b) => {
                 const aTime = (a.submittedAt?.toDate ? a.submittedAt.toDate() : (a.updatedAt?.toDate ? a.updatedAt.toDate() : new Date(a.submittedAt || a.updatedAt || 0))).getTime();
@@ -1095,36 +1341,25 @@
                         const totalAmount = driverGroup.batches.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
                         const totalExpenses = driverGroup.batches.reduce((sum, b) => sum + getBatchItemCount(b), 0);
                         
-                        const batchesHTML = driverGroup.batches.map(batch => {
-                            const date = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
-                            const workingHours = calculateWorkingHours(date, new Date());
-                            const color = getTimerColor(workingHours);
-                            const flashClass = getTimerClass(workingHours);
-                            
-                            return `
-                                <div onclick="openBatchDetail('${batch.id}')" class="bg-[#283039] border border-gray-700 hover:border-gray-600 rounded-lg p-3 cursor-pointer transition-colors ml-4">
-                                    <div class="flex items-start justify-between mb-2">
-                                        <div class="flex-1">
-                                            <p class="text-sm text-gray-300 mb-1">${batch.registration || 'No Reg'}</p>
-                                            <p class="text-xs text-gray-400">${date.toLocaleDateString()}</p>
-                                            <div class="text-xs ${color} ${flashClass} font-semibold mt-1">${workingHours}h since submission</div>
-                                        </div>
-                                        <span class="text-green-400 font-semibold">£${batch.totalAmount?.toFixed(2) || '0.00'}</span>
-                                    </div>
-                                    <div class="text-xs text-gray-500 ml-4">${getBatchItemCount(batch)} item${getBatchItemCount(batch) !== 1 ? 's' : ''}</div>
-                                </div>
-                            `;
-                        }).join('');
+                        const batchesHTML = driverGroup.batches.map(batch => renderValidatedGroupChildRow(batch)).join('');
+                        const showDriverSync =
+                            isXeroExpenseWorkflowActive() && driverGroup.batches.some((b) => !b.xeroBillSynced);
+                        const driverSyncBtn = showDriverSync
+                            ? `<button type="button" onclick="event.stopPropagation(); void syncDriverValidatedToXeroClick(${JSON.stringify(
+                                  driverGroup.driverId,
+                              )})" class="shrink-0 px-3 py-2 text-sm font-semibold rounded-lg bg-[#13B5EA] hover:bg-[#0fa0d1] text-white whitespace-nowrap">Sync Xero</button>`
+                            : '';
                         
                         return `
                             <div class="mb-6">
                                 <div class="bg-[#1a1f24] border border-gray-800 rounded-lg p-4 mb-3">
-                                    <div class="flex items-center justify-between mb-3">
-                                        <div>
-                                            <p class="font-semibold text-lg">${driverGroup.driverName}</p>
-                                            <p class="text-sm text-gray-400">${driverGroup.driverEmail}</p>
+                                    <div class="flex items-start justify-between gap-3 mb-3">
+                                        <div class="min-w-0 flex-1">
+                                            <p class="font-semibold text-lg">${escapeHtml(driverGroup.driverName)}</p>
+                                            <p class="text-sm text-gray-400">${escapeHtml(driverGroup.driverEmail)}</p>
                                         </div>
-                                        <div class="text-right">
+                                        ${driverSyncBtn}
+                                        <div class="text-right shrink-0">
                                             <p class="text-green-500 font-semibold text-xl">£${totalAmount.toFixed(2)}</p>
                                             <p class="text-xs text-gray-400">${totalExpenses} expense${totalExpenses !== 1 ? 's' : ''}</p>
                                         </div>
@@ -1145,6 +1380,7 @@
                         </div>`;
                     }
                 }
+                updateValidatedXeroSyncChrome();
                 return;
             }
             
@@ -1242,6 +1478,7 @@
                         </div>`;
                     }
                 }
+                updateValidatedXeroSyncChrome();
                 return;
             }
             
@@ -1263,6 +1500,9 @@
                 }
             
             list.innerHTML = toDisplay.map(batch => {
+                    if (activeTab === 'validated') {
+                        return renderValidatedFullListCard(batch);
+                    }
                     const date = batch.submittedAt?.toDate ? batch.submittedAt.toDate() : new Date();
                     
                     // Calculate working hours for pending and validated expenses
@@ -1300,6 +1540,7 @@
                 </div>`;
             }
             }
+            updateValidatedXeroSyncChrome();
         }
 
         function extractStoragePathFromURL(downloadURL) {
@@ -1445,12 +1686,19 @@
                     </button>
                 `;
             } else if (currentBatch.status === 'validated') {
-                actions.innerHTML = `
-                    <button onclick="markAsPaid()" class="flex-1 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold transition-colors">
+                const locked = isXeroExpenseWorkflowActive() && !currentBatch.xeroBillSynced;
+                if (locked) {
+                    actions.innerHTML = `
+                        <p class="flex-1 text-sm text-gray-300 pr-2">This batch is not in Xero yet. Close and tap the batch in the list to sync it, or use <strong class="text-white">Sync with Xero</strong> at the top of the Validated tab.</p>
+                    `;
+                } else {
+                    actions.innerHTML = `
+                    <button onclick="markAsPaid()" class="flex-1 py-3 bg-green-600 hover:bg-green-700 rounded-lg font-semibold transition-colors">
                         <span class="material-symbols-outlined text-sm">payments</span>
                         Mark as Paid
                     </button>
                 `;
+                }
             } else {
                 actions.innerHTML = '';
             }
@@ -1525,6 +1773,10 @@
 
         // Mark as paid
         async function markAsPaid() {
+            if (currentBatch.status === 'validated' && isXeroExpenseWorkflowActive() && !currentBatch.xeroBillSynced) {
+                notifyWarning('Sync this expense batch to Xero before marking it as paid.', 'Xero');
+                return;
+            }
             const confirmed = await showConfirmation({
                 title: 'Mark Expense Batch as Paid',
                 message: 'Confirm that this expense batch has been paid?',
@@ -1905,6 +2157,9 @@
 
         function hideSettings() {
             document.getElementById('settingsModal').classList.add('hidden');
+            void loadOfficeXeroFlags().then(() => {
+                if (typeof displayBatches === 'function') displayBatches();
+            });
         }
 
         function handleAsanaApiToggle(checked) {
@@ -1993,7 +2248,7 @@
                 });
                 
                 if (useDownloads) {
-                    const gateOk = await confirmXeroGateBeforeTransfer(paidBatches);
+                    const gateOk = await confirmXeroGateBeforeTransfer();
                     if (!gateOk) return;
                     await downloadAllPDFsAsZIP(paidBatches, button, originalText);
                 }
@@ -2009,7 +2264,7 @@
                     mode: 'readwrite'
                 });
 
-                const gateOk = await confirmXeroGateBeforeTransfer(paidBatches);
+                const gateOk = await confirmXeroGateBeforeTransfer();
                 if (!gateOk) {
                     button.disabled = false;
                     button.innerHTML = originalText;
@@ -2068,7 +2323,7 @@
                         tone: 'warning'
                     });
                     if (useDownloads) {
-                        const gateOkZip = await confirmXeroGateBeforeTransfer(paidBatches);
+                        const gateOkZip = await confirmXeroGateBeforeTransfer();
                         if (!gateOkZip) {
                             button.disabled = false;
                             button.innerHTML = originalText;
@@ -3021,7 +3276,17 @@
             
             // Scroll to and highlight the batch (open modal)
             setTimeout(() => {
-                openBatchDetail(batchId);
+                const batch = allBatches.find((b) => b.id === batchId);
+                if (
+                    batch &&
+                    batch.status === 'validated' &&
+                    isXeroExpenseWorkflowActive() &&
+                    !batch.xeroBillSynced
+                ) {
+                    void handleValidatedListRowClick(batchId);
+                } else {
+                    openBatchDetail(batchId);
+                }
             }, 100);
         }
 
