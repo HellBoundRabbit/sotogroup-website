@@ -13,6 +13,12 @@
  * environment variables on the deployed functions (Google Cloud console or a
  * `functions/.env` file for local emulator). Draft bills only (ACCPAY + DRAFT);
  * tokens live in xeroOfficeTokens/{officeId} (Firestore rules deny client access).
+ *
+ * xeroCreateDraftBillsForBatches: **validated** batches only when the office toggle
+ * `xeroExpenseIntegrationEnabled` is on; resolves a **Travel – National** expense account;
+ * ACCPAY bills use **InvoiceNumber** for the Xero “Reference” / title (API ignores `Reference` on bills);
+ * registration only, no suffix; line descriptions are category labels only (e.g. Fuel 1).
+ * returns `{ results, okCount, total }` (partial success; see pages/expenses.html).
  */
 
 const functions = require("firebase-functions");
@@ -21,6 +27,7 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 const crypto = require("crypto");
+const schema = require("./expense-batch-schema.cjs");
 
 const RESEND_API_KEY = defineSecret("RESEND_API_KEY");
 
@@ -1112,7 +1119,6 @@ const XERO_SCOPES = [
   "email",
 ].join(" ");
 
-const XERO_CONTACT_NAME = "SotoRoutes Expenses";
 const XERO_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
 /**
@@ -1128,8 +1134,10 @@ const XERO_CALLABLE_OPTIONS = {
     "https://soto-routes.web.app",
     "https://soto-routes.firebaseapp.com",
     "http://localhost:5000",
+    "http://localhost:8000",
     "http://localhost:8080",
     "http://127.0.0.1:5000",
+    "http://127.0.0.1:8000",
     "http://127.0.0.1:8080",
   ],
 };
@@ -1224,9 +1232,8 @@ async function loadAndRefreshXeroTokens(officeId, clientId, clientSecret) {
 }
 
 /** @param {string} accessToken @param {string} tenantId */
-async function xeroFetchFirstExpenseAccountCode(accessToken, tenantId) {
-  const where = encodeURIComponent("Type==\"EXPENSE\"");
-  const res = await fetch(`${XERO_API_BASE}/Accounts?where=${where}`, {
+async function resolveTravelNationalAccountCode(accessToken, tenantId) {
+  const res = await fetch(`${XERO_API_BASE}/Accounts`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Xero-tenant-id": tenantId,
@@ -1236,68 +1243,68 @@ async function xeroFetchFirstExpenseAccountCode(accessToken, tenantId) {
   const text = await res.text();
   if (!res.ok) {
     functions.logger.error("xero_accounts_failed", { status: res.status, text: text.slice(0, 400) });
-    throw new HttpsError("internal", "Could not read Xero chart of accounts.");
+    throw new HttpsError("internal", "Could not load Xero chart of accounts.");
   }
-  const json = JSON.parse(text);
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch (e) {
+    throw new HttpsError("internal", "Could not parse Xero chart of accounts.");
+  }
   const accounts = json.Accounts || [];
-  const usable = accounts.find((a) => a.Code && a.Status !== "ARCHIVED");
-  if (!usable || !usable.Code) {
-    throw new HttpsError(
-        "failed-precondition",
-        "No expense account found in Xero. Add at least one EXPENSE account, then try again.",
-    );
-  }
-  return String(usable.Code);
+  const lower = (s) => String(s || "").toLowerCase();
+  const found = accounts.find(
+    (a) =>
+      a &&
+      String(a.Status || "").toUpperCase() === "ACTIVE" &&
+      String(a.Type || "").toUpperCase() === "EXPENSE" &&
+      lower(a.Name).includes("travel") &&
+      (lower(a.Name).includes("national") || lower(a.Name).includes("nation")),
+  );
+  if (found && found.Code) return String(found.Code);
+  throw new HttpsError(
+    "failed-precondition",
+    'No active Xero expense account found with a name like "Travel - National". Create or rename one in Xero, then try again.',
+  );
 }
 
-function lineKeyToDescriptionLabel(lineKey) {
-  const k = String(lineKey || "");
-  const prefixes = [
-    ["train", "Train"],
-    ["taxi", "Taxi"],
-    ["fuel", "Fuel"],
-    ["charge", "Charge"],
-    ["bus", "Bus"],
-    ["carWash", "Car wash"],
-    ["toll", "Toll"],
-    ["other", "Other"],
-  ];
-  for (const [p, label] of prefixes) {
-    if (k.startsWith(p)) {
-      const num = (k.match(/\d+$/) || [""])[0] || "1";
-      return `${label} ${num}`;
-    }
-  }
-  return k || "Expense line";
+function formatYmd(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 /**
+ * Xero ACCPAY: the UI "Reference" and the draft bill browser title use `InvoiceNumber` (not `Reference`).
+ * Registration only — no batch-id suffix (duplicate regs may require manual handling in Xero).
+ */
+function buildXeroBillInvoiceNumber(registration) {
+  const reg = String(registration || "").trim().replace(/\s+/g, " ");
+  return reg.slice(0, 255) || "SOTO";
+}
+
+/**
+ * @param {string} batchId
  * @param {FirebaseFirestore.DocumentData} batch
  * @param {string} accountCode
  */
-function buildXeroLineItemsForBatch(batch, accountCode) {
-  const lines = batch.lines && typeof batch.lines === "object" ? batch.lines : {};
-  const keys = Object.keys(lines);
+function buildValidatedBillLineItems(batchId, batch, accountCode) {
+  const full = { id: batchId, ...batch };
+  const keys = schema.getUsedLinesInOrder(full);
   const items = [];
-  for (const key of keys) {
-    const L = lines[key];
-    if (!L || typeof L !== "object") continue;
-    const amt = typeof L.amount === "number" && !isNaN(L.amount) ? L.amount : 0;
+  const linesObj = batch.lines && typeof batch.lines === "object" ? batch.lines : {};
+  for (const lineKey of keys) {
+    const line = linesObj[lineKey];
+    if (!line) continue;
+    const amt = typeof line.amount === "number" && !isNaN(line.amount) ? line.amount : 0;
+    if (amt <= 0 && !schema.hasLineContent(line)) continue;
     if (amt <= 0) continue;
+    const label = schema.getCategoryLabel(lineKey);
     items.push({
-      Description: `${lineKeyToDescriptionLabel(key)} — ${batch.registration || "Reg"} — ${batch.driverName || "Driver"}`,
+      Description: label,
       Quantity: 1,
       UnitAmount: Math.round(amt * 100) / 100,
-      AccountCode: accountCode,
-      TaxType: "NONE",
-    });
-  }
-  if (items.length === 0) {
-    const total = typeof batch.totalAmount === "number" && !isNaN(batch.totalAmount) ? batch.totalAmount : 0;
-    items.push({
-      Description: `SotoRoutes — ${batch.registration || "Unknown"} — ${batch.driverName || "Driver"}`,
-      Quantity: 1,
-      UnitAmount: Math.round(total * 100) / 100,
       AccountCode: accountCode,
       TaxType: "NONE",
     });
@@ -1488,101 +1495,163 @@ exports.xeroCreateDraftBillsForBatches = onCall(
       if (!Array.isArray(batchIds) || batchIds.length === 0) {
         throw new HttpsError("invalid-argument", "batchIds must be a non-empty array.");
       }
+
+      const officeSnap = await db.doc(`offices/${officeId}`).get();
+      if (!officeSnap.exists) {
+        throw new HttpsError("not-found", "Office not found.");
+      }
+      const office = officeSnap.data() || {};
+      if (!office.xeroExpenseIntegrationEnabled) {
+        throw new HttpsError(
+            "failed-precondition",
+            "Xero expense integration is off for this office.",
+        );
+      }
+
       const clientId = getXeroClientId();
       const clientSecret = getXeroClientSecret();
       if (!clientId || !clientSecret) {
         throw new HttpsError("failed-precondition", "Xero client ID or secret is not configured on the server.");
       }
       const tokens = await loadAndRefreshXeroTokens(officeId, clientId, clientSecret);
-      const accountCode = await xeroFetchFirstExpenseAccountCode(tokens.accessToken, tokens.tenantId);
+      const accountCode = await resolveTravelNationalAccountCode(tokens.accessToken, tokens.tenantId);
+
       const results = [];
       for (const rawId of batchIds) {
         const batchId = String(rawId || "").trim();
         if (!batchId) continue;
         const bref = db.collection("expenseBatches").doc(batchId);
-        const bsnap = await bref.get();
-        if (!bsnap.exists) {
-          results.push({ batchId, ok: false, error: "not_found" });
-          continue;
-        }
-        const batch = bsnap.data() || {};
-        if (batch.officeId !== officeId) {
-          results.push({ batchId, ok: false, error: "wrong_office" });
-          continue;
-        }
-        if (batch.status !== "paid") {
-          results.push({ batchId, ok: false, error: "not_paid" });
-          continue;
-        }
-        if (batch.xeroDraftBillId) {
-          results.push({
-            batchId,
-            ok: true,
-            skipped: true,
-            xeroInvoiceId: batch.xeroDraftBillId,
-          });
-          continue;
-        }
-        const lineItems = buildXeroLineItemsForBatch(batch, accountCode);
-        const reference = `SotoRoutes ${batch.registration || batchId}`.slice(0, 255);
-        const invoicePayload = {
-          Type: "ACCPAY",
-          Contact: { Name: XERO_CONTACT_NAME },
-          Date: new Date().toISOString().slice(0, 10),
-          DueDate: new Date().toISOString().slice(0, 10),
-          Status: "DRAFT",
-          LineAmountTypes: "NoTax",
-          Reference: reference,
-          LineItems: lineItems,
-        };
-        const invRes = await fetch(`${XERO_API_BASE}/Invoices?SummarizeErrors=false`, {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${tokens.accessToken}`,
-            "Xero-tenant-id": tokens.tenantId,
-            Accept: "application/json",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ Invoices: [invoicePayload] }),
-        });
-        const invText = await invRes.text();
-        if (!invRes.ok) {
-          functions.logger.error("xero_invoice_create_failed", {
-            batchId,
-            status: invRes.status,
-            text: invText.slice(0, 800),
-          });
-          results.push({ batchId, ok: false, error: "xero_api_error", detail: invText.slice(0, 200) });
-          continue;
-        }
-        let invJson;
         try {
-          invJson = JSON.parse(invText);
-        } catch (e) {
-          results.push({ batchId, ok: false, error: "invalid_xero_response" });
-          continue;
+          const bsnap = await bref.get();
+          if (!bsnap.exists) {
+            results.push({ batchId, ok: false, error: "Batch not found" });
+            continue;
+          }
+          const batch = bsnap.data() || {};
+          if (batch.officeId !== officeId) {
+            results.push({ batchId, ok: false, error: "Office mismatch" });
+            continue;
+          }
+          if (batch.status !== "validated") {
+            results.push({ batchId, ok: false, error: "Batch must be in validated status" });
+            continue;
+          }
+          if (batch.xeroBillSynced === true) {
+            results.push({
+              batchId,
+              ok: true,
+              skipped: true,
+              invoiceId: batch.xeroInvoiceId || batch.xeroDraftBillId || null,
+            });
+            continue;
+          }
+          const existingId = batch.xeroInvoiceId || batch.xeroDraftBillId;
+          if (existingId) {
+            await bref.set(
+                {
+                  xeroBillSynced: true,
+                  xeroInvoiceId: existingId,
+                  xeroSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
+                  xeroSyncedBy: ctx.uid,
+                  xeroSyncError: admin.firestore.FieldValue.delete(),
+                  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                },
+                { merge: true },
+            );
+            results.push({ batchId, ok: true, skipped: true, invoiceId: existingId });
+            continue;
+          }
+
+          const lineItems = buildValidatedBillLineItems(batchId, batch, accountCode);
+          if (!lineItems.length) {
+            results.push({ batchId, ok: false, error: "Batch has no billable line amounts" });
+            continue;
+          }
+
+          const driver = (batch.driverName && String(batch.driverName).trim()) || "Driver";
+          const reg = (batch.registration && String(batch.registration).trim()) || "";
+          const today = new Date();
+          const due = new Date(today);
+          due.setDate(due.getDate() + 1);
+
+          const invoicePayload = {
+            Type: "ACCPAY",
+            Contact: { Name: driver },
+            Date: formatYmd(today),
+            DueDate: formatYmd(due),
+            Status: "DRAFT",
+            LineAmountTypes: "NoTax",
+            InvoiceNumber: buildXeroBillInvoiceNumber(reg),
+            LineItems: lineItems,
+          };
+
+          const invRes = await fetch(`${XERO_API_BASE}/Invoices?SummarizeErrors=false`, {
+            method: "PUT",
+            headers: {
+              Authorization: `Bearer ${tokens.accessToken}`,
+              "Xero-tenant-id": tokens.tenantId,
+              Accept: "application/json",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ Invoices: [invoicePayload] }),
+          });
+          const invText = await invRes.text();
+          if (!invRes.ok) {
+            functions.logger.error("xero_invoice_create_failed", {
+              batchId,
+              status: invRes.status,
+              text: invText.slice(0, 800),
+            });
+            results.push({ batchId, ok: false, error: "xero_api_error", detail: invText.slice(0, 200) });
+            continue;
+          }
+          let invJson;
+          try {
+            invJson = JSON.parse(invText);
+          } catch (e) {
+            results.push({ batchId, ok: false, error: "invalid_xero_response" });
+            continue;
+          }
+          const created = (invJson.Invoices && invJson.Invoices[0]) || null;
+          const xeroInvoiceId = created && created.InvoiceID ? created.InvoiceID : null;
+          if (!xeroInvoiceId) {
+            results.push({ batchId, ok: false, error: "no_invoice_id" });
+            continue;
+          }
+
+          await bref.set(
+              {
+                xeroBillSynced: true,
+                xeroInvoiceId: xeroInvoiceId,
+                xeroDraftBillId: admin.firestore.FieldValue.delete(),
+                xeroDraftBillNumber: created.InvoiceNumber || null,
+                xeroSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
+                xeroSyncedBy: ctx.uid,
+                xeroSyncError: admin.firestore.FieldValue.delete(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              },
+              { merge: true },
+          );
+          results.push({ batchId, ok: true, invoiceId: xeroInvoiceId });
+        } catch (err) {
+          functions.logger.error("xeroCreateDraftBillsForBatches batch error", batchId, err);
+          const msg = err && err.message ? err.message : String(err);
+          try {
+            await bref.set(
+                {
+                  xeroSyncError: msg.slice(0, 1200),
+                  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                },
+                { merge: true },
+            );
+          } catch (e) {
+            /* ignore */
+          }
+          results.push({ batchId, ok: false, error: msg });
         }
-        const created = (invJson.Invoices && invJson.Invoices[0]) || null;
-        const xeroInvoiceId = created && created.InvoiceID ? created.InvoiceID : null;
-        if (!xeroInvoiceId) {
-          results.push({ batchId, ok: false, error: "no_invoice_id" });
-          continue;
-        }
-        await bref.set({
-          xeroDraftBillId: xeroInvoiceId,
-          xeroDraftBillNumber: created.InvoiceNumber || null,
-          xeroSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
-        results.push({ batchId, ok: true, xeroInvoiceId: xeroInvoiceId });
       }
-      const failed = results.filter((r) => !r.ok);
-      if (failed.length > 0) {
-        throw new HttpsError(
-            "internal",
-            `Xero draft bill failed for ${failed.length} batch(es). No files were transferred. Fix Xero or disconnect and try again.`,
-            { results },
-        );
-      }
-      return { ok: true, results };
+
+      const okCount = results.filter((r) => r.ok).length;
+      return { results, okCount, total: results.length };
     },
 );
