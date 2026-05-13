@@ -12,7 +12,6 @@
     <script src="/js/session-manager.js"></script>
     <script src="../js/ui-dialogs.js"></script>
     <script src="/js/settings.js"></script>
-    <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { getFirestore, collection, addDoc, getDocs, query, orderBy, where, updateDoc, doc, deleteDoc, getDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
@@ -58,6 +57,7 @@
         
         console.log('Firebase initialized successfully!');
     </script>
+    <script src="/js/xero-office-settings-panel.js"></script>
     <style>
         /* Loading spinner */
         .spinner-wrapper {
