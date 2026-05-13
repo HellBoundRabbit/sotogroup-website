@@ -2899,16 +2899,17 @@
 </div>
 
 <!-- Settings Modal -->
-<div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-    <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-6 w-full max-w-md">
-        <div class="flex justify-between items-center mb-4">
+<div id="settingsModal" class="fixed inset-0 z-50 hidden overflow-y-auto bg-black bg-opacity-50">
+    <div class="flex min-h-full items-start justify-center px-4 py-8 sm:py-10">
+    <div class="bg-[#1a1f24] border border-[#283039] rounded-lg w-full max-w-md max-h-[calc(100vh-4rem)] flex flex-col overflow-hidden shadow-xl">
+        <div class="flex shrink-0 justify-between items-center px-5 pt-5 pb-3 border-b border-[#283039]">
             <h3 class="text-xl font-bold text-white">Settings</h3>
-            <button onclick="hideSettings()" class="text-gray-400 hover:text-white">
+            <button type="button" onclick="hideSettings()" class="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-[#283039]" aria-label="Close settings">
                 <span class="material-symbols-outlined">close</span>
             </button>
         </div>
         
-        <div class="space-y-4">
+        <div class="space-y-4 min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-4">
             <div class="flex items-center justify-between py-3 border-b border-[#283039]">
                 <div class="flex-1">
                     <label for="useAsanaApiToggle" class="block text-sm font-medium text-white mb-1">
@@ -2943,14 +2944,10 @@
             </div>
         </div>
         
-        <div class="mt-6 flex justify-end">
-            <button 
-                onclick="hideSettings()"
-                class="px-4 py-2 bg-[#283039] hover:bg-[#3a444e] text-white rounded-lg transition-colors font-medium"
-            >
-                Close
-            </button>
+        <div class="shrink-0 flex justify-end px-5 pb-5 pt-3 border-t border-[#283039]">
+            <button type="button" onclick="hideSettings()" class="px-4 py-2 bg-[#283039] hover:bg-[#3a444e] text-white rounded-lg transition-colors font-medium">Close</button>
         </div>
+    </div>
     </div>
 </div>
 </body>
