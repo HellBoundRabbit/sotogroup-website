@@ -131,8 +131,6 @@
     var statusEl = document.getElementById('xeroConnectionStatus');
     var connectBtn = document.getElementById('xeroConnectBtn');
     var disconnectBtn = document.getElementById('xeroDisconnectBtn');
-    var hint = document.getElementById('xeroRedirectUriHint');
-    if (hint) hint.textContent = getXeroRedirectUri();
     if (!toggle) return;
     if (!officeId) {
       if (statusEl) statusEl.textContent = 'Not connected — sign in with an office account to use Xero.';
@@ -248,7 +246,6 @@
       '<button type="button" id="xeroDisconnectBtn" class="px-3 py-2 bg-[#283039] hover:bg-[#3a444e] text-white text-sm rounded-lg border border-gray-600 transition-colors">Disconnect</button>',
       '</div>',
       '<p class="text-xs text-gray-500 mt-3">No existing Xero data is edited or deleted.</p>',
-      '<p class="text-xs text-gray-500 mt-2">Register this redirect URL in your Xero Developer Portal (Web app): <code id="xeroRedirectUriHint" class="text-gray-400 break-all"></code></p>',
       '</div>',
       '<label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">',
       '<input type="checkbox" id="xeroExpenseIntegrationToggle" class="sr-only peer">',
