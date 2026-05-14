@@ -18,6 +18,7 @@
  * `xeroExpenseIntegrationEnabled` is on; resolves a **Travel – National** expense account;
  * ACCPAY bills use **InvoiceNumber** for the Xero “Reference” / title (API ignores `Reference` on bills);
  * registration only, no suffix; line descriptions are category labels only (e.g. Fuel 1).
+ * After the draft bill is created, up to **10** receipt photo URLs from the batch are attached in Xero (`accounting.attachments` scope — offices must reconnect Xero once after this ships).
  * returns `{ results, okCount, total }` (partial success; see pages/expenses.html).
  */
 
@@ -1108,12 +1109,14 @@ const XERO_AUTH_BASE = "https://login.xero.com/identity/connect/authorize";
 const XERO_TOKEN_URL = "https://identity.xero.com/connect/token";
 const XERO_API_BASE = "https://api.xero.com/api.xro/2.0";
 // Apps created on/after 2026-03-02 cannot use broad `accounting.transactions`; use granular scopes.
-// Draft bills (ACCPAY) → accounting.invoices; chart of accounts (GET /Accounts) → accounting.settings.
+// Draft bills (ACCPAY) → accounting.invoices; chart of accounts (GET /Accounts) → accounting.settings;
+// receipt uploads → accounting.attachments (PUT on Invoices/{id}/Attachments/...).
 const XERO_SCOPES = [
   "offline_access",
   "accounting.invoices",
   "accounting.contacts",
   "accounting.settings",
+  "accounting.attachments",
   "openid",
   "profile",
   "email",
@@ -1339,6 +1342,109 @@ function buildValidatedBillLineItems(batchId, batch, accountCode) {
     });
   }
   return items;
+}
+
+const MAX_XERO_RECEIPT_ATTACHMENTS = 10;
+
+/**
+ * Collect up to `max` receipt photo URLs from batch lines (same line order as schema used for bills).
+ * @param {string} batchId
+ * @param {FirebaseFirestore.DocumentData} batch
+ * @param {number} max
+ * @returns {string[]}
+ */
+function collectReceiptPhotoUrls(batchId, batch, max) {
+  const cap = typeof max === "number" && max > 0 ? max : MAX_XERO_RECEIPT_ATTACHMENTS;
+  const full = { id: batchId, ...batch };
+  const keys = schema.getUsedLinesInOrder(full);
+  const linesObj = batch.lines && typeof batch.lines === "object" ? batch.lines : {};
+  const out = [];
+  for (const lineKey of keys) {
+    const line = linesObj[lineKey];
+    if (!line || !Array.isArray(line.photos)) continue;
+    for (const p of line.photos) {
+      if (typeof p === "string" && p.trim()) {
+        out.push(p.trim());
+        if (out.length >= cap) return out;
+      }
+    }
+  }
+  return out;
+}
+
+function extensionFromContentType(contentType) {
+  const c = String(contentType || "").toLowerCase().split(";")[0].trim();
+  if (c.includes("jpeg") || c === "image/jpg") return "jpg";
+  if (c.includes("png")) return "png";
+  if (c.includes("gif")) return "gif";
+  if (c.includes("webp")) return "webp";
+  if (c.includes("pdf")) return "pdf";
+  return "jpg";
+}
+
+/** Xero disallows <>:"/\|?* and null in attachment filenames. */
+function sanitizeXeroAttachmentFilename(name) {
+  return String(name || "receipt")
+      .replace(/[\u0000<>:"/\\|?*+]/g, "-")
+      .replace(/\s+/g, "-")
+      .slice(0, 200);
+}
+
+/**
+ * Upload receipt images to a draft invoice/bill. Best-effort: logs and skips failures.
+ * @returns {number} count successfully attached
+ */
+async function uploadReceiptAttachmentsToXeroInvoice({ accessToken, tenantId, invoiceId, photoUrls }) {
+  const list = Array.isArray(photoUrls) ? photoUrls.slice(0, MAX_XERO_RECEIPT_ATTACHMENTS) : [];
+  let uploaded = 0;
+  for (let i = 0; i < list.length; i++) {
+    const url = list[i];
+    try {
+      const getRes = await fetch(url, { redirect: "follow" });
+      if (!getRes.ok) {
+        functions.logger.warn("xero_receipt_fetch_failed", { invoiceId, index: i, status: getRes.status });
+        continue;
+      }
+      const buf = Buffer.from(await getRes.arrayBuffer());
+      if (!buf.length) continue;
+      if (buf.length > 10 * 1024 * 1024) {
+        functions.logger.warn("xero_receipt_too_large", { invoiceId, index: i, bytes: buf.length });
+        continue;
+      }
+      const ctRaw = getRes.headers.get("content-type") || "";
+      const ext = extensionFromContentType(ctRaw);
+      const fname = sanitizeXeroAttachmentFilename(`receipt-${String(i + 1).padStart(2, "0")}.${ext}`);
+      const putPath = `${XERO_API_BASE}/Invoices/${invoiceId}/Attachments/${encodeURIComponent(fname)}`;
+      const contentType =
+        ctRaw && !ctRaw.toLowerCase().includes("application/octet-stream") && ctRaw.toLowerCase().startsWith("image/")
+          ? ctRaw.split(";")[0].trim()
+          : "application/octet-stream";
+      const putRes = await fetch(putPath, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Xero-tenant-id": tenantId,
+          "Content-Type": contentType,
+          Accept: "application/json",
+        },
+        body: buf,
+      });
+      if (!putRes.ok) {
+        const errText = await putRes.text();
+        functions.logger.warn("xero_receipt_upload_failed", {
+          invoiceId,
+          fname,
+          status: putRes.status,
+          text: errText.slice(0, 400),
+        });
+        continue;
+      }
+      uploaded += 1;
+    } catch (e) {
+      functions.logger.warn("xero_receipt_attachment_error", { invoiceId, index: i, message: e.message });
+    }
+  }
+  return uploaded;
 }
 
 exports.xeroGetAuthorizationUrl = onCall(
@@ -1648,6 +1754,17 @@ exports.xeroCreateDraftBillsForBatches = onCall(
             continue;
           }
 
+          const photoUrls = collectReceiptPhotoUrls(batchId, batch, MAX_XERO_RECEIPT_ATTACHMENTS);
+          let xeroAttachmentsUploaded = 0;
+          if (photoUrls.length) {
+            xeroAttachmentsUploaded = await uploadReceiptAttachmentsToXeroInvoice({
+              accessToken: tokens.accessToken,
+              tenantId: tokens.tenantId,
+              invoiceId: xeroInvoiceId,
+              photoUrls,
+            });
+          }
+
           await bref.set(
               {
                 xeroBillSynced: true,
@@ -1657,11 +1774,13 @@ exports.xeroCreateDraftBillsForBatches = onCall(
                 xeroSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
                 xeroSyncedBy: ctx.uid,
                 xeroSyncError: admin.firestore.FieldValue.delete(),
+                xeroAttachmentsUploaded,
+                xeroAttachmentsAttempted: photoUrls.length,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
               },
               { merge: true },
           );
-          results.push({ batchId, ok: true, invoiceId: xeroInvoiceId });
+          results.push({ batchId, ok: true, invoiceId: xeroInvoiceId, attachmentsUploaded: xeroAttachmentsUploaded });
         } catch (err) {
           functions.logger.error("xeroCreateDraftBillsForBatches batch error", batchId, err);
           const msg = err && err.message ? err.message : String(err);
