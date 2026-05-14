@@ -1231,8 +1231,20 @@ async function loadAndRefreshXeroTokens(officeId, clientId, clientSecret) {
   };
 }
 
-/** @param {string} accessToken @param {string} tenantId */
-async function resolveTravelNationalAccountCode(accessToken, tenantId) {
+/** Account types Xero allows on purchase bill line items (UK charts often use OVERHEADS for nominal groups like 493). */
+const XERO_BILL_LINE_ACCOUNT_TYPES = new Set(["EXPENSE", "OVERHEADS", "DIRECTCOSTS"]);
+
+function isActiveBillLineAccount(a) {
+  if (!a || String(a.Status || "").toUpperCase() !== "ACTIVE") return false;
+  return XERO_BILL_LINE_ACCOUNT_TYPES.has(String(a.Type || "").toUpperCase());
+}
+
+/**
+ * @param {string} accessToken
+ * @param {string} tenantId
+ * @param {FirebaseFirestore.DocumentData} [office] Optional; `xeroBillAccountCode` (e.g. "493") overrides name matching.
+ */
+async function resolveTravelNationalAccountCode(accessToken, tenantId, office) {
   const res = await fetch(`${XERO_API_BASE}/Accounts`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -1253,18 +1265,35 @@ async function resolveTravelNationalAccountCode(accessToken, tenantId) {
   }
   const accounts = json.Accounts || [];
   const lower = (s) => String(s || "").toLowerCase();
+
+  const explicitRaw =
+      office && office.xeroBillAccountCode != null && office.xeroBillAccountCode !== ""
+        ? String(office.xeroBillAccountCode).trim()
+        : "";
+  if (explicitRaw) {
+    const byCode = accounts.find(
+        (a) => a && String(a.Code || "").trim() === explicitRaw && isActiveBillLineAccount(a),
+    );
+    if (byCode && byCode.Code) return String(byCode.Code);
+    throw new HttpsError(
+        "failed-precondition",
+        `No active EXPENSE / OVERHEADS / DIRECTCOSTS account with code "${explicitRaw}" in Xero. ` +
+        `Check the nominal code, or clear office field xeroBillAccountCode to use name matching instead.`,
+    );
+  }
+
   const found = accounts.find(
     (a) =>
-      a &&
-      String(a.Status || "").toUpperCase() === "ACTIVE" &&
-      String(a.Type || "").toUpperCase() === "EXPENSE" &&
+      isActiveBillLineAccount(a) &&
       lower(a.Name).includes("travel") &&
       (lower(a.Name).includes("national") || lower(a.Name).includes("nation")),
   );
   if (found && found.Code) return String(found.Code);
   throw new HttpsError(
     "failed-precondition",
-    'No active Xero expense account found with a name like "Travel - National". Create or rename one in Xero, then try again.',
+    'No active EXPENSE, OVERHEADS, or DIRECTCOSTS account found with a name like "Travel - National". ' +
+    "If your nominal is under Overheads (e.g. 493), either rename it in Xero to include travel + national, " +
+    "or ask support to set Firestore `offices/{officeId}.xeroBillAccountCode` to that nominal code.",
   );
 }
 
@@ -1514,7 +1543,7 @@ exports.xeroCreateDraftBillsForBatches = onCall(
         throw new HttpsError("failed-precondition", "Xero client ID or secret is not configured on the server.");
       }
       const tokens = await loadAndRefreshXeroTokens(officeId, clientId, clientSecret);
-      const accountCode = await resolveTravelNationalAccountCode(tokens.accessToken, tokens.tenantId);
+      const accountCode = await resolveTravelNationalAccountCode(tokens.accessToken, tokens.tenantId, office);
 
       const results = [];
       for (const rawId of batchIds) {
