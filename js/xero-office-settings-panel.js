@@ -113,7 +113,7 @@
             state: d.state,
             officeId: officeId,
           });
-          notify('success', 'Xero', 'Xero connected. Use Sync with Xero on the Validated expenses tab to create draft bills.');
+          notify('success', 'Xero', 'Xero connected. Disconnect and reconnect if you previously connected before receipt uploads were added. Use Sync with Xero on the Validated expenses tab to create draft bills.');
           await refresh();
         } catch (err) {
           console.error(err);
@@ -269,7 +269,7 @@
       '<button type="button" id="xeroConnectBtn" class="px-3 py-2 bg-[#13B5EA] hover:bg-[#0fa0d1] text-white text-sm rounded-lg font-medium transition-colors">Connect Xero</button>',
       '<button type="button" id="xeroDisconnectBtn" class="px-3 py-2 bg-[#283039] hover:bg-[#3a444e] text-white text-sm rounded-lg border border-gray-600 transition-colors">Disconnect</button>',
       '</div>',
-      '<p class="text-xs text-gray-500 mt-3">No existing Xero data is edited or deleted.</p>',
+      '<p class="text-xs text-gray-500 mt-3">No existing Xero data is edited or deleted. After an app update, reconnect Xero once so receipt photos can upload to draft bills (new permission).</p>',
       '</div>',
       '<label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">',
       '<input type="checkbox" id="xeroExpenseIntegrationToggle" class="sr-only peer">',
