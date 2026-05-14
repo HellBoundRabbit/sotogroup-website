@@ -5,7 +5,19 @@
   },
   "hosting": {
     "public": ".",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**",
+      "functions/**",
+      "functions1/**",
+      "miscellaneous-development-files/**",
+      "miscellaneous-development-files/google-cloud-sdk/**",
+      "miscellaneous-development-files/*.tar.gz",
+      "*.mov",
+      "firebase-debug.log",
+      "firebase-debug*.log"
+    ],
     "rewrites": [{ "source": "/login", "destination": "/pages/soto-routes-login.html" }],
     "headers": [
       {
