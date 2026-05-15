@@ -1,0 +1,56 @@
+# Firebase Functions source is tracked; keys stay out — see functions/.gitignore
+
+# Sensitive Files
+*.pem
+*.key
+*.crt
+server.py
+server.js
+*.db
+*.sqlite
+
+# Test Files
+test_*.py
+add_sample_*.py
+*_test.py
+
+# Environment Files
+.env
+.env.local
+.env.production
+
+# Firebase Config (Contains API Keys)
+.firebaserc
+firebase-debug.log
+
+# Node Modules
+node_modules/
+
+# IDE Files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary Files
+*.tmp
+*.temp
+
+# Local / tooling (keep out of git status & hosting noise)
+.cursor/
+.memory/
+.firebase/
+functions1/
+
+# Large local SDKs & media (never commit)
+miscellaneous-development-files/google-cloud-sdk/
+miscellaneous-development-files/*.tar.gz
+*.mov
