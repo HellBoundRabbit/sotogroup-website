@@ -1,25 +1,50 @@
 /**
- * SOTO Routes – Cloud Functions
+ * SOTO Routes — Cloud Functions (server-side only)
  *
- * checkOverdueExpenses (scheduled): runs every hour, counts expense batches
- * over 24 working hours (pending/validated). When an office's count first
- * reaches 1, sends one email via Resend to that office's notification email.
- * Does not send again when count goes to 2 or 3; only when count goes back
- * to 0 and then to 1 again.
+ * This file is deployed to **Google Cloud** (Firebase Functions v2 → Cloud Run). It does **not**
+ * execute in the browser. The site calls these via `httpsCallable(firebase.functions, 'exportName')`
+ * matching each `exports.<exportName>` below.
  *
- * Xero (callable): xeroGetAuthorizationUrl, xeroExchangeCode, xeroDisconnect,
- * xeroCreateDraftBillsForBatches — OAuth scopes use granular accounting.* (post–Mar 2026 apps).
- * Set `XERO_CLIENT_ID` and `XERO_CLIENT_SECRET` as
- * environment variables on the deployed functions (Google Cloud console or a
- * `functions/.env` file for local emulator). Draft bills only (ACCPAY + DRAFT);
- * tokens live in xeroOfficeTokens/{officeId} (Firestore rules deny client access).
+ * =====================================================================================
+ * CLOUD FUNCTIONS IN THIS REPOSITORY — keep in sync when you add or rename `exports.*`
+ * =====================================================================================
  *
- * xeroCreateDraftBillsForBatches: **validated** batches only when the office toggle
- * `xeroExpenseIntegrationEnabled` is on; resolves a **Travel – National** expense account;
- * ACCPAY bills use **InvoiceNumber** for the Xero “Reference” / title (API ignores `Reference` on bills);
- * registration only, no suffix; line descriptions are category labels only (e.g. Fuel 1).
- * After the draft bill is created, up to **10** receipt photo URLs from the batch are attached in Xero (`accounting.attachments` scope — offices must reconnect Xero once after this ships).
- * returns `{ results, okCount, total }` (partial success; see pages/expenses.html).
+ * Scheduled:
+ *   checkOverdueExpenses — Hourly; overdue batch email (secret RESEND_API_KEY).
+ *   cleanupExpiredAuthorizationRequests — Every 30m; delete expired authorizationRequests.
+ *
+ * Callable (onCall, typically us-central1):
+ *   sendDriverLoginEmail — Driver login email via Resend (secret RESEND_API_KEY).
+ *   calculateDistance — Distance Matrix, miles between addresses (secret GOOGLE_MAPS_API_KEY).
+ *   calculateTravelOptions — Directions driving vs transit, taxi/PT rules (secret GOOGLE_MAPS_API_KEY).
+ *   computeAuthorizationTransitRoutes — Routes API v2 transit alternatives (secret GOOGLE_MAPS_API_KEY).
+ *   createDriver — Firebase Auth + users + drivers; returns temporaryPassword.
+ *   listDrivers — List drivers for officeId.
+ *   deleteDriver — Remove driver data, Firestore, Auth.
+ *   xeroGetAuthorizationUrl — OAuth start; env XERO_CLIENT_ID; CORS in XERO_CALLABLE_OPTIONS.
+ *   xeroExchangeCode — OAuth callback tokens → xeroOfficeTokens; env XERO_CLIENT_ID + XERO_CLIENT_SECRET.
+ *   xeroDisconnect — Remove office Xero connection.
+ *   xeroCreateDraftBillsForBatches — Draft bills + receipt attachments; granular accounting scopes.
+ *
+ * Other names (parseJobText, bootstrapSession, Asana, optimizeRoutes, …) are deployed in Firebase
+ * from elsewhere — not exported here. Never `firebase deploy --only functions` without names (can drop them).
+ *
+ * =====================================================================================
+ * PARTIAL DEPLOY — this repo’s functions only (append `,functions:newExport` when you add one)
+ * =====================================================================================
+ *
+ * firebase deploy --only "functions:checkOverdueExpenses,functions:cleanupExpiredAuthorizationRequests,functions:sendDriverLoginEmail,functions:calculateDistance,functions:calculateTravelOptions,functions:computeAuthorizationTransitRoutes,functions:createDriver,functions:listDrivers,functions:deleteDriver,functions:xeroGetAuthorizationUrl,functions:xeroExchangeCode,functions:xeroDisconnect,functions:xeroCreateDraftBillsForBatches"
+ *
+ * Secrets / env: `firebase functions:secrets:set` or Cloud Run; never commit live keys; `functions/.env` local only.
+ *
+ * =====================================================================================
+ * Behaviour detail (Xero & overdue)
+ * =====================================================================================
+ *
+ * checkOverdueExpenses: first time office hits ≥1 overdue batch, one Resend email; cycle resets when count 0.
+ * Xero: OAuth scopes granular accounting.* (post Mar 2026 apps); tokens in xeroOfficeTokens/{officeId};
+ * xeroCreateDraftBillsForBatches — validated batches when `xeroExpenseIntegrationEnabled`; Travel–National
+ * nominal; InvoiceNumber on bills; up to 10 receipt attachments; returns `{ results, okCount, total }`.
  */
 
 const functions = require("firebase-functions");
@@ -32,7 +57,10 @@ const schema = require("./expense-batch-schema.cjs");
 
 const RESEND_API_KEY = defineSecret("RESEND_API_KEY");
 
-/** Server Maps key: `GOOGLE_MAPS_API_KEY` in `functions/.env` or Cloud Functions runtime env. NOT the browser key. */
+/** Same name as Secret Manager / `firebase functions:secrets:set GOOGLE_MAPS_API_KEY`. Bound on Maps callables so deploy injects `process.env`. */
+const GOOGLE_MAPS_API_KEY_SECRET = defineSecret("GOOGLE_MAPS_API_KEY");
+
+/** Server Maps key: emulator reads `functions/.env`; production needs Secret + `secrets: []` on each callable, or legacy plain env on Cloud Run. NOT the browser key. */
 function getMapsApiKey() {
   return (process.env.GOOGLE_MAPS_API_KEY || "").trim();
 }
@@ -393,7 +421,7 @@ exports.sendDriverLoginEmail = onCall(
  * Directions + **Routes API** enabled. Application restrictions: None; API restrictions: restrict to those APIs only.)
  */
 exports.calculateDistance = onCall(
-  { region: "us-central1", cors: true },
+  { region: "us-central1", cors: true, secrets: [GOOGLE_MAPS_API_KEY_SECRET] },
   async (request) => {
     const apiKey = getMapsApiKey();
     if (!apiKey) {
@@ -714,7 +742,7 @@ const DEFAULT_TAXI_MAX_DRIVE_MINUTES = 18;
  * Directions API: driving time vs transit; threshold picks taxi vs PT (not “whichever is faster”).
  */
 exports.calculateTravelOptions = onCall(
-  { region: "us-central1", cors: true },
+  { region: "us-central1", cors: true, secrets: [GOOGLE_MAPS_API_KEY_SECRET] },
   async (request) => {
     const apiKey = getMapsApiKey();
     const taxiMaxDriveMin = (() => {
@@ -870,7 +898,7 @@ exports.calculateTravelOptions = onCall(
  * Returns raw `routes[]` JSON for client-side adaptation to the JS Directions shape.
  */
 exports.computeAuthorizationTransitRoutes = onCall(
-    { region: "us-central1", cors: true },
+    { region: "us-central1", cors: true, secrets: [GOOGLE_MAPS_API_KEY_SECRET] },
     async (request) => {
       const apiKey = getMapsApiKey();
       if (!apiKey) {
