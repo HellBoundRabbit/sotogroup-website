@@ -1,7 +1,9 @@
 const { JOB_PARSER_SYSTEM_INSTRUCTION, JOB_PARSER_MODEL } = require("./job-parser-prompt");
 
 const UK_POSTCODE_RE = /\b([A-Z]{1,2}\d{1,2}[A-Z]?)\s*(\d[A-Z]{2})\b/gi;
+const UK_PLATE_RE = /\b([A-HJ-PR-ST-Z]{2}\d{2}[A-HJ-PR-ST-Z]{3})\b/gi;
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
+const GEMINI_MODEL_FALLBACKS = ["gemini-2.0-flash", "gemini-2.0-flash-001", "gemini-1.5-flash"];
 
 function normalizeUkPostcode(value) {
   const raw = String(value || "").trim().toUpperCase().replace(/\s+/g, "");
@@ -93,6 +95,66 @@ function normalizeGeminiParsed(raw) {
   return out;
 }
 
+function looksLikeUkPostcodeToken(token) {
+  const n = String(token || "").toUpperCase().replace(/\s+/g, "");
+  return /^[A-Z]{1,2}\d{1,2}[A-Z]?\d[A-Z]{2}$/.test(n);
+}
+
+/** Extract UK registration when labelled Reg/Chassis, title "GX22KKA / 6026523", etc. */
+function extractUkRegistration(text) {
+  const t = String(text || "");
+  if (!t.trim()) return "";
+
+  const labelled = t.match(/\bReg(?:istration)?(?:\s*\/\s*Chassis)?\s*[:.]?\s*([A-Z0-9]{5,8})\b/i);
+  if (labelled) {
+    const plate = labelled[1].toUpperCase();
+    if (!looksLikeUkPostcodeToken(plate)) return plate;
+  }
+
+  const titleSlash = t.match(/\b([A-HJ-PR-ST-Z]{2}\d{2}[A-HJ-PR-ST-Z]{3})\s*\/\s*\d{4,}\b/i);
+  if (titleSlash) return titleSlash[1].toUpperCase();
+
+  const nearReg = t.match(/\bReg(?:istration)?(?:\s*\/\s*Chassis)?[\s\S]{0,120}?([A-HJ-PR-ST-Z]{2}\d{2}[A-HJ-PR-ST-Z]{3})\b/i);
+  if (nearReg) return nearReg[1].toUpperCase();
+
+  const plates = [];
+  let m;
+  const re = new RegExp(UK_PLATE_RE.source, UK_PLATE_RE.flags);
+  while ((m = re.exec(t)) !== null) {
+    const plate = m[1].toUpperCase();
+    if (!looksLikeUkPostcodeToken(plate)) plates.push(plate);
+  }
+  return plates[0] || "";
+}
+
+function sanitizeRawTextForParsing(rawText) {
+  let text = String(rawText || "");
+  text = text.replace(
+    /(=== CUSTOM FIELDS ===[\s\S]*?)\bParsed Details\b[\s\S]*?(?=\n[A-Z][^\n]*:|\n===|$)/gi,
+    "$1",
+  );
+  return text.trim();
+}
+
+function finalizeParsedData(parsed, rawText, { usedFallback = false } = {}) {
+  const out = parsed || emptyParsedData();
+  const source = sanitizeRawTextForParsing(rawText);
+  if (!out.reg_number) {
+    const reg = extractUkRegistration(source);
+    if (reg) {
+      out.reg_number = reg;
+      out.confidence_scores.reg = usedFallback
+        ? Math.max(out.confidence_scores.reg, 52)
+        : Math.max(out.confidence_scores.reg, 85);
+    }
+  }
+  const vals = Object.values(out.confidence_scores);
+  if (vals.length) {
+    out.overall_confidence = Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
+  }
+  return out;
+}
+
 function clampScore(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return 0;
@@ -153,7 +215,7 @@ function buildGenerateContentBody(rawText) {
 }
 
 function lightRegexFallback(rawText) {
-  const text = String(rawText || "");
+  const text = sanitizeRawTextForParsing(rawText);
   const out = emptyParsedData();
   const priceMatch = text.match(/(?:price|£)\s*[:.]?\s*£?\s*(\d+(?:\.\d{1,2})?)/i);
   if (priceMatch) {
@@ -174,14 +236,14 @@ function lightRegexFallback(rawText) {
     out.postcode_delivery = postcodes[1];
     out.confidence_scores.delivery = 40;
   }
-  const regMatch = text.match(/\bReg(?:istration)?\s*[:.]?\s*([A-Z0-9]{5,8})\b/i);
-  if (regMatch) {
-    out.reg_number = regMatch[1].toUpperCase();
-    out.confidence_scores.reg = 45;
+  const reg = extractUkRegistration(text);
+  if (reg) {
+    out.reg_number = reg;
+    out.confidence_scores.reg = 52;
   }
   const vals = Object.values(out.confidence_scores);
   out.overall_confidence = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 0;
-  return out;
+  return finalizeParsedData(out, rawText, { usedFallback: true });
 }
 
 function geminiAuthHeaders(apiKey) {
@@ -226,7 +288,7 @@ async function callGeminiApiKeyOnce(apiKey, rawText) {
  * @param {string} rawText
  */
 async function parseJobTextWithGemini(apiKey, rawText) {
-  const input = String(rawText || "").trim();
+  const input = sanitizeRawTextForParsing(rawText);
   if (!input) {
     throw new Error("rawText is required");
   }
@@ -235,12 +297,15 @@ async function parseJobTextWithGemini(apiKey, rawText) {
     throw new Error("GOOGLE_AI_API_KEY is not set");
   }
 
+  const models = [...new Set([JOB_PARSER_MODEL, ...GEMINI_MODEL_FALLBACKS])];
   let lastError;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      return await callGeminiApiKeyOnce(key, input);
-    } catch (err) {
-      lastError = err;
+  for (const model of models) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await callGeminiApiKeyOnce(key, input, model);
+      } catch (err) {
+        lastError = err;
+      }
     }
   }
   throw lastError || new Error("Gemini parse failed");

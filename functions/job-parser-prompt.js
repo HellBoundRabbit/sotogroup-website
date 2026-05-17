@@ -57,6 +57,8 @@ The input may contain:
 - RC / Return Car information
 - extra unrelated vehicle registrations
 - Asana task title, notes, and custom fields in labelled sections
+- "Reg/Chassis" labels (registration is the plate, not the postcode after a slash)
+- Stale "Parsed Details" blocks inside custom fields (ignore them — they are old UI output, not source data)
 
 You must determine the MOST LIKELY correct values contextually.
 If you are not confident about a field, leave it blank (empty string) or 0 for price — do NOT guess.
@@ -67,6 +69,9 @@ FIELDS TO EXTRACT
 
 REG:
 The primary vehicle registration for the delivery job.
+Common labels: Reg, Reg/Chassis, Registration.
+If you see "GX22KKA / LE12 5SH" under Reg/Chassis, REG is GX22KKA only (LE12 5SH is a delivery postcode, not the plate).
+If the title contains "GX22KKA / 6026523", REG is GX22KKA (6026523 is an internal model/reference number).
 
 Collection Postcode:
 The postcode where the primary vehicle is being collected FROM.
