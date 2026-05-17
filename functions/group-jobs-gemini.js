@@ -7,10 +7,6 @@ const {
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 const GEMINI_MODEL_FALLBACKS = ["gemini-2.5-flash", "gemini-2.0-flash-lite"];
 
-let cachedModelIds = null;
-let cachedModelIdsAt = 0;
-const MODEL_CACHE_MS = 10 * 60 * 1000;
-
 function geminiAuthHeaders(apiKey) {
   return {
     "Content-Type": "application/json",
@@ -281,43 +277,10 @@ async function callGrouperOnce(apiKey, tasks, modelId) {
   return parsed;
 }
 
-function modelPreferenceScore(modelId) {
-  const n = String(modelId || "").toLowerCase();
-  if (!n || n.includes("embedding")) return -100;
-  if (n.includes("gemini-2.5-flash")) return 100;
-  if (n.includes("2.0-flash-lite")) return 90;
-  return 40;
-}
-
-async function listGeminiModelIds(apiKey) {
-  const now = Date.now();
-  if (cachedModelIds && now - cachedModelIdsAt < MODEL_CACHE_MS) return cachedModelIds;
-  const url = `${GEMINI_API_BASE}/models?key=${encodeURIComponent(apiKey)}`;
-  const res = await fetch(url, { headers: geminiAuthHeaders(apiKey) });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error?.message || "ListModels failed");
-  cachedModelIds = (data.models || [])
-    .filter((m) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes("generateContent"))
-    .map((m) => String(m.name || "").replace(/^models\//, ""))
-    .filter(Boolean);
-  cachedModelIdsAt = now;
-  return cachedModelIds;
-}
-
-async function getModelCandidates(apiKey) {
-  try {
-    const listed = await listGeminiModelIds(apiKey);
-    if (listed.length) {
-      return [...new Set(listed)].sort((a, b) => modelPreferenceScore(b) - modelPreferenceScore(a)).slice(0, 12);
-    }
-  } catch (err) {
-    functions.logger.warn("groupJobsIntoRoutes: ListModels failed", { error: err.message });
-  }
-  return [ROUTE_GROUPER_MODEL, ...GEMINI_MODEL_FALLBACKS];
-}
+const GROUPER_MODEL_CANDIDATES = [ROUTE_GROUPER_MODEL, ...GEMINI_MODEL_FALLBACKS];
 
 async function groupWithGemini(apiKey, tasks) {
-  const models = await getModelCandidates(apiKey);
+  const models = GROUPER_MODEL_CANDIDATES;
   const errors = [];
   for (const model of models) {
     try {

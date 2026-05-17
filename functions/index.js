@@ -1183,6 +1183,15 @@ const XERO_CALLABLE_OPTIONS = {
   ],
 };
 
+/** Gemini callables — explicit CORS origins; longer timeout for batch grouping. */
+const AI_CALLABLE_OPTIONS = {
+  region: "us-central1",
+  cors: XERO_CALLABLE_OPTIONS.cors,
+  secrets: [GOOGLE_AI_API_KEY_SECRET],
+  timeoutSeconds: 120,
+  memory: "512MiB",
+};
+
 function getXeroClientId() {
   return (process.env.XERO_CLIENT_ID || "").trim();
 }
@@ -1850,7 +1859,7 @@ exports.xeroCreateDraftBillsForBatches = onCall(
  * return_reg, return_postcode, confidence_scores, overall_confidence.
  */
 exports.parseJobText = onCall(
-  { region: "us-central1", cors: true, secrets: [GOOGLE_AI_API_KEY_SECRET] },
+  AI_CALLABLE_OPTIONS,
   async (request) => {
     const apiKey = getGoogleAiApiKey();
     return handleParseJobText(apiKey, request.data || {});
@@ -1859,7 +1868,7 @@ exports.parseJobText = onCall(
 
 /** Group Asana task titles into routes (Gemini + regex fallback). Input: { tasks: [{ asana_gid, title }] }. */
 exports.groupJobsIntoRoutes = onCall(
-  { region: "us-central1", cors: true, secrets: [GOOGLE_AI_API_KEY_SECRET] },
+  AI_CALLABLE_OPTIONS,
   async (request) => {
     const apiKey = getGoogleAiApiKey();
     return handleGroupJobsIntoRoutes(apiKey, request.data || {});
