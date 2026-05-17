@@ -41,8 +41,10 @@ IRRELEVANT (reason codes: off_day | standby | full | carryover_delivery | admin 
 
 RELEVANT vehicle_move: driver prefix + (n) + reg/postcodes/places (UK moves).
 FREE / INCOMPLETE markers (do NOT add as jobs — use incomplete_route instead):
-- "(2) Lee Free", "(3) Sajil TBC", or highest sequence ends with Free/TBC → incomplete_route: true
-- When incomplete_route is true, jobs[] contains ONLY real vehicle moves (numbered moves with reg/postcodes), NOT the Free/TBC row
+- "(2) Lee Free", "(3) Sajil TBC", "(2) Name free from POSTCODE", "(2) Name Free CW7 3AL"
+- Highest sequence is Free/TBC/free from → incomplete_route: true
+- jobs[] = ONLY real vehicle moves (Reg/Registration), sorted by sequence_number ascending (Col A = 1, Col B = 2)
+- NOT the Free/TBC/free-from row
 
 driver_key: text before (n), title-cased ("lee" → "Lee"). Keep disambiguators: "Lee X" vs "Lee Y".
 

@@ -69,13 +69,25 @@ function isIrrelevantTitle(title) {
   return null;
 }
 
-function isIncompleteMarkerTitle(title) {
+/** Final slot is Free / TBC / "free from …" — route is incomplete (not a real delivery). */
+function isEndOfDaySlotTitle(title) {
   const t = String(title || "").trim();
+  if (!/\(\d+\)/.test(t)) return false;
+  if (/\bfree\s+from\b/i.test(t)) return true;
+  if (/\bTBC\b/i.test(t)) return true;
   if (/\(\d+\)\s*.+\s+Free\s*$/i.test(t)) return true;
   if (/\(\d+\)\s*.+\s+TBC\s*$/i.test(t)) return true;
-  if (/\bFree\s*$/i.test(t) && /\(\d+\)/.test(t)) return true;
-  if (/\bTBC\s*$/i.test(t) && /\(\d+\)/.test(t)) return true;
+  if (/\bFree\s*$/i.test(t)) return true;
+  if (/\bTBC\s*$/i.test(t)) return true;
+  // "(2) Name Free CW7 3AL" — Free + location, no Reg
+  if (/\bFree\b/i.test(t) && !/\bReg(istration)?\s*:/i.test(t) && !/\bRegistration\s*:/i.test(t)) {
+    return true;
+  }
   return false;
+}
+
+function isIncompleteMarkerTitle(title) {
+  return isEndOfDaySlotTitle(title);
 }
 
 function parseTitleMeta(title) {
@@ -125,17 +137,19 @@ function regexGroupTasks(tasks) {
   for (const [driver_key, items] of byDriver.entries()) {
     items.sort((a, b) => a.sequence_number - b.sequence_number);
     const vehicleJobs = items.filter((i) => looksLikeVehicleMove(i.title));
-    const markers = items.filter((i) => isIncompleteMarkerTitle(i.title));
+    const pendingSlots = items.filter((i) => isEndOfDaySlotTitle(i.title));
     const highestSeq = items.reduce((m, i) => Math.max(m, i.sequence_number), 0);
-    const hasIncompleteMarker = markers.some((m) => m.sequence_number >= highestSeq - 0)
-      || items.some((i) => isIncompleteMarkerTitle(i.title) && i.sequence_number === highestSeq);
+    const incomplete_route = vehicleJobs.length > 0
+      && items.some((i) => i.sequence_number === highestSeq && isEndOfDaySlotTitle(i.title));
 
-    const incomplete_route = hasIncompleteMarker && vehicleJobs.length > 0;
-    const routeJobs = vehicleJobs.map((j) => ({
-      asana_gid: j.asana_gid,
-      title: j.title,
-      sequence_number: j.sequence_number,
-    }));
+    const routeJobs = vehicleJobs
+      .slice()
+      .sort((a, b) => a.sequence_number - b.sequence_number)
+      .map((j) => ({
+        asana_gid: j.asana_gid,
+        title: j.title,
+        sequence_number: j.sequence_number,
+      }));
 
     if (routeJobs.length === 0) {
       for (const i of items) {
@@ -148,6 +162,13 @@ function regexGroupTasks(tasks) {
       driver_key,
       incomplete_route,
       jobs: routeJobs,
+      pending_slots: pendingSlots
+        .sort((a, b) => a.sequence_number - b.sequence_number)
+        .map((j) => ({
+          asana_gid: j.asana_gid,
+          title: j.title,
+          sequence_number: j.sequence_number,
+        })),
     });
   }
 
@@ -186,30 +207,48 @@ function normalizeGrouping(raw, inputTasks) {
       if (!gid || !gidSet.has(gid) || used.has(gid)) continue;
       const title = String(j.title || "").trim()
         || (inputTasks.find((t) => String(t.asana_gid || t.gid) === gid)?.title || "");
-      if (isIrrelevantTitle(title) || isIncompleteMarkerTitle(title)) continue;
+      if (isIrrelevantTitle(title) || isEndOfDaySlotTitle(title)) continue;
       used.add(gid);
       jobs.push({
         asana_gid: gid,
         title,
-        sequence_number: Number(j.sequence_number) || 999,
+        sequence_number: Number(j.sequence_number) || parseTitleMeta(title).sequence_number,
       });
     }
     jobs.sort((a, b) => a.sequence_number - b.sequence_number);
+    const driverTasks = (inputTasks || []).filter((t) => {
+      const m = parseTitleMeta(t.title || t.name || "");
+      return m.driver_key === driver_key;
+    });
+    const maxSeq = driverTasks.reduce(
+      (m, t) => Math.max(m, parseTitleMeta(t.title || t.name || "").sequence_number),
+      0,
+    );
+    let pending_slots = Array.isArray(r.pending_slots) ? [...r.pending_slots] : [];
+    for (const t of driverTasks) {
+      const title = String(t.title || t.name || "").trim();
+      const gid = String(t.asana_gid || t.gid || "").trim();
+      if (!gid || !isEndOfDaySlotTitle(title)) continue;
+      if (!pending_slots.some((p) => p.asana_gid === gid)) {
+        pending_slots.push({
+          asana_gid: gid,
+          title,
+          sequence_number: parseTitleMeta(title).sequence_number,
+        });
+        used.add(gid);
+      }
+    }
+    pending_slots.sort((a, b) => a.sequence_number - b.sequence_number);
     let incomplete_route = !!r.incomplete_route;
     if (!incomplete_route) {
-      const driverTasks = (inputTasks || []).filter((t) => {
-        const m = parseTitleMeta(t.title || t.name || "");
-        return m.driver_key === driver_key;
-      });
-      const maxSeq = driverTasks.reduce((m, t) => Math.max(m, parseTitleMeta(t.title || t.name).sequence_number), 0);
       incomplete_route = driverTasks.some((t) => {
         const title = t.title || t.name || "";
         const m = parseTitleMeta(title);
-        return m.sequence_number === maxSeq && isIncompleteMarkerTitle(title);
+        return m.sequence_number === maxSeq && isEndOfDaySlotTitle(title);
       });
     }
     if (jobs.length) {
-      routes.push({ driver_key, incomplete_route, jobs });
+      routes.push({ driver_key, incomplete_route, jobs, pending_slots });
     }
   }
 
@@ -228,6 +267,7 @@ function normalizeGrouping(raw, inputTasks) {
     const gid = String(task.asana_gid || task.gid || "").trim();
     if (!gid || used.has(gid)) continue;
     const title = String(task.title || task.name || "").trim();
+    if (isEndOfDaySlotTitle(title)) continue;
     irrelevant.push({ asana_gid: gid, title, reason: isIrrelevantTitle(title) || "not_a_job" });
     warnings.push(`Unassigned task moved to scrap: ${title.slice(0, 60)}`);
   }
