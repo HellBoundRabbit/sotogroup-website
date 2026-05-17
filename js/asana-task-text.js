@@ -10,6 +10,9 @@
     for (const field of customFields) {
       if (!field || typeof field !== "object") continue;
       const label = field.name || field.gid || "Field";
+      if (/parsed\s*details/i.test(String(label))) {
+        continue;
+      }
       let value = "";
       if (field.display_value != null && String(field.display_value).trim()) {
         value = String(field.display_value).trim();
