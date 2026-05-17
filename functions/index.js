@@ -21,19 +21,20 @@
  *   createDriver — Firebase Auth + users + drivers; returns temporaryPassword.
  *   listDrivers — List drivers for officeId.
  *   deleteDriver — Remove driver data, Firestore, Auth.
+ *   parseJobText — Gemini 2.0 Flash (secret GOOGLE_AI_API_KEY; GCP Gemini API, often SA-bound key).
  *   xeroGetAuthorizationUrl — OAuth start; env XERO_CLIENT_ID; CORS in XERO_CALLABLE_OPTIONS.
  *   xeroExchangeCode — OAuth callback tokens → xeroOfficeTokens; env XERO_CLIENT_ID + XERO_CLIENT_SECRET.
  *   xeroDisconnect — Remove office Xero connection.
  *   xeroCreateDraftBillsForBatches — Draft bills + receipt attachments; granular accounting scopes.
  *
- * Other names (parseJobText, bootstrapSession, Asana, optimizeRoutes, …) are deployed in Firebase
- * from elsewhere — not exported here. Never `firebase deploy --only functions` without names (can drop them).
+ * Other names (bootstrapSession, Asana fetch, optimizeRoutes, …) may still exist in Firebase from
+ * elsewhere — not exported here. Never `firebase deploy --only functions` without names (can drop them).
  *
  * =====================================================================================
  * PARTIAL DEPLOY — this repo’s functions only (append `,functions:newExport` when you add one)
  * =====================================================================================
  *
- * firebase deploy --only "functions:checkOverdueExpenses,functions:cleanupExpiredAuthorizationRequests,functions:sendDriverLoginEmail,functions:calculateDistance,functions:calculateTravelOptions,functions:computeAuthorizationTransitRoutes,functions:createDriver,functions:listDrivers,functions:deleteDriver,functions:xeroGetAuthorizationUrl,functions:xeroExchangeCode,functions:xeroDisconnect,functions:xeroCreateDraftBillsForBatches"
+ * firebase deploy --only "functions:checkOverdueExpenses,functions:cleanupExpiredAuthorizationRequests,functions:sendDriverLoginEmail,functions:calculateDistance,functions:calculateTravelOptions,functions:computeAuthorizationTransitRoutes,functions:createDriver,functions:listDrivers,functions:deleteDriver,functions:xeroGetAuthorizationUrl,functions:xeroExchangeCode,functions:xeroDisconnect,functions:xeroCreateDraftBillsForBatches,functions:parseJobText"
  *
  * Secrets / env: `firebase functions:secrets:set` or Cloud Run; never commit live keys; `functions/.env` local only.
  *
@@ -59,10 +60,17 @@ const RESEND_API_KEY = defineSecret("RESEND_API_KEY");
 
 /** Same name as Secret Manager / `firebase functions:secrets:set GOOGLE_MAPS_API_KEY`. Bound on Maps callables so deploy injects `process.env`. */
 const GOOGLE_MAPS_API_KEY_SECRET = defineSecret("GOOGLE_MAPS_API_KEY");
+const GOOGLE_AI_API_KEY_SECRET = defineSecret("GOOGLE_AI_API_KEY");
+
+const { handleParseJobText } = require("./parse-job-gemini");
 
 /** Server Maps key: emulator reads `functions/.env`; production needs Secret + `secrets: []` on each callable, or legacy plain env on Cloud Run. NOT the browser key. */
 function getMapsApiKey() {
   return (process.env.GOOGLE_MAPS_API_KEY || "").trim();
+}
+
+function getGoogleAiApiKey() {
+  return (process.env.GOOGLE_AI_API_KEY || "").trim();
 }
 
 /** RFC3339 UTC for Routes API `departureTime` / `arrivalTime`. */
@@ -1830,4 +1838,19 @@ exports.xeroCreateDraftBillsForBatches = onCall(
       const okCount = results.filter((r) => r.ok).length;
       return { results, okCount, total: results.length };
     },
+);
+
+/**
+ * Parse messy transport job text (Asana title/notes/custom fields or manual paste) via Gemini 2.
+ * Secret: `firebase functions:secrets:set GOOGLE_AI_API_KEY` (GCP key with Gemini API enabled;
+ * if the console requires it, bind the key to your Cloud Functions service account first).
+ * Response: `{ success, parsed_data }` with reg_number, collection_address, postcode_delivery, price,
+ * return_reg, return_postcode, confidence_scores, overall_confidence.
+ */
+exports.parseJobText = onCall(
+  { region: "us-central1", cors: true, secrets: [GOOGLE_AI_API_KEY_SECRET] },
+  async (request) => {
+    const apiKey = getGoogleAiApiKey();
+    return handleParseJobText(apiKey, request.data || {});
+  },
 );
