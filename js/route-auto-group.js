@@ -12,16 +12,39 @@
       .replace(/"/g, '&quot;');
   }
 
+  function sequenceFromTitle(title) {
+    const m = String(title || '').match(/\((\d+)\)/);
+    return m ? parseInt(m[1], 10) : 0;
+  }
+
+  function sortJobsBySequence(jobs) {
+    return (jobs || []).slice().sort((a, b) => {
+      const sa = Number(a.sequence_number);
+      const sb = Number(b.sequence_number);
+      const na = Number.isFinite(sa) && sa > 0 ? sa : 999;
+      const nb = Number.isFinite(sb) && sb > 0 ? sb : 999;
+      if (na !== nb) return na - nb;
+      return String(a.title || '').localeCompare(String(b.title || ''));
+    });
+  }
+
   function normalizeDraftRoute(route, index) {
+    const jobs = Array.isArray(route.jobs) ? route.jobs.map((j) => ({
+      asana_gid: String(j.asana_gid || j.gid || ''),
+      title: String(j.title || ''),
+      sequence_number: Number(j.sequence_number) || sequenceFromTitle(j.title),
+    })) : [];
+    const pending_slots = Array.isArray(route.pending_slots) ? route.pending_slots.map((j) => ({
+      asana_gid: String(j.asana_gid || j.gid || ''),
+      title: String(j.title || ''),
+      sequence_number: Number(j.sequence_number) || sequenceFromTitle(j.title),
+    })) : [];
     return {
       routeId: route.routeId || index + 1,
       driver_key: route.driver_key || route.driver_name || `Route ${index + 1}`,
       incomplete_route: !!route.incomplete_route,
-      jobs: Array.isArray(route.jobs) ? route.jobs.map((j) => ({
-        asana_gid: String(j.asana_gid || j.gid || ''),
-        title: String(j.title || ''),
-        sequence_number: Number(j.sequence_number) || 0,
-      })) : [],
+      jobs: sortJobsBySequence(jobs),
+      pending_slots: sortJobsBySequence(pending_slots),
     };
   }
 
@@ -50,11 +73,11 @@
     return `${routesN} routes (${complete} complete, ${incomplete} incomplete) · ${scrap} tasks not used`;
   }
 
-  function renderJobChip(job, routeId) {
+  function renderJobChip(job, routeId, displayOrder) {
     return `<div draggable="true" data-drag-gid="${escapeHtml(job.asana_gid)}" data-from-route="${routeId}"
       class="auto-group-job bg-[#283039] rounded p-2 text-xs text-white cursor-grab border border-transparent hover:border-blue-500"
       ondragstart="window.sotoRouteAutoGroup.onDragStart(event)" ondragend="window.sotoRouteAutoGroup.onDragEnd(event)">
-      <span class="text-gray-400">${job.sequence_number || '·'}.</span> ${escapeHtml(job.title)}
+      <span class="text-gray-400">${displayOrder != null ? displayOrder : (job.sequence_number || '·')}.</span> ${escapeHtml(job.title)}
     </div>`;
   }
 
@@ -64,8 +87,14 @@
       ? '<span class="text-amber-400 text-xs font-bold uppercase">Incomplete route</span>'
       : '';
     const jobsHtml = route.jobs.length
-      ? route.jobs.map((j) => renderJobChip(j, route.routeId)).join('')
+      ? route.jobs.map((j, idx) => renderJobChip(j, route.routeId, idx + 1)).join('')
       : '<p class="text-gray-500 text-xs">No jobs — drag tasks here</p>';
+    const pendingHtml = (route.pending_slots || []).length
+      ? route.pending_slots.map((j) => `<div class="rounded p-2 text-xs text-amber-300/90 bg-amber-500/10 border border-amber-500/30">
+          <span class="text-amber-400">${j.sequence_number}.</span> ${escapeHtml(j.title)}
+          <span class="block text-amber-500/80 text-[10px] mt-0.5">Awaiting final job — not Col B</span>
+        </div>`).join('')
+      : '';
     return `<div class="auto-group-route bg-[#1a1f24] border ${border} rounded-lg p-3"
       data-route-id="${route.routeId}"
       ondragover="window.sotoRouteAutoGroup.onDragOver(event)"
@@ -74,7 +103,7 @@
         <h4 class="text-white font-semibold text-sm">${escapeHtml(route.driver_key)}</h4>
         ${badge}
       </div>
-      <div class="space-y-1 min-h-[2rem]">${jobsHtml}</div>
+      <div class="space-y-1 min-h-[2rem]">${jobsHtml}${pendingHtml}</div>
     </div>`;
   }
 
@@ -163,7 +192,7 @@
     if (!found) return;
     removeJobFromRoute(fromRoute, dragState.gid);
     toRoute.jobs.push(found);
-    toRoute.jobs.sort((a, b) => (a.sequence_number || 0) - (b.sequence_number || 0));
+    toRoute.jobs = sortJobsBySequence(toRoute.jobs);
     renderConfirmScreen(draft);
   }
 
@@ -173,7 +202,7 @@
     draft.routes.forEach((r) => {
       if (!r.jobs.length) return;
       routeCounter++;
-      const jobs = r.jobs.map((j) => {
+      const jobs = sortJobsBySequence(r.jobs).map((j) => {
         const task = (currentTasks || []).find((t) => t.gid === j.asana_gid) || { gid: j.asana_gid, name: j.title };
         return { task, parsedData: null };
       });
