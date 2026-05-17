@@ -1819,7 +1819,11 @@
                 alert('No tasks to process');
                 return;
             }
-            const groupFn = window.firebase?.httpsCallable?.(window.firebase.functions, 'groupJobsIntoRoutes');
+            const groupFn = window.firebase?.httpsCallable?.(
+                window.firebase.functions,
+                'groupJobsIntoRoutes',
+                { timeout: 120000 },
+            );
             if (!groupFn) {
                 fallbackToManualGrouping('Route grouping is not available. Please manually group your jobs.');
                 return;
