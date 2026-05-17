@@ -2106,13 +2106,24 @@
                     const fullTask = (item.jobData.task?.gid && taskCache[item.jobData.task.gid]) || item.jobData.task;
                     const taskText = buildTaskText(fullTask);
                     let parsedData = emptyParsed();
+                    let parserMeta = { parser_source: 'unknown' };
                     if (parseFunction && taskText) {
                         try {
                             const result = await parseFunction({ rawText: taskText });
-                            if (result?.data?.success && result.data.parsed_data) parsedData = result.data.parsed_data;
+                            if (result?.data?.success && result.data.parsed_data) {
+                                parsedData = result.data.parsed_data;
+                                parserMeta = {
+                                    parser_source: result.data.parser_source || (result.data.parser_warning ? 'fallback' : 'gemini'),
+                                    parser_warning: result.data.parser_warning || '',
+                                    parser_error: result.data.parser_error || '',
+                                };
+                                if (parserMeta.parser_source === 'fallback') {
+                                    console.warn('[parseJobText] fallback used:', parserMeta.parser_error || parserMeta.parser_warning);
+                                }
+                            }
                         } catch (e) { console.warn('Parse error:', e); }
                     }
-                    return { ...item, taskText, parsedData };
+                    return { ...item, taskText, parsedData, parserMeta };
                 }, 20);
                 optDebug('All jobs parsed', { ms: Date.now() - parseStart });
 
@@ -2123,7 +2134,15 @@
                     const jobs = routeJobs.map((p, idx) => {
                         const conf = p.parsedData.overall_confidence || 50;
                         if (conf < minConfidence) minConfidence = conf;
-                        return { task: p.jobData.task, parsedData: p.parsedData, confidence: conf, rawText: p.taskText, routeId: route.routeId, jobNumber: idx + 1 };
+                        return {
+                            task: p.jobData.task,
+                            parsedData: p.parsedData,
+                            confidence: conf,
+                            rawText: p.taskText,
+                            routeId: route.routeId,
+                            jobNumber: idx + 1,
+                            parserMeta: p.parserMeta || {},
+                        };
                     });
                     routeReviewData.push({ routeId: route.routeId, jobs, minConfidence, jobCount: jobs.length });
                 }
@@ -2200,7 +2219,7 @@
                                 <div class="bg-[#1a1f24] border border-gray-600 rounded p-4 text-sm text-gray-300 whitespace-pre-wrap max-h-64 overflow-y-auto">${highlightParsedInRaw(job.rawText, job.parsedData)}</div>
                             </div>
                             <div>
-                                <label class="text-xs text-gray-400 mb-2 block">Parsed Details</label>
+                                <label class="text-xs text-gray-400 mb-2 block">Parsed Details${job.parserMeta?.parser_source === 'fallback' ? ' <span class="text-amber-400">(regex fallback — Gemini failed)</span>' : job.parserMeta?.parser_source === 'gemini' ? ' <span class="text-green-400">(Gemini)</span>' : ''}</label>
                                 <div class="space-y-3">
                                     <div><label class="text-xs text-gray-400 mb-1 block">REG</label>
                                         <div class="flex items-center gap-2">
