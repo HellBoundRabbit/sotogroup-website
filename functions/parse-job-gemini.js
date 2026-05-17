@@ -1,3 +1,4 @@
+const functions = require("firebase-functions");
 const { JOB_PARSER_SYSTEM_INSTRUCTION, JOB_PARSER_MODEL } = require("./job-parser-prompt");
 
 const UK_POSTCODE_RE = /\b([A-Z]{1,2}\d{1,2}[A-Z]?)\s*(\d[A-Z]{2})\b/gi;
@@ -129,11 +130,44 @@ function extractUkRegistration(text) {
 
 function sanitizeRawTextForParsing(rawText) {
   let text = String(rawText || "");
+  text = text.replace(/\bParsed Details\b[\s\S]*?(?=\n(?:REG|Collection Postcode|Job Price|Company Name|Fuel |=== )|$)/gi, "");
   text = text.replace(
     /(=== CUSTOM FIELDS ===[\s\S]*?)\bParsed Details\b[\s\S]*?(?=\n[A-Z][^\n]*:|\n===|$)/gi,
     "$1",
   );
   return text.trim();
+}
+
+function matchUkPostcode(text) {
+  const m = String(text || "").toUpperCase().match(/\b([A-Z]{1,2}\d{1,2}[A-Z]?)\s*(\d[A-Z]{2})\b/);
+  if (!m) return "";
+  return normalizeUkPostcode(`${m[1]} ${m[2]}`);
+}
+
+/** Prefer transport price over surcharge / fuel lines. */
+function extractTransportPrice(text) {
+  const t = String(text || "");
+  const patterns = [
+    /Price\s*\(\s*\+?\s*VAT\s*\)\s*[:.]?\s*£?\s*(\d+(?:\.\d{1,2})?)/i,
+    /Job Price\s*[:.]?\s*(\d+(?:\.\d{1,2})?)/i,
+    /(?:^|\n)Price\s*[:.]?\s*£?\s*(\d+(?:\.\d{1,2})?)/im,
+  ];
+  for (const pattern of patterns) {
+    const m = t.match(pattern);
+    if (m) return parseFloat(m[1]);
+  }
+  return null;
+}
+
+function extractPostcodesFromAddresses(text) {
+  const t = String(text || "");
+  let collection = "";
+  let delivery = "";
+  const coll = t.match(/Collection Address\s*:[\s\S]*?\b([A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2})\b/i);
+  if (coll) collection = matchUkPostcode(coll[1]);
+  const del = t.match(/Delivery Address\s*:[\s\S]*?\b([A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2})\b/i);
+  if (del) delivery = matchUkPostcode(del[1]);
+  return { collection, delivery };
 }
 
 function finalizeParsedData(parsed, rawText, { usedFallback = false } = {}) {
@@ -217,24 +251,35 @@ function buildGenerateContentBody(rawText) {
 function lightRegexFallback(rawText) {
   const text = sanitizeRawTextForParsing(rawText);
   const out = emptyParsedData();
-  const priceMatch = text.match(/(?:price|£)\s*[:.]?\s*£?\s*(\d+(?:\.\d{1,2})?)/i);
-  if (priceMatch) {
-    out.price = parseFloat(priceMatch[1]);
-    out.confidence_scores.price = 55;
+  const transportPrice = extractTransportPrice(text);
+  if (transportPrice != null) {
+    out.price = transportPrice;
+    out.confidence_scores.price = 58;
   }
-  const postcodes = [];
-  let m;
-  const re = new RegExp(UK_POSTCODE_RE.source, UK_POSTCODE_RE.flags);
-  while ((m = re.exec(text.toUpperCase())) !== null) {
-    postcodes.push(normalizeUkPostcode(`${m[1]} ${m[2]}`));
+  const labelled = extractPostcodesFromAddresses(text);
+  if (labelled.collection) {
+    out.collection_address = labelled.collection;
+    out.confidence_scores.collection = 55;
   }
-  if (postcodes[0]) {
-    out.collection_address = postcodes[0];
-    out.confidence_scores.collection = 40;
+  if (labelled.delivery) {
+    out.postcode_delivery = labelled.delivery;
+    out.confidence_scores.delivery = 55;
   }
-  if (postcodes[1]) {
-    out.postcode_delivery = postcodes[1];
-    out.confidence_scores.delivery = 40;
+  if (!out.collection_address || !out.postcode_delivery) {
+    const postcodes = [];
+    let m;
+    const re = new RegExp(UK_POSTCODE_RE.source, UK_POSTCODE_RE.flags);
+    while ((m = re.exec(text.toUpperCase())) !== null) {
+      postcodes.push(normalizeUkPostcode(`${m[1]} ${m[2]}`));
+    }
+    if (!out.collection_address && postcodes[0]) {
+      out.collection_address = postcodes[0];
+      out.confidence_scores.collection = 40;
+    }
+    if (!out.postcode_delivery && postcodes[1]) {
+      out.postcode_delivery = postcodes[1];
+      out.confidence_scores.delivery = 40;
+    }
   }
   const reg = extractUkRegistration(text);
   if (reg) {
@@ -260,12 +305,14 @@ function geminiAuthHeaders(apiKey) {
  * @param {string} apiKey
  * @param {string} rawText
  */
-async function callGeminiApiKeyOnce(apiKey, rawText) {
+async function callGeminiApiKeyOnce(apiKey, rawText, modelId) {
   const key = String(apiKey || "").trim();
   if (!key) {
     throw new Error("API key is required");
   }
-  const url = `${GEMINI_API_BASE}/models/${JOB_PARSER_MODEL}:generateContent`;
+  const model = modelId || JOB_PARSER_MODEL;
+  const url =
+    `${GEMINI_API_BASE}/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
   const res = await fetch(url, {
     method: "POST",
     headers: geminiAuthHeaders(key),
@@ -274,13 +321,13 @@ async function callGeminiApiKeyOnce(apiKey, rawText) {
   const data = await res.json();
   if (!res.ok) {
     const msg = data?.error?.message || res.statusText || `HTTP ${res.status}`;
-    throw new Error(msg);
+    throw new Error(`${model}: ${msg}`);
   }
   const parsed = extractJsonObject(textFromGenerateContentResponse(data));
   if (!parsed) {
-    throw new Error("Gemini returned non-JSON output");
+    throw new Error(`${model}: Gemini returned non-JSON output`);
   }
-  return normalizeGeminiParsed(parsed);
+  return finalizeParsedData(normalizeGeminiParsed(parsed), rawText, { usedFallback: false });
 }
 
 /**
@@ -330,13 +377,17 @@ async function handleParseJobText(apiKey, data) {
 
   try {
     const parsed_data = await parseJobTextWithGemini(apiKey, rawText);
-    return { success: true, parsed_data };
+    return { success: true, parsed_data, parser_source: "gemini" };
   } catch (geminiErr) {
+    functions.logger.warn("parseJobText: Gemini failed, using regex fallback", {
+      error: geminiErr.message || String(geminiErr),
+    });
     try {
       const parsed_data = lightRegexFallback(rawText);
       return {
         success: true,
         parsed_data,
+        parser_source: "fallback",
         parser_warning: "Gemini unavailable; used low-confidence fallback",
         parser_error: geminiErr.message || String(geminiErr),
       };
