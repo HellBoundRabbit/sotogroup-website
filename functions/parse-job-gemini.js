@@ -4,11 +4,15 @@ const { JOB_PARSER_SYSTEM_INSTRUCTION, JOB_PARSER_MODEL } = require("./job-parse
 const UK_POSTCODE_RE = /\b([A-Z]{1,2}\d{1,2}[A-Z]?)\s*(\d[A-Z]{2})\b/gi;
 const UK_PLATE_RE = /\b([A-HJ-PR-ST-Z]{2}\d{2}[A-HJ-PR-ST-Z]{3})\b/gi;
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
-/** New GCP projects cannot use bare gemini-2.0-flash; use -latest or flash-lite. */
+/** Static prefs if ListModels fails — no retired 1.5 / preview / bare 2.0-flash. */
 const GEMINI_MODEL_FALLBACKS = [
+  "gemini-2.5-flash",
   "gemini-2.0-flash-lite",
-  "gemini-2.5-flash-preview-05-20",
 ];
+
+let cachedModelIds = null;
+let cachedModelIdsAt = 0;
+const MODEL_CACHE_MS = 10 * 60 * 1000;
 
 function normalizeUkPostcode(value) {
   const raw = String(value || "").trim().toUpperCase().replace(/\s+/g, "");
@@ -334,9 +338,72 @@ async function callGeminiApiKeyOnce(apiKey, rawText, modelId) {
   return finalizeParsedData(normalizeGeminiParsed(parsed), rawText, { usedFallback: false });
 }
 
+function modelPreferenceScore(modelId) {
+  const n = String(modelId || "").toLowerCase();
+  if (!n || n.includes("embedding") || n.includes("imagen") || n.includes("aqa")) return -100;
+  if (n.includes("gemini-2.5-flash") && !n.includes("preview")) return 100;
+  if (n.includes("2.0-flash-lite")) return 90;
+  if (n.includes("flash-lite")) return 85;
+  if (n.includes("2.5-flash")) return 80;
+  if (n === "gemini-2.0-flash" || n.endsWith("/gemini-2.0-flash")) return 5;
+  if (n.includes("flash")) return 60;
+  return 40;
+}
+
+function rankModelIds(modelIds) {
+  return [...new Set(modelIds)].sort((a, b) => modelPreferenceScore(b) - modelPreferenceScore(a));
+}
+
+/**
+ * @param {string} apiKey
+ * @returns {Promise<string[]>}
+ */
+async function listGeminiModelIds(apiKey) {
+  const now = Date.now();
+  if (cachedModelIds && now - cachedModelIdsAt < MODEL_CACHE_MS) {
+    return cachedModelIds;
+  }
+  const url = `${GEMINI_API_BASE}/models?key=${encodeURIComponent(apiKey)}`;
+  const res = await fetch(url, { headers: geminiAuthHeaders(apiKey) });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error?.message || res.statusText || "ListModels failed");
+  }
+  const ids = (data.models || [])
+    .filter((m) => {
+      const methods = m.supportedGenerationMethods;
+      return Array.isArray(methods) && methods.includes("generateContent");
+    })
+    .map((m) => String(m.name || "").replace(/^models\//, ""))
+    .filter(Boolean);
+  cachedModelIds = ids;
+  cachedModelIdsAt = now;
+  functions.logger.info("parseJobText: ListModels", { count: ids.length, top: ids.slice(0, 5) });
+  return ids;
+}
+
+/**
+ * @param {string} apiKey
+ * @returns {Promise<string[]>}
+ */
+async function getModelCandidates(apiKey) {
+  try {
+    const listed = await listGeminiModelIds(apiKey);
+    if (listed.length) {
+      return rankModelIds(listed).slice(0, 12);
+    }
+  } catch (err) {
+    functions.logger.warn("parseJobText: ListModels failed, using static model list", {
+      error: err.message || String(err),
+    });
+  }
+  return rankModelIds([JOB_PARSER_MODEL, ...GEMINI_MODEL_FALLBACKS]);
+}
+
 /**
  * @param {string} apiKey
  * @param {string} rawText
+ * @returns {Promise<{ parsed: object, model: string }>}
  */
 async function parseJobTextWithGemini(apiKey, rawText) {
   const input = sanitizeRawTextForParsing(rawText);
@@ -348,12 +415,13 @@ async function parseJobTextWithGemini(apiKey, rawText) {
     throw new Error("GOOGLE_AI_API_KEY is not set");
   }
 
-  const models = [...new Set([JOB_PARSER_MODEL, ...GEMINI_MODEL_FALLBACKS])];
+  const models = await getModelCandidates(key);
   const errors = [];
   for (const model of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        return await callGeminiApiKeyOnce(key, input, model);
+        const parsed = await callGeminiApiKeyOnce(key, input, model);
+        return { parsed, model };
       } catch (err) {
         const msg = err.message || String(err);
         errors.push(msg);
@@ -382,8 +450,8 @@ async function handleParseJobText(apiKey, data) {
   }
 
   try {
-    const parsed_data = await parseJobTextWithGemini(apiKey, rawText);
-    return { success: true, parsed_data, parser_source: "gemini" };
+    const { parsed: parsed_data, model: parser_model } = await parseJobTextWithGemini(apiKey, rawText);
+    return { success: true, parsed_data, parser_source: "gemini", parser_model };
   } catch (geminiErr) {
     functions.logger.warn("parseJobText: Gemini failed, using regex fallback", {
       error: geminiErr.message || String(geminiErr),

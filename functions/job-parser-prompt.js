@@ -357,5 +357,5 @@ ${JOB_PARSER_API_SCHEMA}
 
 module.exports = {
   JOB_PARSER_SYSTEM_INSTRUCTION,
-  JOB_PARSER_MODEL: "gemini-2.5-flash-latest",
+  JOB_PARSER_MODEL: "gemini-2.5-flash",
 };
