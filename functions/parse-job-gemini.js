@@ -190,6 +190,8 @@ function finalizeParsedData(parsed, rawText, { usedFallback = false } = {}) {
         : Math.max(out.confidence_scores.reg, 85);
     }
   }
+  if (!out.return_reg) out.confidence_scores.return_reg = 0;
+  if (!out.return_postcode) out.confidence_scores.return_postcode = 0;
   const vals = Object.values(out.confidence_scores);
   if (vals.length) {
     out.overall_confidence = Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
