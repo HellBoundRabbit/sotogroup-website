@@ -1,7 +1,7 @@
 /**
  * Build full Asana task text for parseJobText (title, notes, custom fields).
  */
-(function (window) {
+(function (globalRef) {
   function formatCustomFields(customFields) {
     if (!Array.isArray(customFields) || !customFields.length) {
       return "";
@@ -75,9 +75,20 @@
     return results;
   }
 
-  window.sotoAsanaTaskText = {
+  const api = {
     buildTaskTextForParsing,
     formatCustomFields,
     mapInBatches,
   };
-})();
+  if (globalRef) {
+    globalRef.sotoAsanaTaskText = api;
+  }
+})(
+  typeof globalThis !== "undefined"
+    ? globalThis
+    : typeof window !== "undefined"
+      ? window
+      : typeof self !== "undefined"
+        ? self
+        : this,
+);
