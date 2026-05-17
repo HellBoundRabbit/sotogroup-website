@@ -6,6 +6,9 @@ const {
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 const GEMINI_MODEL_FALLBACKS = ["gemini-2.5-flash", "gemini-2.0-flash-lite"];
+/** Above this count, titles-only grouping uses rules (ms) — Gemini is too slow for large days. */
+const RULES_ONLY_TASK_THRESHOLD = 30;
+const GEMINI_FETCH_TIMEOUT_MS = 28000;
 
 function geminiAuthHeaders(apiKey) {
   return {
@@ -149,7 +152,7 @@ function regexGroupTasks(tasks) {
   }
 
   const summary = buildSummary(tasks.length, routes, irrelevant);
-  return { routes, irrelevant, warnings, summary, parser_source: "fallback" };
+  return { routes, irrelevant, warnings, summary, parser_source: "rules" };
 }
 
 function buildSummary(totalTasks, routes, irrelevant) {
@@ -257,17 +260,30 @@ function buildGrouperBody(tasksJson) {
   };
 }
 
-async function callGrouperOnce(apiKey, tasks, modelId) {
+async function callGrouperOnce(apiKey, tasks, modelId, timeoutMs = GEMINI_FETCH_TIMEOUT_MS) {
   const payload = (tasks || []).map((t) => ({
     asana_gid: String(t.asana_gid || t.gid || ""),
     title: String(t.title || t.name || ""),
   }));
   const url = `${GEMINI_API_BASE}/models/${modelId}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: geminiAuthHeaders(apiKey),
-    body: JSON.stringify(buildGrouperBody(JSON.stringify(payload))),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: geminiAuthHeaders(apiKey),
+      body: JSON.stringify(buildGrouperBody(JSON.stringify(payload))),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err.name === "AbortError") {
+      throw new Error(`${modelId}: timed out after ${timeoutMs}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   const data = await res.json();
   if (!res.ok) {
     throw new Error(data?.error?.message || res.statusText || `HTTP ${res.status}`);
@@ -277,21 +293,23 @@ async function callGrouperOnce(apiKey, tasks, modelId) {
   return parsed;
 }
 
-const GROUPER_MODEL_CANDIDATES = [ROUTE_GROUPER_MODEL, ...GEMINI_MODEL_FALLBACKS];
+async function groupWithGemini(apiKey, tasks, logStep) {
+  const model = ROUTE_GROUPER_MODEL;
+  const t0 = Date.now();
+  if (logStep) logStep("gemini_start", { model, taskCount: tasks.length });
+  const raw = await callGrouperOnce(apiKey, tasks, model);
+  const normalized = normalizeGrouping(raw, tasks);
+  if (logStep) logStep("gemini_done", { model, ms: Date.now() - t0 });
+  return { ...normalized, parser_source: "gemini", parser_model: model };
+}
 
-async function groupWithGemini(apiKey, tasks) {
-  const models = GROUPER_MODEL_CANDIDATES;
-  const errors = [];
-  for (const model of models) {
-    try {
-      const raw = await callGrouperOnce(apiKey, tasks, model);
-      const normalized = normalizeGrouping(raw, tasks);
-      return { ...normalized, parser_source: "gemini", parser_model: model };
-    } catch (err) {
-      errors.push(err.message || String(err));
-    }
-  }
-  throw new Error(errors[errors.length - 1] || "Gemini grouping failed");
+function rulesOnlyResult(regexResult, reason) {
+  return {
+    success: true,
+    ...regexResult,
+    parser_source: "rules",
+    parser_warning: reason || null,
+  };
 }
 
 /**
@@ -299,38 +317,80 @@ async function groupWithGemini(apiKey, tasks) {
  * @param {{ tasks?: Array<{ asana_gid?: string, gid?: string, title?: string, name?: string }> }} data
  */
 async function handleGroupJobsIntoRoutes(apiKey, data) {
+  const startedAt = Date.now();
   const tasks = Array.isArray(data?.tasks) ? data.tasks : [];
+  const debug = { steps: [], taskCount: tasks.length };
+  const logStep = (name, extra = {}) => {
+    const entry = { name, ms: Date.now() - startedAt, ...extra };
+    debug.steps.push(entry);
+    functions.logger.info("groupJobsIntoRoutes", entry);
+  };
+
+  logStep("start", { rulesOnly: !!data?.rulesOnly });
+
   if (!tasks.length) {
-    return { success: false, error: "tasks array is required" };
+    return { success: false, error: "tasks array is required", _debug: debug };
   }
-  if (!String(apiKey || "").trim()) {
+
+  const regexT0 = Date.now();
+  let regexResult;
+  try {
+    regexResult = regexGroupTasks(tasks);
+    logStep("regex_done", {
+      regexMs: Date.now() - regexT0,
+      routes: regexResult.routes?.length,
+      irrelevant: regexResult.irrelevant?.length,
+    });
+  } catch (regexErr) {
+    logStep("regex_error", { error: regexErr.message });
     return {
       success: false,
-      error: "GOOGLE_AI_API_KEY is not set",
+      error: regexErr.message || String(regexErr),
+      _debug: debug,
     };
   }
+
+  const useRulesOnly =
+    !!data?.rulesOnly || tasks.length > RULES_ONLY_TASK_THRESHOLD;
+
+  if (useRulesOnly) {
+    const reason =
+      data?.rulesOnly
+        ? "Client requested fast title rules"
+        : `${tasks.length} tasks — using title rules (faster than AI for large days)`;
+    logStep("rules_only_return", { reason });
+    return {
+      ...rulesOnlyResult(regexResult, reason),
+      _debug: debug,
+    };
+  }
+
+  if (!String(apiKey || "").trim()) {
+    logStep("no_api_key");
+    return {
+      ...rulesOnlyResult(regexResult, "GOOGLE_AI_API_KEY not set; used title rules"),
+      _debug: debug,
+    };
+  }
+
   try {
-    const result = await groupWithGemini(apiKey, tasks);
-    return { success: true, ...result };
+    const result = await groupWithGemini(apiKey, tasks, logStep);
+    logStep("success_gemini", { totalMs: Date.now() - startedAt });
+    return { success: true, ...result, _debug: debug };
   } catch (geminiErr) {
-    functions.logger.warn("groupJobsIntoRoutes: Gemini failed, regex fallback", {
+    functions.logger.warn("groupJobsIntoRoutes: Gemini failed, using regex", {
       error: geminiErr.message,
+      taskCount: tasks.length,
     });
-    try {
-      const result = regexGroupTasks(tasks);
-      return {
-        success: true,
-        ...result,
-        parser_warning: "Gemini unavailable; used rule-based fallback",
-        parser_error: geminiErr.message || String(geminiErr),
-      };
-    } catch (fallbackErr) {
-      return {
-        success: false,
-        error: geminiErr.message || String(geminiErr),
-        fallback_error: fallbackErr.message || String(fallbackErr),
-      };
-    }
+    logStep("gemini_failed", { error: geminiErr.message });
+    return {
+      ...rulesOnlyResult(
+        regexResult,
+        "AI grouping timed out or failed; used title rules — review routes before continuing",
+      ),
+      parser_error: geminiErr.message || String(geminiErr),
+      _debug: debug,
+    };
   }
 }
 
