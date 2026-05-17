@@ -17,6 +17,7 @@
     <script src="/js/mobile-nav.js"></script>
     <script src="/js/session-manager.js"></script>
     <script src="/js/settings.js"></script>
+    <script src="/js/asana-task-text.js"></script>
     <script src="/js/availability-model.js"></script>
     <script>
         tailwind.config = {
@@ -92,6 +93,7 @@
             }, 500);
         });
     </script>
+    <script src="/js/xero-office-settings-panel.js"></script>
     <style type="text/tailwindcss">
         :root {
             --primary-color: #0d7ff2;
@@ -1978,7 +1980,7 @@
         async function fetchFullTaskDetails(taskGid, accessToken) {
             try {
                 const t0 = Date.now();
-                const response = await fetch(`https://app.asana.com/api/1.0/tasks/${taskGid}?opt_fields=name,notes`, {
+                const response = await fetch(`https://app.asana.com/api/1.0/tasks/${taskGid}?opt_fields=name,notes,custom_fields`, {
                     headers: {
                         'Authorization': `Bearer ${accessToken}`
                     }
@@ -2075,23 +2077,43 @@
                 });
                 optDebug('All tasks fetched', { ms: Date.now() - fetchStart });
 
-                // 3. Parse all jobs in parallel (have taskText now)
+                // 3. Parse jobs in batches of 20 (title + notes + custom fields)
                 const parseFunction = window.firebase?.httpsCallable?.(window.firebase.functions, 'parseJobText');
-                optDebug('Parsing all jobs in parallel...');
+                const buildTaskText = window.sotoAsanaTaskText?.buildTaskTextForParsing
+                    || ((t) => `${t?.name || ''}\n${t?.notes || ''}`.trim());
+                const mapInBatches = window.sotoAsanaTaskText?.mapInBatches
+                    || (async (items, worker, size) => {
+                        const out = [];
+                        for (let i = 0; i < items.length; i += size) {
+                            const batch = await Promise.all(items.slice(i, i + size).map((item, j) => worker(item, i + j)));
+                            out.push(...batch);
+                        }
+                        return out;
+                    });
+                const emptyParsed = () => ({
+                    collection_address: '',
+                    postcode_delivery: '',
+                    price: 0,
+                    reg_number: '',
+                    return_reg: '',
+                    return_postcode: '',
+                    confidence_scores: { collection: 0, delivery: 0, price: 0, reg: 0, return_reg: 0, return_postcode: 0 },
+                    overall_confidence: 0,
+                });
+                optDebug('Parsing jobs (batches of 20)...');
                 const parseStart = Date.now();
-                const parsePromises = jobItems.map(async (item) => {
+                const parsedJobs = await mapInBatches(jobItems, async (item) => {
                     const fullTask = (item.jobData.task?.gid && taskCache[item.jobData.task.gid]) || item.jobData.task;
-                    const taskText = `${fullTask?.name || ''}\n${fullTask?.notes || ''}`;
-                    let parsedData = { collection_address: 'Not found', postcode_delivery: 'Not found', price: 0, reg_number: 'Not found', confidence_scores: { collection: 0, delivery: 0, price: 0, reg: 0 }, overall_confidence: 0 };
-                    if (parseFunction) {
+                    const taskText = buildTaskText(fullTask);
+                    let parsedData = emptyParsed();
+                    if (parseFunction && taskText) {
                         try {
                             const result = await parseFunction({ rawText: taskText });
                             if (result?.data?.success && result.data.parsed_data) parsedData = result.data.parsed_data;
                         } catch (e) { console.warn('Parse error:', e); }
                     }
                     return { ...item, taskText, parsedData };
-                });
-                const parsedJobs = await Promise.all(parsePromises);
+                }, 20);
                 optDebug('All jobs parsed', { ms: Date.now() - parseStart });
 
                 // 4. Rebuild routes from parsed results
@@ -8365,16 +8387,17 @@
     </div>
 
     <!-- Settings Modal -->
-    <div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-        <div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-6 w-full max-w-md">
-            <div class="flex justify-between items-center mb-4">
+    <div id="settingsModal" class="fixed inset-0 z-50 hidden overflow-y-auto bg-black bg-opacity-50">
+        <div class="flex min-h-full items-start justify-center px-4 py-8 sm:py-10">
+        <div class="bg-[#1a1f24] border border-[#283039] rounded-lg w-full max-w-md max-h-[calc(100vh-4rem)] flex flex-col overflow-hidden shadow-xl">
+            <div class="flex shrink-0 justify-between items-center px-5 pt-5 pb-3 border-b border-[#283039]">
                 <h3 class="text-xl font-bold text-white">Settings</h3>
-                <button onclick="hideSettings()" class="text-gray-400 hover:text-white">
+                <button type="button" onclick="hideSettings()" class="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-[#283039]" aria-label="Close settings">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
             
-            <div class="space-y-4">
+            <div class="space-y-4 min-h-0 max-h-[calc(100vh-10rem)] overflow-y-auto overscroll-y-contain px-5 pt-4 pb-5">
                 <div class="flex items-center justify-between py-3 border-b border-[#283039]">
                     <div class="flex-1">
                         <label for="useAsanaApiToggle" class="block text-sm font-medium text-white mb-1">
@@ -8408,15 +8431,7 @@
                     <input type="email" id="overdueNotificationEmail" placeholder="Email address for notifications" class="w-full mt-2 px-3 py-2 bg-[#111418] border border-[#283039] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500" onblur="saveOverdueNotificationEmail()">
                 </div>
             </div>
-            
-            <div class="mt-6 flex justify-end">
-                <button 
-                    onclick="hideSettings()"
-                    class="px-4 py-2 bg-[#283039] hover:bg-[#3a444e] text-white rounded-lg transition-colors font-medium"
-                >
-                    Close
-                </button>
-            </div>
+        </div>
         </div>
     </div>
 </body>

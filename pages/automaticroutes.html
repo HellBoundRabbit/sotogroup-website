@@ -18,6 +18,7 @@
     <script src="/js/mobile-nav.js"></script>
     <script src="/js/session-manager.js"></script>
     <script src="/js/settings.js"></script>
+    <script src="/js/asana-task-text.js"></script>
     <script>
         tailwind.config = {
             plugins: {
@@ -895,85 +896,66 @@
         document.getElementById('loadingText').textContent = `Processing ${currentTasks.length} jobs...`;
 
         try {
-            // Parse all tasks using the parseJobText function
-            const parsedJobs = [];
-            
-            for (let i = 0; i < currentTasks.length; i++) {
-                const task = currentTasks[i];
-                const taskText = `${task.name || ''}\n${task.notes || ''}`;
-                
-                // Use Firebase Cloud Function to parse job text
-                if (window.firebase && window.firebase.httpsCallable && window.firebase.functions) {
-                    try {
-                        const parseFunction = window.firebase.httpsCallable(window.firebase.functions, 'parseJobText');
-                        const result = await parseFunction({
-                            rawText: taskText
-                        });
+            const buildTaskText = window.sotoAsanaTaskText?.buildTaskTextForParsing
+                || ((t) => `${t?.name || ''}\n${t?.notes || ''}`.trim());
+            const mapInBatches = window.sotoAsanaTaskText?.mapInBatches
+                || (async (items, worker, size) => {
+                    const out = [];
+                    for (let i = 0; i < items.length; i += size) {
+                        const batch = await Promise.all(items.slice(i, i + size).map((item, j) => worker(item, i + j)));
+                        out.push(...batch);
+                    }
+                    return out;
+                });
+            const emptyParsed = () => ({
+                collection_address: '',
+                postcode_delivery: '',
+                price: 0,
+                reg_number: '',
+                return_reg: '',
+                return_postcode: '',
+                confidence_scores: { collection: 0, delivery: 0, price: 0, reg: 0, return_reg: 0, return_postcode: 0 },
+                overall_confidence: 0,
+            });
+            const parseFunction = (window.firebase && window.firebase.httpsCallable && window.firebase.functions)
+                ? window.firebase.httpsCallable(window.firebase.functions, 'parseJobText')
+                : null;
 
+            const parsedJobs = await mapInBatches(currentTasks, async (task) => {
+                const taskText = buildTaskText(task);
+                if (parseFunction && taskText) {
+                    try {
+                        const result = await parseFunction({ rawText: taskText });
                         if (result.data && result.data.success && result.data.parsed_data) {
                             const parsedData = result.data.parsed_data;
-                            parsedJobs.push({
+                            return {
                                 task: task,
                                 parsedData: parsedData,
-                                confidence: parsedData.overall_confidence || 0
-                            });
-                        } else {
-                            // If parsing fails, still add the task with empty data
-                            parsedJobs.push({
-                                task: task,
-                                parsedData: {
-                                    collection_address: 'Not found',
-                                    postcode_delivery: 'Not found',
-                                    price: 0,
-                                    reg_number: 'Not found',
-                                    confidence_scores: {
-                                        collection: 0,
-                                        delivery: 0,
-                                        price: 0,
-                                        reg: 0
-                                    },
-                                    overall_confidence: 0
-                                },
-                                confidence: 0
-                            });
+                                confidence: parsedData.overall_confidence || 0,
+                            };
                         }
                     } catch (parseError) {
                         console.error('Error parsing task:', parseError);
-                        // Fallback: basic parsing
-                        parsedJobs.push({
-                            task: task,
-                            parsedData: {
-                                ...parseTaskBasic(task),
-                                confidence_scores: {
-                                    collection: 40,
-                                    delivery: 40,
-                                    price: 40,
-                                    reg: 40
-                                },
-                                overall_confidence: 40
-                            },
-                            confidence: 40
-                        });
                     }
-                } else {
-                    // Fallback: basic parsing
-                    const basicParsed = parseTaskBasic(task);
-                    parsedJobs.push({
-                        task: task,
-                        parsedData: {
-                            ...basicParsed,
-                            confidence_scores: {
-                                collection: 40,
-                                delivery: 40,
-                                price: 40,
-                                reg: 40
-                            },
-                            overall_confidence: 40
-                        },
-                        confidence: 40
-                    });
                 }
-            }
+                const basicParsed = parseTaskBasic(task);
+                return {
+                    task: task,
+                    parsedData: {
+                        ...basicParsed,
+                        confidence_scores: {
+                            collection: 40,
+                            delivery: 40,
+                            price: 40,
+                            reg: 40,
+                            return_reg: 0,
+                            return_postcode: 0,
+                        },
+                        overall_confidence: 40,
+                    },
+                    confidence: 40,
+                };
+            }, 20);
 
             // Store parsed jobs globally
             parsedJobsData = parsedJobs;
@@ -1722,64 +1704,72 @@
         try {
             routeReviewData = [];
             
-            // Process each route
+            const buildTaskText = window.sotoAsanaTaskText?.buildTaskTextForParsing
+                || ((t) => `${t?.name || ''}\n${t?.notes || ''}`.trim());
+            const mapInBatches = window.sotoAsanaTaskText?.mapInBatches
+                || (async (items, worker, size) => {
+                    const out = [];
+                    for (let i = 0; i < items.length; i += size) {
+                        const batch = await Promise.all(items.slice(i, i + size).map((item, j) => worker(item, i + j)));
+                        out.push(...batch);
+                    }
+                    return out;
+                });
+            const parseFunction = (window.firebase && window.firebase.httpsCallable && window.firebase.functions)
+                ? window.firebase.httpsCallable(window.firebase.functions, 'parseJobText')
+                : null;
+            const routeJobItems = [];
             for (const route of savedRoutes) {
-                const routeJobs = [];
-                let minConfidence = 100;
-                
-                // Parse each job in the route
                 for (const jobData of route.jobs) {
-                    const taskText = `${jobData.task.name || ''}\n${jobData.task.notes || ''}`;
-                    
-                    // Parse job text using Firebase Cloud Function (parsing happens here, not earlier)
-                    let parsedData = {
-                        collection_address: 'Not found',
-                        postcode_delivery: 'Not found',
-                        price: 0,
-                        reg_number: 'Not found',
-                        confidence_scores: {
-                            collection: 0,
-                            delivery: 0,
-                            price: 0,
-                            reg: 0
-                        },
-                        overall_confidence: 0
-                    };
-                    let confidence = 0;
-                    
-                    if (window.firebase && window.firebase.httpsCallable && window.firebase.functions) {
-                        try {
-                            const parseFunction = window.firebase.httpsCallable(window.firebase.functions, 'parseJobText');
-                            const result = await parseFunction({
-                                rawText: taskText
-                            });
-                            
-                            if (result.data && result.data.success && result.data.parsed_data) {
-                                parsedData = result.data.parsed_data;
-                                confidence = parsedData.overall_confidence || 50;
-                            }
-                        } catch (error) {
-                            console.warn('Error parsing job text:', error);
-                        }
-                    }
-                    
-                    if (confidence < minConfidence) {
-                        minConfidence = confidence;
-                    }
-                    
-                    routeJobs.push({
-                        task: jobData.task,
-                        parsedData: parsedData,
-                        confidence: confidence,
-                        rawText: taskText
-                    });
+                    routeJobItems.push({ route, routeId: route.routeId, jobData });
                 }
-                
+            }
+            const parsedRouteJobs = await mapInBatches(routeJobItems, async (item) => {
+                const taskText = buildTaskText(item.jobData.task);
+                let parsedData = {
+                    collection_address: '',
+                    postcode_delivery: '',
+                    price: 0,
+                    reg_number: '',
+                    return_reg: '',
+                    return_postcode: '',
+                    confidence_scores: { collection: 0, delivery: 0, price: 0, reg: 0, return_reg: 0, return_postcode: 0 },
+                    overall_confidence: 0,
+                };
+                let confidence = 0;
+                if (parseFunction && taskText) {
+                    try {
+                        const result = await parseFunction({ rawText: taskText });
+                        if (result.data && result.data.success && result.data.parsed_data) {
+                            parsedData = result.data.parsed_data;
+                            confidence = parsedData.overall_confidence || 50;
+                        }
+                    } catch (error) {
+                        console.warn('Error parsing job text:', error);
+                    }
+                }
+                return { ...item, taskText, parsedData, confidence };
+            }, 20);
+
+            for (const route of savedRoutes) {
+                const routeJobs = parsedRouteJobs
+                    .filter((p) => p.routeId === route.routeId)
+                    .map((p) => ({
+                        task: p.jobData.task,
+                        parsedData: p.parsedData,
+                        confidence: p.confidence,
+                        rawText: p.taskText,
+                    }));
+                let minConfidence = 100;
+                routeJobs.forEach((j) => {
+                    if (j.confidence < minConfidence) minConfidence = j.confidence;
+                });
+                if (!routeJobs.length) minConfidence = 0;
                 routeReviewData.push({
                     routeId: route.routeId,
                     jobs: routeJobs,
                     minConfidence: minConfidence,
-                    jobCount: routeJobs.length
+                    jobCount: routeJobs.length,
                 });
             }
             
