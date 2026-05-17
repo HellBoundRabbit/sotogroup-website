@@ -1787,6 +1787,15 @@
     }
 
     // Display route review screen
+    function parsedDisplayValue(v) {
+        const s = String(v == null ? '' : v).trim();
+        return s || 'N/A';
+    }
+    function parsedInputToStored(v) {
+        const s = String(v == null ? '' : v).trim();
+        return (s === 'N/A' || !s) ? '' : s;
+    }
+
     function displayRouteReview() {
         const container = document.getElementById('routeReviewContainer');
         if (!container) return;
@@ -2099,7 +2108,7 @@
                                             <input 
                                                 type="text" 
                                                 id="${jobKey}-collection"
-                                                value="${job.parsedData.collection_address || ''}"
+                                                value="${parsedDisplayValue(job.parsedData.collection_address)}"
                                                 class="flex-1 px-3 py-2 bg-[#1a1f24] border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                             />
                                             <span class="text-xs ${getConfidenceColor(confidenceScores.collection || 0)} font-semibold">
@@ -2113,7 +2122,7 @@
                                             <input 
                                                 type="text" 
                                                 id="${jobKey}-delivery"
-                                                value="${job.parsedData.postcode_delivery || ''}"
+                                                value="${parsedDisplayValue(job.parsedData.postcode_delivery)}"
                                                 class="flex-1 px-3 py-2 bg-[#1a1f24] border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                             />
                                             <span class="text-xs ${getConfidenceColor(confidenceScores.delivery || 0)} font-semibold">
@@ -2133,6 +2142,34 @@
                                             />
                                             <span class="text-xs ${getConfidenceColor(confidenceScores.price || 0)} font-semibold">
                                                 ${confidenceScores.price || 0}%
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-400 mb-1 block">Return Reg</label>
+                                        <div class="flex items-center gap-2">
+                                            <input 
+                                                type="text" 
+                                                id="${jobKey}-return-reg"
+                                                value="${parsedDisplayValue(job.parsedData.return_reg)}"
+                                                class="flex-1 px-3 py-2 bg-[#1a1f24] border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                            <span class="text-xs ${getConfidenceColor(confidenceScores.return_reg || 0)} font-semibold">
+                                                ${confidenceScores.return_reg || 0}%
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-400 mb-1 block">Return Postcode</label>
+                                        <div class="flex items-center gap-2">
+                                            <input 
+                                                type="text" 
+                                                id="${jobKey}-return-postcode"
+                                                value="${parsedDisplayValue(job.parsedData.return_postcode)}"
+                                                class="flex-1 px-3 py-2 bg-[#1a1f24] border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                            <span class="text-xs ${getConfidenceColor(confidenceScores.return_postcode || 0)} font-semibold">
+                                                ${confidenceScores.return_postcode || 0}%
                                             </span>
                                         </div>
                                     </div>
@@ -2249,6 +2286,32 @@
                         });
                     }
                 }
+
+                const returnRegInput = document.getElementById(`${jobKey}-return-reg`);
+                if (returnRegInput) {
+                    const returnRegConfidence = returnRegInput.closest('.flex.items-center')?.querySelector('span');
+                    if (returnRegConfidence) {
+                        returnRegInput.addEventListener('input', () => {
+                            returnRegConfidence.textContent = '100%';
+                            returnRegConfidence.className = 'text-xs text-green-400 font-semibold';
+                            if (!job.parsedData.confidence_scores) job.parsedData.confidence_scores = {};
+                            job.parsedData.confidence_scores.return_reg = 100;
+                        });
+                    }
+                }
+
+                const returnPcInput = document.getElementById(`${jobKey}-return-postcode`);
+                if (returnPcInput) {
+                    const returnPcConfidence = returnPcInput.closest('.flex.items-center')?.querySelector('span');
+                    if (returnPcConfidence) {
+                        returnPcInput.addEventListener('input', () => {
+                            returnPcConfidence.textContent = '100%';
+                            returnPcConfidence.className = 'text-xs text-green-400 font-semibold';
+                            if (!job.parsedData.confidence_scores) job.parsedData.confidence_scores = {};
+                            job.parsedData.confidence_scores.return_postcode = 100;
+                        });
+                    }
+                }
             });
         });
         
@@ -2282,12 +2345,16 @@
                     const collectionEl = document.getElementById(`${jobKey}-collection`);
                     const deliveryEl = document.getElementById(`${jobKey}-delivery`);
                     const priceEl = document.getElementById(`${jobKey}-price`);
+                    const returnRegEl = document.getElementById(`${jobKey}-return-reg`);
+                    const returnPcEl = document.getElementById(`${jobKey}-return-postcode`);
                     
                     // Update parsed data with edited values
-                    job.parsedData.reg_number = regEl ? regEl.value : job.parsedData.reg_number;
-                    job.parsedData.collection_address = collectionEl ? collectionEl.value : job.parsedData.collection_address;
-                    job.parsedData.postcode_delivery = deliveryEl ? deliveryEl.value : job.parsedData.postcode_delivery;
+                    job.parsedData.reg_number = regEl ? parsedInputToStored(regEl.value) : job.parsedData.reg_number;
+                    job.parsedData.collection_address = collectionEl ? parsedInputToStored(collectionEl.value) : job.parsedData.collection_address;
+                    job.parsedData.postcode_delivery = deliveryEl ? parsedInputToStored(deliveryEl.value) : job.parsedData.postcode_delivery;
                     job.parsedData.price = priceEl ? parseFloat(priceEl.value) || 0 : job.parsedData.price;
+                    job.parsedData.return_reg = returnRegEl ? parsedInputToStored(returnRegEl.value) : (job.parsedData.return_reg || '');
+                    job.parsedData.return_postcode = returnPcEl ? parsedInputToStored(returnPcEl.value) : (job.parsedData.return_postcode || '');
                 });
                 
                 // Save jobs to Firebase
@@ -2300,6 +2367,8 @@
                     const collectionEl = document.getElementById(`${jobKey}-collection`);
                     const deliveryEl = document.getElementById(`${jobKey}-delivery`);
                     const priceEl = document.getElementById(`${jobKey}-price`);
+                    const returnRegEl = document.getElementById(`${jobKey}-return-reg`);
+                    const returnPcEl = document.getElementById(`${jobKey}-return-postcode`);
                     
                     const firebaseJobData = {
                         routeId: routeData.routeId,
@@ -2307,10 +2376,12 @@
                         rawText: job.rawText,
                         parsedData: {
                             ...job.parsedData,
-                            reg_number: regEl ? regEl.value : job.parsedData.reg_number,
-                            collection_address: collectionEl ? collectionEl.value : job.parsedData.collection_address,
-                            postcode_delivery: deliveryEl ? deliveryEl.value : job.parsedData.postcode_delivery,
-                            price: priceEl ? parseFloat(priceEl.value) || 0 : job.parsedData.price
+                            reg_number: regEl ? parsedInputToStored(regEl.value) : job.parsedData.reg_number,
+                            collection_address: collectionEl ? parsedInputToStored(collectionEl.value) : job.parsedData.collection_address,
+                            postcode_delivery: deliveryEl ? parsedInputToStored(deliveryEl.value) : job.parsedData.postcode_delivery,
+                            price: priceEl ? parseFloat(priceEl.value) || 0 : job.parsedData.price,
+                            return_reg: returnRegEl ? parsedInputToStored(returnRegEl.value) : (job.parsedData.return_reg || ''),
+                            return_postcode: returnPcEl ? parsedInputToStored(returnPcEl.value) : (job.parsedData.return_postcode || ''),
                         },
                         status: 'parsed',
                         createdAt: new Date(),
