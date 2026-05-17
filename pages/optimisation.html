@@ -998,6 +998,8 @@
                         jobNumber: i + 1,
                         collectionPostcode: parsed.collection_address || null,
                         deliveryPostcode: parsed.postcode_delivery || null,
+                        returnReg: parsed.return_reg || null,
+                        returnPostcode: parsed.return_postcode || null,
                         price: typeof parsed.price === 'number' ? parsed.price : Number(parsed.price) || 0
                     },
                     createdAt: new Date(),
@@ -1040,6 +1042,8 @@
                     reg: parsed.reg_number || null,
                     collectionPostcode: parsed.collection_address || null,
                     deliveryPostcode: parsed.postcode_delivery || null,
+                    returnReg: parsed.return_reg || null,
+                    returnPostcode: parsed.return_postcode || null,
                     price: typeof parsed.price === 'number' ? parsed.price : Number(parsed.price) || 0
                 };
             });
@@ -2207,6 +2211,79 @@
             return (s === 'N/A' || !s) ? '' : s;
         }
 
+        function getJobParsedPostcode(job, field) {
+            const p = job?.parsedData;
+            if (!p) return '';
+            return parsedInputToStored(p[field]);
+        }
+
+        function getJobCollectionPostcode(job) {
+            return getJobParsedPostcode(job, 'collection_address') || parsedInputToStored(job?.collectionAddress);
+        }
+
+        function getJobDeliveryPostcode(job) {
+            return getJobParsedPostcode(job, 'postcode_delivery') || parsedInputToStored(job?.deliveryAddress);
+        }
+
+        function getJobReturnPostcode(job) {
+            return getJobParsedPostcode(job, 'return_postcode');
+        }
+
+        function getJobReturnReg(job) {
+            return getJobParsedPostcode(job, 'return_reg');
+        }
+
+        /** First collection (A) and end-of-day postcode (last job R/C if set, else delivery). */
+        function getRouteTravelEndpoints(jobs) {
+            if (!jobs || !jobs.length) {
+                return {
+                    collectionAddress: '',
+                    endOfDayPostcode: '',
+                    deliveryPostcode: '',
+                    hasReturnVehicle: false,
+                    returnReg: '',
+                    returnPostcode: '',
+                };
+            }
+            const firstJob = jobs[0];
+            const lastJob = jobs[jobs.length - 1];
+            const collectionAddress = getJobCollectionPostcode(firstJob);
+            const deliveryPostcode = getJobDeliveryPostcode(lastJob);
+            const returnPostcode = getJobReturnPostcode(lastJob);
+            const returnReg = getJobReturnReg(lastJob);
+            const hasReturnVehicle = !!returnPostcode;
+            const endOfDayPostcode = hasReturnVehicle ? returnPostcode : deliveryPostcode;
+            return {
+                collectionAddress,
+                endOfDayPostcode,
+                deliveryPostcode,
+                hasReturnVehicle,
+                returnReg,
+                returnPostcode,
+            };
+        }
+
+        function formatReturnVehicleLabel(returnReg, returnPostcode) {
+            const pc = returnPostcode || '';
+            const reg = returnReg || '';
+            if (reg && pc) return `R/C ${reg} (${pc})`;
+            if (pc) return `R/C (${pc})`;
+            if (reg) return `R/C ${reg}`;
+            return 'R/C';
+        }
+
+        function formatRouteRegLineHtml(jobs) {
+            return (jobs || []).map((job, i) => {
+                const reg = escapeHtml(job?.parsedData?.reg_number || '-');
+                const rc = getJobReturnPostcode(job);
+                const rcReg = getJobReturnReg(job);
+                const rcHtml = rc
+                    ? ` · <span class="text-red-500 font-bold">${escapeHtml(formatReturnVehicleLabel(rcReg, rc))}</span>`
+                    : '';
+                return `<span class="text-white">Job ${i + 1}: ${reg}</span>${rcHtml}`;
+            }).join('<span class="text-gray-600 mx-1">|</span>');
+        }
+
         function normalizeParsedConfidence(parsedData) {
             if (!parsedData) return parsedData;
             const s = parsedData.confidence_scores || {};
@@ -2297,6 +2374,8 @@
             addFirst(parsedData.reg_number);
             addFirst(parsedData.collection_address);
             addFirst(parsedData.postcode_delivery);
+            addFirst(parsedData.return_postcode);
+            addFirst(parsedData.return_reg);
             if (parsedData.price && Number(parsedData.price) > 0) {
                 const val = Number(parsedData.price);
                 for (const fmt of [`£${val.toFixed(2)}`, `£${val}`, val.toFixed(2), String(Math.round(val))]) {
@@ -3428,11 +3507,7 @@
                     
                     // Populate REG for each job: "Job 1: REG1, Job 2: REG2"
                     if (regElement && routeData.jobs.length > 0) {
-                        const regParts = routeData.jobs.map((job, i) => {
-                            const reg = job?.parsedData?.reg_number || '-';
-                            return `Job ${i + 1}: ${reg}`;
-                        });
-                        regElement.textContent = regParts.join('  |  ');
+                        regElement.innerHTML = formatRouteRegLineHtml(routeData.jobs);
                     }
                     
                     // Populate driver information if assigned
@@ -3508,23 +3583,20 @@
             routeDiv.id = `firebase-route-${routeNumber}`;
             
             // Create job pairs (Collection A -> Delivery A, Collection B -> Delivery B, etc.)
+            const endpoints = getRouteTravelEndpoints(jobs);
             let jobPairsHTML = '';
             jobs.forEach((job, index) => {
-                const jobLetter = String.fromCharCode(65 + index); // A, B, C, etc.
-                
-                
-                // Extract postcodes from addresses
-                let collectionPostcode = 'N/A';
-                let deliveryPostcode = 'N/A';
-                
-                if (job.parsedData?.collection_address) {
-                    collectionPostcode = job.parsedData.collection_address;
-                }
-                
-                if (job.parsedData?.postcode_delivery) {
-                    deliveryPostcode = job.parsedData.postcode_delivery;
-                }
-                
+                const jobLetter = String.fromCharCode(65 + index);
+                const collectionPostcode = getJobCollectionPostcode(job) || 'N/A';
+                const deliveryPostcode = getJobDeliveryPostcode(job) || 'N/A';
+                const returnPostcode = getJobReturnPostcode(job);
+                const returnReg = getJobReturnReg(job);
+                const returnHtml = returnPostcode ? `
+                    <div class="flex flex-col gap-1.5">
+                        <label class="text-gray-400 font-medium text-xs">R/C ${jobLetter}</label>
+                        <p class="text-red-500 font-bold text-sm">${formatReturnVehicleLabel(returnReg, returnPostcode)}</p>
+                    </div>
+                ` : '';
                 jobPairsHTML += `
                     <div class="flex flex-col gap-1.5">
                         <label class="text-gray-400 font-medium text-xs">Collection ${jobLetter}</label>
@@ -3534,8 +3606,10 @@
                         <label class="text-gray-400 font-medium text-xs">Delivery ${jobLetter}</label>
                         <p class="text-red-400 font-semibold text-sm">${deliveryPostcode}</p>
                     </div>
+                    ${returnHtml}
                 `;
             });
+            const fromWorkLabel = endpoints.hasReturnVehicle ? 'From R/C (end of day)' : 'From last delivery';
             
             routeDiv.innerHTML = `
                 <div class="relative">
@@ -3566,10 +3640,14 @@
                             <span class="text-gray-400 text-xs">(Carryover):</span>
                             <span class="text-red-400 text-xs font-bold" id="firebase-route-${routeNumber}-carryover-postcode">-</span>
                         </div>
+                        <div id="firebase-route-${routeNumber}-return-display" class="${endpoints.hasReturnVehicle ? 'flex' : 'hidden'} items-center gap-2 mt-0.5">
+                            <span class="text-gray-400 text-xs">End of day:</span>
+                            <span class="text-red-500 text-xs font-bold" id="firebase-route-${routeNumber}-return-summary">${endpoints.hasReturnVehicle ? formatReturnVehicleLabel(endpoints.returnReg, endpoints.returnPostcode) : '-'}</span>
+                        </div>
                     </div>
                 </div>
                     
-                <div class="grid grid-cols-${Math.min(jobs.length * 2, 6)} gap-2 text-xs">
+                <div class="grid grid-cols-${Math.min(jobs.length * 2 + (endpoints.hasReturnVehicle ? 1 : 0), 8)} gap-2 text-xs">
                     ${jobPairsHTML}
                 </div>
                 <div class="mt-3 grid grid-cols-2 gap-2">
@@ -3580,7 +3658,7 @@
                         </div>
                     </div>
                     <div>
-                        <label class="text-gray-400 font-medium text-xs mb-1 block">From Last Job</label>
+                        <label class="text-gray-400 font-medium text-xs mb-1 block" id="firebase-route-${routeNumber}-from-work-label">${fromWorkLabel}</label>
                         <div id="firebase-route-${routeNumber}-from-work" class="bg-[#283039] rounded-lg px-3 py-2 text-gray-500 text-xs">
                             -
                         </div>
@@ -5805,21 +5883,18 @@
             
             
             try {
-                const firstJob = jobs[0];
-                const lastJob = jobs[jobs.length - 1];
+                const endpoints = getRouteTravelEndpoints(jobs);
+                const collectionAddress = endpoints.collectionAddress || driverPostcode;
+                const endOfDayPostcode = endpoints.endOfDayPostcode || endpoints.deliveryPostcode || driverPostcode;
+                const hasReturnVehicle = endpoints.hasReturnVehicle;
                 
-                const collectionAddress = firstJob.parsedData?.collection_address || firstJob.collectionAddress;
-                const deliveryAddress = lastJob.parsedData?.postcode_delivery || lastJob.deliveryAddress;
+                console.log(`📦 Route ${routeNumber} - Driver: ${driverPostcode}, Collection: ${collectionAddress}, End of day: ${endOfDayPostcode}${hasReturnVehicle ? ' (R/C)' : ''}`);
                 
-                console.log(`📦 Route ${routeNumber} - Driver: ${driverPostcode}, Collection: ${collectionAddress}, Delivery: ${deliveryAddress}`);
-                
-                // Calculate travel options from driver to first collection (arrive by 8 AM)
                 console.log(`🚀 Calculating TO work for route ${routeNumber}...`);
                 const toWorkOptions = await calculateTravelOptions(driverPostcode, collectionAddress, true);
                 
-                // Calculate travel options from last delivery back to driver (depart at 6 PM)
-                console.log(`🏠 Calculating FROM work for route ${routeNumber}...`);
-                const fromWorkOptions = await calculateTravelOptions(deliveryAddress, driverPostcode, false);
+                console.log(`🏠 Calculating FROM work for route ${routeNumber} (${hasReturnVehicle ? 'R/C' : 'last delivery'})...`);
+                const fromWorkOptions = await calculateTravelOptions(endOfDayPostcode, driverPostcode, false);
                 
                 // Update the UI elements
                 const toWorkElement = document.getElementById(`firebase-route-${routeNumber}-to-work`);
@@ -6122,10 +6197,9 @@
                 const jobs = routeData.jobs;
                 
                 if (jobs.length > 0) {
-                    const firstJob = jobs[0];
-                    const lastJob = jobs[jobs.length - 1];
-                    const collectionAddress = firstJob.parsedData?.collection_address || 'B797RU';
-                    const deliveryAddress = lastJob.parsedData?.postcode_delivery || 'M1 4AN';
+                    const endpoints = getRouteTravelEndpoints(jobs);
+                    const collectionAddress = endpoints.collectionAddress || 'B797RU';
+                    const endOfDayPostcode = endpoints.endOfDayPostcode || 'M1 4AN';
                     
                     const routeDriverTimes = [];
                     
@@ -6144,7 +6218,7 @@
                             console.log(`Calculating travel options for carryover driver ${driverIndex + 1} and route ${routeIndex + 1}...`);
                             
                             const toWorkOptions = await calculateTravelOptions(toWorkOrigin, collectionAddress, true);
-                            const fromWorkOptions = await calculateTravelOptions(deliveryAddress, driverHomePostcode, false);
+                            const fromWorkOptions = await calculateTravelOptions(endOfDayPostcode, driverHomePostcode, false);
                             
                             const originalTotalTime = safeTravelMinutes(toWorkOptions) + safeTravelMinutes(fromWorkOptions);
                             routeDriverTimes.push(originalTotalTime);
@@ -6159,7 +6233,8 @@
                                 originalTotalTime,
                                 hasCarryover: true,
                                 carryoverPostcode: carryoverPostcode,
-                                isCarryoverRoute: true
+                                isCarryoverRoute: true,
+                                travelEndpoints: endpoints,
                             });
                             
                         } catch (error) {
@@ -6192,13 +6267,12 @@
                 const jobs = routeData.jobs;
                 
                 if (jobs.length > 0) {
-                    const firstJob = jobs[0];
-                    const lastJob = jobs[jobs.length - 1];
-                    const collectionAddress = firstJob.parsedData?.collection_address || 'B797RU';
-                    const deliveryAddress = lastJob.parsedData?.postcode_delivery || 'M1 4AN';
-                    
+                    const endpoints = getRouteTravelEndpoints(jobs);
+                    const collectionAddress = endpoints.collectionAddress || 'B797RU';
+                    const endOfDayPostcode = endpoints.endOfDayPostcode || 'M1 4AN';
+
                     const routeDriverTimes = [];
-                    
+
                     for (const { driver, driverIndex } of regularDrivers) {
                         completedCalculations = routeCalculations.length + 1;
                         const calculationProgress = 30 + Math.floor((completedCalculations / totalCalculations) * 50);
@@ -6210,7 +6284,7 @@
                             console.log(`Calculating travel options for driver ${driverIndex + 1} and route ${routeIndex + 1}...`);
                             
                             const toWorkOptions = await calculateTravelOptions(driverHomePostcode, collectionAddress, true);
-                            const fromWorkOptions = await calculateTravelOptions(deliveryAddress, driverHomePostcode, false);
+                            const fromWorkOptions = await calculateTravelOptions(endOfDayPostcode, driverHomePostcode, false);
                             
                             const originalTotalTime = safeTravelMinutes(toWorkOptions) + safeTravelMinutes(fromWorkOptions);
                             routeDriverTimes.push(originalTotalTime);
@@ -6224,7 +6298,8 @@
                                 fromWorkOptions,
                                 originalTotalTime,
                                 hasCarryover: false,
-                                isCarryoverRoute: false
+                                isCarryoverRoute: false,
+                                travelEndpoints: endpoints,
                             });
                             
                         } catch (error) {
@@ -6318,7 +6393,8 @@
                     useMixedModeFromWork: useMixedModeFromWork,
                     hasCarryover: calc.hasCarryover,
                     carryoverPostcode: calc.carryoverPostcode,
-                    isCarryoverRoute: calc.isCarryoverRoute
+                    isCarryoverRoute: calc.isCarryoverRoute,
+                    travelEndpoints: calc.travelEndpoints || getRouteTravelEndpoints(calc.routeData?.jobs || []),
                 };
                 
                 allAssignments.push(assignment);
@@ -6454,11 +6530,24 @@
                 // Update REG display (all jobs: Job 1: X, Job 2: Y)
                 const regElement = document.getElementById(`firebase-route-${routeNumber}-reg`);
                 if (regElement && assignment.routeData.jobs.length > 0) {
-                    const regParts = assignment.routeData.jobs.map((job, i) => {
-                        const reg = job?.parsedData?.reg_number || '-';
-                        return `Job ${i + 1}: ${reg}`;
-                    });
-                    regElement.textContent = regParts.join('  |  ');
+                    regElement.innerHTML = formatRouteRegLineHtml(assignment.routeData.jobs);
+                }
+                const travelEp = assignment.travelEndpoints || getRouteTravelEndpoints(assignment.routeData.jobs);
+                const returnDisplay = document.getElementById(`firebase-route-${routeNumber}-return-display`);
+                const returnSummary = document.getElementById(`firebase-route-${routeNumber}-return-summary`);
+                const fromWorkLabelEl = document.getElementById(`firebase-route-${routeNumber}-from-work-label`);
+                if (returnDisplay && returnSummary) {
+                    if (travelEp.hasReturnVehicle) {
+                        returnDisplay.classList.remove('hidden');
+                        returnDisplay.classList.add('flex');
+                        returnSummary.textContent = formatReturnVehicleLabel(travelEp.returnReg, travelEp.returnPostcode);
+                    } else {
+                        returnDisplay.classList.add('hidden');
+                        returnDisplay.classList.remove('flex');
+                    }
+                }
+                if (fromWorkLabelEl) {
+                    fromWorkLabelEl.textContent = travelEp.hasReturnVehicle ? 'From R/C (end of day)' : 'From last delivery';
                 }
                 
                 // Update driver name
@@ -6615,6 +6704,7 @@
             window.routeAssignmentDetails = {};
             for (const assignment of optimalAssignment) {
                 const routeNumber = assignment.routeIndex + 1;
+                const ep = assignment.travelEndpoints || getRouteTravelEndpoints(assignment.routeData?.jobs || []);
                 window.routeAssignmentDetails[routeNumber] = {
                     driver: assignment.driver,
                     priorityScore: assignment.priorityScore,
@@ -6626,7 +6716,8 @@
                     hasCarryover: assignment.hasCarryover,
                     carryoverPostcode: assignment.carryoverPostcode,
                     isCarryoverRoute: assignment.isCarryoverRoute,
-                    routeData: assignment.routeData, // Store route data for map
+                    travelEndpoints: ep,
+                    routeData: assignment.routeData,
                     allConsideredDrivers: allAssignments
                         .filter(a => a.routeIndex === assignment.routeIndex)
                         .map(a => ({
@@ -6950,14 +7041,19 @@
             let jobPairsHTML = '';
             jobs.forEach((job, index) => {
                 const jobLetter = String.fromCharCode(65 + index);
-                const collectionPostcode = job.parsedData?.collection_address || 'N/A';
-                const deliveryPostcode = job.parsedData?.postcode_delivery || 'N/A';
-                
+                const collectionPostcode = getJobCollectionPostcode(job) || 'N/A';
+                const deliveryPostcode = getJobDeliveryPostcode(job) || 'N/A';
+                const returnPostcode = getJobReturnPostcode(job);
+                const returnReg = getJobReturnReg(job);
+                const rcLine = returnPostcode
+                    ? `<span class="text-red-500 font-bold ml-1">· ${formatReturnVehicleLabel(returnReg, returnPostcode)}</span>`
+                    : '';
                 jobPairsHTML += `
-                    <div class="flex items-center gap-2 text-xs">
+                    <div class="flex items-center gap-2 text-xs flex-wrap">
                         <span class="text-green-400">${collectionPostcode}</span>
                         <span class="material-symbols-outlined text-gray-400 text-sm">arrow_forward</span>
                         <span class="text-red-400">${deliveryPostcode}</span>
+                        ${rcLine}
                     </div>
                 `;
             });
@@ -7087,8 +7183,9 @@
                         const startingPostcode = carryOverPostcodes[driverIndex] || driver.postcode;
                         const endingPostcode = driver.postcode; // Always use home postcode for return journey
                         
+                        const endPoint = route.returnPostcode || route.delivery;
                         const distanceToCollection = await calculateDistance(startingPostcode, route.collection);
-                        const distanceFromDelivery = await calculateDistance(route.delivery, endingPostcode);
+                        const distanceFromDelivery = await calculateDistance(endPoint, endingPostcode);
                         const totalDistance = distanceToCollection + distanceFromDelivery;
                         
                         assignments.push({
@@ -7188,19 +7285,19 @@
             const totalDistance = optimalAssignment.reduce((sum, assignment) => sum + assignment.totalDistance, 0);
         }
 
-        // Find best driver for a route based on minimizing sum of distance to first collection + distance from last delivery
-        async function findBestDriver(deliveryAddress, collectionAddress) {
+        // Find best driver: home → first collection + end-of-day (R/C or last delivery) → home
+        async function findBestDriver(deliveryAddress, collectionAddress, endOfDayAddress) {
             if (!drivers || drivers.length === 0) {
                 console.log('No drivers available');
                 return { name: 'No Driver', postcode: 'Unknown' };
             }
             
             // Extract postcodes from addresses if they're full addresses
-            let deliveryPostcode = deliveryAddress;
+            let deliveryPostcode = endOfDayAddress || deliveryAddress;
             let collectionPostcode = collectionAddress;
             
-            if (deliveryAddress.includes(',')) {
-                const parts = deliveryAddress.split(',');
+            if (deliveryPostcode.includes(',')) {
+                const parts = deliveryPostcode.split(',');
                 deliveryPostcode = parts[0].trim();
             }
             
@@ -7209,7 +7306,7 @@
                 collectionPostcode = parts[0].trim();
             }
             
-            console.log('Finding best driver for collection:', collectionPostcode, 'and delivery:', deliveryPostcode);
+            console.log('Finding best driver for collection:', collectionPostcode, 'and end of day:', deliveryPostcode);
             
             let bestDriver = drivers[0];
             let shortestTotalDistance = Infinity;
@@ -7219,7 +7316,7 @@
             for (const driver of drivers) {
                 try {
                     const distanceToCollection = await calculateDistance(driver.postcode, collectionPostcode);
-                    const distanceFromDelivery = await calculateDistance(deliveryPostcode, driver.postcode);
+                    const distanceFromDelivery = await calculateDistance(deliveryPostcode, driver.postcode); // end-of-day → home
                     const totalDistance = distanceToCollection + distanceFromDelivery;
                     
                     console.log(`Driver ${driver.name} (${driver.postcode}): ${distanceToCollection} mi to collection + ${distanceFromDelivery} mi from delivery = ${totalDistance} mi total`);
@@ -7608,11 +7705,7 @@
                     
                     // REG for all jobs: Job 1: X, Job 2: Y
                     if (regElement && routeData.jobs.length > 0) {
-                        const regParts = routeData.jobs.map((job, i) => {
-                            const reg = job?.parsedData?.reg_number || '-';
-                            return `Job ${i + 1}: ${reg}`;
-                        });
-                        regElement.textContent = regParts.join('  |  ');
+                        regElement.innerHTML = formatRouteRegLineHtml(routeData.jobs);
                     }
                     
                     const homePcRestore = routeData.route.assignedDriverPostcode || '';
@@ -7627,6 +7720,23 @@
                     } else {
                         if (carryoverDisplayRestore) carryoverDisplayRestore.classList.add('hidden');
                         if (toWorkLabelRestore) toWorkLabelRestore.textContent = 'To First Job';
+                    }
+                    const epRestore = getRouteTravelEndpoints(routeData.jobs);
+                    const returnDisplayRestore = document.getElementById(`firebase-route-${routeNumber}-return-display`);
+                    const returnSummaryRestore = document.getElementById(`firebase-route-${routeNumber}-return-summary`);
+                    const fromWorkLabelRestore = document.getElementById(`firebase-route-${routeNumber}-from-work-label`);
+                    if (returnDisplayRestore && returnSummaryRestore) {
+                        if (epRestore.hasReturnVehicle) {
+                            returnDisplayRestore.classList.remove('hidden');
+                            returnDisplayRestore.classList.add('flex');
+                            returnSummaryRestore.textContent = formatReturnVehicleLabel(epRestore.returnReg, epRestore.returnPostcode);
+                        } else {
+                            returnDisplayRestore.classList.add('hidden');
+                            returnDisplayRestore.classList.remove('flex');
+                        }
+                    }
+                    if (fromWorkLabelRestore) {
+                        fromWorkLabelRestore.textContent = epRestore.hasReturnVehicle ? 'From R/C (end of day)' : 'From last delivery';
                     }
                     
                     // Restore route score if it exists
@@ -8178,12 +8288,15 @@
                 markers.push(startMarker);
                 
                 let previousLocation = startLocation;
+                const mapEndpoints = getRouteTravelEndpoints(jobs);
                 
                 // Process each job
                 for (let i = 0; i < jobs.length; i++) {
                     const job = jobs[i];
-                    const collectionPostcode = job.parsedData?.collection_address;
-                    const deliveryPostcode = job.parsedData?.postcode_delivery;
+                    const collectionPostcode = getJobCollectionPostcode(job);
+                    const deliveryPostcode = getJobDeliveryPostcode(job);
+                    const returnPostcode = getJobReturnPostcode(job);
+                    const isLastJob = i === jobs.length - 1;
                     
                     if (!collectionPostcode || !deliveryPostcode) continue;
                     
@@ -8288,13 +8401,50 @@
                         markers.push(deliveryMarker);
                         
                         previousLocation = deliveryLocation;
+
+                        if (isLastJob && returnPostcode && returnPostcode !== deliveryPostcode) {
+                            const returnLocation = await geocodePostcode(returnPostcode);
+                            bounds.extend(returnLocation);
+                            const toReturnLine = new google.maps.Polyline({
+                                path: [deliveryLocation, returnLocation],
+                                geodesic: true,
+                                strokeColor: '#DC2626',
+                                strokeOpacity: 0.85,
+                                strokeWeight: 3,
+                                icons: [{
+                                    icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 },
+                                    offset: '0',
+                                    repeat: '10px'
+                                }]
+                            });
+                            toReturnLine.setMap(map);
+                            polylines.push(toReturnLine);
+                            const returnMarker = new google.maps.Marker({
+                                position: returnLocation,
+                                map: map,
+                                title: `R/C: ${formatReturnVehicleLabel(getJobReturnReg(job), returnPostcode)}`,
+                                icon: {
+                                    path: google.maps.SymbolPath.CIRCLE,
+                                    scale: 8,
+                                    fillColor: '#B91C1C',
+                                    fillOpacity: 1,
+                                    strokeColor: '#FFF',
+                                    strokeWeight: 2
+                                },
+                                label: { text: 'R', color: '#FFF', fontSize: '10px', fontWeight: 'bold' }
+                            });
+                            markers.push(returnMarker);
+                            previousLocation = returnLocation;
+                        } else if (isLastJob && returnPostcode) {
+                            previousLocation = await geocodePostcode(returnPostcode);
+                        }
                         
                     } catch (error) {
                         console.error(`Error processing job ${i + 1}:`, error);
                     }
                 }
                 
-                // Draw straight dotted line from last delivery back to driver home (as the crow flies)
+                // Draw straight dotted line from end of day (R/C or last delivery) back to driver home
                 if (jobs.length > 0 && endPostcode !== startPostcode) {
                     try {
                         const endLocation = await geocodePostcode(endPostcode);
