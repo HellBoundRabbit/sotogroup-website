@@ -1814,6 +1814,25 @@
             showScreen('routeGroupingInstructionsScreen');
         }
 
+        async function callGroupJobsIntoRoutes(groupFn, payload, label) {
+            optDebug(`groupJobsIntoRoutes ${label} START`, {
+                taskCount: payload.tasks?.length,
+                rulesOnly: !!payload.rulesOnly,
+            });
+            const t0 = performance.now();
+            const result = await groupFn(payload);
+            const data = result?.data;
+            optDebug(`groupJobsIntoRoutes ${label} DONE`, {
+                ms: Math.round(performance.now() - t0),
+                success: data?.success,
+                parser_source: data?.parser_source,
+                routes: data?.routes?.length,
+                parser_warning: data?.parser_warning || null,
+                debug_steps: data?._debug?.steps || null,
+            });
+            return data;
+        }
+
         async function processJobs() {
             if (!currentTasks || currentTasks.length === 0) {
                 alert('No tasks to process');
@@ -1822,30 +1841,69 @@
             const groupFn = window.firebase?.httpsCallable?.(
                 window.firebase.functions,
                 'groupJobsIntoRoutes',
-                { timeout: 120000 },
+                { timeout: 60000 },
             );
             if (!groupFn) {
                 fallbackToManualGrouping('Route grouping is not available. Please manually group your jobs.');
                 return;
             }
+            optDebugClear();
+            optDebug('processJobs START', { taskCount: currentTasks.length });
             showScreen('loadingScreen');
             const loadingText = document.getElementById('loadingText');
-            if (loadingText) loadingText.textContent = 'Grouping routes with AI…';
+            if (loadingText) {
+                loadingText.textContent = currentTasks.length > 30
+                    ? 'Grouping routes from task titles…'
+                    : 'Grouping routes with AI…';
+            }
+            const payload = {
+                tasks: currentTasks.map((t) => ({ asana_gid: t.gid, title: t.name || '' })),
+                rulesOnly: currentTasks.length > 30,
+            };
             try {
-                const payload = currentTasks.map((t) => ({ asana_gid: t.gid, title: t.name || '' }));
-                const result = await groupFn({ tasks: payload });
-                const data = result?.data;
+                let data = await callGroupJobsIntoRoutes(groupFn, payload, 'primary');
                 if (!data?.success) {
                     throw new Error(data?.error || 'Grouping failed');
                 }
-                if (data.parser_source === 'fallback' && data.parser_warning) {
-                    console.warn('[groupJobsIntoRoutes] fallback:', data.parser_warning);
+                if (data.parser_warning) {
+                    console.warn('[groupJobsIntoRoutes]', data.parser_warning);
                 }
                 autoGroupDraft = window.sotoRouteAutoGroup.ingestGroupingResult(data);
                 window.autoGroupDraft = autoGroupDraft;
                 window.sotoRouteAutoGroup.renderConfirmScreen(autoGroupDraft);
                 showScreen('autoGroupConfirmScreen');
+                optDebug('processJobs OK', {
+                    routes: autoGroupDraft.routes?.length,
+                    parser_source: data.parser_source,
+                });
             } catch (err) {
+                const code = err?.code || '';
+                optDebug('processJobs primary FAILED', { code, message: err?.message });
+                if (code === 'deadline-exceeded' || code === 'internal' || code === 'unavailable') {
+                    try {
+                        if (loadingText) loadingText.textContent = 'Retrying with fast title rules…';
+                        const data = await callGroupJobsIntoRoutes(
+                            groupFn,
+                            { ...payload, rulesOnly: true },
+                            'rulesOnly-retry',
+                        );
+                        if (data?.success) {
+                            autoGroupDraft = window.sotoRouteAutoGroup.ingestGroupingResult(data);
+                            window.autoGroupDraft = autoGroupDraft;
+                            window.sotoRouteAutoGroup.renderConfirmScreen(autoGroupDraft);
+                            showScreen('autoGroupConfirmScreen');
+                            optDebug('processJobs OK after rulesOnly retry', {
+                                routes: autoGroupDraft.routes?.length,
+                            });
+                            return;
+                        }
+                    } catch (retryErr) {
+                        optDebug('processJobs rulesOnly retry FAILED', {
+                            code: retryErr?.code,
+                            message: retryErr?.message,
+                        });
+                    }
+                }
                 console.error('groupJobsIntoRoutes failed:', err);
                 fallbackToManualGrouping('Onboard AI is currently out of order. Please manually group your jobs.');
             }
