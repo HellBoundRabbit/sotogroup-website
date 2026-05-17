@@ -4,7 +4,12 @@ const { JOB_PARSER_SYSTEM_INSTRUCTION, JOB_PARSER_MODEL } = require("./job-parse
 const UK_POSTCODE_RE = /\b([A-Z]{1,2}\d{1,2}[A-Z]?)\s*(\d[A-Z]{2})\b/gi;
 const UK_PLATE_RE = /\b([A-HJ-PR-ST-Z]{2}\d{2}[A-HJ-PR-ST-Z]{3})\b/gi;
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
-const GEMINI_MODEL_FALLBACKS = ["gemini-2.0-flash", "gemini-2.0-flash-001", "gemini-1.5-flash"];
+/** Models must exist on generativelanguage.googleapis.com for your project (no retired 1.5 names). */
+const GEMINI_MODEL_FALLBACKS = [
+  "gemini-2.5-flash-latest",
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-lite",
+];
 
 function normalizeUkPostcode(value) {
   const raw = String(value || "").trim().toUpperCase().replace(/\s+/g, "");
@@ -345,17 +350,19 @@ async function parseJobTextWithGemini(apiKey, rawText) {
   }
 
   const models = [...new Set([JOB_PARSER_MODEL, ...GEMINI_MODEL_FALLBACKS])];
-  let lastError;
+  const errors = [];
   for (const model of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         return await callGeminiApiKeyOnce(key, input, model);
       } catch (err) {
-        lastError = err;
+        const msg = err.message || String(err);
+        errors.push(msg);
+        functions.logger.warn("parseJobText: model attempt failed", { model, attempt, error: msg });
       }
     }
   }
-  throw lastError || new Error("Gemini parse failed");
+  throw new Error(errors[errors.length - 1] || "Gemini parse failed");
 }
 
 /**
