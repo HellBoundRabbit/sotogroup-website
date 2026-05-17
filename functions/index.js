@@ -22,6 +22,7 @@
  *   listDrivers — List drivers for officeId.
  *   deleteDriver — Remove driver data, Firestore, Auth.
  *   parseJobText — Gemini 2.5 Flash (secret GOOGLE_AI_API_KEY; GCP Gemini API, often SA-bound key).
+ *   groupJobsIntoRoutes — Gemini groups Asana task titles into driver routes (same GOOGLE_AI_API_KEY).
  *   xeroGetAuthorizationUrl — OAuth start; env XERO_CLIENT_ID; CORS in XERO_CALLABLE_OPTIONS.
  *   xeroExchangeCode — OAuth callback tokens → xeroOfficeTokens; env XERO_CLIENT_ID + XERO_CLIENT_SECRET.
  *   xeroDisconnect — Remove office Xero connection.
@@ -34,7 +35,7 @@
  * PARTIAL DEPLOY — this repo’s functions only (append `,functions:newExport` when you add one)
  * =====================================================================================
  *
- * firebase deploy --only "functions:checkOverdueExpenses,functions:cleanupExpiredAuthorizationRequests,functions:sendDriverLoginEmail,functions:calculateDistance,functions:calculateTravelOptions,functions:computeAuthorizationTransitRoutes,functions:createDriver,functions:listDrivers,functions:deleteDriver,functions:xeroGetAuthorizationUrl,functions:xeroExchangeCode,functions:xeroDisconnect,functions:xeroCreateDraftBillsForBatches,functions:parseJobText"
+ * firebase deploy --only "functions:checkOverdueExpenses,functions:cleanupExpiredAuthorizationRequests,functions:sendDriverLoginEmail,functions:calculateDistance,functions:calculateTravelOptions,functions:computeAuthorizationTransitRoutes,functions:createDriver,functions:listDrivers,functions:deleteDriver,functions:xeroGetAuthorizationUrl,functions:xeroExchangeCode,functions:xeroDisconnect,functions:xeroCreateDraftBillsForBatches,functions:parseJobText,functions:groupJobsIntoRoutes"
  *
  * Secrets / env: `firebase functions:secrets:set` or Cloud Run; never commit live keys; `functions/.env` local only.
  *
@@ -63,6 +64,7 @@ const GOOGLE_MAPS_API_KEY_SECRET = defineSecret("GOOGLE_MAPS_API_KEY");
 const GOOGLE_AI_API_KEY_SECRET = defineSecret("GOOGLE_AI_API_KEY");
 
 const { handleParseJobText } = require("./parse-job-gemini");
+const { handleGroupJobsIntoRoutes } = require("./group-jobs-gemini");
 
 /** Server Maps key: emulator reads `functions/.env`; production needs Secret + `secrets: []` on each callable, or legacy plain env on Cloud Run. NOT the browser key. */
 function getMapsApiKey() {
@@ -1852,5 +1854,14 @@ exports.parseJobText = onCall(
   async (request) => {
     const apiKey = getGoogleAiApiKey();
     return handleParseJobText(apiKey, request.data || {});
+  },
+);
+
+/** Group Asana task titles into routes (Gemini + regex fallback). Input: { tasks: [{ asana_gid, title }] }. */
+exports.groupJobsIntoRoutes = onCall(
+  { region: "us-central1", cors: true, secrets: [GOOGLE_AI_API_KEY_SECRET] },
+  async (request) => {
+    const apiKey = getGoogleAiApiKey();
+    return handleGroupJobsIntoRoutes(apiKey, request.data || {});
   },
 );
