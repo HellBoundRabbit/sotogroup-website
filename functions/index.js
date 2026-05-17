@@ -21,7 +21,7 @@
  *   createDriver — Firebase Auth + users + drivers; returns temporaryPassword.
  *   listDrivers — List drivers for officeId.
  *   deleteDriver — Remove driver data, Firestore, Auth.
- *   parseJobText — Gemini 2.0 Flash (secret GOOGLE_AI_API_KEY; GCP Gemini API, often SA-bound key).
+ *   parseJobText — Gemini 2.5 Flash (secret GOOGLE_AI_API_KEY; GCP Gemini API, often SA-bound key).
  *   xeroGetAuthorizationUrl — OAuth start; env XERO_CLIENT_ID; CORS in XERO_CALLABLE_OPTIONS.
  *   xeroExchangeCode — OAuth callback tokens → xeroOfficeTokens; env XERO_CLIENT_ID + XERO_CLIENT_SECRET.
  *   xeroDisconnect — Remove office Xero connection.

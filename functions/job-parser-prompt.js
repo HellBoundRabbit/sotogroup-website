@@ -85,6 +85,8 @@ Examples:
 £119.91 -> 119.91
 129.60 -> 129.60
 Do not treat internal reference numbers (e.g. after a slash) as price unless clearly labelled as price.
+Use Price(+VAT) or Job Price for the transport price — NOT Surcharge, fuel, or other fees unless that is the only price given.
+If Job Price: 135.99 in custom fields and Price(+VAT): £135.99 in notes, use 135.99.
 
 Return Reg:
 If a return vehicle exists, extract the return vehicle registration.
@@ -355,5 +357,5 @@ ${JOB_PARSER_API_SCHEMA}
 
 module.exports = {
   JOB_PARSER_SYSTEM_INSTRUCTION,
-  JOB_PARSER_MODEL: "gemini-2.0-flash",
+  JOB_PARSER_MODEL: "gemini-2.5-flash-latest",
 };

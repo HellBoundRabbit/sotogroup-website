@@ -4,11 +4,10 @@ const { JOB_PARSER_SYSTEM_INSTRUCTION, JOB_PARSER_MODEL } = require("./job-parse
 const UK_POSTCODE_RE = /\b([A-Z]{1,2}\d{1,2}[A-Z]?)\s*(\d[A-Z]{2})\b/gi;
 const UK_PLATE_RE = /\b([A-HJ-PR-ST-Z]{2}\d{2}[A-HJ-PR-ST-Z]{3})\b/gi;
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
-/** Models must exist on generativelanguage.googleapis.com for your project (no retired 1.5 names). */
+/** New GCP projects cannot use bare gemini-2.0-flash; use -latest or flash-lite. */
 const GEMINI_MODEL_FALLBACKS = [
-  "gemini-2.5-flash-latest",
-  "gemini-2.0-flash",
   "gemini-2.0-flash-lite",
+  "gemini-2.5-flash-preview-05-20",
 ];
 
 function normalizeUkPostcode(value) {
