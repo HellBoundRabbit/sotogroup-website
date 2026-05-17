@@ -90,8 +90,8 @@
     if (parserEl) {
       const src = draft.parser_source === 'gemini'
         ? `Grouped with AI${draft.parser_model ? ` (${draft.parser_model})` : ''}`
-        : draft.parser_source === 'fallback'
-          ? 'Grouped with backup rules (AI unavailable)'
+        : (draft.parser_source === 'rules' || draft.parser_source === 'fallback')
+          ? 'Grouped from task titles (fast rules) — drag jobs if anything looks wrong'
           : '';
       parserEl.textContent = src;
     }
