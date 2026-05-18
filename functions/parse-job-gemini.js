@@ -38,6 +38,8 @@ function emptyParsedData() {
       return_postcode: 0,
     },
     overall_confidence: 0,
+    needs_human_review: true,
+    review_reasons: [],
   };
 }
 
@@ -94,14 +96,51 @@ function normalizeGeminiParsed(raw) {
     return_postcode: clampScore(scores.return_postcode),
   };
 
-  let overall = raw.overall_confidence;
-  if (overall == null || !Number.isFinite(Number(overall))) {
-    const vals = Object.values(out.confidence_scores);
-    overall = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+  if (!out.return_reg) out.confidence_scores.return_reg = 100;
+  if (!out.return_postcode) out.confidence_scores.return_postcode = 100;
+
+  if (raw.needs_human_review === true) {
+    out.needs_human_review = true;
+  } else if (raw.needs_human_review === false) {
+    out.needs_human_review = false;
+  } else {
+    out.needs_human_review = null;
   }
-  out.overall_confidence = Math.round(Number(overall) * 10) / 10;
+  out.review_reasons = Array.isArray(raw.review_reasons)
+    ? raw.review_reasons.map((r) => String(r).trim()).filter(Boolean)
+    : [];
+
+  const computedOverall = computePrimaryOverallConfidence(out);
+  if (out.needs_human_review === false) {
+    out.overall_confidence = computedOverall;
+  } else if (out.needs_human_review === true) {
+    const geminiOverall = Number(raw.overall_confidence);
+    out.overall_confidence = Number.isFinite(geminiOverall)
+      ? Math.min(computedOverall, Math.round(geminiOverall * 10) / 10)
+      : computedOverall;
+  } else {
+    out.overall_confidence = computedOverall;
+  }
 
   return out;
+}
+
+/** Primary-job confidence only — excludes N/A return fields and absent price when not in text. */
+function computePrimaryOverallConfidence(parsed) {
+  const s = parsed.confidence_scores || {};
+  const parts = [];
+  if (parsed.reg_number) parts.push(s.reg || 0);
+  if (parsed.collection_address) parts.push(s.collection || 0);
+  if (parsed.postcode_delivery) parts.push(s.delivery || 0);
+  if (parsed.price > 0) {
+    parts.push(s.price || 0);
+  } else if ((s.price || 0) >= 90) {
+    parts.push(s.price);
+  }
+  if (parsed.return_reg) parts.push(s.return_reg || 0);
+  if (parsed.return_postcode) parts.push(s.return_postcode || 0);
+  if (!parts.length) return 0;
+  return Math.min(...parts);
 }
 
 function looksLikeUkPostcodeToken(token) {
@@ -190,11 +229,19 @@ function finalizeParsedData(parsed, rawText, { usedFallback = false } = {}) {
         : Math.max(out.confidence_scores.reg, 85);
     }
   }
-  if (!out.return_reg) out.confidence_scores.return_reg = 0;
-  if (!out.return_postcode) out.confidence_scores.return_postcode = 0;
-  const vals = Object.values(out.confidence_scores);
-  if (vals.length) {
-    out.overall_confidence = Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
+  if (!out.return_reg) out.confidence_scores.return_reg = 100;
+  if (!out.return_postcode) out.confidence_scores.return_postcode = 100;
+  if (out.needs_human_review == null) {
+    const primary = computePrimaryOverallConfidence(out);
+    out.needs_human_review = primary < 80
+      || !out.reg_number
+      || !out.collection_address
+      || !out.postcode_delivery;
+  }
+  if (!out.overall_confidence || !Number.isFinite(out.overall_confidence)) {
+    out.overall_confidence = computePrimaryOverallConfidence(out);
+  } else {
+    out.overall_confidence = Math.round(Number(out.overall_confidence) * 10) / 10;
   }
   return out;
 }
@@ -296,8 +343,11 @@ function lightRegexFallback(rawText) {
     out.reg_number = reg;
     out.confidence_scores.reg = 52;
   }
-  const vals = Object.values(out.confidence_scores);
-  out.overall_confidence = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 0;
+  if (!out.return_reg) out.confidence_scores.return_reg = 100;
+  if (!out.return_postcode) out.confidence_scores.return_postcode = 100;
+  out.needs_human_review = true;
+  out.review_reasons = ["Parsed with regex fallback — please confirm"];
+  out.overall_confidence = computePrimaryOverallConfidence(out);
   return finalizeParsedData(out, rawText, { usedFallback: true });
 }
 

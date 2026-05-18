@@ -25,7 +25,9 @@ Return ONLY one JSON object with these keys (no markdown):
     "return_reg": 0,
     "return_postcode": 0
   },
-  "overall_confidence": 0
+  "overall_confidence": 0,
+  "needs_human_review": false,
+  "review_reasons": []
 }
 
 Rules for API output:
@@ -33,9 +35,16 @@ Rules for API output:
 - postcode_delivery = Delivery Postcode
 - price = number only; use 0 if unknown (do not guess)
 - Use empty string "" for any field you are not confident about (do not use "Not found" in JSON)
-- confidence_scores: 0-100 per field; use low scores when you left the field blank
-- overall_confidence: your holistic confidence for the primary job (REG, collection, delivery, price)
 - return_reg / return_postcode: extract when RC/return vehicle is present; else ""
+
+CONFIDENCE & REVIEW (you are the judge):
+- Score only fields you actually extracted. If return_reg/return_postcode are "" (no RC), set their confidence_scores to 100 (not applicable — not "uncertain").
+- If price is genuinely absent from the text, price may be 0 with confidence_scores.price at 100 (known absent) or low only if you are unsure whether a price exists.
+- Use 95-100 on fields that are clearly correct from explicit labels/addresses. Do not deflate perfect parses to 85-92 out of caution.
+- overall_confidence: your confidence in the PRIMARY job only (reg, collection, delivery, and price if present) — minimum of those applicable primary scores, or 100 when all are certain.
+- needs_human_review: true ONLY when the job is ambiguous, conflicting, or you would want a human to double-check (e.g. multiple plausible REGs, unclear direction, missing critical data you could not infer). false when extraction is straightforward and you stand behind the result.
+- review_reasons: short strings explaining why needs_human_review is true (empty array when false).
+- Do NOT set needs_human_review true just because return vehicle fields are empty.
 `;
 
 const JOB_PARSER_SYSTEM_INSTRUCTION = `You are an intelligent logistics data extraction AI.
@@ -201,8 +210,10 @@ OUTPUT:
   "price": 114,
   "return_reg": "MF22XNL",
   "return_postcode": "NN12 8QE",
-  "confidence_scores": { "collection": 90, "delivery": 90, "price": 85, "reg": 90, "return_reg": 85, "return_postcode": 85 },
-  "overall_confidence": 88
+  "confidence_scores": { "collection": 98, "delivery": 98, "price": 97, "reg": 98, "return_reg": 98, "return_postcode": 98 },
+  "overall_confidence": 97,
+  "needs_human_review": false,
+  "review_reasons": []
 }
 
 --------------------------------------------------
@@ -219,8 +230,10 @@ OUTPUT:
   "price": 0,
   "return_reg": "BF20ZHH",
   "return_postcode": "OX17 1LL",
-  "confidence_scores": { "collection": 88, "delivery": 88, "price": 0, "reg": 90, "return_reg": 85, "return_postcode": 85 },
-  "overall_confidence": 82
+  "confidence_scores": { "collection": 97, "delivery": 97, "price": 100, "reg": 98, "return_reg": 98, "return_postcode": 98 },
+  "overall_confidence": 97,
+  "needs_human_review": false,
+  "review_reasons": []
 }
 
 --------------------------------------------------
@@ -250,8 +263,10 @@ OUTPUT:
   "price": 94,
   "return_reg": "",
   "return_postcode": "",
-  "confidence_scores": { "collection": 95, "delivery": 95, "price": 90, "reg": 92, "return_reg": 0, "return_postcode": 0 },
-  "overall_confidence": 93
+  "confidence_scores": { "collection": 100, "delivery": 100, "price": 98, "reg": 100, "return_reg": 100, "return_postcode": 100 },
+  "overall_confidence": 98,
+  "needs_human_review": false,
+  "review_reasons": []
 }
 
 --------------------------------------------------
@@ -276,8 +291,10 @@ OUTPUT:
   "price": 122.2,
   "return_reg": "",
   "return_postcode": "",
-  "confidence_scores": { "collection": 95, "delivery": 95, "price": 92, "reg": 90, "return_reg": 0, "return_postcode": 0 },
-  "overall_confidence": 92
+  "confidence_scores": { "collection": 100, "delivery": 100, "price": 98, "reg": 100, "return_reg": 100, "return_postcode": 100 },
+  "overall_confidence": 98,
+  "needs_human_review": false,
+  "review_reasons": []
 }
 
 --------------------------------------------------
@@ -330,8 +347,30 @@ OUTPUT:
   "price": 142.28,
   "return_reg": "",
   "return_postcode": "",
-  "confidence_scores": { "collection": 95, "delivery": 95, "price": 92, "reg": 90, "return_reg": 0, "return_postcode": 0 },
-  "overall_confidence": 93
+  "confidence_scores": { "collection": 100, "delivery": 100, "price": 99, "reg": 100, "return_reg": 100, "return_postcode": 100 },
+  "overall_confidence": 99,
+  "needs_human_review": false,
+  "review_reasons": []
+}
+
+--------------------------------------------------
+
+EXAMPLE 7 (ambiguous — flag for human)
+INPUT:
+Dave (1) Vehicle move B33 0TJ area — reg might be GX22KKA or GX22KK0, price unclear, delivery postcode missing
+
+OUTPUT:
+{
+  "reg_number": "GX22KKA",
+  "collection_address": "B33 0TJ",
+  "postcode_delivery": "",
+  "price": 0,
+  "return_reg": "",
+  "return_postcode": "",
+  "confidence_scores": { "collection": 70, "delivery": 15, "price": 20, "reg": 55, "return_reg": 100, "return_postcode": 100 },
+  "overall_confidence": 15,
+  "needs_human_review": true,
+  "review_reasons": ["Multiple possible registrations", "Delivery postcode not found", "Price unclear"]
 }
 
 --------------------------------------------------
