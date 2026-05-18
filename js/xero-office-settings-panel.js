@@ -142,12 +142,6 @@
       var data = await readOffice(officeId);
       toggle.checked = !!data.xeroExpenseIntegrationEnabled;
       var connected = !!(data.xeroTenantName && String(data.xeroTenantName).trim());
-      var codeInp = document.getElementById('xeroBillAccountCodeInput');
-      if (codeInp) {
-        codeInp.value = data.xeroBillAccountCode != null && data.xeroBillAccountCode !== ''
-          ? String(data.xeroBillAccountCode).trim()
-          : '';
-      }
       if (statusEl) {
         statusEl.textContent = connected
           ? 'Connected: ' + data.xeroTenantName
@@ -215,24 +209,6 @@
     }
   }
 
-  async function saveBillAccountCode() {
-    var officeId = resolveOfficeId();
-    if (!officeId) {
-      notify('warning', 'Xero', 'No office context.');
-      return;
-    }
-    var inp = document.getElementById('xeroBillAccountCodeInput');
-    if (!inp) return;
-    var v = String(inp.value || '').trim();
-    try {
-      await updateOffice(officeId, { xeroBillAccountCode: v || '' });
-      notify('success', 'Xero', v ? 'Bill account code saved. Try syncing again.' : 'Code cleared — name matching will be used.');
-    } catch (e) {
-      console.error(e);
-      notify('danger', 'Xero', 'Could not save account code. Check Firestore rules / permissions.');
-    }
-  }
-
   async function onToggle(checked) {
     var officeId = resolveOfficeId();
     if (!officeId) return;
@@ -276,14 +252,6 @@
       '<div class="w-11 h-6 bg-[#283039] peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[\'\'] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>',
       '</label>',
       '</div>',
-      '<div class="mt-4 pt-3 border-t border-[#283039]">',
-      '<label for="xeroBillAccountCodeInput" class="block text-sm font-medium text-white mb-1">Xero bill account code <span class="text-gray-500 font-normal">(optional)</span></label>',
-      '<p class="text-xs text-gray-400 mb-2">Leave blank to use an account whose name contains "travel" and "national" (Expense, Overheads, or Direct costs). If your nominal is only an <strong class="text-gray-300">Overheads</strong> code (e.g. 493), enter that code here.</p>',
-      '<div class="flex flex-wrap gap-2 items-center">',
-      '<input type="text" id="xeroBillAccountCodeInput" maxlength="30" class="w-36 px-2 py-1.5 rounded border border-gray-600 bg-[#1e252d] text-white text-sm placeholder-gray-500" placeholder="e.g. 493" autocomplete="off">',
-      '<button type="button" id="xeroBillAccountCodeSaveBtn" class="px-3 py-1.5 text-sm rounded-lg bg-[#283039] text-white border border-gray-600 hover:bg-[#3a444e]">Save code</button>',
-      '</div>',
-      '</div>',
       '</div>',
     ].join('');
 
@@ -292,7 +260,6 @@
     var toggle = document.getElementById('xeroExpenseIntegrationToggle');
     var connectBtn = document.getElementById('xeroConnectBtn');
     var disconnectBtn = document.getElementById('xeroDisconnectBtn');
-    var saveCodeBtn = document.getElementById('xeroBillAccountCodeSaveBtn');
     if (toggle) {
       toggle.addEventListener('change', function () {
         onToggle(toggle.checked);
@@ -300,7 +267,6 @@
     }
     if (connectBtn) connectBtn.addEventListener('click', connect);
     if (disconnectBtn) disconnectBtn.addEventListener('click', disconnect);
-    if (saveCodeBtn) saveCodeBtn.addEventListener('click', saveBillAccountCode);
 
     if (!modal._sotoXeroModalObs) {
       modal._sotoXeroModalObs = true;
