@@ -147,29 +147,45 @@
                 transform: rotate(360deg);
             }
         }
-        /* Optimisation header buttons - gradient + glow (matches View button style) */
+        /* Optimisation header buttons — outline + glow (no solid fill) */
+        .btn-optimisation-action {
+            background: transparent;
+            border-width: 1.5px;
+            border-style: solid;
+            transition: color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+        }
         .btn-optimisation-cyan {
-            background: rgb(0, 225, 255);
-            box-shadow: 0 0 0 2px rgba(0, 225, 255, 0.4), 0 0 20px rgba(0, 225, 255, 0.3);
+            color: rgb(34, 211, 238);
+            border-color: rgba(34, 211, 238, 0.55);
+            box-shadow: 0 0 12px rgba(34, 211, 238, 0.28), inset 0 0 16px rgba(34, 211, 238, 0.06);
         }
         .btn-optimisation-cyan:hover {
-            background: rgb(34, 211, 238);
-            box-shadow: 0 0 0 2px rgba(0, 225, 255, 0.6), 0 0 25px rgba(0, 225, 255, 0.4);
+            color: rgb(103, 232, 249);
+            border-color: rgba(103, 232, 249, 0.9);
+            background: rgba(34, 211, 238, 0.08);
+            box-shadow: 0 0 18px rgba(34, 211, 238, 0.45), 0 0 32px rgba(34, 211, 238, 0.18);
         }
         .btn-optimisation-purple {
-            background: rgb(186, 66, 255);
-            box-shadow: 0 0 0 2px rgba(186, 66, 255, 0.4), 0 0 20px rgba(186, 66, 255, 0.3);
+            color: rgb(192, 132, 252);
+            border-color: rgba(192, 132, 252, 0.55);
+            box-shadow: 0 0 12px rgba(168, 85, 247, 0.28), inset 0 0 16px rgba(168, 85, 247, 0.06);
         }
         .btn-optimisation-purple:hover {
-            background: rgb(192, 132, 252);
-            box-shadow: 0 0 0 2px rgba(186, 66, 255, 0.6), 0 0 25px rgba(186, 66, 255, 0.4);
+            color: rgb(216, 180, 254);
+            border-color: rgba(216, 180, 254, 0.9);
+            background: rgba(168, 85, 247, 0.08);
+            box-shadow: 0 0 18px rgba(168, 85, 247, 0.45), 0 0 32px rgba(168, 85, 247, 0.18);
         }
         .btn-optimisation-gradient-red {
-            background: rgb(239, 68, 68);
-            box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.4), 0 0 20px rgba(239, 68, 68, 0.3);
+            color: rgb(248, 113, 113);
+            border-color: rgba(248, 113, 113, 0.55);
+            box-shadow: 0 0 12px rgba(239, 68, 68, 0.28), inset 0 0 16px rgba(239, 68, 68, 0.06);
         }
         .btn-optimisation-gradient-red:hover {
-            box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.6), 0 0 25px rgba(239, 68, 68, 0.4);
+            color: rgb(252, 165, 165);
+            border-color: rgba(252, 165, 165, 0.9);
+            background: rgba(239, 68, 68, 0.08);
+            box-shadow: 0 0 18px rgba(239, 68, 68, 0.45), 0 0 32px rgba(239, 68, 68, 0.18);
         }
     </style>
 </head>
@@ -194,7 +210,6 @@
                 <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/expenses.html">Expenses</a>
                 <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/wait-times.html">Wait Times</a>
                 <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="/pages/messages.html">Messages</a>
-                <a class="text-xs font-medium rounded-md px-3 py-2 hover:bg-[#283039] transition-colors" href="#">Authorization</a>
             </nav>
             <div class="flex items-center gap-4">
                 <button type="button" class="mobile-nav-toggle" data-soto-nav-toggle aria-label="Toggle navigation" aria-expanded="false">
@@ -318,7 +333,6 @@
                     <div class="text-center mb-6">
                         <h2 class="text-2xl font-bold text-white mb-2">Connect to Asana</h2>
                         <p class="text-gray-400 text-sm">Connect your Asana account to import routes automatically</p>
-                        <p class="text-green-400/90 text-xs mt-2 font-medium">READ-ONLY: We only read task data. No editing or deleting of Asana data.</p>
                     </div>
                     <button 
                         id="connectAsanaBtn" 
@@ -589,10 +603,6 @@
                             <div class="spinner1"></div>
                         </div>
                         <p class="text-white text-lg font-semibold" id="loadingText">Loading...</p>
-                        <details class="mt-4 text-left max-w-xl mx-auto" id="optDebugDetails">
-                            <summary class="text-gray-400 text-sm cursor-pointer hover:text-white">Debug log</summary>
-                            <pre id="optDebugLog" class="mt-2 p-3 bg-black/50 rounded text-xs text-gray-300 max-h-48 overflow-y-auto font-mono whitespace-pre-wrap"></pre>
-                        </details>
                     </div>
                 </div>
             </div>
@@ -602,19 +612,19 @@
             <div class="max-w-6xl mx-auto">
                 <div class="grid grid-cols-3 items-center mb-4 gap-4">
                     <div class="flex items-center gap-3 justify-start">
-                        <button onclick="portJobs()" class="btn-optimisation-cyan text-white px-4 py-2.5 rounded-full transition-all text-sm font-semibold flex items-center gap-2 border-0">
-                            <span class="material-symbols-outlined text-base">upload</span>
+                        <button onclick="portJobs()" class="btn-optimisation-action btn-optimisation-cyan px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5">
+                            <span class="material-symbols-outlined text-sm">upload</span>
                             Port Jobs
                         </button>
-                        <button onclick="showOptimiseSettings()" class="btn-optimisation-purple text-white px-4 py-2.5 rounded-full transition-all text-sm font-semibold flex items-center gap-2 border-0">
-                            <span class="material-symbols-outlined text-base">tune</span>
+                        <button onclick="showOptimiseSettings()" class="btn-optimisation-action btn-optimisation-purple px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5">
+                            <span class="material-symbols-outlined text-sm">tune</span>
                             Optimise
                         </button>
                     </div>
                     <h1 class="text-2xl font-bold tracking-tight text-white text-center">Optimisation</h1>
                     <div class="flex items-center justify-end">
-                        <button onclick="deleteAllRoutes()" class="btn-optimisation-gradient-red text-white px-4 py-2.5 rounded-full transition-all text-sm font-semibold flex items-center gap-2 border-0">
-                            <span class="material-symbols-outlined text-base">delete</span>
+                        <button onclick="deleteAllRoutes()" class="btn-optimisation-action btn-optimisation-gradient-red px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5">
+                            <span class="material-symbols-outlined text-sm">delete</span>
                             Delete All Routes
                         </button>
                     </div>
@@ -906,23 +916,14 @@
         const routeHoldStateByNumber = {};
         const ROUTE_ASSIGN_HOLD_MS = 3000;
 
-        // === OPTIMISATION PORT JOBS DEBUG LOGGING ===
-        // All Asana API calls are READ-ONLY (GET only). No PUT/POST/DELETE/PATCH to Asana anywhere.
+        // Port jobs flow — console-only trace (Asana API is read-only GET)
         const OPT_DEBUG_PREFIX = '[OPT-PORT]';
         function optDebug(msg, data) {
             const ts = new Date().toISOString().slice(11, 23);
             const line = data !== undefined ? `${ts} ${msg} ${JSON.stringify(data)}` : `${ts} ${msg}`;
             console.log(OPT_DEBUG_PREFIX, line);
-            const el = document.getElementById('optDebugLog');
-            if (el) {
-                el.textContent = (el.textContent || '') + line + '\n';
-                el.scrollTop = el.scrollHeight;
-            }
         }
-        function optDebugClear() {
-            const el = document.getElementById('optDebugLog');
-            if (el) el.textContent = '';
-        }
+        function optDebugClear() {}
 
         // Port Jobs modal functions
         function portJobs() {
@@ -3621,6 +3622,27 @@
             }
         }
 
+        /** Remove all route cards from main + incomplete areas and hide post-optimise sections. */
+        function clearOptimisationRouteDom() {
+            const routesContainer = document.getElementById('routes-container');
+            if (routesContainer) {
+                routesContainer.querySelectorAll('.dynamic-route').forEach((el) => el.remove());
+            }
+            document.querySelectorAll('.dynamic-route').forEach((el) => el.remove());
+            const incompleteContainer = document.getElementById('incomplete-routes-container');
+            if (incompleteContainer) incompleteContainer.innerHTML = '';
+            const incompleteSection = document.getElementById('incomplete-routes-section');
+            if (incompleteSection) incompleteSection.classList.add('hidden');
+            ['authorization-routes-container', 'jobless-drivers-container', 'driverless-routes-container'].forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = '';
+            });
+            ['authorization-routes-section', 'jobless-drivers-section', 'driverless-routes-section'].forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('hidden');
+            });
+        }
+
         // Display routes from Firebase
         async function displayRoutesFromFirebase() {
             try {
@@ -3631,11 +3653,14 @@
                 const noRoutesMessage = document.getElementById('no-routes-message');
                 
                 if (savedRoutes.length === 0) {
-                    noRoutesMessage.style.display = 'block';
-                    noRoutesMessage.innerHTML = `
-                        <p class="text-lg mb-2">No saved routes available</p>
-                        <p class="text-sm">Go to the Routes page to create and save routes first</p>
-                    `;
+                    clearOptimisationRouteDom();
+                    if (noRoutesMessage) {
+                        noRoutesMessage.style.display = 'block';
+                        noRoutesMessage.innerHTML = `
+                            <p class="text-lg mb-2">No saved routes available</p>
+                            <p class="text-sm">Go to the Routes page to create and save routes first</p>
+                        `;
+                    }
                     hideDemoRoutes();
                     return;
                 }
@@ -4263,7 +4288,10 @@
             overlay.innerHTML = `
                 <div class="bg-[#1a1f24] rounded-lg border border-[#283039] w-full max-w-lg max-h-[90vh] flex flex-col shadow-xl" role="dialog" onclick="event.stopPropagation()">
                     <div class="flex justify-between items-center px-4 py-3 border-b border-gray-700 shrink-0">
-                        <h3 class="text-lg font-bold text-white">Office test driver list</h3>
+                        <div>
+                            <h3 class="text-lg font-bold text-white">Office test driver list</h3>
+                            <p id="optestSelectedCount" class="text-sm text-amber-400/90 mt-0.5 font-medium">0 selected</p>
+                        </div>
                         <button type="button" class="text-gray-400 hover:text-white" onclick="closeOfficeTestDriversOverlay()" aria-label="Close">
                             <span class="material-symbols-outlined">close</span>
                         </button>
@@ -4325,6 +4353,7 @@
             if (!container) return;
             if (opTestModalRows.length === 0) {
                 container.innerHTML = '<p class="text-gray-500 text-sm text-center py-6">No drivers yet. Use + Add to create entries.</p>';
+                opTestUpdateSelectedCount();
                 return;
             }
             container.innerHTML = opTestModalRows
@@ -4332,7 +4361,7 @@
                     const pc = row.postcode ? escapeHtmlOpTest(row.postcode) : '<span class="text-gray-500">No postcode</span>';
                     return `
                     <div class="flex items-center gap-2 bg-[#283039] rounded-md px-2 py-2 border border-gray-600/50">
-                        <input type="checkbox" class="optest-row-check h-4 w-4 rounded border-gray-500" data-doc-id="${escapeHtmlOpTest(row.id)}" checked aria-label="Select ${escapeHtmlOpTest(row.name)}" />
+                        <input type="checkbox" class="optest-row-check h-4 w-4 rounded border-gray-500" data-doc-id="${escapeHtmlOpTest(row.id)}" checked aria-label="Select ${escapeHtmlOpTest(row.name)}" onchange="opTestUpdateSelectedCount()" />
                         <div class="flex-1 min-w-0">
                             <div class="text-white text-sm font-medium truncate">${escapeHtmlOpTest(row.name || 'Unnamed')}</div>
                             <div class="text-xs text-gray-400">${pc}</div>
@@ -4348,12 +4377,28 @@
             container.querySelectorAll('[data-optest-del]').forEach((btn) => {
                 btn.addEventListener('click', () => opTestDeleteDriver(btn.getAttribute('data-optest-del')));
             });
+            opTestUpdateSelectedCount();
+        }
+
+        function opTestUpdateSelectedCount() {
+            const el = document.getElementById('optestSelectedCount');
+            if (!el) return;
+            const total = document.querySelectorAll('#optestRowsContainer .optest-row-check').length;
+            const selected = document.querySelectorAll('#optestRowsContainer .optest-row-check:checked').length;
+            if (total === 0) {
+                el.textContent = '0 selected';
+            } else {
+                el.textContent = selected === total
+                    ? `${selected} selected`
+                    : `${selected} of ${total} selected`;
+            }
         }
 
         function opTestSelectAllRows(checked) {
             document.querySelectorAll('#optestRowsContainer .optest-row-check').forEach((cb) => {
                 cb.checked = checked;
             });
+            opTestUpdateSelectedCount();
         }
 
         function opTestStartAddDriver() {
@@ -6870,10 +6915,10 @@
                 // Hide all driverless routes from main container (they're shown in driverless section)
                 const assignedRouteIndices = new Set(optimalAssignment.map(a => a.routeIndex));
                 savedRoutes.forEach((routeData, index) => {
-                    if (!assignedRouteIndices.has(index)) {
+                    if (!assignedRouteIndices.has(index) && !isRouteIncomplete(savedRoutes[index])) {
                         const routeElement = document.getElementById(`firebase-route-${index + 1}`);
                         if (routeElement) {
-                            routeElement.style.display = 'none'; // Hide driverless routes
+                            routeElement.style.display = 'none'; // Hide driverless routes (not incomplete)
                         }
                     }
                 });
@@ -7879,11 +7924,10 @@
 
                 // Check if Firebase is available
                 if (!window.firestore || !window.firebaseCollection) {
-                    // If Firebase not available, just clear local state
                     savedRoutes = [];
                     localStorage.removeItem('savedRoutes');
+                    clearOptimisationRouteDom();
                     alert('Firebase not available. Cleared local routes only.');
-                    // Refresh UI
                     await displayRoutesFromFirebase();
                     return;
                 }
@@ -7910,7 +7954,18 @@
                 const jobsSnapshot = await window.firebaseGetDocs(officeJobsQuery);
                 
                 if (routesSnapshot.empty && jobsSnapshot.empty) {
-                    alert('No routes or jobs found to delete.');
+                    savedRoutes = [];
+                    localStorage.removeItem('savedRoutes');
+                    clearOptimisationRouteDom();
+                    const noRoutesMessage = document.getElementById('no-routes-message');
+                    if (noRoutesMessage) {
+                        noRoutesMessage.style.display = 'block';
+                        noRoutesMessage.innerHTML = `
+                            <p class="text-lg mb-2">No saved routes available</p>
+                            <p class="text-sm">Go to the Routes page to create and save routes first</p>
+                        `;
+                    }
+                    alert('No routes or jobs found in Firebase. Cleared any routes still shown on screen.');
                     return;
                 }
 
@@ -7937,16 +7992,8 @@
                 savedRoutes = [];
                 localStorage.removeItem('savedRoutes');
                 
-                // Clear the routes container immediately
-                const routesContainer = document.getElementById('routes-container');
+                clearOptimisationRouteDom();
                 const noRoutesMessage = document.getElementById('no-routes-message');
-                if (routesContainer) {
-                    // Remove all dynamic route elements
-                    const dynamicRoutes = routesContainer.querySelectorAll('.dynamic-route');
-                    dynamicRoutes.forEach(route => route.remove());
-                }
-                
-                // Show no routes message immediately
                 if (noRoutesMessage) {
                     noRoutesMessage.style.display = 'block';
                     noRoutesMessage.innerHTML = `
@@ -7954,16 +8001,6 @@
                         <p class="text-sm">Go to the Routes page to create and save routes first</p>
                     `;
                 }
-                
-                // Also hide authorization, driverless, and jobless sections
-                const authSection = document.getElementById('authorization-routes-section');
-                const driverlessSection = document.getElementById('driverless-routes-section');
-                const joblessSection = document.getElementById('jobless-drivers-section');
-                if (authSection) authSection.classList.add('hidden');
-                if (driverlessSection) driverlessSection.classList.add('hidden');
-                if (joblessSection) joblessSection.classList.add('hidden');
-                
-                // Refresh UI from Firebase (should confirm no routes)
                 await displayRoutesFromFirebase();
                 
                 const totalDeleted = routesSnapshot.size + jobsSnapshot.size;
@@ -8131,14 +8168,7 @@
                 routesContainer.innerHTML = message;
             }
             
-            // Hide all sections
-            const authSection = document.getElementById('authorization-routes-section');
-            const joblessSection = document.getElementById('jobless-drivers-section');
-            const driverlessSection = document.getElementById('driverless-routes-section');
-            
-            if (authSection) authSection.classList.add('hidden');
-            if (joblessSection) joblessSection.classList.add('hidden');
-            if (driverlessSection) driverlessSection.classList.add('hidden');
+            clearOptimisationRouteDom();
         }
         
         // Display jobless drivers section
@@ -8876,6 +8906,19 @@
                 overlay.remove();
             }
         }
+
+        // Restore visible routes when returning via browser back (bfcache keeps display:none from optimise)
+        window.addEventListener('pageshow', async function(event) {
+            if (!event.persisted) return;
+            console.log('Optimisation page restored from cache — refreshing route display');
+            try {
+                if (window.firestore && typeof displayRoutesFromFirebase === 'function') {
+                    await displayRoutesFromFirebase();
+                }
+            } catch (err) {
+                console.error('Error refreshing routes after pageshow:', err);
+            }
+        });
 
         // Initialize the page when it loads
         document.addEventListener('DOMContentLoaded', async function() {
