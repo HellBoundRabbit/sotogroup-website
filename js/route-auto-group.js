@@ -4,6 +4,8 @@
 (function (window) {
   'use strict';
 
+  let pickState = { gid: null, fromRouteId: null, scrapIndex: null };
+
   function escapeHtml(str) {
     return String(str == null ? '' : str)
       .replace(/&/g, '&amp;')
@@ -28,6 +30,14 @@
     });
   }
 
+  function clearPick() {
+    pickState = { gid: null, fromRouteId: null, scrapIndex: null };
+  }
+
+  function isJobSelected(gid) {
+    return pickState.gid != null && pickState.gid === gid;
+  }
+
   function normalizeDraftRoute(route, index) {
     const jobs = Array.isArray(route.jobs) ? route.jobs.map((j) => ({
       asana_gid: String(j.asana_gid || j.gid || ''),
@@ -49,6 +59,7 @@
   }
 
   function ingestGroupingResult(data) {
+    clearPick();
     const routes = (data.routes || []).map(normalizeDraftRoute);
     routes.sort((a, b) => {
       if (a.incomplete_route !== b.incomplete_route) return a.incomplete_route ? -1 : 1;
@@ -74,11 +85,25 @@
   }
 
   function renderJobChip(job, routeId, displayOrder) {
-    return `<div draggable="true" data-drag-gid="${escapeHtml(job.asana_gid)}" data-from-route="${routeId}"
-      class="auto-group-job bg-[#283039] rounded p-2 text-xs text-white cursor-grab border border-transparent hover:border-blue-500"
-      ondragstart="window.sotoRouteAutoGroup.onDragStart(event)" ondragend="window.sotoRouteAutoGroup.onDragEnd(event)">
-      <span class="text-gray-400">${displayOrder != null ? displayOrder : (job.sequence_number || '·')}.</span> ${escapeHtml(job.title)}
+    const selected = isJobSelected(job.asana_gid);
+    const order = displayOrder != null ? displayOrder : (job.sequence_number || '·');
+    const base = 'auto-group-job rounded p-2 text-xs border cursor-pointer transition-colors';
+    const cls = selected
+      ? `${base} bg-[#4b5563] text-gray-300 border-blue-400 ring-2 ring-blue-500`
+      : `${base} bg-[#283039] text-white border-transparent hover:border-blue-500`;
+    return `<div data-pick-gid="${escapeHtml(job.asana_gid)}" data-from-route="${routeId}"
+      class="${cls}"
+      onclick="window.sotoRouteAutoGroup.onJobClick(event)">
+      <span class="${selected ? 'text-gray-400' : 'text-gray-400'}">${order}.</span> ${escapeHtml(job.title)}
     </div>`;
+  }
+
+  function buildRouteTimeline(route) {
+    const rows = [
+      ...route.jobs.map((j) => ({ ...j, slot: 'job' })),
+      ...(route.pending_slots || []).map((j) => ({ ...j, slot: 'pending' })),
+    ];
+    return sortJobsBySequence(rows);
   }
 
   function renderRouteCard(route) {
@@ -86,24 +111,44 @@
     const badge = route.incomplete_route
       ? '<span class="text-amber-400 text-xs font-bold uppercase">Incomplete route</span>'
       : '';
-    const jobsHtml = route.jobs.length
-      ? route.jobs.map((j, idx) => renderJobChip(j, route.routeId, idx + 1)).join('')
-      : '<p class="text-gray-500 text-xs">No jobs — drag tasks here</p>';
-    const pendingHtml = (route.pending_slots || []).length
-      ? route.pending_slots.map((j) => `<div class="rounded p-2 text-xs text-amber-300/90 bg-amber-500/10 border border-amber-500/30">
-          <span class="text-amber-400">${j.sequence_number}.</span> ${escapeHtml(j.title)}
-          <span class="block text-amber-500/80 text-[10px] mt-0.5">Awaiting final job — not Col B</span>
-        </div>`).join('')
+    const pickActive = pickState.gid != null;
+    const dropHint = pickActive
+      ? 'ring-1 ring-blue-500/40 hover:ring-2 hover:ring-blue-500 cursor-pointer'
       : '';
-    return `<div class="auto-group-route bg-[#1a1f24] border ${border} rounded-lg p-3"
+    const timeline = buildRouteTimeline(route);
+    const slotsHtml = timeline.length
+      ? timeline.map((row) => {
+        const label = row.sequence_number || '·';
+        if (row.slot === 'pending') {
+          return `<div class="rounded p-2 text-xs text-amber-300/90 bg-amber-500/10 border border-amber-500/30">
+            <span class="text-amber-400">${label}.</span> ${escapeHtml(row.title)}
+            <span class="block text-amber-500/80 text-[10px] mt-0.5">Free / TBC — awaiting final job</span>
+          </div>`;
+        }
+        return renderJobChip(row, route.routeId, label);
+      }).join('')
+      : `<p class="text-gray-500 text-xs">${pickActive ? 'Click here to place selected job' : 'No jobs'}</p>`;
+    return `<div class="auto-group-route bg-[#1a1f24] border ${border} rounded-lg p-3 ${dropHint}"
       data-route-id="${route.routeId}"
-      ondragover="window.sotoRouteAutoGroup.onDragOver(event)"
-      ondrop="window.sotoRouteAutoGroup.onDrop(event)">
-      <div class="flex justify-between items-center mb-2 gap-2">
+      onclick="window.sotoRouteAutoGroup.onRouteClick(event)">
+      <div class="flex justify-between items-center mb-2 gap-2 pointer-events-none">
         <h4 class="text-white font-semibold text-sm">${escapeHtml(route.driver_key)}</h4>
         ${badge}
       </div>
-      <div class="space-y-1 min-h-[2rem]">${jobsHtml}${pendingHtml}</div>
+      <div class="space-y-1 min-h-[2rem]">${slotsHtml}</div>
+    </div>`;
+  }
+
+  function renderScrapItem(task, index) {
+    const gid = String(task.asana_gid || task.gid || `scrap-${index}`);
+    const selected = isJobSelected(gid);
+    const base = 'text-xs py-1 border-b border-[#283039] cursor-pointer rounded px-1 -mx-1 transition-colors';
+    const cls = selected
+      ? `${base} bg-[#4b5563] text-gray-300 ring-2 ring-blue-500`
+      : `${base} text-gray-400 hover:bg-[#283039]`;
+    return `<div class="${cls}" data-pick-gid="${escapeHtml(gid)}" data-scrap-index="${index}"
+      onclick="window.sotoRouteAutoGroup.onJobClick(event)">
+      <span class="text-gray-500">${escapeHtml(task.reason || 'skipped')}</span> — ${escapeHtml(task.title)}
     </div>`;
   }
 
@@ -115,12 +160,18 @@
     const scrapEl = document.getElementById('autoGroupScrapTasks');
     const summaryEl = document.getElementById('autoGroupSummaryLine');
     const parserEl = document.getElementById('autoGroupParserNote');
+    const hintEl = document.getElementById('autoGroupPickHint');
     if (summaryEl) summaryEl.textContent = buildSummaryLine(draft);
+    if (hintEl) {
+      hintEl.textContent = pickState.gid
+        ? 'Click a route to place the selected job'
+        : 'Click a job to select it (grey), then click a route';
+    }
     if (parserEl) {
       const src = draft.parser_source === 'gemini'
         ? `Grouped with AI${draft.parser_model ? ` (${draft.parser_model})` : ''}`
         : (draft.parser_source === 'rules' || draft.parser_source === 'fallback')
-          ? 'Grouped from task titles (fast rules) — drag jobs if anything looks wrong'
+          ? 'Grouped from task titles — adjust with click-to-move if needed'
           : '';
       parserEl.textContent = src;
     }
@@ -136,63 +187,87 @@
     }
     if (scrapEl) {
       scrapEl.innerHTML = draft.irrelevant.length
-        ? draft.irrelevant.map((t) => `<div class="text-xs text-gray-400 py-1 border-b border-[#283039]">
-          <span class="text-gray-500">${escapeHtml(t.reason || 'skipped')}</span> — ${escapeHtml(t.title)}
-        </div>`).join('')
+        ? draft.irrelevant.map((t, i) => renderScrapItem(t, i)).join('')
         : '<p class="text-gray-500 text-sm">No skipped tasks</p>';
     }
   }
 
-  let dragState = { gid: null, fromRouteId: null };
-
   function findRoute(draft, routeId) {
     return draft.routes.find((r) => String(r.routeId) === String(routeId));
-  }
-
-  function findJobInDraft(draft, gid) {
-    for (const r of draft.routes) {
-      const j = r.jobs.find((x) => x.asana_gid === gid);
-      if (j) return { route: r, job: j };
-    }
-    return null;
   }
 
   function removeJobFromRoute(route, gid) {
     route.jobs = route.jobs.filter((j) => j.asana_gid !== gid);
   }
 
-  function onDragStart(e) {
-    const el = e.target.closest('[data-drag-gid]');
+  function onJobClick(e) {
+    e.stopPropagation();
+    const el = e.target.closest('[data-pick-gid]');
     if (!el) return;
-    dragState.gid = el.getAttribute('data-drag-gid');
-    dragState.fromRouteId = el.getAttribute('data-from-route');
-    e.dataTransfer.effectAllowed = 'move';
+    const gid = el.getAttribute('data-pick-gid');
+    const fromRoute = el.getAttribute('data-from-route');
+    const scrapRaw = el.getAttribute('data-scrap-index');
+
+    if (pickState.gid === gid) {
+      clearPick();
+    } else {
+      pickState = {
+        gid,
+        fromRouteId: fromRoute || null,
+        scrapIndex: scrapRaw != null && scrapRaw !== '' ? parseInt(scrapRaw, 10) : null,
+      };
+    }
+    renderConfirmScreen(window.autoGroupDraft);
   }
 
-  function onDragEnd() {
-    dragState = { gid: null, fromRouteId: null };
-  }
-
-  function onDragOver(e) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-  }
-
-  function onDrop(e) {
-    e.preventDefault();
-    const draft = window.autoGroupDraft;
-    if (!draft || !dragState.gid) return;
-    const routeEl = e.target.closest('[data-route-id]');
-    if (!routeEl) return;
-    const toRouteId = routeEl.getAttribute('data-route-id');
-    const fromRoute = findRoute(draft, dragState.fromRouteId);
+  function movePickedJobToRoute(draft, toRouteId) {
     const toRoute = findRoute(draft, toRouteId);
-    if (!fromRoute || !toRoute || fromRoute === toRoute) return;
-    const found = fromRoute.jobs.find((j) => j.asana_gid === dragState.gid);
-    if (!found) return;
-    removeJobFromRoute(fromRoute, dragState.gid);
-    toRoute.jobs.push(found);
+    if (!toRoute || !pickState.gid) return false;
+
+    if (pickState.scrapIndex != null && Number.isFinite(pickState.scrapIndex)) {
+      const scrap = draft.irrelevant[pickState.scrapIndex];
+      if (!scrap) return false;
+      const job = {
+        asana_gid: String(scrap.asana_gid || scrap.gid || pickState.gid),
+        title: String(scrap.title || ''),
+        sequence_number: sequenceFromTitle(scrap.title),
+      };
+      if (toRoute.jobs.some((j) => j.asana_gid === job.asana_gid)) {
+        clearPick();
+        return true;
+      }
+      draft.irrelevant.splice(pickState.scrapIndex, 1);
+      toRoute.jobs.push(job);
+    } else {
+      const fromRoute = findRoute(draft, pickState.fromRouteId);
+      if (!fromRoute) return false;
+      if (String(fromRoute.routeId) === String(toRouteId)) {
+        clearPick();
+        return true;
+      }
+      const found = fromRoute.jobs.find((j) => j.asana_gid === pickState.gid);
+      if (!found) return false;
+      if (toRoute.jobs.some((j) => j.asana_gid === found.asana_gid)) {
+        clearPick();
+        return true;
+      }
+      removeJobFromRoute(fromRoute, pickState.gid);
+      toRoute.jobs.push(found);
+    }
+
     toRoute.jobs = sortJobsBySequence(toRoute.jobs);
+    clearPick();
+    return true;
+  }
+
+  function onRouteClick(e) {
+    if (e.target.closest('[data-pick-gid]')) return;
+    const draft = window.autoGroupDraft;
+    if (!draft || !pickState.gid) return;
+    const routeEl = e.currentTarget;
+    const toRouteId = routeEl.getAttribute('data-route-id');
+    if (!toRouteId) return;
+    movePickedJobToRoute(draft, toRouteId);
     renderConfirmScreen(draft);
   }
 
@@ -221,10 +296,9 @@
     renderConfirmScreen,
     buildSummaryLine,
     buildSavedRoutesForPort,
-    onDragStart,
-    onDragEnd,
-    onDragOver,
-    onDrop,
+    onJobClick,
+    onRouteClick,
+    clearPick,
     escapeHtml,
   };
 })(window);
