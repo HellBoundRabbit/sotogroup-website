@@ -90,11 +90,27 @@ function isIncompleteMarkerTitle(title) {
   return isEndOfDaySlotTitle(title);
 }
 
+function sequenceFromTitle(title) {
+  const m = String(title || "").match(/\((\d+)\)/);
+  return m ? parseInt(m[1], 10) : 999;
+}
+
+function driverKeyFromTitle(title) {
+  const t = String(title || "").trim();
+  const m = t.match(/^(.+?)\s*\(\d+\)/i);
+  if (m) return titleCaseDriverKey(m[1]);
+  return titleCaseDriverKey(t.split(/\s+/)[0] || "Unknown");
+}
+
 function parseTitleMeta(title) {
   const t = String(title || "").trim();
   const seqMatch = t.match(/^(.+?)\s*\((\d+)\)\s*(.*)$/i);
   if (!seqMatch) {
-    return { driver_key: titleCaseDriverKey(t.split(/\s+/)[0] || "Unknown"), sequence_number: 999, rest: t };
+    return {
+      driver_key: driverKeyFromTitle(t),
+      sequence_number: sequenceFromTitle(t),
+      rest: t,
+    };
   }
   return {
     driver_key: titleCaseDriverKey(seqMatch[1]),
@@ -103,11 +119,91 @@ function parseTitleMeta(title) {
   };
 }
 
+function normalizeDriverKey(key) {
+  return String(key || "").trim().replace(/\s+/g, " ").replace(/\.+$/g, "");
+}
+
+function driverKeysShouldMerge(a, b) {
+  const na = normalizeDriverKey(a).toLowerCase();
+  const nb = normalizeDriverKey(b).toLowerCase();
+  if (na === nb) return true;
+  const shorter = na.length <= nb.length ? na : nb;
+  const longer = na.length <= nb.length ? nb : na;
+  if (longer.startsWith(shorter) && (longer.length === shorter.length
+    || longer[shorter.length] === " " || longer[shorter.length] === ".")) {
+    return true;
+  }
+  const firstA = na.split(/\s+/)[0];
+  const firstB = nb.split(/\s+/)[0];
+  if (firstA.length >= 3 && firstA === firstB && (na.includes(nb) || nb.includes(na))) {
+    return true;
+  }
+  return false;
+}
+
+function mergeDriverBuckets(byDriver) {
+  const keys = [...byDriver.keys()];
+  const canonical = new Map(keys.map((k) => [k, k]));
+  for (let i = 0; i < keys.length; i++) {
+    for (let j = i + 1; j < keys.length; j++) {
+      if (!driverKeysShouldMerge(keys[i], keys[j])) continue;
+      const ci = canonical.get(keys[i]);
+      const cj = canonical.get(keys[j]);
+      const pick = normalizeDriverKey(ci).length >= normalizeDriverKey(cj).length ? ci : cj;
+      canonical.set(keys[i], pick);
+      canonical.set(keys[j], pick);
+    }
+  }
+  const merged = new Map();
+  for (const [key, items] of byDriver.entries()) {
+    const target = canonical.get(key) || key;
+    if (!merged.has(target)) merged.set(target, []);
+    merged.get(target).push(...items);
+  }
+  return merged;
+}
+
+function pickRouteDriverKey(items) {
+  const keys = items.map((i) => driverKeyFromTitle(i.title));
+  keys.sort((a, b) => b.length - a.length);
+  return keys[0] || "Unknown";
+}
+
+function attachOrphanEndSlotsToRoutes(routes, irrelevant) {
+  const kept = [];
+  for (const ir of irrelevant) {
+    const title = String(ir.title || "").trim();
+    if (!isEndOfDaySlotTitle(title)) {
+      kept.push(ir);
+      continue;
+    }
+    const meta = parseTitleMeta(title);
+    const route = routes.find((r) => driverKeysShouldMerge(r.driver_key, meta.driver_key));
+    if (!route) {
+      kept.push(ir);
+      continue;
+    }
+    route.pending_slots = route.pending_slots || [];
+    if (!route.pending_slots.some((p) => p.asana_gid === ir.asana_gid)) {
+      route.pending_slots.push({
+        asana_gid: ir.asana_gid,
+        title,
+        sequence_number: meta.sequence_number,
+      });
+      route.pending_slots.sort((a, b) => a.sequence_number - b.sequence_number);
+    }
+    route.incomplete_route = true;
+  }
+  return kept;
+}
+
 function looksLikeVehicleMove(title) {
   const t = String(title || "");
   if (isIrrelevantTitle(t)) return false;
   if (isIncompleteMarkerTitle(t)) return false;
-  return /\(\d+\)/.test(t) && (/\bReg\b/i.test(t) || /\b[A-Z]{1,2}\d{1,2}\s*\d[A-Z]{2}\b/i.test(t) || /\b[A-HJ-PR-ST-Z]{2}\d{2}[A-HJ-PR-ST-Z]{3}\b/i.test(t));
+  return /\(\d+\)/.test(t) && (/\bReg(istration)?\s*:/i.test(t)
+    || /\b[A-HJ-PR-ST-Z]{2}\d{2}[A-HJ-PR-ST-Z]{3}\b/i.test(t)
+    || (/\b[A-Z]{1,2}\d{1,2}\s*\d[A-Z]{2}\b/i.test(t) && /\s+-\s+/.test(t)));
 }
 
 function regexGroupTasks(tasks) {
@@ -127,31 +223,47 @@ function regexGroupTasks(tasks) {
       continue;
     }
     const meta = parseTitleMeta(title);
-    if (!byDriver.has(meta.driver_key)) byDriver.set(meta.driver_key, []);
-    byDriver.get(meta.driver_key).push({ asana_gid: gid, title, sequence_number: meta.sequence_number, meta });
+    const seq = sequenceFromTitle(title);
+    const driver_key = driverKeyFromTitle(title);
+    if (!byDriver.has(driver_key)) byDriver.set(driver_key, []);
+    byDriver.get(driver_key).push({
+      asana_gid: gid,
+      title,
+      sequence_number: seq,
+      meta,
+    });
   }
 
+  const mergedByDriver = mergeDriverBuckets(byDriver);
   const routes = [];
   const warnings = [];
 
-  for (const [driver_key, items] of byDriver.entries()) {
+  for (const [, items] of mergedByDriver.entries()) {
+    const driver_key = pickRouteDriverKey(items);
+    items.forEach((i) => {
+      i.sequence_number = sequenceFromTitle(i.title);
+    });
     items.sort((a, b) => a.sequence_number - b.sequence_number);
     const vehicleJobs = items.filter((i) => looksLikeVehicleMove(i.title));
     const pendingSlots = items.filter((i) => isEndOfDaySlotTitle(i.title));
     const highestSeq = items.reduce((m, i) => Math.max(m, i.sequence_number), 0);
-    const incomplete_route = vehicleJobs.length > 0
-      && items.some((i) => i.sequence_number === highestSeq && isEndOfDaySlotTitle(i.title));
+    const incomplete_route = items.some(
+      (i) => i.sequence_number === highestSeq && isEndOfDaySlotTitle(i.title),
+    ) || (vehicleJobs.length > 0 && pendingSlots.length > 0);
 
-    const routeJobs = vehicleJobs
-      .slice()
-      .sort((a, b) => a.sequence_number - b.sequence_number)
-      .map((j) => ({
-        asana_gid: j.asana_gid,
-        title: j.title,
-        sequence_number: j.sequence_number,
-      }));
+    const routeJobs = vehicleJobs.map((j) => ({
+      asana_gid: j.asana_gid,
+      title: j.title,
+      sequence_number: j.sequence_number,
+    }));
 
-    if (routeJobs.length === 0) {
+    const pending_slots = pendingSlots.map((j) => ({
+      asana_gid: j.asana_gid,
+      title: j.title,
+      sequence_number: j.sequence_number,
+    }));
+
+    if (routeJobs.length === 0 && pending_slots.length === 0) {
       for (const i of items) {
         irrelevant.push({ asana_gid: i.asana_gid, title: i.title, reason: "not_a_job" });
       }
@@ -162,18 +274,18 @@ function regexGroupTasks(tasks) {
       driver_key,
       incomplete_route,
       jobs: routeJobs,
-      pending_slots: pendingSlots
-        .sort((a, b) => a.sequence_number - b.sequence_number)
-        .map((j) => ({
-          asana_gid: j.asana_gid,
-          title: j.title,
-          sequence_number: j.sequence_number,
-        })),
+      pending_slots,
     });
   }
 
-  const summary = buildSummary(tasks.length, routes, irrelevant);
-  return { routes, irrelevant, warnings, summary, parser_source: "rules" };
+  const filteredIrrelevant = attachOrphanEndSlotsToRoutes(routes, irrelevant);
+  routes.forEach((r) => {
+    r.jobs.sort((a, b) => a.sequence_number - b.sequence_number);
+    r.pending_slots = (r.pending_slots || []).sort((a, b) => a.sequence_number - b.sequence_number);
+  });
+
+  const summary = buildSummary(tasks.length, routes, filteredIrrelevant);
+  return { routes, irrelevant: filteredIrrelevant, warnings, summary, parser_source: "rules" };
 }
 
 function buildSummary(totalTasks, routes, irrelevant) {
@@ -218,7 +330,7 @@ function normalizeGrouping(raw, inputTasks) {
     jobs.sort((a, b) => a.sequence_number - b.sequence_number);
     const driverTasks = (inputTasks || []).filter((t) => {
       const m = parseTitleMeta(t.title || t.name || "");
-      return m.driver_key === driver_key;
+      return driverKeysShouldMerge(m.driver_key, driver_key);
     });
     const maxSeq = driverTasks.reduce(
       (m, t) => Math.max(m, parseTitleMeta(t.title || t.name || "").sequence_number),
