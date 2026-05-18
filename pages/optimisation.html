@@ -2452,15 +2452,14 @@
             const p = job.parsedData || {};
             const s = p.confidence_scores || {};
             if (job.parserMeta?.parser_source === 'fallback') return true;
-            if ((p.overall_confidence || 0) < REVIEW_CONFIDENCE_THRESHOLD) return true;
+            if (p.needs_human_review === true) return true;
+            if (p.needs_human_review === false) return false;
             if (parsedFieldIsEmpty(p.reg_number) || parsedFieldIsEmpty(p.collection_address) || parsedFieldIsEmpty(p.postcode_delivery)) return true;
-            if (!p.price || Number(p.price) <= 0) {
-                if ((s.price || 0) < 70) return true;
-            }
-            const critical = ['reg', 'collection', 'delivery', 'price'];
-            for (const k of critical) {
+            if ((p.overall_confidence || 0) < REVIEW_CONFIDENCE_THRESHOLD) return true;
+            for (const k of ['reg', 'collection', 'delivery']) {
                 if ((s[k] || 0) < REVIEW_FIELD_THRESHOLD) return true;
             }
+            if (p.price > 0 && (s.price || 0) < REVIEW_FIELD_THRESHOLD) return true;
             if (!parsedFieldIsEmpty(p.return_reg) && (s.return_reg || 0) < REVIEW_FIELD_THRESHOLD) return true;
             if (!parsedFieldIsEmpty(p.return_postcode) && (s.return_postcode || 0) < REVIEW_FIELD_THRESHOLD) return true;
             return false;
@@ -2646,7 +2645,7 @@
             container.innerHTML = `<div class="bg-[#1a1f24] border border-[#283039] rounded-lg p-6">
                 <div class="flex items-center justify-between mb-4 pb-3 border-b border-[#283039]">
                     <h3 class="text-lg font-bold text-white">${getRouteReviewRouteLabel(routeId)} · Job ${jobIndex + 1}${confirmedBanner}</h3>
-                    <span class="text-xs text-gray-400">Overall ${job.parsedData.overall_confidence || '—'}%</span>
+                    <span class="text-xs text-gray-400">Overall ${job.parsedData.overall_confidence || '—'}%${(job.parsedData.review_reasons || []).length ? ' · ' + (job.parsedData.review_reasons || []).map(r => reviewEsc(r)).join('; ') : ''}</span>
                 </div>
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div>
@@ -2722,6 +2721,9 @@
             const item = routeReviewQueue[routeReviewQueueIndex];
             if (item.job.reviewConfirmed) return;
             syncReviewJobFromDom(item);
+            item.job.parsedData.needs_human_review = false;
+            item.job.parsedData.overall_confidence = 100;
+            item.job.parsedData.review_reasons = [];
             item.job.reviewConfirmed = true;
             updateRouteReviewChrome();
             const nextIdx = routeReviewQueue.findIndex((q, i) => i > routeReviewQueueIndex && !q.job.reviewConfirmed);
