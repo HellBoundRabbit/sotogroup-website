@@ -620,16 +620,6 @@
                     </div>
                 </div>
                 
-                <!-- Incomplete routes (morning leg only) -->
-                <div id="incomplete-routes-section" class="mb-6 hidden">
-                    <h2 class="text-lg font-semibold text-amber-400 mb-3 flex items-center gap-2">
-                        <span class="material-symbols-outlined">pending</span>
-                        Incomplete routes
-                    </h2>
-                    <p class="text-sm text-gray-400 mb-4">Awaiting a final job in Asana. Morning collection leg only after main optimisation.</p>
-                    <div id="incomplete-routes-container" class="grid grid-cols-1 lg:grid-cols-2 gap-4"></div>
-                </div>
-
                 <!-- Routes Requiring Authorization Section -->
                 <div id="authorization-routes-section" class="mb-6 hidden">
                     <h2 class="text-lg font-semibold text-yellow-400 mb-3 flex items-center gap-2">
@@ -832,6 +822,16 @@
                             </div>
                         </div>
             </div>
+
+                <!-- Incomplete routes (morning leg only) -->
+                <div id="incomplete-routes-section" class="mb-6 mt-8 hidden">
+                    <h2 class="text-lg font-semibold text-amber-400 mb-3 flex items-center gap-2">
+                        <span class="material-symbols-outlined">pending</span>
+                        Incomplete routes
+                    </h2>
+                    <p class="text-sm text-gray-400 mb-4">Awaiting a final job in Asana. Assigned to routeless drivers by morning leg score (home → first collection).</p>
+                    <div id="incomplete-routes-container" class="grid grid-cols-1 lg:grid-cols-2 gap-4"></div>
+                </div>
         </main>
         </div>
     </div>
@@ -2414,23 +2414,24 @@
             };
         }
 
-        function formatReturnVehicleLabel(returnReg, returnPostcode) {
-            const pc = returnPostcode || '';
-            const reg = returnReg || '';
-            if (reg && pc) return `R/C ${reg} (${pc})`;
-            if (pc) return `R/C (${pc})`;
-            if (reg) return `R/C ${reg}`;
-            return 'R/C';
+        /** Top-left job line: R/C + reg only (no postcode). */
+        function formatJobLineReturnSuffix(job) {
+            const rcReg = getJobReturnReg(job);
+            const rcPc = getJobReturnPostcode(job);
+            if (!rcReg && !rcPc) return '';
+            const label = rcReg || 'R/C';
+            return ` · <span class="text-red-500 font-bold">R/C ${escapeHtml(label)}</span>`;
+        }
+
+        /** End-of-day / R/C column: postcode only. */
+        function formatReturnPostcodeOnly(returnPostcode) {
+            return escapeHtml(returnPostcode || '-');
         }
 
         function formatRouteRegLineHtml(jobs) {
             return (jobs || []).map((job, i) => {
                 const reg = escapeHtml(job?.parsedData?.reg_number || '-');
-                const rc = getJobReturnPostcode(job);
-                const rcReg = getJobReturnReg(job);
-                const rcHtml = rc
-                    ? ` · <span class="text-red-500 font-bold">${escapeHtml(formatReturnVehicleLabel(rcReg, rc))}</span>`
-                    : '';
+                const rcHtml = (getJobReturnPostcode(job) || getJobReturnReg(job)) ? formatJobLineReturnSuffix(job) : '';
                 return `<span class="text-white">Job ${i + 1}: ${reg}</span>${rcHtml}`;
             }).join('<span class="text-gray-600 mx-1">|</span>');
         }
@@ -3399,10 +3400,13 @@
                         console.warn(`Route ${routeId} has jobCount ${routeData.jobCount} but no matching jobs found`);
                     }
                     
+                    const incompleteRoute = !!(routeData.incompleteRoute || routeData.route?.incompleteRoute);
                     const routeWithJobs = {
+                        incompleteRoute,
                         route: {
                             id: routeDoc.id,
-                            ...(routeData.route || routeData)  // Spread nested route if exists, otherwise spread routeData
+                            ...(routeData.route || routeData),
+                            incompleteRoute,
                         },
                         jobs: jobs
                     };
@@ -3461,6 +3465,7 @@
                     await window.firebaseSetDoc(routeDocRef, {
                         routeId: routeData.route.routeId || originalRouteId,
                         route: routeWithAssignments, // Include driver assignments
+                        incompleteRoute: !!(routeData.incompleteRoute || routeWithAssignments.incompleteRoute),
                         jobs: jobsWithOffice,
                         officeId: officeId,
                         lastUpdated: new Date(),
@@ -3753,16 +3758,17 @@
             // Create job pairs (Collection A -> Delivery A, Collection B -> Delivery B, etc.)
             const endpoints = getRouteTravelEndpoints(jobs);
             let jobPairsHTML = '';
+            let gridColCount = 0;
             jobs.forEach((job, index) => {
                 const jobLetter = String.fromCharCode(65 + index);
                 const collectionPostcode = getJobCollectionPostcode(job) || 'N/A';
                 const deliveryPostcode = getJobDeliveryPostcode(job) || 'N/A';
                 const returnPostcode = getJobReturnPostcode(job);
-                const returnReg = getJobReturnReg(job);
+                gridColCount += returnPostcode ? 3 : 2;
                 const returnHtml = returnPostcode ? `
                     <div class="flex flex-col gap-1.5">
                         <label class="text-gray-400 font-medium text-xs">R/C ${jobLetter}</label>
-                        <p class="text-red-500 font-bold text-sm">${formatReturnVehicleLabel(returnReg, returnPostcode)}</p>
+                        <p class="text-red-500 font-bold text-sm">${formatReturnPostcodeOnly(returnPostcode)}</p>
                     </div>
                 ` : '';
                 jobPairsHTML += `
@@ -3812,12 +3818,12 @@
                         </div>
                         <div id="firebase-route-${routeNumber}-return-display" class="${endpoints.hasReturnVehicle ? 'flex' : 'hidden'} items-center gap-2 mt-0.5">
                             <span class="text-gray-400 text-xs">End of day:</span>
-                            <span class="text-red-500 text-xs font-bold" id="firebase-route-${routeNumber}-return-summary">${endpoints.hasReturnVehicle ? formatReturnVehicleLabel(endpoints.returnReg, endpoints.returnPostcode) : '-'}</span>
+                            <span class="text-red-500 text-xs font-bold" id="firebase-route-${routeNumber}-return-summary">${endpoints.hasReturnVehicle ? formatReturnPostcodeOnly(endpoints.returnPostcode) : '-'}</span>
                         </div>
                     </div>
                 </div>
                     
-                <div class="grid grid-cols-${Math.min(jobs.length * 2 + (endpoints.hasReturnVehicle ? 1 : 0), 8)} gap-2 text-xs">
+                <div class="grid grid-cols-${Math.min(gridColCount || jobs.length * 2, 8)} gap-2 text-xs">
                     ${jobPairsHTML}
                 </div>
                 <div class="mt-3 grid grid-cols-2 gap-2">
@@ -6738,7 +6744,7 @@
                     if (travelEp.hasReturnVehicle) {
                         returnDisplay.classList.remove('hidden');
                         returnDisplay.classList.add('flex');
-                        returnSummary.textContent = formatReturnVehicleLabel(travelEp.returnReg, travelEp.returnPostcode);
+                        returnSummary.textContent = formatReturnPostcodeOnly(travelEp.returnPostcode);
                     } else {
                         returnDisplay.classList.add('hidden');
                         returnDisplay.classList.remove('flex');
@@ -6964,16 +6970,23 @@
                 authSection.classList.add('hidden');
             }
             
-            // Display unassigned drivers (jobless drivers)
             const assignedDriverIndices = new Set(optimalAssignment.map(a => a.driverIndex));
+            const incompleteDriverIndices = await assignIncompleteRoutesMorningPass(
+                assignedDriverIndices,
+                driversForAssignment,
+                incompleteRouteIndices
+            );
+            incompleteDriverIndices.forEach((i) => assignedDriverIndices.add(i));
+
+            // Display unassigned drivers (jobless drivers) — after incomplete morning pass
             const joblessDrivers = driversForAssignment.filter((driver, index) => !assignedDriverIndices.has(index));
-            
+
             const joblessDriversSection = document.getElementById('jobless-drivers-section');
             const joblessDriversContainer = document.getElementById('jobless-drivers-container');
-            
+
             if (joblessDrivers.length > 0) {
                 joblessDriversContainer.innerHTML = '';
-                joblessDrivers.forEach(driver => {
+                joblessDrivers.forEach((driver) => {
                     const card = createJoblessDriverCard(driver);
                     joblessDriversContainer.appendChild(card);
                 });
@@ -6981,13 +6994,13 @@
             } else {
                 joblessDriversSection.classList.add('hidden');
             }
-            
+
             // Display unassigned routes (driverless routes)
             const driverlessRoutes = savedRoutes.filter((route, index) => !assignedRouteIndices.has(index) && !isRouteIncomplete(route));
-            
+
             const driverlessRoutesSection = document.getElementById('driverless-routes-section');
             const driverlessRoutesContainer = document.getElementById('driverless-routes-container');
-            
+
             if (driverlessRoutes.length > 0) {
                 driverlessRoutesContainer.innerHTML = '';
                 driverlessRoutes.forEach((route, index) => {
@@ -6998,29 +7011,105 @@
             } else {
                 driverlessRoutesSection.classList.add('hidden');
             }
-            
-            const totalDistance = optimalAssignment.reduce((sum, assignment) => sum + assignment.totalDistance, 0);
-            
-            // Save all driver assignments to Firebase
+
             console.log('💾 Saving driver assignments to Firebase...');
             await saveRoutesToFirebase();
             console.log('✅ Driver assignments saved to Firebase');
-            await assignIncompleteRoutesMorningPass(assignedDriverIndices, driversForAssignment, incompleteRouteIndices);
             setupRouteHoldAssignmentHandlers();
+        }
+
+        function moveIncompleteRouteCardToSection(routeNumber) {
+            const container = document.getElementById('incomplete-routes-container');
+            const el = document.getElementById(`firebase-route-${routeNumber}`);
+            if (!container || !el) return;
+            el.classList.add('incomplete-route-card');
+            el.style.display = '';
+            if (!container.contains(el)) {
+                el.remove();
+                container.appendChild(el);
+            }
+        }
+
+        function applyIncompleteRouteAssignmentUI(p) {
+            const routeNumber = p.routeNumber;
+            const driverName = p.driver.name || ((p.driver.firstName || '') + ' ' + (p.driver.lastName || '')).trim() || 'Unknown Driver';
+            const driverHome = p.driver.homePostcode || p.driver.postcode || 'Unknown';
+            const jobs = p.routeData.jobs || [];
+            const travelEp = getRouteTravelEndpoints(jobs);
+
+            p.routeData.incompleteRoute = true;
+            p.routeData.route = p.routeData.route || {};
+            p.routeData.route.incompleteRoute = true;
+            p.routeData.route.assignedDriver = p.driver;
+            p.routeData.route.assignedDriverName = driverName;
+            p.routeData.route.assignedDriverPostcode = driverHome;
+            p.routeData.route.incompleteMorningScore = p.morningScore;
+            p.routeData.route.routeScore = p.morningScore;
+
+            const driverElement = document.getElementById(`firebase-route-${routeNumber}-driver`);
+            const locationElement = document.getElementById(`firebase-route-${routeNumber}-driver-location`);
+            const regElement = document.getElementById(`firebase-route-${routeNumber}-reg`);
+            const toWorkElement = document.getElementById(`firebase-route-${routeNumber}-to-work`);
+            const fromWorkElement = document.getElementById(`firebase-route-${routeNumber}-from-work`);
+            const fromWorkLabelEl = document.getElementById(`firebase-route-${routeNumber}-from-work-label`);
+            const returnDisplay = document.getElementById(`firebase-route-${routeNumber}-return-display`);
+            const returnSummary = document.getElementById(`firebase-route-${routeNumber}-return-summary`);
+            const holdHint = document.getElementById(`firebase-route-${routeNumber}-hold-hint`);
+
+            if (regElement && jobs.length) regElement.innerHTML = formatRouteRegLineHtml(jobs);
+            if (driverElement) driverElement.textContent = driverName;
+            if (locationElement) locationElement.textContent = driverHome;
+            if (returnDisplay && returnSummary) {
+                if (travelEp.hasReturnVehicle) {
+                    returnDisplay.classList.remove('hidden');
+                    returnDisplay.classList.add('flex');
+                    returnSummary.textContent = formatReturnPostcodeOnly(travelEp.returnPostcode);
+                } else {
+                    returnDisplay.classList.add('hidden');
+                    returnDisplay.classList.remove('flex');
+                }
+            }
+            if (fromWorkLabelEl) {
+                fromWorkLabelEl.textContent = travelEp.hasReturnVehicle ? 'From R/C (end of day)' : 'From last delivery';
+            }
+            const toWorkOriginalTime = safeTravelMinutes(p.toWorkOptions, 0);
+            const shouldShowMixedModeToWork = toWorkOriginalTime > 120;
+            if (toWorkElement) {
+                toWorkElement.innerHTML = formatTravelOptionForRoute(p.toWorkOptions, `route-${routeNumber}`, 'to-work', shouldShowMixedModeToWork);
+            }
+            if (fromWorkElement) {
+                fromWorkElement.innerHTML = '<span class="text-gray-500">—</span>';
+            }
+            const scoreElement = document.getElementById(`firebase-route-${routeNumber}-score-text`);
+            const scoreContainer = document.getElementById(`firebase-route-${routeNumber}-score`);
+            if (scoreElement) scoreElement.textContent = String(p.morningScore.score);
+            if (scoreContainer) {
+                if (p.morningScore.color === 'green') {
+                    scoreContainer.className = 'absolute top-0 right-0 bg-green-600 rounded-bl-lg px-2 py-1';
+                } else if (p.morningScore.color === 'orange') {
+                    scoreContainer.className = 'absolute top-0 right-0 bg-orange-500 rounded-bl-lg px-2 py-1';
+                } else {
+                    scoreContainer.className = 'absolute top-0 right-0 bg-red-600 rounded-bl-lg px-2 py-1';
+                }
+                scoreContainer.title = 'Incomplete route score (morning leg only)';
+            }
+            if (holdHint) holdHint.classList.remove('hidden');
+            moveIncompleteRouteCardToSection(routeNumber);
         }
 
         async function assignIncompleteRoutesMorningPass(assignedDriverIndices, driversForAssignment, incompleteRouteIndices) {
             const section = document.getElementById('incomplete-routes-section');
             const container = document.getElementById('incomplete-routes-container');
-            if (!section || !container) return;
-            container.innerHTML = '';
-            if (!incompleteRouteIndices?.length) {
-                section.classList.add('hidden');
-                return;
+            const usedDriverIndices = new Set();
+            if (!section || !container || !incompleteRouteIndices?.length) {
+                if (section) section.classList.add('hidden');
+                return usedDriverIndices;
             }
+
             const routelessDrivers = driversForAssignment
                 .map((driver, driverIndex) => ({ driver, driverIndex }))
                 .filter((d) => !assignedDriverIndices.has(d.driverIndex));
+
             const pairs = [];
             for (const routeIndex of incompleteRouteIndices) {
                 const routeData = savedRoutes[routeIndex];
@@ -7033,46 +7122,45 @@
                     try {
                         const home = driver.homePostcode || driver.postcode;
                         const toWorkOptions = await calculateTravelOptions(home, collection, true);
-                        const mins = safeTravelMinutes(toWorkOptions);
-                        pairs.push({ routeIndex, routeNumber, routeData, driver, driverIndex, toWorkOptions, mins });
+                        const morningScore = calculateTravelScore(toWorkOptions, { duration: 0, mode: 'transit' });
+                        pairs.push({
+                            routeIndex,
+                            routeNumber,
+                            routeData,
+                            driver,
+                            driverIndex,
+                            toWorkOptions,
+                            morningScore,
+                            score: morningScore.score,
+                        });
                     } catch (e) {
                         console.warn('Incomplete morning leg failed', e);
                     }
                 }
             }
-            pairs.sort((a, b) => a.mins - b.mins);
+            pairs.sort((a, b) => b.score - a.score);
+
             const usedDrivers = new Set();
             const usedRoutes = new Set();
             for (const p of pairs) {
                 if (usedDrivers.has(p.driverIndex) || usedRoutes.has(p.routeIndex)) continue;
                 usedDrivers.add(p.driverIndex);
                 usedRoutes.add(p.routeIndex);
-                p.routeData.route = p.routeData.route || {};
-                p.routeData.route.incompleteRoute = true;
-                p.routeData.route.assignedDriverName = p.driver.name || (p.driver.firstName + ' ' + p.driver.lastName);
-                p.routeData.route.assignedDriverPostcode = p.driver.homePostcode || p.driver.postcode;
-                p.routeData.route.incompleteMorningScore = calculateTravelScore(p.toWorkOptions, { duration: 0, mode: 'transit' });
-                const el = document.getElementById(`firebase-route-${p.routeNumber}`);
-                if (el) {
-                    const scoreEl = document.getElementById(`firebase-route-${p.routeNumber}-score-text`);
-                    const scoreBox = document.getElementById(`firebase-route-${p.routeNumber}-score`);
-                    if (scoreEl) scoreEl.textContent = String(p.routeData.route.incompleteMorningScore?.score ?? '—');
-                    if (scoreBox) scoreBox.title = 'Incomplete route score (morning leg only)';
-                }
+                usedDriverIndices.add(p.driverIndex);
+                applyIncompleteRouteAssignmentUI(p);
             }
+
             for (const routeIndex of incompleteRouteIndices) {
-                if (usedRoutes.has(routeIndex)) continue;
                 const routeNumber = routeIndex + 1;
                 let el = document.getElementById(`firebase-route-${routeNumber}`);
                 if (!el && routeDataHasJobs(savedRoutes[routeIndex])) {
                     el = createRouteElement(savedRoutes[routeIndex].route, savedRoutes[routeIndex].jobs, routeNumber);
-                    el.classList.add('incomplete-route-card');
-                    container.appendChild(el);
-                } else if (el) {
-                    container.appendChild(el);
+                    el.classList.add('incomplete-route-card', 'dynamic-route');
                 }
+                if (el) moveIncompleteRouteCardToSection(routeNumber);
             }
             section.classList.remove('hidden');
+            return usedDriverIndices;
         }
 
         function routeDataHasJobs(routeData) {
@@ -7313,9 +7401,8 @@
                 const collectionPostcode = getJobCollectionPostcode(job) || 'N/A';
                 const deliveryPostcode = getJobDeliveryPostcode(job) || 'N/A';
                 const returnPostcode = getJobReturnPostcode(job);
-                const returnReg = getJobReturnReg(job);
                 const rcLine = returnPostcode
-                    ? `<span class="text-red-500 font-bold ml-1">· ${formatReturnVehicleLabel(returnReg, returnPostcode)}</span>`
+                    ? `<span class="text-red-500 font-bold ml-1">· ${formatReturnPostcodeOnly(returnPostcode)}</span>`
                     : '';
                 jobPairsHTML += `
                     <div class="flex items-center gap-2 text-xs flex-wrap">
@@ -7998,7 +8085,7 @@
                         if (epRestore.hasReturnVehicle) {
                             returnDisplayRestore.classList.remove('hidden');
                             returnDisplayRestore.classList.add('flex');
-                            returnSummaryRestore.textContent = formatReturnVehicleLabel(epRestore.returnReg, epRestore.returnPostcode);
+                            returnSummaryRestore.textContent = formatReturnPostcodeOnly(epRestore.returnPostcode);
                         } else {
                             returnDisplayRestore.classList.add('hidden');
                             returnDisplayRestore.classList.remove('flex');
@@ -8691,7 +8778,7 @@
                             const returnMarker = new google.maps.Marker({
                                 position: returnLocation,
                                 map: map,
-                                title: `R/C: ${formatReturnVehicleLabel(getJobReturnReg(job), returnPostcode)}`,
+                                title: `R/C: ${formatReturnPostcodeOnly(returnPostcode)}`,
                                 icon: {
                                     path: google.maps.SymbolPath.CIRCLE,
                                     scale: 8,
